@@ -70,6 +70,10 @@ export const LIVERIES = Object.freeze([
   { id: 'pro', name: 'WebFPV Pro', vinyl: 0xffd45c, chrome: 0xffd45c },
 ]);
 
+/* The house paint's id: the quad as it is built, which a whoop wears in its
+ * own colours (src/render/whoopcraft.js). */
+export const HOUSE_LIVERY = LIVERIES[0].id;
+
 const BY_ID = new Map(LIVERIES.map((l) => [l.id, l]));
 
 export function liveryById(id) {

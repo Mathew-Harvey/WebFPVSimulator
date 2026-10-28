@@ -9,7 +9,11 @@
  *
  * THE SHAPE, v2, the skill tree's (./tree.js):
  *
- *   lessons    { [lessonId]: { medal, bestMs, bestScore, runs, firstAt } }
+ *   lessons    { [lessonId]: { medal, bestMs, bestScore, fbMs, fbScore,
+ *              runs, firstAt } }; fbMs and fbScore are the bests flown on
+ *              the lesson's fallback (a stand in world, ../curriculum.js),
+ *              which is another map, so its time is never set against the
+ *              real one's
  *   known      the parts the pilot said they can already fly (Set my level,
  *              or the tree's own button): they open what grows from them
  *              and earn nothing, so stars stay something flown for
@@ -93,6 +97,12 @@ function cleanRecord(r) {
   }
   if (Number.isFinite(r.bestScore) && r.bestScore >= 0) {
     out.bestScore = r.bestScore;
+  }
+  if (Number.isFinite(r.fbMs) && r.fbMs > 0) {
+    out.fbMs = r.fbMs;
+  }
+  if (Number.isFinite(r.fbScore) && r.fbScore >= 0) {
+    out.fbScore = r.fbScore;
   }
   if (typeof r.firstAt === 'string') {
     out.firstAt = r.firstAt;
@@ -412,9 +422,13 @@ function openSet(p) {
  * Record a finished or failed run. Returns what changed, for the results
  * screen and the platform: whether this was the first finish, a better
  * medal, time or score, the stars it added, the parts it opened, and the
- * licence and the livery it earned, if any.
+ * licence and the livery it earned, if any. `fallen` is a run flown on the
+ * lesson's fallback: its medal is the lesson's like any other, and its
+ * time and score are kept apart, as the fallback's (fbMs, fbScore).
  */
-export function recordRun(p, lessonId, { complete, ms, medal, score }, now = new Date()) {
+export function recordRun(p, lessonId, {
+  complete, ms, medal, score, fallen = false,
+}, now = new Date()) {
   p.runs = (p.runs || 0) + 1;
   p.last = lessonId;
   p.updatedAt = now.toISOString();
@@ -446,13 +460,15 @@ export function recordRun(p, lessonId, { complete, ms, medal, score }, now = new
       out.stars = starsOf(medal) - starsOf(prev.medal);
       rec.medal = medal;
     }
-    if (Number.isFinite(ms) && (!Number.isFinite(prev.bestMs) || ms < prev.bestMs)) {
-      out.betterTime = Number.isFinite(prev.bestMs);
-      rec.bestMs = ms;
+    const msKey = fallen ? 'fbMs' : 'bestMs';
+    const scoreKey = fallen ? 'fbScore' : 'bestScore';
+    if (Number.isFinite(ms) && (!Number.isFinite(prev[msKey]) || ms < prev[msKey])) {
+      out.betterTime = Number.isFinite(prev[msKey]);
+      rec[msKey] = ms;
     }
-    if (Number.isFinite(score) && (!Number.isFinite(prev.bestScore) || score > prev.bestScore)) {
-      out.betterScore = Number.isFinite(prev.bestScore);
-      rec.bestScore = score;
+    if (Number.isFinite(score) && (!Number.isFinite(prev[scoreKey]) || score > prev[scoreKey])) {
+      out.betterScore = Number.isFinite(prev[scoreKey]);
+      rec[scoreKey] = score;
     }
     p.lessons[lessonId] = rec;
     const after = openSet(p);
@@ -610,6 +626,14 @@ export function mergeProgress(a, b) {
     if (sc.length) {
       rec.bestScore = Math.max(...sc);
     }
+    const fm = [r.fbMs, s.fbMs].filter(Number.isFinite);
+    if (fm.length) {
+      rec.fbMs = Math.min(...fm);
+    }
+    const fs = [r.fbScore, s.fbScore].filter(Number.isFinite);
+    if (fs.length) {
+      rec.fbScore = Math.max(...fs);
+    }
     const first = [r.firstAt, s.firstAt].filter(Boolean).sort();
     if (first.length) {
       rec.firstAt = first[0];
@@ -653,12 +677,19 @@ function unb64url(text) {
   return atob(s + '='.repeat((4 - (s.length % 4)) % 4));
 }
 
-/* Lessons as [id, medal letter, best ms, best score, runs], and the rest
+/* Lessons as [id, medal letter, best ms, best score, runs], and the
+ * fallback's ms and score after them when it has been flown, and the rest
  * as short keys: small enough to paste into a chat. */
 export function encodeSave(p) {
   const rows = Object.entries(p.lessons)
     .filter(([, r]) => r && (r.medal || r.runs))
-    .map(([id, r]) => [id, r.medal ? r.medal[0] : '', Math.round(r.bestMs || 0), Math.round(r.bestScore || 0), r.runs || 0]);
+    .map(([id, r]) => {
+      const row = [id, r.medal ? r.medal[0] : '', Math.round(r.bestMs || 0), Math.round(r.bestScore || 0), r.runs || 0];
+      if (Number.isFinite(r.fbMs) || Number.isFinite(r.fbScore)) {
+        row.push(Math.round(r.fbMs || 0), Math.round(r.fbScore || 0));
+      }
+      return row;
+    });
   const body = JSON.stringify({
     l: rows, k: p.known, o: p.openAll ? 1 : 0, f: p.first || '', a: p.last || '', r: p.runs || 0,
   });
@@ -686,12 +717,14 @@ export function decodeSave(code) {
       if (!Array.isArray(row) || typeof row[0] !== 'string' || !known.has(row[0])) {
         continue;
       }
-      const [id, medal, ms, score, runs] = row;
+      const [id, medal, ms, score, runs, fbMs, fbScore] = row;
       lessons[id] = {
         runs: Number(runs) || 0,
         ...(letter[medal] ? { medal: letter[medal] } : {}),
         ...(Number(ms) > 0 ? { bestMs: Number(ms) } : {}),
         ...(Number(score) > 0 ? { bestScore: Number(score) } : {}),
+        ...(Number(fbMs) > 0 ? { fbMs: Number(fbMs) } : {}),
+        ...(Number(fbScore) > 0 ? { fbScore: Number(fbScore) } : {}),
       };
     }
     return normaliseProgress({

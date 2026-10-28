@@ -102,15 +102,18 @@ function medalValue(lesson, v) {
   return scored(lesson) ? points(v) : clock(v);
 }
 
-/* The pilot's best on a lesson, in its unit, or null. */
+/* The pilot's best on a lesson, in its unit, or null. A lesson flown on its
+ * fallback has the fallback's own best: another map, another time. */
 function bestOf(lesson, rec) {
   if (!rec) {
     return null;
   }
+  const ms = lesson.fallen ? rec.fbMs : rec.bestMs;
+  const score = lesson.fallen ? rec.fbScore : rec.bestScore;
   if (scored(lesson)) {
-    return Number.isFinite(rec.bestScore) ? points(rec.bestScore) : null;
+    return Number.isFinite(score) ? points(score) : null;
   }
-  return Number.isFinite(rec.bestMs) ? clock(rec.bestMs) : null;
+  return Number.isFinite(ms) ? clock(ms) : null;
 }
 
 /* A heading lettered in the game's hand, the words kept for a reader.
@@ -683,10 +686,16 @@ export class CareerScreens {
     this.stickMode = stickMode;
     this.keys = keys;
     this.current = current || null;
+    const was = this.treeAt;
     if (part && partById(part)) {
       this.treeAt = part;
     }
-    this.zone = this.zone === 'lessons' ? 'lessons' : 'parts';
+    /* Back to the part a lesson was opened from, the cursor is on that
+     * lesson again; on any other part it starts on the part. */
+    if (this.zone !== 'lessons' || this.treeAt !== was) {
+      this.zone = 'parts';
+      this.lessonAt = 0;
+    }
     this.screen = 'tree';
     this.renderTree();
   }
@@ -899,6 +908,9 @@ export class CareerScreens {
   paintZone() {
     const tiles = this.sheetLessons || [];
     const items = [...tiles, this.knownBtn].filter(Boolean);
+    if (this.lessonAt >= items.length) {
+      this.lessonAt = 0;
+    }
     items.forEach((b, i) => b.classList.toggle('is-focus', this.zone === 'lessons' && i === this.lessonAt));
     const on = items[this.lessonAt];
     if (this.zone === 'lessons' && on && on.scrollIntoView) {
@@ -1134,12 +1146,16 @@ export class CareerScreens {
    * Set my level, the whole tree, and the save code.
    * ---------------------------------------------------------------- */
 
-  showLevel(p, { steam = false, message = '' } = {}) {
+  showLevel(p, { steam = false, message = '', fresh = false } = {}) {
     this.progress = p;
     this.screen = 'level';
     const v = this.clear(this.level);
-    this.answers = this.answers && this.levelFresh === false ? this.answers : levelAnswers(p);
-    this.levelFresh = false;
+    /* The answers start from the tree as it stands each time the page is
+     * opened, and after Clear what I marked; a Yes picked and not marked
+     * is not carried to the next visit. Between presses they are kept. */
+    if (fresh || !this.answers) {
+      this.answers = levelAnswers(p);
+    }
     const main = el('div', 'cr-level-main');
     main.append(el('span', 'cr-kick', 'Already fly?'), lettered('Set My Level', 80, INKS.cream, 'cr-title', 0.45));
     main.append(el('p', 'cr-panel-line wide', 'Tell us what you can already do. Those parts are marked as known and everything after them opens. Stars are still flown for, one run at a time.'));
@@ -1668,12 +1684,15 @@ export class CareerScreens {
       if (outcome && outcome.opened && outcome.opened.length) {
         const op = el('div', 'cr-panel cr-res-opened');
         op.append(el('span', 'cr-kick sakura', 'Opened'));
+        /* A licence opens three parts at once: the names run on in a row. */
+        const names = el('div', 'cr-res-opened-list');
         for (const id of outcome.opened) {
           const part = partById(id);
           if (part) {
-            op.append(el('b', 'cr-res-opened-name', part.title));
+            names.append(el('b', 'cr-res-opened-name', part.title));
           }
         }
+        op.append(names);
         extra.push(op);
       }
       if (outcome && outcome.livery) {
@@ -1684,7 +1703,8 @@ export class CareerScreens {
         pic.innerHTML = quadSvg(l);
         const words = el('div', 'cr-res-livery-words');
         words.append(el('span', 'cr-kick sakura', 'New livery'), el('b', 'cr-res-opened-name', l.name));
-        words.append(el('p', 'cr-panel-line', `Every lesson of ${from ? from.title : 'it'} flown. Its colours are yours.`));
+        const flown = from && from.lessons.length > 1 ? `Every lesson of ${from.title} flown.` : `${from ? from.title : 'It'}: flown.`;
+        words.append(el('p', 'cr-panel-line', `${flown} Its colours are yours.`));
         paintBtn = button('Paint it on', 'P', 'small');
         paintBtn.addEventListener('click', () => {
           this.h.paint(l.id);
@@ -1700,9 +1720,11 @@ export class CareerScreens {
         extra.push(el('div', 'cr-res-starsum', `+${outcome.stars} star${outcome.stars === 1 ? '' : 's'}, ${t.stars} in all`));
       }
     }
-    /* Where the lesson's part stands now, pass or fail. */
+    /* Where the lesson's part stands now, pass or fail. A part of one
+     * lesson (the Rookie Licence, the Championship, the crown) is the
+     * stars and the ladder already on the page, so it is left out. */
     const part = partOf(lesson.id);
-    if (part && progress) {
+    if (part && progress && part.lessons.length > 1) {
       const s = partStats(progress, part);
       const prog = el('div', 'cr-panel cr-res-part');
       prog.append(el('span', 'cr-kick', part.title));
@@ -1715,7 +1737,7 @@ export class CareerScreens {
     }
     page.append(main);
     if (extra.length) {
-      const side = el('div', 'cr-res-side');
+      const side = el('div', `cr-res-side${extra.length >= 4 ? ' is-full' : ''}`);
       side.append(...extra);
       page.append(side);
     }

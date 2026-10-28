@@ -297,6 +297,31 @@ test('a better time is kept, a slower one is not, and the first finish is not a 
   assert.equal(out.betterTime, true);
 });
 
+test('a run on a lesson\'s fallback earns its medal and keeps its time apart from the real map\'s', () => {
+  const p = emptyProgress();
+  let out = recordRun(p, 'rt-2', { complete: true, ms: 30000, medal: 'silver', fallen: true });
+  assert.equal(lessonDone(p, 'rt-2'), true);
+  assert.equal(p.lessons['rt-2'].fbMs, 30000);
+  assert.equal(p.lessons['rt-2'].bestMs, undefined, 'the real track has not been flown');
+  out = recordRun(p, 'rt-2', { complete: true, ms: 40000, medal: 'bronze' });
+  assert.equal(p.lessons['rt-2'].bestMs, 40000, 'the real track\'s first time is its own, not slower than the fallback\'s');
+  assert.equal(out.betterTime, false);
+  assert.equal(p.lessons['rt-2'].medal, 'silver');
+  out = recordRun(p, 'rt-2', { complete: true, ms: 29000, medal: 'silver', fallen: true });
+  assert.equal(out.betterTime, true);
+  assert.equal(p.lessons['rt-2'].fbMs, 29000);
+  assert.equal(p.lessons['rt-2'].bestMs, 40000);
+  /* Kept through a reload, a merge and a save code. */
+  const back = normaliseProgress(JSON.parse(JSON.stringify(p)));
+  assert.equal(back.lessons['rt-2'].fbMs, 29000);
+  const other = emptyProgress();
+  recordRun(other, 'rt-2', { complete: true, ms: 27000, medal: 'bronze', fallen: true });
+  assert.equal(mergeProgress(p, other).lessons['rt-2'].fbMs, 27000);
+  const carried = decodeSave(encodeSave(p));
+  assert.equal(carried.lessons['rt-2'].fbMs, 29000);
+  assert.equal(carried.lessons['rt-2'].bestMs, 40000);
+});
+
 test('a failed run counts as a run and finishes nothing', () => {
   const p = emptyProgress();
   recordRun(p, '1-1', { complete: false });

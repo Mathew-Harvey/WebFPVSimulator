@@ -59,7 +59,7 @@ import * as THREE from 'three';
 import { celMaterial } from './celmat.js';
 import { WORLD_SCALE } from './frame.js';
 import { PROP_SPIN, inkShell } from './herocraft.js';
-import { tintMaterial } from './livery.js';
+import { HOUSE_LIVERY, tintMaterial } from './livery.js';
 import { WHOOP_TRUE_DIMS, MICRO_SCALE } from '../../configs/airframes.js';
 
 const WHOOP_DIMS = WHOOP_TRUE_DIMS;
@@ -385,14 +385,17 @@ export function buildWhoopCraft(opts = {}) {
    * A career livery (src/render/livery.js): its chrome on the ducts, which
    * are what a whoop is seen by, retinted through their material's colour.
    * The model may still be on its way, so the livery is kept and painted
-   * once fill() knows what colour the ducts are.
+   * once fill() knows what colour the ducts are. The house paint is the
+   * whoop as it was moulded: its ducts keep their own grey, which is not
+   * the five inch's sakura, or every whoop pilot's quad would turn pink
+   * at boot without ever opening the career.
    */
   let ductBase = null;
   let wanted = null;
   const paint = (livery) => {
     wanted = livery || null;
     if (ductBase != null && wanted && !lite) {
-      tintMaterial(ductMat, ductBase, wanted.chrome);
+      tintMaterial(ductMat, ductBase, wanted.id === HOUSE_LIVERY ? ductBase : wanted.chrome);
     }
   };
 

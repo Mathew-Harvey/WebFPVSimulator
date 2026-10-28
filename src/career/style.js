@@ -572,8 +572,10 @@ body.career-flight:not(.career-score) #ui .score-combo { visibility: hidden; }
 #career .cr-res-coach { display: flex; align-items: center; gap: 18px; max-width: 760px; }
 #career .cr-res-chase { max-width: 560px; transform: rotate(-0.4deg); }
 #career .cr-res-side { display: flex; flex-direction: column; gap: 18px; min-width: 0; padding-top: clamp(0px, 4vh, 60px); }
+#career .cr-res-side.is-full { gap: 14px; padding-top: 0; }
 #career .cr-res-licence { flex-direction: row; align-items: center; gap: 16px; background: #ffe9a8; transform: rotate(1deg); }
 #career .cr-res-opened { transform: rotate(-1deg); }
+#career .cr-res-opened-list { display: flex; flex-wrap: wrap; gap: 2px 16px; }
 #career .cr-res-opened-name { font-size: clamp(18px, 1.6vw, 26px); font-weight: 900; font-style: italic; text-transform: uppercase; line-height: 1.05; }
 #career .cr-res-starsum { align-self: flex-start; padding: 6px 12px; background: var(--c-amber); border: 3px solid var(--c-ink); box-shadow: 4px 4px 0 var(--c-ink); font-weight: 900; font-size: clamp(15px, 1.2vw, 19px); }
 #career .cr-meter { height: 14px; border: 3px solid var(--c-ink); background: var(--c-card); }

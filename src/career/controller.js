@@ -175,7 +175,7 @@ export function createCareer(shell) {
       if (clearKnown(progress)) {
         saveProgress(progress);
       }
-      showLevel('Nothing is marked as known now. What you have flown stays flown.');
+      showLevel('Nothing is marked as known now. What you have flown stays flown.', true);
     },
     saveCode: () => encodeSave(progress),
     loadCode: (text) => {
@@ -322,12 +322,12 @@ export function createCareer(shell) {
       levelFrom = state;
     }
     settleMenu();
-    showLevel('');
+    showLevel('', true);
   }
 
-  function showLevel(message) {
+  function showLevel(message, fresh = false) {
     state = 'level';
-    screens.showLevel(progress, { steam: Boolean(shell.cloudSave), message });
+    screens.showLevel(progress, { steam: Boolean(shell.cloudSave), message, fresh });
     padCalm();
   }
 
@@ -360,6 +360,9 @@ export function createCareer(shell) {
     });
     padCalm();
     const token = ++loadToken;
+    /* What the briefing says when it is ready, if the lesson flies its
+     * fallback because its own map could not be had. */
+    let standIn = '';
     try {
       let world = await worldOf(lesson);
       if (token !== loadToken || state !== 'briefing') {
@@ -368,6 +371,9 @@ export function createCareer(shell) {
       if (!world && lesson.fallback) {
         /* The board could not be reached, or this build has no such map:
          * the lesson's stand in, said so on its briefing. */
+        standIn = lesson.world && lesson.world.board
+          ? 'Ready. The board did not answer, so this is the lesson\'s stand in. Open it again later for the board\'s map.'
+          : 'Ready. This game does not carry the lesson\'s map, so this is its stand in.';
         lesson = { ...lesson, ...lesson.fallback, fallen: true };
         world = lesson.world;
         screens.showBriefing(lesson, {
@@ -395,7 +401,7 @@ export function createCareer(shell) {
     }
     worldReady = true;
     mountVisuals();
-    screens.setReady(true);
+    screens.setReady(true, standIn || undefined);
   }
 
   /*
@@ -529,6 +535,7 @@ export function createCareer(shell) {
       ms: complete ? status.result.ms : null,
       medal: status.medal,
       score: complete ? status.result.score : null,
+      fallen: Boolean(lesson.fallen),
     });
     saveProgress(progress);
     if (complete) {
@@ -571,8 +578,29 @@ export function createCareer(shell) {
         return line;
       }
     }
+    const rule = speedRule(cur, o);
+    if (rule) {
+      return rule;
+    }
     if (t - objectiveSince < HINT_MS && cur.hint) {
       return { text: cur.hint, tone: 'info' };
+    }
+    return null;
+  }
+
+  /* A ring with a speed on it (Brake Points) says what it wants for as
+   * long as it is the next one: the rings look alike, and the speed is the
+   * lesson. */
+  function speedRule(cur, o) {
+    if (cur.kind !== 'rings' || o.ordered === false || !o.rings) {
+      return null;
+    }
+    const r = o.rings[cur.state.index];
+    if (r && r.maxSpeed != null) {
+      return { text: `Brake ring: through it under ${Math.round(r.maxSpeed * 3.6)} km/h.`, tone: 'info' };
+    }
+    if (r && r.minSpeed != null) {
+      return { text: `Fast ring: through it over ${Math.round(r.minSpeed * 3.6)} km/h.`, tone: 'info' };
     }
     return null;
   }

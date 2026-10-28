@@ -228,7 +228,7 @@ function layoutBlock() {
    * Bardwell's since 2026-10-21: their own, named heads* and bardwell*,
    * are checked as drawn by scripts/heads-check.js and
    * scripts/bardwell-check.js. */
-  const unused = Object.keys(HOME_MATERIALS).filter((m) => !m.startsWith('heads') && !m.startsWith('bardwell') && !m.startsWith('wh') && !colours.has(m));
+  const unused = Object.keys(HOME_MATERIALS).filter((m) => !m.startsWith('heads') && !m.startsWith('bardwell') && !m.startsWith('wh') && !m.startsWith('goat') && !colours.has(m));
   check('every colour of the house\'s in src/props/homes.js is drawn', unused.length === 0, unused.join(', ') || 'all drawn');
   const a = hashOf(L);
   const b = hashOf(houseLayout());

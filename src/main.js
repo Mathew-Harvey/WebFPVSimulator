@@ -481,7 +481,7 @@ const AXIS_X = new THREE.Vector3(1, 0, 0);
  * alone. The entry is written out because it has moved with the directory:
  * it was three before looks.js came and four before egg.js, and with no
  * entry then the bar sat at 75 percent until the import resolved. */
-const MAP_MODULE_COUNT = { field: 1, city: 72, custom: 1, built: 5, house: 3, heads: 4, bardwell: 4, warehouse: 3, sunny: 11, drift: 3 };
+const MAP_MODULE_COUNT = { field: 1, city: 72, custom: 1, built: 5, house: 3, heads: 4, bardwell: 4, warehouse: 3, goats: 8, sunny: 11, drift: 3 };
 /* Where a map's modules live, so the loading bar can count them. Data, not a
  * ternary: the ternary read "field or else city", so a third map counted its
  * modules under the city's prefix and the bar sat at zero.
@@ -499,6 +499,7 @@ const MAP_MODULE_PREFIX = {
   heads: '/src/maps/heads/',
   bardwell: '/src/maps/bardwell/',
   warehouse: '/src/maps/warehouse/',
+  goats: '/src/maps/goats/',
   sunny: '/src/maps/sunny/',
   drift: '/src/maps/drift/',
 };
@@ -5715,9 +5716,10 @@ export async function boot({ loading, bootStart, mapId }) {
    * which is their own word on the board since 2026-10-21; before that the
    * board had none, and the signs on them were never counted for anybody.
    * Thomas More's Shop has its own since 2026-10-27, and the board's
-   * word went out before this one. */
+   * word went out before this one. So has the goat map since 2026-10-28,
+   * the same way. */
   const MARK_MAP_WORDS = {
-    starter: 'yard', injected: 'board', canvas: 'own', house: 'house', heads: 'heads', bardwell: 'bardwell', warehouse: 'warehouse', sunny: 'sunny',
+    starter: 'yard', injected: 'board', canvas: 'own', house: 'house', heads: 'heads', bardwell: 'bardwell', warehouse: 'warehouse', goats: 'goats', sunny: 'sunny',
   };
   function markMapWord(mark) {
     return String(mark.key).startsWith('city#') ? 'city' : (MARK_MAP_WORDS[view.source] || null);
@@ -5899,7 +5901,7 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     ui.stickerFound({
       word: pick.achievement, name: pick.name, got: stickersFound.size, total: view.stickers.length,
-      picture: keptPicture(pick, again),
+      picture: keptPicture(pick, again), of: view.stickersWord || '',
     });
   }
   function callComplete(last) {
@@ -5916,13 +5918,75 @@ export async function boot({ loading, bootStart, mapId }) {
         }
       }
     }
+    /* A map may name its own set: the goat map's are goats seen. */
+    const own = view.stickersComplete || {};
     ui.goalComplete({
       word: `ALL ${total}!`,
-      sub: 'Every sticker found',
-      band: 'Every sticker on the map',
+      sub: own.sub || 'Every sticker found',
+      band: own.band || 'Every sticker on the map',
       picture: keptPicture(hero, false),
       tiles,
     });
+  }
+  /*
+   * 90%ER GOAT HERDING (src/maps/goats/), once a frame: the box at the
+   * side in flight and paused, and every goat that came home called out
+   * like a sticker find, with its owner's logo, holding the sightings back
+   * while it is up. All of them home is the map's own finish, once a
+   * build: the goats stay home through a crash and a reset, and only
+   * choosing the map again lets them out, so there is one finish to each.
+   */
+  let goatsDoneFor = null;
+  /* The pause menu's Let the goats out (src/ui/ui.js): the herd back on the
+   * street, and the finish free to be called again. */
+  ui.onGoatsOut = () => {
+    if (view && view.goatGame) {
+      view.goatGame.restart();
+      goatsDoneFor = null;
+    }
+  };
+  function goatFrame() {
+    const game = view && view.goatGame;
+    ui.goatsOn = Boolean(game);
+    ui.goatHud.setVisible(Boolean(game) && !replayMode && (ui.screen === 'flight' || ui.screen === 'paused'));
+    if (!game) {
+      return;
+    }
+    const home = game.drain();
+    const hud = game.hud();
+    if (home.length) {
+      const last = home[home.length - 1];
+      stickerCalledAt = performance.now();
+      stickerCallouts += 1;
+      if (hud.home >= hud.total && goatsDoneFor !== view) {
+        goatsDoneFor = view;
+        const tiles = home.slice(0, -1).map((g) => stickerPicture(g.sticker)).filter(Boolean);
+        ui.goalComplete({
+          word: `ALL ${hud.total}!`,
+          sub: `Every goat home in ${goatClock(last.atS)}`,
+          band: "Every 90%er's goat in Heads' garage",
+          picture: keptPicture(last.sticker, false),
+          tiles,
+        });
+      } else {
+        ui.stickerFound({
+          word: 'HOME!',
+          name: `${last.name}'s goat`,
+          got: last.count,
+          total: last.total,
+          picture: keptPicture(last.sticker, true),
+          of: 'home',
+          said: `Home. ${last.name}'s goat is in the garage, ${last.count} of ${last.total} home.`,
+        });
+      }
+    }
+    ui.goatHud.update(hud);
+  }
+  function goatClock(sec) {
+    const t = Math.floor(sec);
+    const m = Math.floor(t / 60);
+    const r = t - m * 60;
+    return `${m}:${r < 10 ? '0' : ''}${r}`;
   }
   function callNinety(now) {
     const n = view.stickersNinety;
@@ -6505,6 +6569,9 @@ export async function boot({ loading, bootStart, mapId }) {
         quality: qualityOf(ui.settings),
         renderScale: renderScaleOf(ui.settings),
         hideSponsors: replayClean,
+        /* The same map rebuilt (a change of graphics): a map with a game
+         * of its own keeps it (the goat map's herd, src/maps/goats/). */
+        keepGame: keepPlace,
         ...worldDocument(wantId),
       });
       /* Steam edition: career. Which lesson world this is, if one. */
@@ -7983,6 +8050,14 @@ export async function boot({ loading, bootStart, mapId }) {
     if (view.id === 'warehouse') {
       notice = {
         text: "The board keeps no runs for Thomas More's Shop, so its runs stay here.",
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
+    /* Nor for the goat map: GOATS_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'goats') {
+      notice = {
+        text: 'The board keeps no runs for 90%er goat herding, so its runs stay here.',
         untilMs: performance.now() + 4200,
       };
       return;
@@ -11278,6 +11353,7 @@ export async function boot({ loading, bootStart, mapId }) {
       /* The cars, at the same clock, drawn at the craft's alpha in flight;
        * the title's and the finish's own clocks are whole steps, and the
        * title carries its fraction in titleAcc. */
+      goatFrame();
       filmFrame();
       syncBalloons();
       if (balloonGame) {
@@ -11925,6 +12001,10 @@ export async function boot({ loading, bootStart, mapId }) {
       if (race.freestyle && view.filmGame) {
         /* Drift Matsuri: the take is the game, and it starts in the air. */
         second = '\nYou are the camera. Film the drift battles for a minute.';
+      } else if (race.freestyle && view.goatGame) {
+        /* The goat map: the herd is the game and it has a clock, so the
+         * freestyle promise of none is not true of it (goathud.js). */
+        second = "\nFly low to herd the goats into Heads' garage. The clock starts at the first goat you move.";
       } else if (race.freestyle) {
         /* The counter counts the lines in every position (decision 2), so
          * even Lines only has something to promise now. With Manga and
@@ -14067,6 +14147,10 @@ export async function boot({ loading, bootStart, mapId }) {
     ...(view.stats ? view.stats() : {}),
   });
   window.__maps = () => MAPS.map((m) => ({ id: m.id, name: m.name, mode: m.mode }));
+  /* The goat map's herd (src/maps/goats/index.js), for scripts/shots.js
+   * and its own check: every goat's plan point and mode, and the herd
+   * itself, so a capture can put a goat where it needs one. Harness only. */
+  window.__goats = () => (view && view.goatGame ? { goats: view.goatGame.goats(), herd: view.goatGame.herd } : null);
   /* The declared departure from MultiGP's published obstacle dimensions, so
    * check 15 can assert the threshold file and the course agree about how big
    * a gate is rather than each believing its own copy. Harness only. */

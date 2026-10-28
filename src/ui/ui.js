@@ -226,6 +226,7 @@ import {
 } from './tuneinvite.js';
 import { ChaseHud, chaseCallText } from './chasehud.js';
 import { BalloonHud } from './balloonhud.js';
+import { GoatHud } from './goathud.js';
 import { FilmHud } from './filmhud.js';
 import { YardHud } from './yardhud.js';
 import {
@@ -842,11 +843,12 @@ const scoringBoardBuilt = (where) => 'Scored run: two minutes from the first thi
  */
 function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
   const built = mapId === 'built' || mapId === 'house' || mapId === 'heads' || mapId === 'bardwell' || mapId === 'warehouse'
-    || mapId === 'sunny' || mapId === 'drift';
+    || mapId === 'goats' || mapId === 'sunny' || mapId === 'drift';
   const where = mapId === 'house' ? "Nick's house"
     : mapId === 'heads' ? "Heads' house"
       : mapId === 'bardwell' ? "Joshua's house"
         : mapId === 'warehouse' ? "Thomas's shop"
+          : mapId === 'goats' ? "Heads' street"
           : mapId === 'sunny' ? 'Sunnyfield'
             : mapId === 'drift' ? 'Drift Matsuri' : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
   if (mode === 'off') {
@@ -886,6 +888,10 @@ const BARDWELL_OFF_BOARD = "The board keeps no runs for Joshua Bardwell's house,
 
 /* Thomas More's Shop, the same way. */
 const WAREHOUSE_OFF_BOARD = "The board keeps no runs for Thomas More's Shop, so a run flown there stays here."
+  + ' Fly the town for a run that can go up.';
+
+/* The goat map, the same way. */
+const GOATS_OFF_BOARD = 'The board keeps no runs for 90%er goat herding, so a run flown there stays here.'
   + ' Fly the town for a run that can go up.';
 
 /* Sunnyfield, the same way. */
@@ -5207,6 +5213,8 @@ export class Ui {
      * because the shell is the side that knows what can be chased. Null
      * hides the row, which is every freestyle map. */
     this.ghostRow = null;
+    /* The goat map is up: its row on the pause menu (goatItems). */
+    this.goatsOn = false;
     this.boardLoading = false;
     this.openingBoardCourse = false;
     this.onBoardCourse = null; /* (track) => Promise<boolean> */
@@ -5663,6 +5671,8 @@ export class Ui {
     this.chaseCarsOn = false;
     /* Balloon chase (src/ui/balloonhud.js). main.js says when it is up. */
     this.balloonHud = new BalloonHud(r);
+    /* 90%er goat herding (src/ui/goathud.js). main.js says when it is up. */
+    this.goatHud = new GoatHud(r);
     /* Drift Matsuri's camera (src/ui/filmhud.js). main.js says when it is up. */
     this.filmHud = new FilmHud(r);
     /* The yard track on a house map (src/ui/yardhud.js). main.js says when
@@ -6764,6 +6774,25 @@ export class Ui {
     if (this.screen === 'title' || this.screen === 'paused') {
       this.renderMenu();
     }
+  }
+
+  /*
+   * THE GOAT MAP'S ROW on the pause menu, as an array to spread in place,
+   * when the map is the goat map (`goatsOn`, which goatFrame in main.js
+   * keeps). A goat in Heads' garage stays there through every crash and
+   * restart, which is the game, so this is how a pilot plays it again
+   * without leaving the map. Under the rows that keep the pilot flying, so
+   * no muscle memory lands on it.
+   */
+  goatItems() {
+    if (!this.goatsOn) {
+      return [];
+    }
+    return [{
+      label: 'Let the goats out',
+      action: 'goats-out',
+      note: 'Every goat back out on the street and the clock reset, to herd them all again. A goat you have seen stays seen.',
+    }];
   }
 
   /* The Ghost row where the shell has provided one, as an array so the two
@@ -10402,6 +10431,7 @@ export class Ui {
       return [
         { label: 'Resume', action: 'resume', primary: true },
         { label: 'Restart run', action: 'restart' },
+        ...this.goatItems(),
         {
           label: 'Room',
           value: `${r.code} · ${r.n} ${r.n === 1 ? 'pilot' : 'pilots'}`,
@@ -10469,6 +10499,7 @@ export class Ui {
         ...(builder ? [builder] : []),
         ...this.ghostItems(),
         ...(trouble ? [trouble] : []),
+        ...this.goatItems(),
         { label: 'Does it feel wrong?', section: true },
         tuneItem(s, true),
         /* Angle or Acro, one press from the pause. See flightModeItem. */
@@ -10569,8 +10600,8 @@ export class Ui {
          * to Scored, would send them to fix something that is not the
          * reason. */
         const built = this.settings.map === 'built' || this.settings.map === 'house' || this.settings.map === 'heads'
-          || this.settings.map === 'bardwell' || this.settings.map === 'warehouse' || this.settings.map === 'sunny'
-          || this.settings.map === 'drift';
+          || this.settings.map === 'bardwell' || this.settings.map === 'warehouse' || this.settings.map === 'goats'
+          || this.settings.map === 'sunny' || this.settings.map === 'drift';
         return [
           { label: 'Fly again', action: 'restart', primary: true },
           this.runPosted
@@ -10599,8 +10630,9 @@ export class Ui {
                 : this.settings.map === 'heads' ? HEADS_OFF_BOARD
                   : this.settings.map === 'bardwell' ? BARDWELL_OFF_BOARD
                     : this.settings.map === 'warehouse' ? WAREHOUSE_OFF_BOARD
-                    : this.settings.map === 'sunny' ? SUNNY_OFF_BOARD
-                      : this.settings.map === 'drift' ? DRIFT_OFF_BOARD
+                      : this.settings.map === 'goats' ? GOATS_OFF_BOARD
+                        : this.settings.map === 'sunny' ? SUNNY_OFF_BOARD
+                          : this.settings.map === 'drift' ? DRIFT_OFF_BOARD
                       : (this.sharedMap ? BOARD_MAP_OFF_BOARD : BUILT_OFF_BOARD)) : (nothing
                 ? 'A run with no tricks in it is not a score. Fly one and it appears here.'
                 : (run && run.timed === false
@@ -16917,14 +16949,14 @@ export class Ui {
    * shell drew it into, or null). `said` replaces what a screen reader is
    * told, for a callout that is not one sticker (the 90% achievement).
    */
-  stickerFound({ word, name, got, total, picture, said = '' }) {
+  stickerFound({ word, name, got, total, picture, said = '', of = '' }) {
     const layer = this.stfLayer;
     if (!layer || !word) {
       return;
     }
     layer.textContent = '';
     const call = el('div', 'stf-call');
-    const count = got >= total ? `all ${total} found` : `${got} of ${total}`;
+    const count = got >= total ? `all ${total} ${of || 'found'}` : `${got} of ${total}${of ? ` ${of}` : ''}`;
     call.append(
       el('div', 'stf-call-burst'),
       el('span', 'stf-call-word', word),
@@ -19717,6 +19749,15 @@ export class Ui {
   }
 
   act(action) {
+    /* The goat map's own row on the pause menu (goatItems): the herd back
+     * out, then straight back to flying. */
+    if (action === 'goats-out') {
+      if (this.onGoatsOut) {
+        this.onGoatsOut();
+      }
+      this.act('resume');
+      return;
+    }
     /* Career. Its card on the gate and its rows in a lesson's
      * pause belong to the career, which main.js routes (onCareer). */
     if (typeof action === 'string' && action.startsWith('career') && this.onCareer) {

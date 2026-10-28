@@ -339,6 +339,9 @@ const WORLDS = [
    * lens instead, inside under the joists (CARD_LENS in
    * src/maps/warehouse/warehouse.js), and the orbit page uses that. */
   { id: 'warehouse', file: 'warehouse.jpg', name: "Thomas More's Shop" },
+  /* The goat map, added 28 October 2026: Heads' house in its street, taken
+   * from Heads' own shot so the house is in the middle of it. */
+  { id: 'goats', file: 'goats.jpg', name: '90%er goat herding', shot: { tp: 0.5, tr: 0.3, ta: -1.35 } },
   /* Sunnyfield, added 28 October 2026, picked by eye from four sides: the
    * one with the hill's letters, the town hall and the gorge in it. */
   { id: 'sunny', file: 'sunny.jpg', name: 'Sunnyfield', shot: { tp: 0.62, tr: 0.9, ta: -2.4 } },

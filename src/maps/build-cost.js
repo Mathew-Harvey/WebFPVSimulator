@@ -69,6 +69,9 @@ export const MAP_BUILD_MS = {
    * more parts; measured by node scripts/shots.js when it is next run on a
    * quiet container. */
   warehouse: 1700,
+  /* The 90%er goat herding map (src/maps/goats/): Heads' house and the
+   * neighbourhood round it. An estimate until it is measured, below. */
+  goats: 3800,
   /* Sunnyfield (src/maps/sunny/), the same pipeline, measured on
    * 2026-10-28 at 1280 by 720 on High as the loading screen's world stage:
    * 4054, 3899 and 4067 ms, with Bardwell's house at 3920 between them on

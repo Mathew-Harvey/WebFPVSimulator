@@ -1638,7 +1638,8 @@ export class CareerScreens {
       const stars = el('div', 'cr-panel cr-res-chase');
       stars.append(el('span', 'cr-kick', 'Stars to win'), ladder(lesson, rec ? rec.medal : null));
       const best = bestOf(lesson, rec);
-      stars.append(el('p', 'cr-best', best ? `Your best: ${best}` : 'Your best: not finished yet'));
+      const on = lesson.fallen ? ' on the stand in' : '';
+      stars.append(el('p', 'cr-best', best ? `Your best${on}: ${best}` : `Your best${on}: not finished yet`));
       main.append(stars);
     } else {
       const word = { gold: 'Gold!', silver: 'Silver!', bronze: 'Finished!' }[status.medal] || 'Finished!';
@@ -1662,6 +1663,11 @@ export class CareerScreens {
       }
       if (scored(lesson)) {
         said.push(`In ${clock(status.result.ms)}.`);
+      }
+      /* A stand in's best is its own (progress.js, fbMs), so the page says
+       * which map the time belongs to. */
+      if (lesson.fallen) {
+        said.push('On the stand in, so it is kept apart from the real map.');
       }
       const line = [];
       if (status.crashes) {

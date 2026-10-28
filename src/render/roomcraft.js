@@ -344,6 +344,8 @@ export function buildRoomCraft({ capacity = 30, whoop = false } = {}) {
   const rowOf = new Map();
   const rowHandle = new Array(TAG_COLS * rows).fill(null);
   const rowLivery = new Array(TAG_COLS * rows).fill(-1);
+  const rowPlace = new Array(TAG_COLS * rows).fill(0);
+  const rowPicked = new Array(TAG_COLS * rows).fill(false);
   const freeRows = [];
   for (let i = TAG_COLS * rows - 1; i >= 0; i -= 1) freeRows.push(i);
 
@@ -357,24 +359,41 @@ export function buildRoomCraft({ capacity = 30, whoop = false } = {}) {
     ctx.fill();
   };
 
-  function drawTag(row, handle, livery) {
+  /* place: the pilot's place on the course while the overview is open, 0
+   * for none. picked: the pilot the overview has picked, whose tag is
+   * amber, as a picked row is in the menus. */
+  function drawTag(row, handle, livery, place = 0, picked = false) {
     const ctx = canvas.getContext('2d');
     const x0 = (row % TAG_COLS) * TAG_W;
     const y0 = Math.floor(row / TAG_COLS) * TAG_H;
     ctx.clearRect(x0, y0, TAG_W, TAG_H);
     ctx.font = '700 34px system-ui, sans-serif';
     const text = handle.slice(0, 24);
-    const w = Math.min(TAG_W - 8, ctx.measureText(text).width + 58);
+    const lead = place ? `P${place}` : '';
+    ctx.font = '900 30px system-ui, sans-serif';
+    const leadW = lead ? ctx.measureText(lead).width + 16 : 0;
+    ctx.font = '700 34px system-ui, sans-serif';
+    const w = Math.min(TAG_W - 8, ctx.measureText(text).width + 58 + (lead ? leadW + 8 : 0));
     const left = x0 + (TAG_W - w) / 2;
     /* An ink panel with a livery chip, the manga furniture of the menus. */
-    ctx.fillStyle = 'rgba(11, 17, 22, 0.86)';
+    ctx.fillStyle = picked ? '#ffd45c' : 'rgba(11, 17, 22, 0.86)';
     panel(ctx, left, y0 + 8, w, TAG_H - 16, 10);
-    ctx.fillStyle = `#${livery.toString(16).padStart(6, '0')}`;
-    panel(ctx, left + 10, y0 + 18, 22, TAG_H - 36, 5);
-    ctx.fillStyle = '#f3ead4';
+    let x = left + 10;
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'left';
-    ctx.fillText(text, left + 44, y0 + TAG_H / 2 + 1, w - 54);
+    if (lead) {
+      ctx.fillStyle = picked ? '#0b1116' : '#fffaf0';
+      panel(ctx, x - 2, y0 + 14, leadW, TAG_H - 28, 5);
+      ctx.font = '900 30px system-ui, sans-serif';
+      ctx.fillStyle = picked ? '#ffd45c' : '#0b1116';
+      ctx.fillText(lead, x + 6, y0 + TAG_H / 2 + 1);
+      ctx.font = '700 34px system-ui, sans-serif';
+      x += leadW + 8;
+    }
+    ctx.fillStyle = `#${livery.toString(16).padStart(6, '0')}`;
+    panel(ctx, x, y0 + 18, 22, TAG_H - 36, 5);
+    ctx.fillStyle = picked ? '#0b1116' : '#f3ead4';
+    ctx.fillText(text, x + 34, y0 + TAG_H / 2 + 1, w - (x - left) - 44);
     atlas.needsUpdate = true;
   }
 
@@ -400,10 +419,13 @@ export function buildRoomCraft({ capacity = 30, whoop = false } = {}) {
    * One pilot this frame. pose: { px, py, pz, qx, qy, qz, qw, cut,
    * spinning }, scene world. pilot: the board's { id, handle, avatar,
    * away }. d2: their distance from this pilot, squared. pin: keep their
-   * tag however far, for the host. A pilot inside a teleport is not drawn
-   * for the moment it lasts, which is a fifth of a second at most.
+   * tag however far, for the host, and for everyone in the overview.
+   * place, picked and dim are the overview's: the pilot's place on the
+   * course, the pilot picked, and the others while one is kept in view. A
+   * pilot inside a teleport is not drawn for the moment it lasts, which
+   * is a fifth of a second at most.
    */
-  function add(id, pose, pilot, d2 = 0, pin = false) {
+  function add(id, pose, pilot, d2 = 0, pin = false, place = 0, picked = false, dim = false) {
     if (n >= capacity || pose.cut) {
       return;
     }
@@ -414,10 +436,12 @@ export function buildRoomCraft({ capacity = 30, whoop = false } = {}) {
       rowOf.set(id, row);
     }
     const livery = liveryColour(pilot.avatar, id);
-    if (rowHandle[row] !== pilot.handle || rowLivery[row] !== livery) {
+    if (rowHandle[row] !== pilot.handle || rowLivery[row] !== livery || rowPlace[row] !== place || rowPicked[row] !== picked) {
       rowHandle[row] = pilot.handle;
       rowLivery[row] = livery;
-      drawTag(row, String(pilot.handle || ''), livery);
+      rowPlace[row] = place;
+      rowPicked[row] = picked;
+      drawTag(row, String(pilot.handle || ''), livery, place, picked);
     }
     p.set(pose.px, pose.py, pose.pz);
     q.set(pose.qx, pose.qy, pose.qz, pose.qw);
@@ -430,7 +454,7 @@ export function buildRoomCraft({ capacity = 30, whoop = false } = {}) {
     }
     m4.makeTranslation(pose.px, pose.py, pose.pz);
     tags.setMatrixAt(n, m4);
-    tagAttr.setXY(n, row, pilot.away ? 0.45 : 1);
+    tagAttr.setXY(n, row, pilot.away || dim ? 0.45 : 1);
     dist[n] = d2;
     pinned[n] = pin ? 1 : 0;
     n += 1;
@@ -505,6 +529,8 @@ export function buildRoomCraft({ capacity = 30, whoop = false } = {}) {
       rowOf.delete(id);
       rowHandle[row] = null;
       rowLivery[row] = -1;
+      rowPlace[row] = 0;
+      rowPicked[row] = false;
       freeRows.push(row);
     }
   }

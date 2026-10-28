@@ -782,6 +782,106 @@ export const TOGETHER_CSS = `
   #tg .watchbar .wtext .kicker, #tg .watchbar .whint { display: none; }
 }
 
+/* The overview: the whole field from a free camera, with the panels a
+ * commentator calls a race from (the owner's ask of 28 October 2026). The
+ * camera is the page's, so everything here but the buttons lets a drag
+ * through to it. The flight's own race panels give way to the overview's
+ * board, and the room chip goes up to the corner the shell's clock and
+ * Pause have left, as they do while following. */
+#tg .tg-layer.ov .standings, #tg .tg-layer.ov .pos, #tg .tg-layer.ov .pit, #tg .tg-layer.ov .watchbar { display: none; }
+#tg .tg-layer.ov .roomchip { top: 14px; }
+#tg .tg-layer.ovclean .roomchip { display: none; }
+#tg .ovhud { position: absolute; inset: 0; pointer-events: none; color: var(--ink); }
+#tg .ovhud button, #tg .ovhud tr { pointer-events: auto; }
+#tg .ovtop { position: absolute; left: 16px; top: 14px; display: grid; gap: 6px; justify-items: start; max-width: calc(100% - 420px); }
+#tg .ovtop .ovtitle { display: block; }
+#tg .ovchips { display: flex; flex-wrap: wrap; gap: 6px; }
+#tg .ovchip {
+  display: inline-block; border: 2px solid var(--ink); background: var(--white); color: var(--ink); font: 800 11px/1 var(--ui);
+  letter-spacing: 0.08em; text-transform: uppercase; padding: 5px 8px; white-space: nowrap;
+}
+#tg .ovchip.amber { background: var(--amber); }
+#tg .ovchip.dark { background: var(--ink); color: var(--cream); }
+#tg .ovboard {
+  position: absolute; right: 16px; top: 86px; width: min(356px, 38vw); padding: 10px 12px 12px; border: 4px solid var(--ink);
+  box-shadow: 7px 7px 0 var(--ink); max-height: calc(100% - 300px); overflow: auto; pointer-events: auto;
+}
+#tg .ovbhead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; gap: 10px; }
+#tg .ovboard table { border-collapse: collapse; width: 100%; font: 700 13px/1 var(--ui); font-variant-numeric: tabular-nums; }
+#tg .ovboard th { font: 800 9.5px/1 var(--ui); letter-spacing: 0.12em; color: var(--quiet); text-align: left; padding: 4px 4px 6px; border-bottom: 2px solid var(--ink); text-transform: uppercase; }
+#tg .ovboard td { padding: 5px 4px; border-bottom: 1.5px dashed rgba(11, 17, 22, 0.25); white-space: nowrap; }
+#tg .ovboard tr { cursor: pointer; }
+#tg .ovboard tbody tr:hover td { background: rgba(255, 212, 92, 0.35); }
+#tg .ovboard tr.sel td { background: var(--amber); }
+#tg .ovboard td.p { font: 900 italic 17px/1 var(--ui); width: 22px; }
+#tg .ovboard td.n { font: 800 italic 13.5px/1 var(--ui); max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+#tg .ovboard .r { text-align: right; }
+#tg .ovboard .sw { display: inline-block; width: 6px; height: 22px; vertical-align: middle; margin-right: 6px; border: 1.5px solid var(--ink); }
+#tg .ovboard .gap { color: var(--quiet); }
+#tg .ovboard .best, #tg .ovstats .best { color: #0f8a52; font-weight: 900; }
+#tg .ovmoments { position: absolute; left: 16px; top: 46%; display: grid; gap: 6px; }
+#tg .ovmoments > div {
+  display: flex; align-items: center; gap: 7px; padding: 4px 10px 4px 4px; background: rgba(247, 240, 220, 0.95); border: 2.5px solid var(--ink);
+  font: 700 12px/1.2 var(--ui); box-shadow: 3px 3px 0 var(--ink); width: max-content; max-width: 40vw; animation: tg-slide 0.25s ease-out;
+}
+#tg .ovmoments > div b { font-style: italic; font-weight: 900; }
+#tg .ovmoments > div.rec { background: var(--mint); }
+#tg .ovmoments > div.bad { background: var(--bail); }
+@keyframes tg-slide { from { transform: translateX(-20px); opacity: 0; } }
+#tg .ovcard {
+  position: absolute; left: 16px; bottom: 70px; padding: 10px 12px; display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; align-items: center;
+  width: min(390px, 44vw); border: 4px solid var(--ink); box-shadow: 7px 7px 0 var(--ink);
+}
+#tg .ovcard .ovface canvas { display: block; }
+#tg .ovcardr { display: grid; gap: 6px; min-width: 0; }
+#tg .ovcardn { display: flex; align-items: center; gap: 8px; min-width: 0; }
+#tg .ovcardn .plate { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+#tg .ovstats { display: flex; gap: 14px; font: 800 15px/1 var(--ui); font-variant-numeric: tabular-nums; flex-wrap: wrap; }
+#tg .ovstats small { display: block; font: 800 9px/1 var(--ui); letter-spacing: 0.12em; color: var(--quiet); margin-bottom: 3px; text-transform: uppercase; }
+#tg .ovacts { grid-column: 1 / -1; display: flex; gap: 12px; margin-top: 4px; }
+#tg .ovstrip { position: absolute; left: 50%; bottom: 46px; transform: translateX(-50%); width: min(470px, 36vw); padding: 8px 14px 10px; border: 4px solid var(--ink); box-shadow: 7px 7px 0 var(--ink); }
+#tg .ovstrip .lab { display: flex; justify-content: space-between; font: 800 9.5px/1 var(--ui); letter-spacing: 0.12em; color: var(--quiet); margin-bottom: 6px; text-transform: uppercase; }
+#tg .ovstrip .line { position: relative; height: 30px; }
+#tg .ovstrip .rail { position: absolute; left: 0; right: 0; top: 14px; height: 3px; background: var(--ink); }
+#tg .ovstrip .tick { position: absolute; top: 10px; width: 2px; height: 11px; background: var(--ink); }
+#tg .ovstrip .tick.big { height: 15px; top: 8px; width: 3px; }
+#tg .ovstrip .dot { position: absolute; top: 4px; transform: translateX(-50%); width: 22px; height: 22px; border-radius: 50%; border: 2.5px solid var(--ink); font: 900 11px/17px var(--ui); text-align: center; color: var(--ink); transition: left 0.25s linear; }
+#tg .ovstrip .dot.sel { outline: 3px solid var(--amber); outline-offset: 1px; }
+#tg .ovhint {
+  position: absolute; left: 50%; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); padding: 5px 14px; border-radius: 14px;
+  background: rgba(11, 17, 22, 0.84); color: var(--cream); font: 700 12.5px/1.3 var(--ui); white-space: nowrap; max-width: calc(100% - 24px); overflow: hidden; text-overflow: ellipsis;
+}
+#tg .ovtouch { position: absolute; right: 16px; bottom: calc(46px + env(safe-area-inset-bottom, 0px)); display: flex; gap: 10px; }
+#tg .ovhud.none .ovtouch, #tg .ovhud.strip .ovtouch { bottom: calc(14px + env(safe-area-inset-bottom, 0px)); }
+#tg .ovhud.strip .ovtouch { bottom: 64px; }
+/* The clean feed: one strip along the foot and nothing else, for a stream. */
+#tg .ovfeed {
+  position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 14px; padding: 8px 16px; overflow: hidden;
+  background: rgba(11, 17, 22, 0.86); color: var(--cream); font: 800 13px/1 var(--ui); white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+#tg .ovfeed .lead { padding: 4px 8px; background: var(--amber); color: var(--ink); font-style: italic; text-transform: uppercase; }
+#tg .ovfeed .cell { display: inline-flex; align-items: center; gap: 6px; }
+#tg .ovfeed .cell b { color: var(--amber); font-style: italic; }
+#tg .ovfeed .cell i { color: var(--slate); font-style: normal; }
+#tg .ovfeed .sw { width: 9px; height: 9px; border: 1.5px solid var(--cream); }
+#tg .ovkeys { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(860px, calc(100% - 32px)); max-height: calc(100% - 32px); overflow: auto; padding: 16px 20px; pointer-events: auto; }
+#tg .ovkgrid { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 18px; margin: 10px 0; }
+#tg .ovkcol { display: grid; gap: 5px; align-content: start; }
+#tg .ovkcol .kicker { justify-self: start; margin-bottom: 4px; }
+#tg .ovk { display: grid; grid-template-columns: 96px 1fr; gap: 8px; font: 600 13px/1.3 var(--ui); }
+#tg .ovk b { font-weight: 900; }
+@media (max-width: 760px), (max-height: 520px) {
+  #tg .ovtop { max-width: calc(100% - 32px); }
+  #tg .ovtop .ovtitle canvas { height: 28px !important; width: auto !important; }
+  #tg .ovboard { top: auto; bottom: 64px; right: 12px; width: min(300px, 46vw); max-height: 46vh; }
+  #tg .ovstrip, #tg .ovmoments, #tg .ovhint { display: none; }
+  #tg .ovcard { bottom: 64px; left: 12px; width: min(300px, 46vw); padding: 6px 8px; }
+  #tg .ovcard .ovface { display: none; }
+  #tg .ovcard { grid-template-columns: 1fr; }
+  #tg .ovtouch { right: 12px; bottom: 12px; }
+  #tg .ovkgrid { grid-template-columns: 1fr; }
+}
+
 /* The comic dialogue: a portrait stands on a speech box, as in a visual
  * novel, so a quick line reads as a character speaking. Bottom left, clear
  * of the centre third. */

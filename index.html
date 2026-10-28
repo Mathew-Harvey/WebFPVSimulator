@@ -208,6 +208,14 @@
          the camera comes home and the menu is back. */
       .tg-watching .screen-paused, .tg-watching .osd, .tg-watching .score-hud,
       .tg-watching .crumb, .tg-watching .frame-bot { visibility: hidden !important; }
+      /* The overview's camera is dragged, pinched and twisted on the whole
+         page, so the browser's own gestures and the flight's thumb zones
+         are put away while it is open. */
+      html.tg-overview, html.tg-overview body { touch-action: none; overscroll-behavior: none; }
+      .tg-overview .touch-fly { display: none !important; }
+      /* The music dock sat under the overview's title, and the clean feed
+         is for a stream, so it shows the field and its one strip only. */
+      .tg-overview .music-dock, .tg-ovclean .bug-chip { visibility: hidden !important; }
       /* Paused on a short window, the PAUSED lettering and the lap clock want
          the same pixels, and the clock was printed through the heading
          (MENUS-PLAN.md 1.9). The corners stay: the pack is what a pilot

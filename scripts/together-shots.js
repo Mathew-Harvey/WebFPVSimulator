@@ -64,6 +64,10 @@
  *           arrows to the next pilot, a pilot who stops or leaves, V home
  *           into the goggles with the flight carrying on, the room page's
  *           Watch a pilot and a pilot's own Watch, and a pad's button home
+ *   overview the free camera over the whole field: O in flight, the
+ *           trails, the panels, WASD and the wheel, a name picked and
+ *           kept in view, T, H and the keys sheet, F down behind the pilot
+ *           picked and O back up, Esc home, and the frame cost of it all
  *   vote    the host moving the room to another map: the banner that
  *           asks, N to stay and the room left to the page; then Change
  *           map, the picker, the tally, and the whole room moving
@@ -3906,6 +3910,155 @@ async function sceneWatch() {
   }
 }
 
+/* A key held down for ms and let go, as a pilot holds W. */
+async function holdKey(page, code, ms) {
+  await page.evaluate('(() => { if (document.activeElement) document.activeElement.blur(); return 1; })()');
+  const info = { code, key: code.replace(/^Key/, '').toLowerCase(), windowsVirtualKeyCode: code.startsWith('Key') ? code.charCodeAt(3) : 0 };
+  await page.cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', ...info }, page.sessionId);
+  await wait(ms);
+  await page.cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...info }, page.sessionId);
+  await wait(100);
+}
+
+async function sceneOverview() {
+  console.log('\noverview: the whole field from a free camera');
+  const kite = bot('Kite Runner', 211);
+  const moss = bot('Moss Comet', 223);
+  const room = await hostRoom(kite, {
+    name: 'Spotters', way: 'freestyle', map: 'bardwell', mapName: "Bardwell's house", scale: 50,
+  });
+  await joinRoom(moss, room.code, room.invite || '');
+  const at = `/index.html?mp=1&board=${encodeURIComponent(boardOrigin)}&map=bardwell&craft=5inch`;
+  const page = await open(at, seedFor({ met: true, name: 'Watch Pilot' }));
+  const shot = shooter(page, 'overview');
+  let fly = null;
+  const W = 'window.__watch()';
+  const watchNow = () => page.evaluate(W);
+  try {
+    await joinByCode(page, room.code);
+    await page.until(`${T} && window.__together().inRoom`, 15000);
+    await page.until("window.__mode === 'flight' && window.__ui.screen === 'flight'", 20000);
+    const c = await poseOf(kite, 'Watch Pilot');
+    fly = circling(c, kite, moss);
+    await page.until(`${T} && window.__together().pilots === 3`, 10000);
+    /* The trails are kept from the start: a few seconds of flying before
+     * anybody opens the overview. */
+    await wait(4000);
+    const kept = (await watchNow()).overview.kept;
+    check(`the field keeps both pilots' lines while this one flies (${kept.join(', ')} samples)`, kept.length === 2 && kept.every((n) => n > 10), JSON.stringify(kept));
+    check('and draws nothing while it does', (await watchNow()).overview.steps === 0);
+    const flyCalls = await page.evaluate('window.__renderStats().calls');
+
+    await tapLoose(page, 'KeyO');
+    check('O opens the overview, the flight paused under it', (await state(page)).overviewing === true && await page.evaluate("window.__mode === 'paused'"));
+    const landed = await page.until(`${W}.phase === 'riding' && ${W}.overview.on`, 6000).then(() => true, () => false);
+    const ov = await watchNow();
+    check('the camera flies out of the goggles and up over the field', landed && ov.cam[1] > ov.craft[1] + 8, JSON.stringify({ cam: ov.cam, craft: ov.craft }));
+    await wait(300);
+    const drawn = await watchNow();
+    check(`both trails are drawn (${drawn.overview.steps} steps, long trails by default)`, drawn.overview.steps > 20 && drawn.overview.trail === 2, JSON.stringify(drawn.overview));
+    check('the first time says how the camera moves', await page.evaluate(SEES('Overview', '#tg .tg-banner')));
+    check('the panels say what this is and who is flying', await page.evaluate(SEES('2 flying', '#tg .ovhud')) && await page.evaluate(SEES('Kite Runner', '#tg .ovboard'))
+      && await page.evaluate(SEES('Moss Comet', '#tg .ovboard')));
+    const ovCalls = await page.evaluate('window.__renderStats().calls');
+    console.log(`        draw calls: ${flyCalls} flying, ${ovCalls} in the overview`);
+    await shot('open');
+
+    /* WASD and the wheel. */
+    const before = (await watchNow()).cam;
+    await holdKey(page, 'KeyW', 700);
+    const after = (await watchNow()).cam;
+    const went = Math.hypot(after[0] - before[0], after[2] - before[2]);
+    check(`W slides the camera over the ground (${went.toFixed(1)} m)`, went > 3 && Math.abs(after[1] - before[1]) < 1, JSON.stringify({ before, after }));
+    const h0 = (await watchNow()).cam[1];
+    await page.cdp.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: 640, y: 400, deltaX: 0, deltaY: -300 }, page.sessionId);
+    await wait(250);
+    const h1 = (await watchNow()).cam[1];
+    check(`the wheel zooms in toward the pointer (${h0.toFixed(1)} m up to ${h1.toFixed(1)} m)`, h1 < h0 - 1, `${h0} ${h1}`);
+    await tapLoose(page, 'KeyR');
+    await wait(200);
+    await shot('whole');
+    await tapLoose(page, 'KeyM');
+    await wait(200);
+    const top = await watchNow();
+    check('M looks straight down', top.look[1] < -0.95, JSON.stringify(top.look));
+    await shot('map');
+    await tapLoose(page, 'KeyR');
+
+    /* A name picked from the board, kept in view, followed. */
+    const kiteId = kite.s.you;
+    await pressKey(page, `ov-row-${kiteId}`);
+    check('a row on the board picks that pilot, and the card says who', (await watchNow()).overview.pick === kiteId && await page.evaluate(SEES('Kite Runner', '#tg .ovcard')));
+    await tapLoose(page, 'KeyK');
+    await wait(900);
+    const kept1 = await watchNow();
+    await wait(800);
+    const kept2 = await watchNow();
+    const keptMoved = Math.hypot(kept2.cam[0] - kept1.cam[0], kept2.cam[2] - kept1.cam[2]);
+    check(`K keeps them in view, the camera going round with them (${keptMoved.toFixed(1)} m)`, kept2.overview.keep && keptMoved > 1, JSON.stringify(kept2.overview));
+    await shot('keep');
+    await tapLoose(page, 'KeyT');
+    check('T steps the trails', (await watchNow()).overview.trail === 3 && await page.evaluate(SEES('Trails: Whole lap', '#tg .tg-toasts')));
+    await tapLoose(page, 'KeyT');
+    check('and off draws none', (await watchNow()).overview.trail === 0 && (await watchNow()).overview.steps === 0);
+    await tapLoose(page, 'KeyT');
+    await tapLoose(page, 'KeyT');
+    await tapLoose(page, 'KeyH');
+    check('H puts the boards away for one strip along the foot', await page.evaluate("Boolean(document.querySelector('#tg .ovfeed')) && !document.querySelector('#tg .ovboard')"));
+    await shot('clean');
+    await tapLoose(page, 'KeyH');
+    await tapLoose(page, 'KeyH');
+    await tapLoose(page, 'Slash');
+    check('? opens the keys sheet', await page.evaluate(SEES('Back to my quad', '#tg .ovkeys')));
+    await shot('keys');
+    await tapLoose(page, 'Escape');
+    check('Esc puts the sheet away and stays in the overview', (await state(page)).overviewing && await page.evaluate("!document.querySelector('#tg .ovkeys')"));
+
+    /* F down behind the pilot picked, and O back up. */
+    await tapLoose(page, 'KeyF');
+    check('F rides behind the pilot picked', (await state(page)).watching === kiteId && !(await state(page)).overviewing);
+    await page.until(`${W}.phase === 'riding'`, 5000).catch(() => {});
+    check('the trails are put away behind the quad', (await watchNow()).overview.steps === 0 || !(await watchNow()).overview.on);
+    await shot('follow');
+    check('the follow bar offers the overview', await page.evaluate("Boolean(document.querySelector('#tg [data-k=\"watch-overview\"]'))"));
+    await tapLoose(page, 'KeyO');
+    check('O from following lifts back to the overview, the pilot still picked', (await state(page)).overviewing && (await watchNow()).overview.pick === kiteId);
+    await page.until(`${W}.phase === 'riding'`, 5000).catch(() => {});
+
+    /* What a frame of it costs, the trails rebuilt every frame. */
+    const cost = await page.evaluate(`(async () => {
+      const t = [];
+      let last = performance.now();
+      for (let i = 0; i < 60; i += 1) {
+        await new Promise((r) => requestAnimationFrame(r));
+        const n = performance.now();
+        t.push(n - last);
+        last = n;
+      }
+      t.sort((a, b) => a - b);
+      return t[30];
+    })()`);
+    console.log(`        median frame in the overview, software rasteriser: ${cost.toFixed(1)} ms`);
+
+    /* Esc home, the flight running again. */
+    await tapLoose(page, 'Escape');
+    const home = await page.until("window.__mode === 'flight' && window.__ui.screen === 'flight'", 5000).then(() => true, () => false);
+    const back = await watchNow();
+    check('Esc flies home into the goggles and the flight carries on', home && !back.overview.on && !back.classOn, JSON.stringify(back.overview));
+    check('with the panels gone', await page.evaluate("document.querySelector('#tg .ovhud').hidden"));
+    endChecks(page);
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.message}`);
+    await shot('failed').catch(() => {});
+  } finally {
+    if (fly) fly.stop();
+    kite.s.leave();
+    moss.s.leave();
+    await page.close();
+  }
+}
+
 try {
   if (wanted('host')) { await freshBoard(); await sceneHost(); }
   if (wanted('lobby')) { await freshBoard(); await sceneLobby(); }
@@ -3929,6 +4082,7 @@ try {
   if (wanted('watchedge')) { await freshBoard(); await sceneWatchEdges(); }
   if (wanted('vote')) { await freshBoard(); await sceneVote(); }
   if (wanted('swap')) { await freshBoard(); await sceneSwap(); }
+  if (wanted('overview')) { await freshBoard(); await sceneOverview(); }
 } finally {
   if (board) board.kill('SIGKILL');
   rmSync(scratch, { recursive: true, force: true });

@@ -31,7 +31,9 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { circuitLayout, FIELD_W, FIELD_D, TOWER } from '../src/maps/drift/circuit.js';
+import {
+  circuitLayout, FIELD_W, FIELD_D, TOWER, ROAD_WIDTH,
+} from '../src/maps/drift/circuit.js';
 import { driftDocument, groupIds } from '../src/maps/drift/yard.js';
 import { trafficOf } from '../src/maps/built/traffic.js';
 import { nearestOn } from '../src/maps/built/road.js';
@@ -89,6 +91,11 @@ const treeNear = Math.min(...trees.map((e) => nearestOn(L.line, e.position.x, e.
 check('no tree within 11 m of the course', treeNear >= 11, `${trees.length} trees, nearest ${treeNear.toFixed(1)} m`);
 const inFurniture = trees.filter((e) => L.keep.some((k) => Math.hypot(k.x - e.position.x, k.y - e.position.y) < k.r + 2)).length;
 check('no tree stands in the furniture', inFurniture === 0, `${L.keep.length} pieces kept clear, ${inFurniture} trees in one`);
+/* Every wire and panel runs along the road's edge, never across it: a
+ * run whose middle is nearer the course than the walls crosses it. */
+const across = L.decor.filter((d) => (d.t === 'fence' || d.t === 'panel')
+  && nearestOn(L.line, (d.a[0] + d.b[0]) / 2, (d.a[1] + d.b[1]) / 2).d < ROAD_WIDTH / 2 + 1);
+check('no fence crosses the course', across.length === 0, `${across.length} runs across`);
 const pad = doc.elements.find((e) => e.type === 'startPads');
 check('the start pad is on the tower roof', pad && pad.position.x === TOWER.x && pad.position.z === TOWER.top);
 check('the document is the same every build', JSON.stringify(driftDocument()) === JSON.stringify(doc));

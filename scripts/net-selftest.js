@@ -53,6 +53,7 @@ import {
   BoardClock, COUNT_JOIN_MS, RACE_LAPS_MAX, RACE_WAYS, RoomRace,
 } from '../src/net/roomrace.js';
 import { QUICK, WAVE } from '../src/net/together.js';
+import { FieldWatch, TRAIL_CAP } from '../src/net/fieldwatch.js';
 
 let failures = 0;
 
@@ -94,6 +95,67 @@ function randomQuat() {
 function turnDeg(a, b) {
   const d = Math.min(1, Math.abs(a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3]));
   return (2 * Math.acos(d) * 180) / Math.PI;
+}
+
+console.log('the overview\'s field');
+{
+  /* Two pilots round a circle of 20 m at 20 m/s through three gates, the
+   * second a second behind the first, sampled at 60 frames a second. */
+  const f = new FieldWatch();
+  const R = 20;
+  const gates = [0, 1, 2].map((k) => {
+    const a = (k * 2 * Math.PI) / 3 + 0.3;
+    return { x: R * Math.cos(a), y: 0, z: R * Math.sin(a), az: { x: -Math.sin(a), z: Math.cos(a) } };
+  });
+  f.setCourse(gates);
+  const at = (t) => [R * Math.cos(t / 1000), 1, R * Math.sin(t / 1000)];
+  let allocs = 0;
+  for (let t = 1000; t <= 1000 + 2.5 * 2 * Math.PI * 1000; t += 1000 / 60) {
+    const a = at(t);
+    f.note(1, a[0], a[1], a[2], false, t);
+    if (t > 2000) {
+      const b = at(t - 1000);
+      f.note(2, b[0], b[1], b[2], false, t);
+    }
+    allocs = f.pilots.size;
+  }
+  const pa = f.progress(1);
+  const pb = f.progress(2);
+  /* The first gate 0 starts the count at 6.58 rad; the second finishes a
+   * lap at 12.87; gate 1 follows at 14.97, and the run ends at 16.7. */
+  check('every gate is counted in order, laps and all', pa.started && pa.lap === 1 && pa.passed === 2 && pa.gates === 3, JSON.stringify(pa));
+  check(`the gap is the time behind the first to reach the same gate (${pb.gap.toFixed(0)} ms)`, Math.abs(pb.gap - 1000) < 40 && pa.gap === 0, JSON.stringify(pb));
+  check(`the speed is the drawn pose's (${pa.speed.toFixed(1)} m/s)`, Math.abs(pa.speed - 20) < 1);
+  check('the leader is first, the other second', f.order([2, 1], null).join() === '1,2');
+  check('the board\'s finisher is first whatever the count says', f.order([1, 2], [{ id: 2, laps: 3, done: true }, { id: 1, laps: 2 }]).join() === '2,1');
+  check('and a pilot out of the race is last', f.order([1, 2], [{ id: 1, laps: 2, dnf: true }, { id: 2, laps: 2 }]).join() === '2,1');
+  check(`a sample every 0.6 m: 314 m flown is about 520 of them (${f.pilots.get(1).n})`, f.pilots.get(1).n > 450 && f.pilots.get(1).n < 560);
+  check('one record per pilot, made once', allocs === 2 && f.pilots.get(1).buf.length === TRAIL_CAP * 4);
+  const lapAt = f.lapStart(1);
+  check('the whole lap\'s trail starts when the lap did', lapAt > 0 && f.clock(1000 + 2.5 * 2 * Math.PI * 1000) - lapAt < 2 * Math.PI * 1000);
+
+  /* A teleport breaks the trail and counts as a crash. */
+  const p1 = f.pilots.get(1);
+  const before = p1.cuts;
+  const t1 = 1000 + 2.6 * 2 * Math.PI * 1000;
+  f.note(1, 0, 1, 0, true, t1);
+  f.note(1, 0, 1, 0, true, t1 + 16);
+  f.note(1, 50, 1, 50, false, t1 + 33);
+  const last = ((p1.head - 1 + TRAIL_CAP) % TRAIL_CAP) * 4;
+  const brk = ((p1.head - 2 + TRAIL_CAP) % TRAIL_CAP) * 4;
+  check('a teleport is one crash, however many frames it lasts', p1.cuts === before + 1);
+  check('and a break in the trail, so no line is drawn through a wall', Number.isNaN(p1.buf[brk]) && p1.buf[last] === 50);
+
+  /* A new race starts every count again; the same race does not. */
+  f.race(4, 0);
+  check('a new race starts the count again', f.progress(1).lap === 0 && !f.progress(1).started && f.firsts.size === 0);
+  f.note(2, 1, 1, 1, false, t1 + 50);
+  f.race(4, 0);
+  check('the same race number does nothing', f.raceN === 4);
+  f.forget(2);
+  check('a pilot who leaves is forgotten', !f.pilots.has(2) && f.progress(2) === null);
+  f.clear();
+  check('another map forgets everyone', f.pilots.size === 0);
 }
 
 console.log('the pose wire');

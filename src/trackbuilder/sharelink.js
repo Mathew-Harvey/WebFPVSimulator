@@ -170,8 +170,9 @@ export async function encodeTrack(doc, { compress = canCompress() } = {}) {
   return `j.${toBase64Url(bytes)}`;
 }
 
-/* The document a payload carries, or null. Never throws. */
-export async function decodeTrack(payload) {
+/* The text a payload carries, or null. Never throws. The same payload carries a TinyLaps
+ * file in a link from their editor (src/share/tinylaps.js), so the text is its own step. */
+export async function decodeText(payload) {
   if (typeof payload !== 'string' || payload.length < 3 || payload[1] !== '.') {
     return null;
   }
@@ -181,24 +182,28 @@ export async function decodeTrack(payload) {
     return null;
   }
   try {
-    let text = '';
     if (version === 'z') {
       if (!canCompress()) {
         return null;
       }
-      text = new TextDecoder('utf-8', { fatal: true }).decode(await pump(bytes, new DecompressionStream('deflate-raw'), MAX_TEXT));
-    } else if (version === 'j') {
+      return new TextDecoder('utf-8', { fatal: true }).decode(await pump(bytes, new DecompressionStream('deflate-raw'), MAX_TEXT));
+    }
+    if (version === 'j') {
       if (bytes.length > MAX_TEXT) {
         return null;
       }
-      text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-    } else {
-      return null;
+      return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
     }
-    return readDocument(text);
+    return null;
   } catch (e) {
     return null;
   }
+}
+
+/* The document a payload carries, or null. Never throws. */
+export async function decodeTrack(payload) {
+  const text = await decodeText(payload);
+  return text == null ? null : readDocument(text);
 }
 
 /* The link for a document, on `base` (the address of the builder without its

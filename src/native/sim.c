@@ -974,7 +974,13 @@ static void ground_stall(void) {
  * the shell (sim_rest), not here.
  */
 static void ground_settle(double upz, double vn_plant) {
+  /* In 3D the back is a base (BOTH SIDES ARE A BASE, ground_apply): it is
+   * seated by the table, which counts a corner resting in the slop as a hit,
+   * so it needs no halo here, exactly as the belly does not. */
   if (!g_ground_hits && !g_ground_projected) {
+    if (SIM_3D) {
+      return;
+    }
     /* Inverted rest can sit on the slop with no impulse and no
      * push, which used to skip settle and leave a props-down slide.
      * near is only true within CONTACT_NEAR of the plane. Starting
@@ -1010,18 +1016,18 @@ static void ground_settle(double upz, double vn_plant) {
    *
    * Only within about 25 degrees of flat on its back, since 2026-09-24:
    * at CONTACT_INVERT_UPZ this froze a craft that had landed 60 degrees
-   * off flat before it could fall the rest of the way. See TUMBLE FLAT. */
-  if (upz < CONTACT_INVERT_HALO_UPZ) {
+   * off flat before it could fall the rest of the way. See TUMBLE FLAT.
+   *
+   * Never in 3D: there the back is a base and slides as the belly does
+   * (BOTH SIDES ARE A BASE, ground_apply), which also lets a 3D quad on its
+   * back lift off on reverse thrust, as the strip above lets a climb the
+   * plant had stand. */
+  if (upz < CONTACT_INVERT_HALO_UPZ && !SIM_3D) {
     const int touching = g_ground_hits || g_ground_projected;
     const int seated_halo = g_ground_near
         && upz < CONTACT_INVERT_HALO_UPZ
         && !(vn_plant < -CONTACT_INVERT_DIVE);
-    /* Except a 3D quad on its back with its motors reversed and lifting it
-     * off, which is a takeoff, not a craft in the grass: the props are what
-     * is pushing it away, and the strip above already lets a climb the plant
-     * had stand. A one way motor cannot do this, so normal mode never asks. */
-    const int lifting = SIM_3D && vn_plant > 0.0;
-    if ((touching || seated_halo) && !lifting) {
+    if (touching || seated_halo) {
       S.vel[0] = 0.0;
       S.vel[1] = 0.0;
       S.vel[2] = 0.0;
@@ -1079,7 +1085,7 @@ static void ground_settle(double upz, double vn_plant) {
 
   double stall_up[3];
   double stall_un = 0.0;
-  if (upz >= 0.5 && !ground_stall_wanted(stall_up, &stall_un)) {
+  if ((upz >= 0.5 || (SIM_3D && upz <= -0.5)) && !ground_stall_wanted(stall_up, &stall_un)) {
     /* Spin friction, the same load acting at the patch radius. A yaw
      * about the normal has no tangent velocity at the impulse point,
      * so the cone above cannot see it: a belly on the grass would spin
@@ -1140,7 +1146,17 @@ static void ground_apply(void) {
   const double qy = S.quat[2];
   const double upz = 1.0 - 2.0 * (qx * qx + qy * qy);
 
-  if (upz < 0.5) {
+  /*
+   * BOTH SIDES ARE A BASE IN 3D. The owner, 2026-10-26: "In 3d mode we
+   * should not differentiate between a quad base strike and a prop strike,
+   * both sides of the quad around behave like a base strike". A 3D quad flies
+   * on its back as much as the right way up, so within 60 degrees of flat on
+   * its back it meets the ground on the table, the four top corners carrying
+   * it as the four bottom ones carry the belly, and ground_settle slides and
+   * spins it down as it does the belly, with no props down grab. The bump
+   * below is for turtle, which 3D has none of. Normal mode never asks.
+   */
+  if (upz < 0.5 && !(SIM_3D && upz <= -0.5)) {
     int hits = 0;
     /*
      * TUMBLE FLAT, the owner's decision of 2026-09-24 ("yes make it tumble

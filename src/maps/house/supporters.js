@@ -74,6 +74,8 @@ export const SUPPORTER_SPOTS = [
   { slug: 'webleedfpv', room: 'garage', from: [20.3, 2.0, 1.85], dir: 'n', w: 1.2 },
   /* Over the shelving on its west wall. */
   { slug: 'konexdrone', room: 'garage', from: [16.0, 1.7, 2.35], dir: 'w', w: 1.1 },
+  /* The garage's east wall again, beside Mantis FPV toward the back. */
+  { slug: 'dronefactory', room: 'garage', from: [21.5, 4.7, 1.5], dir: 'e', w: 0.9 },
   /* The workshop, its floor at BF. Over the desk and its two monitors. */
   { slug: 'yourfpv', room: 'workshop', from: [12.05, 6.5, BF + 1.75], dir: 'n', w: 0.85 },
   /* Over the pegboard and the bench. */

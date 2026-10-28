@@ -419,7 +419,7 @@ function gridStep(field) {
 function assetKey(el) {
   return [
     el.id, el.type, el.style ?? '', JSON.stringify(el.dims), el.pitch ?? 0, el.flagSide ?? '',
-    el.unbuilt ? 'unbuilt' : '', el.type === 'horizontalPole' ? el.position.z : '', el.letter ?? '',
+    el.unbuilt ? 'unbuilt' : '', el.type === 'horizontalPole' ? el.position.z : '', el.letter ?? '', el.pvc ? 'pvc' : '',
   ].join('|');
 }
 
@@ -2783,7 +2783,8 @@ export class View3D {
     if (el.type === 'pole') {
       const r = Math.max(0.004, el.dims.poleRadius ?? 0.02);
       const h = Math.max(0.1, el.dims.height ?? 1.5);
-      const poleMat = new THREE.MeshLambertMaterial({ color: selected ? COL.frameSel : COL.pole });
+      /* A length of frame pipe (isPvcPipe in elements.js) is the frame's colour, not a pole's. */
+      const poleMat = new THREE.MeshLambertMaterial({ color: selected ? COL.frameSel : (el.pvc === true ? COL.frame : COL.pole) });
       const pipe = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 12), poleMat);
       pipe.rotation.x = Math.PI / 2;
       pipe.position.z = h / 2;

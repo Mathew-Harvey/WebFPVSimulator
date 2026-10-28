@@ -83,6 +83,7 @@
 import { Parts } from '../../props/parts.js';
 import { partsOf } from '../../props/catalog.js';
 import { sincos, quarterTurns, quarterSinCos } from '../../props/trig.js';
+import { yardTrackOn } from '../yardtrack/yardtrack.js';
 
 /* ------------------------------------------------------------------ */
 /* The frame                                                           */
@@ -2734,6 +2735,20 @@ function scaledParts(a) {
  * same every call: nothing here is random but the trees' own seeded
  * layouts.
  */
+/*
+ * THE YARD TRACK on the back lawn (../yardtrack/), the owner's ask of
+ * 2026-10-24: RaceGOW6 Track 3 past the pavilion's open side, between the
+ * pool deck and the swing set, its start gate on the pavilion's side so a
+ * run is flown out toward the back fence, at the house's own S. Clear of
+ * the pavilion, the path, the swing set, the slide and the trees' crowns
+ * over it (scripts/yardtrack-check.js). White pipe, the start gate red: two
+ * colours the house already draws.
+ */
+export const YARD_AT = { px: 18.0, py: 20.0, q: 0 };
+export function houseYardTrack() {
+  return yardTrackOn(worldAt, YARD_AT, { id: 'house', scale: S, pipe: 'homeWhite', start: 'homePlay' });
+}
+
 export function houseLayout() {
   const H = new House();
   exterior(H);
@@ -2750,6 +2765,7 @@ export function houseLayout() {
   for (const a of H.scaled) {
     parts.push(...scaledParts(a));
   }
+  parts.push(...houseYardTrack().parts);
   return { parts, prisms: H.prisms, discs: H.discs, cones: H.cones, scaled: H.scaled };
 }
 

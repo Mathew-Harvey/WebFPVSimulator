@@ -71,6 +71,7 @@ import { Parts } from '../../props/parts.js';
 import { partsOf } from '../../props/catalog.js';
 import { carOpenLayout } from '../../props/street.js';
 import { sincos, quarterTurns, quarterSinCos } from '../../props/trig.js';
+import { yardTrackOn } from '../yardtrack/yardtrack.js';
 
 /* ------------------------------------------------------------------ */
 /* The frame                                                           */
@@ -1562,9 +1563,31 @@ function streets(H) {
    * name sign on its own post, its blades blank. */
   H.post('homeSteel', -4.1, KA + 0.75, 0, 2.45, 0.035, { seg: 5, kind: 'pole' });
   H.cyl('homePlay', [-4.08, KA + 0.75, 2.25], [-4.05, KA + 0.75, 2.25], 0.38, 8);
+  stopSignSolid(H, -4.08, -4.05, KA + 0.75, 2.25, 0.38);
   H.post('homeSteel', -9.0, -7.2, 0, 3.0, 0.035, { seg: 5, kind: 'pole' });
   H.paint('homeHedge', -9.6, -7.215, 2.7, -8.4, -7.185, 2.88);
   H.paint('homeHedge', -9.015, -7.8, 2.92, -8.985, -6.6, 3.1);
+}
+
+/*
+ * THE STOP SIGN'S PLATE, SOLID. The owner, 2026-10-25: "The stop sign out
+ * the front of heads house should be solid so I can wall tap it,
+ * currently I fly straight through it". Its octagon is drawn as a short
+ * cylinder, which the kit only draws, so until then only its post was
+ * solid. The collider takes boxes, not octagons, so the plate is solid as
+ * three hidden boxes as thin as it is: a square to the octagon's corners
+ * at 45 degrees, and two bars across it to its corners at top, bottom
+ * and sides, which is how this octagon stands (a corner at the top). They
+ * miss or overhang its edge by at most 6 cm real, about the craft's own
+ * radius; check:heads flies into its face and past its corners. A wall,
+ * as a town sign's plate is (src/props/street.js).
+ */
+function stopSignSolid(H, x0, x1, py, h, r) {
+  const d = r * Math.SQRT1_2;
+  const bar = 0.12;
+  for (const [a, b] of [[d, d], [r, bar], [bar, r]]) {
+    H.hidden(x0, py - a, h - b, x1, py + a, h + b, 'wall', 'stop sign');
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -1762,6 +1785,20 @@ function scaledParts(a) {
 }
 
 /*
+ * THE YARD TRACK on the front lawn (../yardtrack/), the owner's ask of
+ * 2026-10-24: RaceGOW6 Track 3 between the stoop and the drive, its start
+ * gate at the street end so a run is flown in toward the house, at the
+ * house's own S, so a 28 inch gate is a 28 inch gate against the front
+ * door. Clear of the stoop, the beds, the drive and the cars on it, the
+ * sidewalk and the big tree by the corner (scripts/yardtrack-check.js).
+ * White pipe, the start gate red: two colours the house already draws.
+ */
+export const YARD_AT = { px: 11.0, py: -5.9, q: 0 };
+export function headsYardTrack() {
+  return yardTrackOn(worldAt, YARD_AT, { id: 'heads', scale: S, pipe: 'homeWhite', start: 'homePlay' });
+}
+
+/*
  * The house, its yard and its streets: { parts, prisms, flats, discs,
  * cyls, cones, scaled }, every part in the world frame. The same every
  * call.
@@ -1786,6 +1823,7 @@ export function headsLayout() {
   for (const a of H.scaled) {
     parts.push(...scaledParts(a));
   }
+  parts.push(...headsYardTrack().parts);
   return { parts, prisms: H.prisms, flats: H.flats, discs: H.discs, cyls: H.cyls, cones: H.cones, scaled: H.scaled };
 }
 

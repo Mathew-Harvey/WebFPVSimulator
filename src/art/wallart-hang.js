@@ -44,7 +44,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
  *
  * The composition, wall by wall: a banner high in the middle of each short
  * wall, flanked by two posters on the north wall and two nobori on the
- * south; three posters down the east wall; the cut vinyl wordmark between
+ * south; three posters down the east wall with weBLEEDfpv's sign (the USA micro partner) between the middle one and the last; the cut vinyl wordmark between
  * two posters on the west wall. Every poster's centre is at the same
  * height, 2.3 m, and every one is clear of the rail at 1.26 m by more than
  * a hand's width, so the gate band below the rail stays bare and dark.
@@ -59,6 +59,7 @@ export const HANGING = [
   { piece: 'posterCity', wall: 'east', along: -3.8, up: 2.3 },
   { piece: 'posterPilot', wall: 'east', along: 0, up: 2.3 },
   { piece: 'posterSea', wall: 'east', along: 3.8, up: 2.3 },
+  { piece: 'partnerWebleed', wall: 'east', along: 1.9, up: 2.3 },
   { piece: 'posterGoggles', wall: 'west', along: -4.0, up: 2.3 },
   { piece: 'wordmark', wall: 'west', along: 0, up: 2.6 },
   { piece: 'posterEma', wall: 'west', along: 4.0, up: 2.3 },

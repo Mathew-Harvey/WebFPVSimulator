@@ -38,10 +38,11 @@
  */
 
 import { FRAME, STANDS, ROAD } from './bardwell.js';
-import { PARTNERS, MAP_ONLY_PARTNERS, PATRON_MAP_BRANDS } from '../../partners/roster.js';
+import { PARTNERS, MAP_ONLY_PARTNERS, PATRON_MAP_BRANDS, shownOn } from '../../partners/roster.js';
 import { signAspect } from '../../art/partnermark.js';
+import { FLOOR_MARKS } from '../yardtrack/yardtrack.js';
 
-export const BRANDS = [...PARTNERS, ...MAP_ONLY_PARTNERS, ...PATRON_MAP_BRANDS];
+export const BRANDS = [...PARTNERS, ...MAP_ONLY_PARTNERS, ...PATRON_MAP_BRANDS].filter((p) => shownOn(p, 'bardwell'));
 const BY_SLUG = new Map(BRANDS.map((p) => [p.slug, p]));
 
 /* ------------------------------------------------------------------ */
@@ -52,7 +53,7 @@ const BY_SLUG = new Map(BRANDS.map((p) => [p.slug, p]));
  * apart so a mip level does not bleed one into the next: { x, y, w, h }
  * in pixels, y down. */
 export const ATLAS_W = 1024;
-export const ATLAS_H = 512;
+export const ATLAS_H = 768;
 const PAD = 4;
 const SIGN_PX = 320;
 
@@ -60,16 +61,22 @@ function packAtlas() {
   const cells = {};
   let x = 0;
   let y = 0;
-  for (const p of BRANDS) {
-    const h = Math.round(SIGN_PX / signAspect(p));
+  /* The roster's signs, and the yard track's two floor pictures
+   * (../yardtrack/), each cell named by the slug or the key. */
+  const items = [
+    ...BRANDS.map((p) => ({ name: p.slug, a: signAspect(p) })),
+    ...FLOOR_MARKS.map((m) => ({ name: m.key, a: m.aspect })),
+  ];
+  for (const it of items) {
+    const h = Math.round(SIGN_PX / it.a);
     if (y + h > ATLAS_H) {
       x += SIGN_PX + PAD;
       y = 0;
     }
     if (x + SIGN_PX > ATLAS_W || y + h > ATLAS_H) {
-      throw new Error(`bardwell logos: ${p.slug} does not fit in the atlas`);
+      throw new Error(`bardwell logos: ${it.name} does not fit in the atlas`);
     }
-    cells[p.slug] = { x, y, w: SIGN_PX, h };
+    cells[it.name] = { x, y, w: SIGN_PX, h };
     y += h + PAD;
   }
   return cells;
@@ -174,6 +181,8 @@ export const SIGN_SPOTS = [
   { slug: 'quadconfig', from: [30, 45, 1.15], dir: 'n', w: 2.6 },
   /* The stand in the west woods, to the line past the flags. */
   { slug: 'konexdrone', from: [-26.5, 18, 1.15], dir: 'e', w: 2.3 },
+  /* The far stand in the south east, to the line back up the field. */
+  { slug: 'dronefactory', from: [67.5, -60, 1.15], dir: 'e', w: 2.0 },
 ];
 
 /* Each sign on the first drawn face its line meets, as `markSpots` wants
@@ -209,26 +218,29 @@ function standFaces(s) {
  * null is the face a sign is hung on. */
 const STAND_BRANDS = [
   [null, 'mattsflooring'], [null, 'yourfpv'], ['quadconfig', null], [null, 'konexdrone'], ['gds', 'mantisfpv'],
-  [null, 'wcmrc'], [null, 'webleedfpv'], ['yourfpv', 'quadconfig'], ['konexdrone', 'gds'], ['mantisfpv', 'wcmrc'],
+  [null, 'dronefactory'], [null, 'webleedfpv'], ['yourfpv', 'quadconfig'], ['konexdrone', 'gds'], [null, 'dronefactory'],
 ];
 
 /* Each decal: the brand, where it is aimed from, which way, how wide, and
- * the plan way its top faces when it lies flat. */
+ * the plan way its top faces when it lies flat. Only a brand the roster
+ * carries: the Steam edition's roster holds only the partners its content
+ * profile names, which is none today (src/partners/roster.js), and a decal
+ * for a brand with no cell in the atlas stopped the whole house loading. */
 export const DECAL_SPOTS = [
   /* THE ROAD, every brand painted twice along its middle, reading from
    * the house, clear of where the drive comes in. */
-  ...[-44, -34, -24, -14, -4, 6, 16, 26, 52, 62, 72, 82, 92, 102, 108, -48].map((x, i) => ({
+  ...(BRANDS.length ? [-44, -34, -24, -14, -4, 6, 16, 26, 52, 62, 72, 82, 92, 102, 108, -48] : []).map((x, i) => ({
     slug: BRANDS[i % BRANDS.length].slug, from: [x, ROAD.y, 3], dir: 'down', w: 3.6, top: 's',
   })),
   /* THE STANDS, the faces their signs are not on. */
   ...STANDS.flatMap((s, i) => standFaces(s).map((f, k) => {
     const slug = STAND_BRANDS[i][k];
-    return slug ? { slug, ...f, w: bannerW(slug) } : null;
+    return slug && BY_SLUG.has(slug) ? { slug, ...f, w: bannerW(slug) } : null;
   })).filter(Boolean),
   /* Inside the lean-to, and the timber stand's board's back. */
   { slug: 'webleedfpv', from: [29.5, -20.5, 1.4], dir: 'n', w: 1.4 },
   { slug: 'wcmrc', from: [32.5, -14.5, 4.07], dir: 'n', w: 1.4 },
-];
+].filter((d) => BY_SLUG.has(d.slug));
 
 /* Each decal placed: { cell, p, n, up, w, h, hit }, PROUD of its face, or
  * null for a line that meets nothing. */

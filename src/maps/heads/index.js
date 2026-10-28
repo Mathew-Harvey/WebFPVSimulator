@@ -47,7 +47,8 @@
 import * as THREE from 'three';
 import { buildMap as buildBuilt } from '../built/index.js';
 import { warmPrograms } from '../../render/warm.js';
-import { headsLayout, basementFloorAt, BASEMENT_HOLE, FRAME, worldAt, PRINTS } from './heads.js';
+import { headsLayout, headsYardTrack, basementFloorAt, BASEMENT_HOLE, FRAME, worldAt, PRINTS } from './heads.js';
+import { floorQuads, loadFloorMarks, FLOOR_MARKS } from '../yardtrack/yardtrack.js';
 import { headsDocument } from './yard.js';
 import { makeMan } from './mandraw.js';
 import {
@@ -261,7 +262,7 @@ function loadSheet(url) {
  * own stickers, every one, bombed over the board with two patches and the
  * logo on top.
  */
-function paintAtlas(sheets) {
+function paintAtlas(sheets, marks) {
   const c = document.createElement('canvas');
   c.width = ATLAS_W;
   c.height = ATLAS_H;
@@ -381,6 +382,13 @@ function paintAtlas(sheets) {
     const { x, y, w, h } = CELLS[name];
     cut(cr, x, y, w, h);
   }
+  /* The yard track's two floor pictures, those that came. */
+  for (const m of FLOOR_MARKS) {
+    const { x, y, w, h } = CELLS[m.key];
+    if (marks[m.key]) {
+      g.drawImage(marks[m.key], x, y, w, h);
+    }
+  }
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 4;
@@ -484,6 +492,7 @@ export async function buildMap(shell, onProgress, options) {
    * while the world builds: the two sheets. The roster's signs are hung
    * by the built map (`markSpots`), which draws their own artwork. */
   const sheetsCame = Promise.all(SHEETS.map((s) => loadSheet(s.url)));
+  const floorCame = loadFloorMarks();
   const L = headsLayout();
   const extra = {
     el: { id: 'heads', type: 'heads' },
@@ -503,20 +512,24 @@ export async function buildMap(shell, onProgress, options) {
    * the board counts its partner signs under (MARK_MAP_WORDS in src/main.js). */
   map.id = 'heads';
   map.source = 'heads';
+  /* The yard track (../yardtrack/), which the shell times. */
+  map.yardTrack = headsYardTrack();
   openGround(map.scene, 'plot', BASEMENT_HOLE);
   openGround(map.scene, 'terrain', BASEMENT_HOLE);
   /* The logos all over it and the garage's prints, two meshes on one
    * picture: unlit indoors as the prints always were, lit paint outside
    * as a partner's sign is (paintMaterial in src/art/stf.js). */
   const sheets = await sheetsCame;
-  const atlas = paintAtlas(sheets);
+  const atlas = paintAtlas(sheets, await floorCame);
   const decals = placeDecals(L.parts).filter(Boolean);
   const patches = placePatches(L.parts).filter(Boolean).map((s) => ({ ...s, cell: 'patch' }));
   const indoor = new THREE.MeshBasicMaterial({
     map: atlas, alphaTest: 0.5, fog: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
   });
   map.scene.add(logoMesh([...printQuads(), ...decals.filter((d) => d.inside), ...patches.filter((s) => s.inside)], indoor, 'heads prints'));
-  const outdoor = logoMesh([...decals.filter((d) => !d.inside), ...patches.filter((s) => !s.inside)], paintMaterial(THREE, atlas), 'heads logos');
+  /* The yard track's floor logos ride the outdoor mesh, for nothing. */
+  const floor = floorQuads(headsYardTrack(), L.parts);
+  const outdoor = logoMesh([...decals.filter((d) => !d.inside), ...patches.filter((s) => !s.inside), ...floor], paintMaterial(THREE, atlas), 'heads logos');
   outdoor.receiveShadow = true;
   map.scene.add(outdoor);
   /* The 90% patches to be found, called out every time each comes back

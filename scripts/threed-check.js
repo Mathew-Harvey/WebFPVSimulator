@@ -45,6 +45,7 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadSim } from '../tests/lib/simmod.js';
+import { CrashJudge, GROUND_MU, bodyUpDotWorld, solidContactCrash, solidContactKnock } from '../src/game/collide.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const AIRFRAMES = [
@@ -53,6 +54,7 @@ const AIRFRAMES = [
 ];
 /* Rolled 180 degrees about body x: props down, camera upside down. */
 const INVERTED = [0, 1, 0, 0];
+const UPRIGHT = [1, 0, 0, 0];
 
 async function fresh(bytes, diff, af, mode3d) {
   const sim = await loadSim(bytes);
@@ -85,6 +87,37 @@ function fly(sim, legs, t0 = 0, every = 50) {
     }
   }
   return { out, t };
+}
+
+/*
+ * A skim onto the grass at mid stick (3D) or idle (normal): the craft put at
+ * 0.25 m with 8 m/s along and 3 m/s down, as the dull bounce sets a velocity
+ * (sim_rest, then a pure linear sim_contact_at), on the shell's GROUND_MU.
+ * Returns how far it slid from the step it first touched to where it
+ * stopped, and body up's z at the end.
+ */
+async function slideOnGrass(bytes, diff, af, mode3d, inverted) {
+  const sim = await fresh(bytes, diff, af, mode3d);
+  const q = inverted ? INVERTED : UPRIGHT;
+  sim.e.sim_set_pose(0, 0, 0.25, q[0], q[1], q[2], q[3]);
+  sim.e.sim_rest();
+  const v = [8, 0, -3];
+  const m = Math.hypot(v[0], v[1], v[2]);
+  sim.e.sim_contact_at(v[0] / m, v[1] / m, v[2] / m, 0, 0, 0, 0, 0.25, v[0], v[1], v[2], 0, 0, 0);
+  let t = 0;
+  let st = null;
+  let x0 = null;
+  for (let i = 0; i < 2000; i += 1) {
+    sim.input(t, 0, 0, 0, mode3d ? 0.5 : 0);
+    sim.e.sim_set_ground(1, 0, 0, 1, 0, 0, 0, GROUND_MU, 0);
+    sim.step(1);
+    t += 0.001;
+    st = sim.readState().state;
+    if (x0 === null && sim.e.sim_ground_contacts() > 0) {
+      x0 = st[1];
+    }
+  }
+  return { slide: x0 === null ? 0 : st[1] - x0, upz: 1 - 2 * (st[8] * st[8] + st[9] * st[9]) };
 }
 
 function maxPosGap(a, b) {
@@ -319,6 +352,66 @@ async function main() {
       }
       ok(st[3] - z0 > 0.5, `seated on its back, reverse lifts it ${(st[3] - z0).toFixed(2)} m off the grass in a second`);
     }
+
+    /* BOTH SIDES ARE A BASE. The owner, 2026-10-26: "In 3d mode we should
+     * not differentiate between a quad base strike and a prop strike, both
+     * sides of the quad around behave like a base strike". The same skimming
+     * arrival on the grass, 8 m/s along and 3 m/s down at mid stick, on the
+     * belly and on the back: in 3D the back slides on as the belly does,
+     * where normal mode's props down grab still stops it where it lands.
+     * Not as far as the belly, and that is the hull and not a rule: the top
+     * stack stands further above the centre of mass than the belly sits
+     * below it (hull_hz_up against hull_hz_down), so the same friction tips
+     * the leading edge in harder. Measured when this was written: five inch
+     * 0.58 m on its back against 0.68 m on its belly, the whoop 0.03 m
+     * against 0.09 m, and 0.00 m on its back in normal mode for both. So
+     * the line is a fifth of the belly's slide, which no grab can reach. */
+    {
+      const upright = await slideOnGrass(bytes, diff, af, 1, false);
+      const back = await slideOnGrass(bytes, diff, af, 1, true);
+      const normalUp = await slideOnGrass(bytes, diff, af, 0, false);
+      const normalBack = await slideOnGrass(bytes, diff, af, 0, true);
+      ok(back.slide >= 0.2 * upright.slide && back.upz < -0.9,
+        `3D, on its back it slides ${back.slide.toFixed(2)} m, on its belly ${upright.slide.toFixed(2)} m, and stays on its back`);
+      ok(normalBack.slide < 0.3 * normalUp.slide,
+        `normal mode, on its back the props still grab: ${normalBack.slide.toFixed(2)} m against ${normalUp.slide.toFixed(2)} m on the belly`);
+    }
+  }
+
+  /* AND THE SHELL'S CRASH JUDGE READS IT THE SAME WAY (onBase in
+   * src/game/collide.js). A 6 m/s arrival on the grass on its back, and a
+   * wall met with the top plate at 6 m/s, are crashes in normal mode and
+   * not in 3D, and the belly is not a crash in either. */
+  console.log('\ncrash judge');
+  {
+    const at = (q, vz) => [0, 0, 0, 0, 0, 0, vz, q[0], q[1], q[2], q[3], 0, 0, 0];
+    const noSolid = new Float64Array(11);
+    const ground = (both, q) => {
+      const j = new CrashJudge();
+      j.threeD(both);
+      return j.step(at(q, -6), at(q, 0), 1, noSolid, 1000, false) ? j.crash : '';
+    };
+    ok(ground(false, INVERTED) === 'ground', 'normal mode, on its back onto the grass at 6 m/s is a crash');
+    ok(ground(true, INVERTED) === '', '3D, the same is a landing');
+    ok(ground(false, UPRIGHT) === '' && ground(true, UPRIGHT) === '', 'on the belly it is a landing in both');
+    /* A wall met with the top plate: the craft pitched 90 degrees nose up
+     * flying backwards into a face whose normal is +x, so the face's normal
+     * lies along the craft's own down. The report: one frame step, 6 m/s. */
+    const wall = new Float64Array(11);
+    wall[0] = 1;
+    wall[1] = 6;
+    wall[8] = 1;
+    const h = Math.SQRT1_2;
+    const topToWall = [h, 0, -h, 0];
+    const bellyToWall = [h, 0, h, 0];
+    wall[4] = 1;
+    ok(bodyUpDotWorld(...topToWall, 1, 0, 0, 1, 0) < -0.99, 'the top plate faces the wall');
+    ok(solidContactCrash(wall, ...topToWall, 1, 0, false), 'normal mode, the top plate on a wall at 6 m/s is a crash');
+    ok(!solidContactCrash(wall, ...topToWall, 1, 0, true), '3D, the same is a wall tap');
+    ok(!solidContactCrash(wall, ...bellyToWall, 1, 0, false) && !solidContactCrash(wall, ...bellyToWall, 1, 0, true),
+      'the belly on a wall is a wall tap in both');
+    ok(solidContactKnock(wall, ...topToWall, 1, 0, false) && !solidContactKnock(wall, ...topToWall, 1, 0, true),
+      'and the top plate is knocked off the face in normal mode only');
   }
 
   if (failures.length) {

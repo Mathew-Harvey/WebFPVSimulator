@@ -96,8 +96,9 @@ function mountFor(pathname) {
 
 /*
  * A LINK PREVIEW, when a preview bot asked for a page that names one
- * published track or map: the upstream's page with that track's preview
- * tags written in, or null to send the page as it came.
+ * published track or map, or a multiplayer room: the upstream's page with
+ * that track's preview tags written in, or null to send the page as it
+ * came.
  *
  * `listing` was asked for alongside the page, never instead of it, and it
  * gets PREVIEW_WAIT_MS past the page's own arrival and no longer: a sleeping

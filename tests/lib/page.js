@@ -171,6 +171,9 @@ export async function openPage({
   /* Make every request for the CDN fail, as a network that cannot reach it
    * does, so a page that has to work without Three.js can be shown to. */
   block = false,
+  /* Extra Chromium switches, for a check that needs one: the direct links
+   * of scripts/together-shots.js need the local addresses mDNS hides. */
+  args = [],
 } = {}) {
   const chrome = findChrome();
   if (!chrome) {
@@ -191,6 +194,7 @@ export async function openPage({
     `--window-size=${width},${height}`,
     '--remote-debugging-port=0',
     `--user-data-dir=${userDataDir}`,
+    ...args,
     'about:blank',
   ]);
 
@@ -239,7 +243,9 @@ export async function openPage({
     } else if (msg.method === 'Log.entryAdded') {
       const e = msg.params.entry;
       if (e.level === 'error') {
-        errors.push(`${e.source}: ${e.text}`);
+        /* A failed load names what failed, so a check can tell the 404 it
+         * asked for from one it did not. */
+        errors.push(`${e.source}: ${e.text}${e.source === 'network' && e.url ? ` (${e.url})` : ''}`);
       } else if (e.level === 'warning') {
         warnings.push(`${e.source}: ${e.text}`);
       }

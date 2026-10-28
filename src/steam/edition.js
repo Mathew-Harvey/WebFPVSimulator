@@ -223,9 +223,42 @@ export function sourceUrl() {
 
 let guarded = false;
 
+/*
+ * What the player has let the game reach, by address prefix. Empty until
+ * they say yes to going online for Fly together (src/net/together.js),
+ * which adds the board's rooms and nothing else: the board's other routes
+ * (times, publishing, statistics) stay answered offline, because the yes
+ * was to rooms. The desktop's own gate keeps the same list
+ * (desktop/main.cjs in the Steam repository), so this is the fast answer
+ * and not the fence.
+ */
+const reachable = new Set();
+
+export function allowReach(prefix, on = true) {
+  const p = String(prefix || '');
+  if (!/^https?:\/\/[^/]+/.test(p)) {
+    return false;
+  }
+  if (on) {
+    reachable.add(p);
+  } else {
+    reachable.delete(p);
+  }
+  return true;
+}
+
 function offOrigin(url) {
   try {
-    return new URL(String(url), window.location.href).origin !== window.location.origin;
+    const u = new URL(String(url), window.location.href);
+    if (u.origin === window.location.origin) {
+      return false;
+    }
+    for (const p of reachable) {
+      if (u.href.startsWith(p)) {
+        return false;
+      }
+    }
+    return true;
   } catch (e) {
     return false;
   }

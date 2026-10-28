@@ -80,7 +80,7 @@ import { loadSim, SIM_OK, simErrorName } from '../tests/lib/simmod.js';
 import { houseLayout, basementFloorAt, S, FLOOR0, FLOOR1, CEIL1, BF, worldAt, FRAME, HALL_PICTURE } from '../src/maps/house/house.js';
 import { placeStickers, placeHallPicture, aimAt, drawnBoxes, NB_SPOTS, SHEET, STICKER_URL } from '../src/maps/house/stickers.js';
 import { placeSupporters, SUPPORTER_SPOTS } from '../src/maps/house/supporters.js';
-import { PARTNERS, MAP_ONLY_PARTNERS, PATRON_MAP_BRANDS } from '../src/partners/roster.js';
+import { PARTNERS, MAP_ONLY_PARTNERS, PATRON_MAP_BRANDS, shownOn } from '../src/partners/roster.js';
 import { houseDocument } from '../src/maps/house/yard.js';
 import { MATERIALS as HOME_MATERIALS } from '../src/props/homes.js';
 import { GAP_MIN } from '../src/props/parts.js';
@@ -228,7 +228,7 @@ function layoutBlock() {
    * Bardwell's since 2026-10-21: their own, named heads* and bardwell*,
    * are checked as drawn by scripts/heads-check.js and
    * scripts/bardwell-check.js. */
-  const unused = Object.keys(HOME_MATERIALS).filter((m) => !m.startsWith('heads') && !m.startsWith('bardwell') && !colours.has(m));
+  const unused = Object.keys(HOME_MATERIALS).filter((m) => !m.startsWith('heads') && !m.startsWith('bardwell') && !m.startsWith('wh') && !colours.has(m));
   check('every colour of the house\'s in src/props/homes.js is drawn', unused.length === 0, unused.join(', ') || 'all drawn');
   const a = hashOf(L);
   const b = hashOf(houseLayout());
@@ -910,7 +910,7 @@ function supportersBlock(L) {
     const spot = SUPPORTER_SPOTS[i];
     check(`${spot.slug}'s sign lands`, !!s, s ? `on ${s.hit}, ${r3(Math.hypot(...s.p.map((v, k) => v - worldAt(spot.from[0], spot.from[1], spot.from[2])[k])) / S)} m from where it is aimed` : 'its line meets nothing');
   });
-  const brands = [...PARTNERS, ...MAP_ONLY_PARTNERS, ...PATRON_MAP_BRANDS].map((p) => p.slug);
+  const brands = [...PARTNERS, ...MAP_ONLY_PARTNERS, ...PATRON_MAP_BRANDS].filter((p) => shownOn(p, 'house')).map((p) => p.slug);
   const hung = SUPPORTER_SPOTS.map((s) => s.slug);
   const missing = brands.filter((b) => !hung.includes(b));
   const extra = hung.filter((b, i) => !brands.includes(b) || hung.indexOf(b) !== i);

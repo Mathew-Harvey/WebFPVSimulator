@@ -2328,6 +2328,21 @@ export const CRASH_BELLY_UP = 0.7;
 export const CRASH_UNDERSIDE_NZ = -0.5;
 
 /*
+ * IN 3D MODE BOTH SIDES ARE THE BASE. The owner, 2026-10-26: "In 3d mode
+ * we should not differentiate between a quad base strike and a prop strike,
+ * both sides of the quad around behave like a base strike". A 3D pilot
+ * flies on its back as much as the right way up, so a touch on the top
+ * plate within the same cone is a landing, a slide or a wall tap exactly as
+ * a belly touch is, and not a crash. up is how far the contact normal (or
+ * the ground's, for upZ) lies along the craft's own up, and both is whether
+ * the run is in 3D. With both false this is the belly test it always was,
+ * so normal mode reads the same number it did, bit for bit.
+ */
+export function onBase(up, both) {
+  return up >= CRASH_BELLY_UP || (both === true && up <= -CRASH_BELLY_UP);
+}
+
+/*
  * How far a solid's contact normal lies along the craft's own up: 1 for the
  * belly flat on it, -1 for the top plate.
  *
@@ -2361,11 +2376,12 @@ export function bodyUpDotWorld(qw, qx, qy, qz, nx, ny, nz, c, s) {
  * GRAZE_SPEED_MAX or more; and the normal the report carries (its strongest
  * contact, in the step that changed the craft's velocity most) is neither an
  * underside nor on the belly. rep is the report's eleven doubles, and the
- * attitude and (c, s) are bodyUpDotWorld's.
+ * attitude and (c, s) are bodyUpDotWorld's. both is onBase's: in 3D the top
+ * plate is the belly too.
  */
-export function solidContactCrash(rep, qw, qx, qy, qz, c, s) {
+export function solidContactCrash(rep, qw, qx, qy, qz, c, s, both) {
   return rep[8] > 0 && rep[1] >= GRAZE_SPEED_MAX && rep[6] > CRASH_UNDERSIDE_NZ
-    && bodyUpDotWorld(qw, qx, qy, qz, rep[4], rep[5], rep[6], c, s) < CRASH_BELLY_UP;
+    && !onBase(bodyUpDotWorld(qw, qx, qy, qz, rep[4], rep[5], rep[6], c, s), both);
 }
 
 /*
@@ -2457,7 +2473,9 @@ export function stateUpZ(st) {
  *              hit for the site's count that the ground did not count
  *
  * seat(c, s) is the plant frame's turn (see bodyUpDotWorld), from
- * seatWorldFrame; forget() is a set down or a restart.
+ * seatWorldFrame; threeD(on) is whether the run is in 3D, where the top
+ * plate counts as the belly in every rule (onBase); forget() is a set down
+ * or a restart.
  *
  * EVERY STEP, ON THE SIM CLOCK. Until 2026-09-26 the rules were read once a
  * frame: the ground on the frame's peaks behind a cooldown on the WALL
@@ -2489,6 +2507,7 @@ export class CrashJudge {
   constructor() {
     this.c = 1;
     this.s = 0;
+    this.both = false;
     this.groundAtMs = -Infinity;
     this.hardAtMs = -Infinity;
     this.groundLastMs = -Infinity;
@@ -2500,6 +2519,11 @@ export class CrashJudge {
     this.s = s;
   }
 
+  /* 3D mode, on or off: whether the top plate counts as the belly (onBase). */
+  threeD(on) {
+    this.both = on === true;
+  }
+
   forget() {
     this.groundAtMs = -Infinity;
     this.hardAtMs = -Infinity;
@@ -2509,7 +2533,7 @@ export class CrashJudge {
   /* A knock (solidContactKnock) in the step's report rep, with the state
    * after the step, in the frame seat() was given. */
   knock(rep, after) {
-    return rep[0] > 0 && solidContactKnock(rep, after[7], after[8], after[9], after[10], this.c, this.s);
+    return rep[0] > 0 && solidContactKnock(rep, after[7], after[8], after[9], after[10], this.c, this.s, this.both);
   }
 
   beginFrame() {
@@ -2551,7 +2575,8 @@ export class CrashJudge {
      * belly is judged on the step it happens, BOUNCE_COOLDOWN_MS after the
      * arrival, and not on whichever step a cooldown happened to end at. */
     const closing = -before[6];
-    const sliding = ground > 0 && this.groundLastMs === atMs - 1 && upZ >= CRASH_BELLY_UP
+    const base = onBase(upZ, this.both);
+    const sliding = ground > 0 && this.groundLastMs === atMs - 1 && base
       && closing < GRAZE_SPEED_MAX;
     if (ground > 0) {
       this.groundLastMs = atMs;
@@ -2565,7 +2590,7 @@ export class CrashJudge {
         if (hard) {
           this.hardAtMs = atMs;
         }
-        if (upZ < CRASH_BELLY_UP) {
+        if (!base) {
           kind = 'ground';
         }
         /* The cooldown outlasts the longest frame (dt is capped at 100 ms),
@@ -2581,10 +2606,10 @@ export class CrashJudge {
       }
     }
     const solidTouched = rep[0] > 0;
-    if (!kind && solidTouched && solidContactCrash(rep, after[7], after[8], after[9], after[10], this.c, this.s)) {
+    if (!kind && solidTouched && solidContactCrash(rep, after[7], after[8], after[9], after[10], this.c, this.s, this.both)) {
       kind = 'solid';
     }
-    if (!kind && !solidTouched && upZ < CRASH_BELLY_UP) {
+    if (!kind && !solidTouched && !base) {
       const dvx = after[4] - before[4];
       const dvy = after[5] - before[5];
       const dvz = after[6] - before[6];
@@ -2815,9 +2840,9 @@ export function turnsOffFace(st, nx, ny, nz) {
  * resting against a face by a millimetre is the solver's to hold.
  */
 export const KNOCK_CLOSING_MIN = 0.05;
-export function solidContactKnock(rep, qw, qx, qy, qz, c, s) {
+export function solidContactKnock(rep, qw, qx, qy, qz, c, s, both) {
   return (rep[8] > 0 ? rep[1] >= KNOCK_CLOSING_MIN : rep[1] >= GRAZE_SPEED_MAX) && rep[6] > CRASH_UNDERSIDE_NZ
-    && bodyUpDotWorld(qw, qx, qy, qz, rep[4], rep[5], rep[6], c, s) < CRASH_BELLY_UP;
+    && !onBase(bodyUpDotWorld(qw, qx, qy, qz, rep[4], rep[5], rep[6], c, s), both);
 }
 
 /*

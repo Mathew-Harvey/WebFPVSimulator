@@ -1,0 +1,70 @@
+<!doctype html>
+<!--
+  demo.html: the Open in WebFPV button on a page of its own, for trying it before it goes
+  on TinyLaps. Open it from a local server (python3 -m http.server, then
+  http://localhost:8000/demo.html), paste an export into the box or keep the sample, press
+  the button.
+
+  Copyright (C) 2026 the WebFPVSimulator authors. Released under the MIT licence, as
+  webfpv-button.js is; see that file for the notice.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Open in WebFPV demo</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; padding: 24px 16px; background: #15181d; color: #e9edf2; font: 15px/1.45 system-ui, sans-serif; }
+    main { max-width: 760px; margin: 0 auto; display: grid; gap: 18px; }
+    .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 22px; padding: 14px 16px; background: #1f242b; border-radius: 8px; }
+    textarea { width: 100%; box-sizing: border-box; min-height: 260px; background: #0f1216; color: #cfd6de; border: 1px solid #333a44; border-radius: 6px; padding: 10px; font: 12px/1.4 ui-monospace, monospace; }
+    code { background: #0f1216; padding: 1px 5px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Open in WebFPV</h1>
+    <p>The button sends the track in the box to the WebFPV simulator, which opens on its start pad with a whoop. The track travels in the link, and the simulator puts it on WebFPV's board.</p>
+    <div class="bar">
+      <span id="full"></span>
+      <span id="compact"></span>
+      <span>Label: <span id="custom"></span></span>
+    </div>
+    <textarea id="track" spellcheck="false" aria-label="A TinyLaps export"></textarea>
+    <p>Link: <code id="link">press Show link</code> <button type="button" id="show">Show link</button></p>
+  </main>
+  <script src="webfpv-button.js"></script>
+  <script>
+    /* A synthetic arch two feet wide on the TinyLaps grid, flown through and back. */
+    var FT = 0.3048;
+    var sample = {
+      format: 'whoop-gate-editor', version: 1, units: 'metres', ruleset: 'racegow', name: 'Demo arch',
+      rules: { grid: { lengthFeet: 6, widthFeet: 4, heightFeet: 6, spacingFeet: 2 }, limits: null },
+      connections: [
+        { start: [-FT, 0, 0], end: [-FT, 2 * FT, 0] },
+        { start: [FT, 0, 0], end: [FT, 2 * FT, 0] },
+        { start: [-FT, 2 * FT, 0], end: [FT, 2 * FT, 0] },
+      ],
+      racePoints: [
+        { position: [0, FT, 0], rotation: [0, 0, 0, 1], size: [2 * FT, 2 * FT] },
+        { position: [0, FT, 0], rotation: [0, 1, 0, 0], size: [2 * FT, 2 * FT] },
+      ],
+      gridGuidesHidden: false,
+    };
+    var box = document.getElementById('track');
+    box.value = JSON.stringify(sample, null, 2);
+    var getTrack = function () { return box.value; };
+    WebFPV.mount(document.getElementById('full'), { getTrack: getTrack });
+    WebFPV.mount(document.getElementById('compact'), { getTrack: getTrack, compact: true });
+    WebFPV.mount(document.getElementById('custom'), { getTrack: getTrack, label: 'Fly it in WebFPV' });
+    document.getElementById('show').addEventListener('click', function () {
+      WebFPV.link(box.value).then(function (url) {
+        document.getElementById('link').textContent = url;
+      }, function (e) {
+        document.getElementById('link').textContent = e.message;
+      });
+    });
+  </script>
+</body>
+</html>

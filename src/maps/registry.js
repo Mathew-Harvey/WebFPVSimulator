@@ -148,7 +148,30 @@ export const MAPS = [
     mode: 'freestyle',
     note: "Joshua Bardwell's house, flown on a five inch: the brick house and its porch, the woodshed, the pen, the drive, the field's cages and the race's gates through all of it, over the ridge and back.",
     buildMs: MAP_BUILD_MS.bardwell,
+    /* The yard track out the back (src/maps/yardtrack/) is the whoop's, so
+     * the whoop may be flown here too: a five inch that lands in its zone
+     * is offered the swap (src/main.js), the owner's ask of 2026-10-24.
+     * Choosing the map still seats the five inch. */
+    whoopYard: true,
     load: () => import('./bardwell/index.js'),
+  },
+  /*
+   * THOMAS MORE'S WAREHOUSE, on the owner's ask of 27 October 2026: the
+   * exhibit builders' shop and store Thomas More flies, rebuilt from the
+   * frames of his own whoop flight through it, at the houses' scale and
+   * flown the same way, as the whoop. Built by the same pipeline
+   * (src/maps/warehouse/) and, like the houses, off the board.
+   */
+  {
+    id: 'warehouse',
+    name: "Thomas More's Shop",
+    mode: 'freestyle',
+    note: "Thomas More's Shop, flown on a whoop: the dock wall, the crate aisle to the white office, the workshop, the wide doorway into the machine room, and the spray room.",
+    buildMs: MAP_BUILD_MS.warehouse,
+    craftModel: 'whoop65',
+    craft: 'whoop65',
+    hudScale: 3.5,
+    load: () => import('./warehouse/index.js'),
   },
 ];
 
@@ -161,6 +184,9 @@ export const HEADS_DOC_ID = 'trk-4ead5100';
 
 /* Joshua Bardwell's house's (src/maps/bardwell/yard.js), the same way. */
 export const BARDWELL_DOC_ID = 'trk-ba4dbe11';
+
+/* Thomas More's Shop's (src/maps/warehouse/yard.js), the same way. */
+export const WAREHOUSE_DOC_ID = 'trk-7a3e0f27';
 
 export function mapById(id) {
   return MAPS.find((m) => m.id === id) ?? MAPS[0];

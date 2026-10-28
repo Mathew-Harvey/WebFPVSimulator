@@ -1106,6 +1106,11 @@ export function hpoleLayout(el) {
    * and the legs reach DOWN to the ground. The map passes the lift. */
   const lift = el.position?.z ?? 1.6;
   const half = Math.max(0, w / 2 - rb);
+  /* A length of frame pipe is the frame's own tube: no paint, and no legs (below). */
+  if (el.pvc === true) {
+    P.cap('courseTube', [-half, 0, 0], [half, 0, 0], rb, { name: 'bar', kind: 'gate', seg: 8 });
+    return P.list;
+  }
   P.cap('coursePoleWhite', [-half, 0, 0], [half, 0, 0], rb, { name: 'bar', kind: 'pole', seg: 12 });
   /* The rounded ends, red, drawn as the capsule's own caps. */
   for (const x of [-half, half]) {

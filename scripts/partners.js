@@ -522,6 +522,7 @@ const made = [
   { kind: 'png', rel: 'mattsflooring/mono.png', img: creamPng(readPng(readFileSync(at('mattsflooring/colour.png')), 'mattsflooring/colour.png')) },
   { kind: 'png', rel: 'yourfpv/mono.png', img: creamPng(readPng(readFileSync(at('yourfpv/colour.png')), 'yourfpv/colour.png')) },
   { kind: 'png', rel: 'konexdrone/mono.png', img: creamPng(readPng(readFileSync(at('konexdrone/colour.png')), 'konexdrone/colour.png')) },
+  { kind: 'png', rel: 'dronefactory/mono.png', img: creamPng(readPng(readFileSync(at('dronefactory/colour.png')), 'dronefactory/colour.png')) },
   { kind: 'png', rel: 'quadconfig/mono.png', img: quadconfigMono(readPng(readFileSync(at('quadconfig/colour.png')), 'quadconfig/colour.png')) },
   {
     kind: 'svg',

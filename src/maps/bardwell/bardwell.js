@@ -69,6 +69,8 @@ import { Parts } from '../../props/parts.js';
 import { partsOf } from '../../props/catalog.js';
 import { loblollyLayout } from '../../props/street.js';
 import { sincos, quarterTurns, quarterSinCos } from '../../props/trig.js';
+import { MICRO_SCALE } from '../../game/track.js';
+import { yardTrackOn, askBoundary } from '../yardtrack/yardtrack.js';
 
 /* ------------------------------------------------------------------ */
 /* The frame                                                           */
@@ -1181,8 +1183,24 @@ const CLEAR = [
   [-15, 3, 7.5, 21], [-8.5, 20.5, 1.5, 27.5], [16, -8, 29, 18], [27, -24, 37, -12.5], [-6, -3.5, 13, 3.5],
   [73.5, 19, 81, 26.5], [75.5, -29.5, 82.5, -26.5], [74, -50.5, 81, -47.5], [58.5, -70, 66, -67],
   [25, 22, 42, 29],
+  /* The one broadleaf the yard track's line passes through (YARD_AT). */
+  [6.5, 36.5, 8.2, 38.5],
 ];
+/* The yard track's painted landing zone, which is its clearing: no tree
+ * and no bush inside the white box, so nothing stands on a logo or in the
+ * way of the whoop's first gate. In the plan, from the world box. */
+function inYardClearing(px, py) {
+  const a = bardwellYardTrack().ask;
+  const { OX, OZ, S: s } = FRAME;
+  const x = OX + s * px;
+  const z = OZ - s * py;
+  return x > a.x0 && x < a.x1 && z > a.z0 && z < a.z1;
+}
+
 function treeClear(px, py) {
+  if (inYardClearing(px, py)) {
+    return false;
+  }
   for (const [x0, y0, x1, y1] of CLEAR) {
     if (px > x0 && px < x1 && py > y0 && py < y1) {
       return false;
@@ -1259,6 +1277,9 @@ function trees(Y) {
     }
   }
   for (const [px, py, k] of BUSHES) {
+    if (inYardClearing(px, py)) {
+      continue;
+    }
     const r = 0.7 * k;
     Y.ball('bardwellBush', px, py, 0.85 * r, r, { name: 'bush' });
   }
@@ -1324,6 +1345,24 @@ function scaledParts(a) {
  * cyls, oboxes, tori, scaled, roofs }, every part in the world frame. The
  * same every call.
  */
+/*
+ * THE YARD TRACK out the back (../yardtrack/), the owner's ask of
+ * 2026-10-24: RaceGOW6 Track 3 on the lawn north east of the woodshed and
+ * its chopping block, turned a quarter so its start gate is at the east end
+ * and a run is flown in toward the shed, north of the line the map's own
+ * race leaves the start pads on. This place is life size and a five inch
+ * map, and the track is a whoop's: it is built at MICRO_SCALE, a whoop
+ * room's size, because the whoop is drawn that size (configs/airframes.js),
+ * so against the whoop it is the 28 inch track; against the shed it is a
+ * tall one. A five inch pilot who lands in its zone is asked to swap to the
+ * whoop (src/main.js), and is not timed until they do. One broadleaf in the
+ * line is left out (CLEAR). White pipe, the start gate yellow.
+ */
+export const YARD_AT = { px: 9.0, py: 32.8, q: 1 };
+export function bardwellYardTrack() {
+  return yardTrackOn(worldAt, YARD_AT, { id: 'bardwell', scale: MICRO_SCALE, pipe: 'homeTrim', start: 'bardwellYellow' });
+}
+
 export function bardwellLayout() {
   const Y = new Yard();
   house(Y);
@@ -1347,6 +1386,10 @@ export function bardwellLayout() {
   for (const a of Y.scaled) {
     parts.push(...scaledParts(a));
   }
+  /* The track, and the landing zone round it painted on the grass in the
+   * trim's white, a hand wide: land inside it on the five inch and the
+   * shell offers the whoop (src/main.js). */
+  parts.push(...bardwellYardTrack().parts, ...askBoundary(bardwellYardTrack(), 'homeTrim', 0.15, 0.004));
   return {
     parts, prisms: Y.prisms, discs: Y.discs, cyls: Y.cyls, oboxes: Y.oboxes, tori: Y.tori, scaled: Y.scaled, roofs: Y.roofs,
   };

@@ -3003,7 +3003,12 @@ function courseProps(course, height, scene, colliders, baker, kit, padDecks = []
       const w = s.dims.width;
       const d = s.dims.depth;
       const h = s.dims.height;
-      const box = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mats.panel);
+      /* A length of frame pipe (isPvcPipe in elements.js) is a tube in the frame's
+       * material rather than a white board. Its collider below is the same either way:
+       * one capsule along it, radius half its depth, which is the pipe. */
+      const box = s.pvc
+        ? new THREE.Mesh(new THREE.CylinderGeometry(d * 0.5, d * 0.5, w, 8).rotateZ(Math.PI * 0.5), mats.frame)
+        : new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mats.panel);
       box.position.set(s.x, y + h * 0.5, s.z);
       box.rotation.y = s.yaw;
       box.castShadow = true;
@@ -3118,9 +3123,11 @@ function courseProps(course, height, scene, colliders, baker, kit, padDecks = []
      */
     if (s.type === 'pole') {
       const { r, h } = markerBuild('pole', s.dims);
+      /* A length of frame pipe (isPvcPipe in elements.js) is the frame's own tube, and
+       * shares its material, so the baker folds it into the frame's draw. */
       const pipe = new THREE.Mesh(
         new THREE.CylinderGeometry(r, r, h, 10),
-        celMaterial({ color: 0xc0392b, rim: 0.22 }),
+        s.pvc ? mats.frame : celMaterial({ color: 0xc0392b, rim: 0.22 }),
       );
       pipe.position.set(s.x, y + h * 0.5, s.z);
       pipe.castShadow = true;
@@ -3131,7 +3138,7 @@ function courseProps(course, height, scene, colliders, baker, kit, padDecks = []
        * growing out of the floor. */
       const foot = new THREE.Mesh(
         new THREE.BoxGeometry(r * 4, r * 1.6, r * 4),
-        celMaterial({ color: 0xc0392b, rim: 0.18 }),
+        s.pvc ? mats.frame : celMaterial({ color: 0xc0392b, rim: 0.18 }),
       );
       foot.position.set(s.x, y + r * 0.8, s.z);
       foot.castShadow = true;

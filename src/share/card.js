@@ -291,8 +291,12 @@ export function cardPageUrl({ kind, id, board }) {
  * browsers stop running timers in. It is removed however this ends, which
  * takes its WebGL context and its copy of the world with it.
  */
-export function renderShareCard({ kind, id, board }) {
+export function renderShareCard({ kind, id, board, signal = null }) {
   return new Promise((resolve, reject) => {
+    if (signal && signal.aborted) {
+      reject(new Error('The share card was put off.'));
+      return;
+    }
     const frame = document.createElement('iframe');
     frame.title = 'Drawing the share card';
     frame.setAttribute('aria-hidden', 'true');
@@ -304,12 +308,21 @@ export function renderShareCard({ kind, id, board }) {
     ].join('; ');
 
     let timer = 0;
+    /* `signal` stops the drawing and takes the frame away, for a caller that draws only
+     * while nobody is flying (src/share/tinylaps.js). */
+    const onAbort = () => finish(reject, new Error('The share card was put off.'));
     const finish = (fn, value) => {
       clearTimeout(timer);
       window.removeEventListener('message', onMessage);
+      if (signal) {
+        signal.removeEventListener('abort', onAbort);
+      }
       frame.remove();
       fn(value);
     };
+    if (signal) {
+      signal.addEventListener('abort', onAbort);
+    }
     function onMessage(event) {
       if (event.source !== frame.contentWindow) {
         return;
@@ -340,12 +353,16 @@ export function renderShareCard({ kind, id, board }) {
  * Returns { ok, bytes } when the board took it, and { error } with a
  * sentence when anything on the way did not. Never throws.
  */
-export async function sendShareCard({ kind, id, board, editKey }) {
+export async function sendShareCard({
+  kind, id, board, editKey, signal = null,
+}) {
   if (!id || !board) {
     return { error: 'There is no published copy to draw.' };
   }
   try {
-    const drawn = await renderShareCard({ kind, id, board });
+    const drawn = await renderShareCard({
+      kind, id, board, signal,
+    });
     await postShareCard({
       kind, id, card: base64Of(drawn.card), editKey, origin: board,
     });

@@ -51,7 +51,7 @@ import {
 import { collectWarnings, freestyleReport, labeller, FREESTYLE_SOLIDS_MAX } from './warnings.js';
 import { History } from './history.js';
 import { presetById } from './presets.js';
-import { docFromQuery, docFromHash, decodeTrack, encodeTrack, trackLink, canCompress } from './sharelink.js';
+import { docFromQuery, docFromHash, decodeTrack, decodeText, encodeTrack, trackLink, canCompress } from './sharelink.js';
 import { buildSheet, sheetHtml, sheetSvg, membersOf, mergeMembers, nodesOf, fittingKind, CORNERS, SECTION, FITTING_ALLOWANCE, compass } from './buildsheet.js';
 import {
   BUNDLE_FORMAT, BUNDLE_VERSION, bundleData, bundleEntries, evenRoute, mapSvg, trackSlug, dataText,
@@ -62,6 +62,8 @@ import {
   readCommunityLink, sendRound,
 } from './community.js';
 import { importFpvEvents, looksLikeFpvEvents, reportLines } from './importfpv.js';
+import { importTinyLaps, looksLikeTinyLaps } from './importtinylaps.js';
+import { tinyLapsFromHash, shareFromTinyLapsText, publishTinyLaps } from '../share/tinylaps.js';
 import {
   passList, tagsOf, reuseOf, lanesOf, focusFor, aroundPass, stretchOf, flyAgain, apertureAt,
   removeLastPass, MAX_PASSES, spreadTags, arrowLanes,
@@ -96,7 +98,7 @@ import {
   runSpecOf,
 } from './runs.js';
 import { scaleOf, say } from './scale.js';
-import { envelopeFor, GATE_OPENING_DEFAULT, PIPE_OD as CUBE_PIPE_OD, inches } from './racegow.js';
+import { envelopeFor, GATE_OPENING_DEFAULT, PIPE_OD as CUBE_PIPE_OD, PIPE_OD, inches } from './racegow.js';
 import {
   RAD, DEG, wrapAngle, gateSupportFeet, apertureFrame, GATE_POST_R_SCALE, leftOf,
 } from './geometry.js';
@@ -196,6 +198,7 @@ import {
 import { FPV_FLOOR_CLEAR, FPV_NEAR_CLEAR, fpvLensClear } from '../render/lens.js';
 
 import { readFileSync, readdirSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -8742,6 +8745,137 @@ function suiteBuildSheet() {
  * is not in the repository. What is asserted is the mapping the plan worked out, above
  * all which way round the floor goes, and that everything that did not map is said.
  */
+async function suiteImportTinyLaps() {
+  console.log('\nthe whoop builder: import from TinyLaps, and the Open in WebFPV link');
+  const near = (a, b, tol = 1e-6) => Math.abs(a - b) < tol;
+  const FT = 0.3048;
+  const pipe = (a, b) => ({ start: a.map((v) => v * FT), end: b.map((v) => v * FT) });
+  const point = (pos, rotation, size, extra = {}) => ({ position: pos.map((v) => v * FT), rotation, size: size.map((v) => v * FT), ...extra });
+  const TURN = [0, 1, 0, 0];
+  const SAME = [0, 0, 0, 1];
+  /* A synthetic arch, two feet wide and two high, with a bar along their z off its top
+   * corner, flown through one way and back the other, a nav point, and a pipe no grid
+   * makes. The real tracks this was worked out on belong to whoever drew them. */
+  const fixture = () => ({
+    format: 'whoop-gate-editor',
+    version: 1,
+    units: 'metres',
+    ruleset: 'racegow',
+    name: 'Synthetic',
+    connections: [
+      pipe([-1, 0, 0], [-1, 1, 0]),
+      pipe([-1, 1, 0], [-1, 2, 0]),
+      pipe([1, 0, 0], [1, 2, 0]),
+      pipe([-1, 2, 0], [1, 2, 0]),
+      pipe([1, 2, 0], [1, 2, -2]),
+      pipe([3, 0, 0], [4, 1, 1]),
+    ],
+    racePoints: [
+      point([0, 3, 2], SAME, [1, 1], { exportToVelocidrone: false }),
+      point([0, 1, 0], SAME, [2, 2]),
+      point([0, 1, 0], TURN, [2, 2], { exportToVelocidrone: true }),
+    ],
+    gridGuidesHidden: true,
+  });
+  check('a TinyLaps file is recognised by its format, and an FPV Events one is not taken for it',
+    looksLikeTinyLaps(JSON.stringify(fixture())) && !looksLikeTinyLaps({ arena: { w: 6, d: 6 }, gates: [] }) && !looksLikeTinyLaps('not json'));
+  const r = importTinyLaps(JSON.stringify(fixture()), { author: 'kwayzu' });
+  check('their track reads, without an error', !r.error && r.doc && r.report, r.error);
+  const doc = r.doc;
+  check('it is a whoop track, named and credited for where it came from', doc.trackClass === 'micro' && doc.name === 'Synthetic (TinyLaps)'
+    && doc.credit && doc.credit.designer === 'kwayzu' && /TinyLaps/.test(doc.credit.source), doc.name);
+
+  const poles = doc.elements.filter((e) => e.type === 'pole');
+  const bars = doc.elements.filter((e) => e.type === 'horizontalPole');
+  check('two uprights, the two pipes of the left one joined into one run to the top', poles.length === 2
+    && poles.every((e) => near(e.dims.height, 2 * FT) && e.pvc === true), poles.map((e) => e.dims.height).join());
+  check('the build is centred in the hall: their x of 0 is the hall\'s middle, and x is kept', near((poles[0].position.x + poles[1].position.x) / 2, doc.field.width / 2 + FT * 0.0, 1e-6)
+    || near(Math.min(...poles.map((e) => e.position.x)), doc.field.width / 2 - 1.5 * FT, 1e-6), poles.map((e) => e.position.x).join());
+  const across = bars.find((e) => near(e.yaw, 0));
+  const along = bars.find((e) => near(Math.abs(e.yaw), Math.PI / 2));
+  check('a bar along their x runs along our x, one pipe longer than the run so the corners close, its base half a pipe under it',
+    across && near(across.dims.width, 2 * FT + PIPE_OD) && near(across.position.z, 2 * FT - PIPE_OD / 2) && across.pvc === true);
+  check('a bar along their z runs along our y, and their -z is our +y', along && along.position.y > across.position.y
+    && near(along.position.y - across.position.y, 1 * FT, 1e-6), along && `${along.position.y} against ${across.position.y}`);
+  check('the pipe no grid makes is left out, and said', r.report.dropped.some((l) => /not one straight length/.test(l)));
+
+  const gates = doc.elements.filter((e) => e.type === 'gate');
+  check('the arch is one invisible gate, flown twice: theirs is flown along +z, which is our -y, so it faces south', gates.length === 1
+    && gates[0].unbuilt === true && near(gates[0].yaw, -Math.PI / 2, 1e-5) && near(gates[0].dims.clearW, 2 * FT) && near(gates[0].dims.sillH, 0), gates.map((g) => g.yaw).join());
+  const passes = doc.sequence.map((q) => `${elementById(doc, q.elementId).type}${q.entry ?? ''}`);
+  check('the order starts at their first checkpoint, the nav point before it goes last, and the second pass is the other way through',
+    passes.join() === 'gate1,gate-1,waypoint', passes.join());
+  const way = doc.elements.find((e) => e.type === 'waypoint');
+  check('a nav only point is a waypoint at its own height', way && near(way.position.z, 3 * FT));
+  const pads = doc.elements.find((e) => e.type === 'startPads');
+  check('a start pad stands behind the start and finish, facing through it, so the lap closes', pads
+    && pads.position.y > gates[0].position.y && near(pads.yaw, -Math.PI / 2, 1e-5) && buildPath(doc).closed === true);
+
+  const plain = toPlain(doc);
+  check('pvc is written on the frame pipe and survives a save and a read', plain.elements.filter((e) => e.pvc === true).length === 4
+    && normalize(JSON.parse(JSON.stringify(plain))).doc.elements.filter((e) => e.pvc === true).length === 4);
+  const raw = createTrack('x', 'micro');
+  raw.elements.push({ ...createElement(raw, 'pole', { x: 1, y: 1 }), pvc: 'yes' }, { ...createElement(raw, 'gate', { x: 2, y: 2 }), pvc: true });
+  const back = toPlain(normalize(JSON.parse(JSON.stringify(raw))).doc);
+  check('and nowhere else: not a truthy string, and not on a gate', back.elements.every((e) => !('pvc' in e)));
+
+  check('a file that is not one, or has nothing to fly, is a sentence and not a throw',
+    Boolean(importTinyLaps('{}').error) && Boolean(importTinyLaps({ ...fixture(), racePoints: [] }).error)
+    && Boolean(importTinyLaps({ ...fixture(), units: 'feet' }).error));
+
+  /* The link: the button's own script, run here, writes it; the simulator's reader reads it. */
+  const src = readFileSync(new URL('../../integrations/tinylaps/webfpv-button.js', import.meta.url), 'utf8');
+  const win = {};
+  runInNewContext(src, { window: win, TextEncoder, Blob, Response, CompressionStream, btoa, JSON, String, Math, Uint8Array, Promise, encodeURIComponent });
+  const url = await win.WebFPV.link(fixture(), { author: 'kwayzu' });
+  check('the button links to the simulator on the custom map, the whoop and straight into the air', url.startsWith('https://webfpv.org/sim/?map=custom&craft=whoop65&fly=1#tinylaps=z.'), url.slice(0, 80));
+  const found = tinyLapsFromHash(new URL(url).hash);
+  const text = found && await decodeText(found.payload);
+  const seat = text && shareFromTinyLapsText(text, found.by);
+  check('and the simulator reads it back to the same track, credited, seated as a track that is not on the board', seat && seat.share && seat.share.stock === true
+    && seat.share.author === 'kwayzu' && seat.share.document.sequence.length === 3 && /^tinylaps-[0-9a-f]{8}$/.test(seat.share.id));
+  const again = shareFromTinyLapsText(text, '');
+  check('the same file is the same seat, so its local best carries over', again.share.id === seat.share.id);
+  check('a fragment with no track is nothing, and a damaged payload is nothing', tinyLapsFromHash('#track=z.abc') === null
+    && (await decodeText('z.!!!')) === null);
+
+  /* Straight to the board (the owner's rule of 2026-10-24), against a board made here. */
+  const fakeBoard = (heldDoc) => {
+    const calls = [];
+    return {
+      calls,
+      fetchTrackDocument: async (id) => {
+        calls.push(['get', id]);
+        if (!heldDoc) {
+          const err = new Error('That track is not on the board.');
+          err.status = 404;
+          throw err;
+        }
+        return { id, name: heldDoc.name, author: 'kwayzu', document: heldDoc };
+      },
+      publishTrack: async ({ author, document, tags }) => {
+        calls.push(['post', document.id, author, tags.join()]);
+        return { id: document.id, name: document.name, author, editKey: 'not kept' };
+      },
+    };
+  };
+  const fresh = fakeBoard(null);
+  const put = await publishTinyLaps(seat, { origin: 'https://board.test', board: fresh });
+  check('a track the board has not seen is published under its own id, the designer as author, tagged race, and seated as a board track',
+    fresh.calls.length === 2 && fresh.calls[1][1] === seat.share.document.id && fresh.calls[1][2] === 'kwayzu' && fresh.calls[1][3] === 'race'
+    && put.id === seat.share.document.id && put.board === 'https://board.test' && !put.stock && !('editKey' in put), JSON.stringify(fresh.calls));
+  const known = fakeBoard(seat.share.document);
+  const met = await publishTinyLaps(seat, { origin: 'https://board.test', board: known });
+  check('the same file sent again is found at its id and not published twice', known.calls.length === 1 && met.id === seat.share.document.id);
+  const other = fakeBoard({ ...seat.share.document, sequence: seat.share.document.sequence.slice(0, 1) });
+  const moved = await publishTinyLaps(seat, { origin: 'https://board.test', board: other });
+  check('a different track that happens to hold that id is left alone, and this one gets an id of its own', other.calls.length === 2
+    && /^trk-[0-9a-f]{8}$/.test(moved.id) && moved.id !== seat.share.document.id);
+  const nameless = fakeBoard(null);
+  await publishTinyLaps(shareFromTinyLapsText(text, 'k'), { board: nameless, origin: 'https://board.test' });
+  check('a designer name the board would refuse is published as TinyLaps', nameless.calls[1][2] === 'TinyLaps');
+}
+
 function suiteImportFpv() {
   console.log('\nthe whoop builder: import from the FPV Events designer');
   const near = (a, b, tol = 1e-6) => Math.abs(a - b) < tol;
@@ -14293,6 +14427,7 @@ async function main() {
   suiteBundle();
   await suiteCommunity();
   suiteImportFpv();
+  await suiteImportTinyLaps();
   suiteFiveInchParts();
   suiteManoeuvres();
   suiteFlightPaths();

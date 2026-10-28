@@ -93,6 +93,18 @@ font file is copied into this repository: the generator uses the pack's own
 font block to lay the art out and keeps only the rendered pixels, and the OFL
 governs the font software, not images made with it.
 
+## The yard track's floor marks
+
+    Files       assets/yardtrack/minifigs.webp, assets/yardtrack/racegow6.webp
+    Licence     NOT GPLv3. MiniFigs.me's logo and the RaceGOW6 logo are their
+                owners' marks.
+
+The two pictures painted on the floor of RaceGOW6 Track 3 where it stands in
+the house maps' yards (src/maps/yardtrack/). They are the two ground logos the
+track's author published with it on the board (trk-85c74ecc), decoded from
+that document and saved as WebP, unchanged but for the format, and are here to
+paint that track as published and for nothing else.
+
 ## The partners' marks
 
     Files       assets/partners/, two per partner, named in
@@ -142,6 +154,13 @@ partnership to show.
     the load small. Konex Drone is shown on freestyle maps as a sign, not
     counted in the partners list. `konexdrone/mono.png` is made from it by
     scripts/partners.js, every pixel cream and its transparency kept.
+  * `dronefactory/colour.png` is the Drone Factory logo as supplied by the
+    owner on 2026-10-26, a 484 by 211 image on white, cropped to the
+    artwork (456 by 175) and turned into black ink on transparency, so it
+    sits on the cream field. Drone Factory is shown on three freestyle
+    maps as a sign, not counted in the partners list.
+    `dronefactory/mono.png` is made from it by scripts/partners.js, every
+    pixel cream and its transparency kept.
   * `quadconfig/colour.png` is the Quad Configurator logo as supplied by
     patron Magnus Arge, a 1882 by 400 PNG. `quadconfig/mono.png` is made
     from it by scripts/partners.js.
@@ -246,6 +265,29 @@ face, his stare, painted over a copy of the frown (2026-10-21). The packing scri
 is the thread's, not this repository's. It is in this repository only so that
 src/maps/dan/ can draw him in a RaceGOW room. The project's GPLv3 grant does
 not extend to it.
+
+## Pilot avatars
+
+    File        assets/avatar/parts.png
+    Placed by   src/net/avatarparts.js (generated with the atlas)
+    Licence     the owner's own supply, like the owner's other Grok art: to
+                be confirmed by the owner before it is treated as GPLv3
+                grant material.
+
+`parts.png` is packed from six part sheets the owner made with Grok and gave on
+2026-10-25 for flying together: heads, hair, eyes, two of mouths, and clothes
+and extras, drawn as made up people and no real person's likeness. Each part
+was cut from its sheet, scaled to one head width of 300 pixels, its flat fills
+snapped to one colour each so a recoloured part has no grain, and packed into a
+single 2048 by 3913 palette image. The cutting and packing scripts (pack.py,
+and pack2x.py for this scale) are the thread's, kept with the sheets in the
+project's files (multiplayer/avatar-sheets/tools), not in this repository.
+src/net/avatar.js builds a pilot's portrait from these parts and the numbers a
+pilot picks, which are all the board ever stores of it. The shading over them
+(the hair's shine, the fringe's shadow, the flush, the face marks) and the
+wear after the scarf (cat ears, bow, sakura, star clips, the prop beanie's
+propeller, shades and halo) are drawn in code in src/net/avatar.js, and are
+this repository's own, under its licence.
 
 ## three.js
 

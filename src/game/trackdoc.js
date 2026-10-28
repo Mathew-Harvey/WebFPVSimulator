@@ -56,7 +56,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ELEMENTS, KIND, GATE_FLAG_POLE_R, apertureShapeOf, docModeOf, flagLeanSign, flagSideOf, flagSideSigns, frameSidesOf, unbuiltPolesOf, gateFlagHeight, hasMissingSides, isLetterPiece, openingSizesOf, isPlain, isUnbuilt, letterOfPiece, trackClassOf, virtualApertureDims } from '../trackbuilder/elements.js';
+import { ELEMENTS, KIND, GATE_FLAG_POLE_R, apertureShapeOf, docModeOf, flagLeanSign, flagSideOf, flagSideSigns, frameSidesOf, unbuiltPolesOf, gateFlagHeight, hasMissingSides, isLetterPiece, isPvcPipe, openingSizesOf, isPlain, isUnbuilt, letterOfPiece, trackClassOf, virtualApertureDims } from '../trackbuilder/elements.js';
 import {
   normalize, elementById, aperturesOf, startPadsOf, logosOf, logoForDecal, dressOrder,
 } from '../trackbuilder/model.js';
@@ -465,6 +465,10 @@ function buildCourse(raw) {
      * is built for them anywhere. See isUnbuilt in elements.js. */
     if (kind === KIND.APERTURE && isUnbuilt(el)) {
       s.unbuilt = true;
+    }
+    /* A length of frame pipe: white, and a bar with no legs. See isPvcPipe in elements.js. */
+    if (isPvcPipe(el)) {
+      s.pvc = true;
     }
     /* Sides taken away one at a time, in the element's own frame. They are
      * turned into the mesh's frame below, once the first pass through the

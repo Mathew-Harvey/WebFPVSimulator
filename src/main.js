@@ -138,6 +138,7 @@ import { hoverStickPercent, normaliseRates, ratesAreDefault, ratesDiff, ratesSum
 import { clearPidsFor, PID_AXES, pidCliKey, pidsDiffFor, SLIDER_KEYS, SLIDERS } from '../configs/pids.js';
 import { cliMap, composeConfig, moduleDump, moduleGet, RATES_KEEP, ratesFromDump, readFcDump, tuneBody, writeFcDump } from './fc/dump.js';
 import { GATE_SCALE, MICRO_SCALE } from './game/track.js';
+import { YardRace, inAskZone } from './game/yardrace.js';
 import { setLifeScale } from './ui/scorehud.js';
 import { planStages, moduleCounter, yieldToPaint } from './ui/loading.js';
 import { loadSim, simErrorName, SIM_OK, SIM_ERR_BAD_ARG } from '../tests/lib/simmod.js';
@@ -478,7 +479,7 @@ const AXIS_X = new THREE.Vector3(1, 0, 0);
  * alone. The entry is written out because it has moved with the directory:
  * it was three before looks.js came and four before egg.js, and with no
  * entry then the bar sat at 75 percent until the import resolved. */
-const MAP_MODULE_COUNT = { field: 1, city: 72, custom: 1, built: 5, house: 3, heads: 4, bardwell: 4 };
+const MAP_MODULE_COUNT = { field: 1, city: 72, custom: 1, built: 5, house: 3, heads: 4, bardwell: 4, warehouse: 3 };
 /* Where a map's modules live, so the loading bar can count them. Data, not a
  * ternary: the ternary read "field or else city", so a third map counted its
  * modules under the city's prefix and the bar sat at zero.
@@ -495,6 +496,7 @@ const MAP_MODULE_PREFIX = {
   house: '/src/maps/house/',
   heads: '/src/maps/heads/',
   bardwell: '/src/maps/bardwell/',
+  warehouse: '/src/maps/warehouse/',
 };
 
 /*
@@ -1002,8 +1004,32 @@ export async function boot({ loading, bootStart, mapId }) {
    * will go looking for the wrong problem.
    */
   loading.start('board');
+  /* The pictures a TinyLaps track this tab just published still has to draw. */
+  let tinyLapsPictures = null;
+  /*
+   * A TRACK FROM TINYLAPS arrives in the fragment, from the Open in WebFPV button on their
+   * editor (src/share/tinylaps.js). The whole track is in the address; it is published to
+   * the board (or found there, when the same file was sent before) and seated as that board
+   * track, so the ?share= fetch below is skipped. A board that does not answer leaves it
+   * seated here only, and the banner says so.
+   */
+  let fromTinyLaps = null;
   try {
-    const fromUrl = await adoptShareFromLocation();
+    /* Fetched only by a link that carries one, so no other load downloads the reader. */
+    if (/(^|[#&])tinylaps=/.test(window.location.hash)) {
+      const { adoptTinyLapsFromLocation } = await import('./share/tinylaps.js');
+      const got = await adoptTinyLapsFromLocation();
+      fromTinyLaps = got ? got.share : null;
+      tinyLapsPictures = got ? got.pictures : null;
+      if (got && got.offline) {
+        ui.setBanner(`Flying the TinyLaps track here only: it could not be saved to the board.\n${got.offline}`, true);
+      }
+    }
+  } catch (e) {
+    ui.setBanner(`Could not open that TinyLaps track.\n${e.message ?? e}`, true);
+  }
+  try {
+    const fromUrl = fromTinyLaps || await adoptShareFromLocation();
     if (fromUrl) {
       /*
        * THE AIRCRAFT THE LINKED TRACK IS FOR, before anything reads a seat.
@@ -2459,6 +2485,16 @@ export async function boot({ loading, bootStart, mapId }) {
    * real object with no gates in it and it scores nothing. */
   let race = new Race(view.gates, view.trackClass ?? 'full');
   /*
+   * THE YARD TRACK, a RaceGOW track standing in a house map's yard
+   * (src/maps/yardtrack/, src/game/yardrace.js), timed beside the run and
+   * never instead of it: the map stays a freestyle map, the run's clock and
+   * score go on, and this race only scores while the craft is near its
+   * track. Null on a map without one. `yardAsked` is whether Bardwell's
+   * swap card has had its answer for this landing.
+   */
+  let yard = view.yardTrack ? new YardRace(view.yardTrack) : null;
+  let yardAsked = false;
+  /*
    * THE FREESTYLE SCORE, and it only ever runs on a freestyle map.
    *
    * The detector is fed one physics step at a time from inside the step
@@ -3079,6 +3115,344 @@ export async function boot({ loading, bootStart, mapId }) {
   function ghostSampleInto(t) {
     ghostLap.sample(t, ghostSample);
     return ghostSample.cut;
+  }
+
+  /*
+   * FLYING TOGETHER, the multiplayer plan the owner approved on 25 October
+   * 2026, on for everybody since the owner's word of 27 October ("ok lets make
+   * it live for everyone now", "swithc it on"). ROOMS_LAUNCHED
+   * is the one switch; on, the links a room writes stop carrying ?mp=1, which
+   * `node scripts/together-shots.js --launched=1` checks.
+   *
+   * NOTHING HAPPENS UNTIL THE PILOT ASKS: Fly together on a map in the
+   * picker, the Rooms tab beside the shelves, or a room's link, which only
+   * ever shows "Join this room?" first (src/net/together.js). Until then
+   * none of src/net/ or src/render/roomcraft.js is even fetched, so a solo
+   * flight costs nothing at all: no bytes, no draw calls, no frame time.
+   *
+   * Everything here is downstream of the render: it reads the same
+   * interpolated pose the hero craft is drawn at, never the plant, and
+   * nothing it hears is ever written back to the physics. What a room may
+   * ask of the flight is what a menu press may: pause, resume, fly, and in
+   * a room's race the start line, through reset(), the R key's own path.
+   */
+  const ROOMS_LAUNCHED = true;
+  const mpOn = ROOMS_LAUNCHED || (() => {
+    try {
+      return new URLSearchParams(window.location.search).get('mp') === '1';
+    } catch (e) {
+      return false;
+    }
+  })();
+  let together = null;
+  let togetherLoading = null;
+  let mpCraft = null;
+  let mpCraftWhoop = null;
+  let mpCraftSize = 0;
+  let mpCraftLoading = false;
+  let mpResets = 0;
+  let mpAway = null;
+  let mpWorldWarned = '';
+  /* The world, worked out once per loaded world rather than once a frame:
+   * the frame loop does not allocate (budget P8). */
+  let mpWorldOf = null;
+  let mpWorldIs = null;
+  /* This pilot's position for the frame, for the proximity hello. */
+  let mpHx = 0;
+  let mpHy = 0;
+  let mpHz = 0;
+  let mpHostId = 0;
+  /*
+   * WATCHING ANOTHER PILOT (src/render/watchcam.js, src/net/together.js).
+   * This pilot's own flight is paused as the pause menu pauses it, with the
+   * menu hidden, and the camera rides behind the pilot watchId. Their pose
+   * is caught here as they are drawn, so the camera follows the same
+   * interpolated pose their craft is drawn at, in the same frame.
+   */
+  let watchCam = null;
+  let watchCamLoading = null;
+  let watchId = 0;
+  let watchSeen = false;
+  const watchPose = {
+    px: 0, py: 0, pz: 0, qx: 0, qy: 0, qz: 0, qw: 1, cut: false,
+  };
+  const mpDraw = (id, pose, pilot) => {
+    const dx = pose.px - mpHx;
+    const dy = pose.py - mpHy;
+    const dz = pose.pz - mpHz;
+    const d2 = dx * dx + dy * dy + dz * dz;
+    /* The host's tag stays up however far: in a streamer room, the one the
+     * viewers came to find. So does the tag of the pilot being watched. */
+    mpCraft.add(id, pose, pilot, d2, id === mpHostId || id === watchId);
+    if (id === watchId) {
+      watchSeen = true;
+      watchPose.px = pose.px;
+      watchPose.py = pose.py;
+      watchPose.pz = pose.pz;
+      watchPose.qx = pose.qx;
+      watchPose.qy = pose.qy;
+      watchPose.qz = pose.qz;
+      watchPose.qw = pose.qw;
+      watchPose.cut = Boolean(pose.cut);
+    }
+    /* No hello while watching: the pilot's own quad is parked, and the
+     * camera passing a pilot is not meeting them. */
+    if (d2 < 9 && !watchId) {
+      together.near(id, d2);
+    }
+  };
+
+  /* The world being flown, as the room names it and as a link opens it. */
+  function mpWorld() {
+    if (!view) {
+      return null;
+    }
+    if (view.id === 'custom') {
+      const listing = ghostListing();
+      return listing
+        ? { map: listing.shareId, name: listing.name || 'A track', link: { map: 'custom', share: listing.shareId } }
+        : { map: 'custom', name: 'A track of your own', link: { map: 'custom' } };
+    }
+    if (view.id === 'built') {
+      return view.shared
+        ? { map: view.shared.id, name: view.shared.name || 'A map', link: { map: 'built', mapshare: view.shared.id } }
+        : { map: 'built', name: 'Your map', link: { map: 'built' } };
+    }
+    return { map: view.id, name: mapById(view.id).name, link: { map: view.id } };
+  }
+
+  function mpWorldNow() {
+    if (mpWorldOf !== view) {
+      mpWorldOf = view;
+      mpWorldIs = mpWorld();
+    }
+    return mpWorldIs;
+  }
+
+  function mpSay(text, ms = 3600) {
+    notice = { text, untilMs: performance.now() + ms };
+  }
+
+  /* What together.js may ask of the game, and nothing else. */
+  const togetherShell = {
+    mp: !ROOMS_LAUNCHED,
+    world: () => mpWorldNow(),
+    ready: () => mapReady && !swapInFlight && Boolean(view),
+    flying: () => mode === 'flight' && ui.screen === 'flight',
+    paused: () => ui.screen === 'paused',
+    results: () => ui.screen === 'results',
+    /* The flight's own line across the heading while it shows words, so a
+     * room banner can sit under it rather than on it. */
+    line: () => (ui.banner && ui.banner.__wfOpacity === '1' ? ui.banner : null),
+    pause: () => {
+      if (mode === 'flight' && ui.screen === 'flight') {
+        ui.act('pause');
+        ui.show('paused');
+      }
+    },
+    resume: () => {
+      if (ui.screen === 'paused') {
+        ui.act('resume');
+      }
+    },
+    /* Into the air from wherever the pilot is: the title and the picker
+     * take Fly's own path, the pause menu resumes. */
+    fly: () => {
+      if (ui.screen === 'paused') {
+        ui.act('resume');
+      } else if (!(mode === 'flight' && ui.screen === 'flight')) {
+        wakeAudio();
+        flyToGrid();
+      }
+    },
+    /* The start line for a room's race, with a fresh run: R's own reset,
+     * in the air if the pilot was not. */
+    grid: () => {
+      if (mode === 'flight' && ui.screen === 'flight') {
+        reset();
+      } else if (ui.screen === 'paused') {
+        ui.act('restart');
+      } else {
+        wakeAudio();
+        flyToGrid();
+      }
+    },
+    airborne: () => mode === 'flight' && !landed && !launchStaging,
+    whoop: () => ui.settings.airframe === 'whoop65',
+    /* What the pilot flies with, so a room's lines name a control they
+     * have: G means nothing on a radio or a phone. */
+    hands: () => {
+      if (input.source.startsWith('a radio')) return 'pad';
+      return input.source === 'the touch sticks' ? 'touch' : 'keys';
+    },
+    roomInfo: (info) => ui.setRoomInfo(info),
+    pickWorld: (way, opts) => ui.pickRoomWorld(way, opts),
+    pickDone: () => ui.endMovePick(),
+    /* The look editor closed: the front screen's pilot panel shows it. */
+    pilotChanged: () => ui.paintGatePilot(),
+    forget: (id) => {
+      if (mpCraft) {
+        mpCraft.forget(id);
+      }
+    },
+    sound: (kind) => ui.onUiSound(kind),
+    /* Watching another pilot: the flight paused with its menu hidden and
+     * the camera flown over to ride behind them. Asked again with another
+     * pilot, it flies across to them. False when there is no flight to
+     * pause. `same` is the same quad under another number, as a room
+     * rebuilt after a deploy gives out: the camera stays where it is and
+     * follows the new number, -1 for a pilot not back yet. */
+    watch: (id, same = false) => watchStart(id, same),
+    /* Back to the goggles: the camera flies home and the flight resumes
+     * when it lands. `now` puts it back at once and leaves the flight
+     * paused, for something that takes over, such as the room's grid. */
+    unwatch: (now = false) => watchStop(now),
+    /* Who is being watched, 0 for nobody, which it is again from the
+     * moment the camera starts home. */
+    watching: () => watchId,
+    /* Whether the camera is still away from the goggles: watching, or on
+     * its way home, when the hidden pause menu must not get a key. */
+    watchBusy: () => Boolean(watchCam && watchCam.on),
+  };
+
+  /* together.js, fetched the first time it is wanted and never before. */
+  function loadTogether() {
+    if (together) {
+      return Promise.resolve(together);
+    }
+    if (!togetherLoading) {
+      togetherLoading = import('./net/together.js').then(({ createTogether }) => {
+        together = createTogether(togetherShell);
+        return together;
+      }).catch((e) => {
+        togetherLoading = null;
+        mpSay(`Could not open rooms.\n${e.message ?? e}`, 6000);
+        return null;
+      });
+    }
+    return togetherLoading;
+  }
+
+  if (mpOn) {
+    ui.roomsOn = true;
+    ui.onFlyTogether = (entry) => {
+      loadTogether().then((t) => t && t.openHost(entry));
+    };
+    ui.onRooms = (way) => {
+      loadTogether().then((t) => t && t.openLobby(way));
+    };
+    /* The front screen's multiplayer page: host, find, code, pilot. */
+    ui.onRoomsGate = (kind) => {
+      loadTogether().then((t) => t && t.fromGate(kind));
+    };
+    ui.onRoom = (action) => {
+      if (together) {
+        together.act(action);
+      }
+    };
+    /* A room's address: the room is asked about once the world is up. */
+    if (new URLSearchParams(window.location.search).get('room')) {
+      loadTogether().then((t) => t && t.startFromAddress());
+    }
+    /* The gate opens on its cover now rooms are on: draw it again if it
+     * was drawn before this line ran. */
+    if (ui.screen === 'title') {
+      ui.renderMenu();
+    }
+  }
+
+  /* The craft the others are drawn as, sized for the room's aircraft and
+   * for as many pilots as it holds. */
+  async function mpEnsureCraft(whoop, size) {
+    if ((mpCraft && mpCraftWhoop === whoop && mpCraftSize === size) || mpCraftLoading) {
+      return;
+    }
+    mpCraftLoading = true;
+    try {
+      const { buildRoomCraft } = await import('./render/roomcraft.js');
+      if (mpCraft) {
+        mpCraft.group.removeFromParent();
+        mpCraft.dispose();
+      }
+      mpCraft = buildRoomCraft({ whoop, capacity: size });
+      mpCraftWhoop = whoop;
+      mpCraftSize = size;
+      shell.keepAcrossMaps(mpCraft.group);
+    } finally {
+      mpCraftLoading = false;
+    }
+  }
+
+  /*
+   * Once a frame, after the hero craft is posed: send this pilot's pose and
+   * draw everyone else's. Away is anything but flight in the room's world,
+   * which dims this pilot's tag for the others and sends no poses.
+   */
+  function mpFrame(nowWall) {
+    if (!together) {
+      return;
+    }
+    together.frame(nowWall);
+    const session = together.session;
+    if (!session) {
+      mpAway = null;
+      if (mpCraft && mpCraft.group.visible) {
+        mpCraft.begin();
+        mpCraft.end();
+      }
+      return;
+    }
+    const room = session.room;
+    const whoop = room.scale >= 100;
+    /* Built for 30 pilots, or for a streamer room's 64 (ROOM_MAX and
+     * STREAM_MAX in src/net/link.js, which is not loaded until a room is
+     * wanted), so a host changing the size never rebuilds it. Which room
+     * it is, not its size: a streamer room set to 20 and raised to 40
+     * rebuilt every craft in it when this read the size. */
+    const size = room.streamer ? 64 : 30;
+    if (!mpCraft || mpCraftWhoop !== whoop || mpCraftSize !== size) {
+      mpEnsureCraft(whoop, size);
+      return;
+    }
+    const world = mpWorldNow();
+    const same = Boolean(world && world.map === room.map);
+    if (world && !same && mpWorldWarned !== world.map) {
+      mpWorldWarned = world.map;
+      mpSay(`Your room flies ${room.mapName}.\nThe others show only there.`, 6000);
+    }
+    const flying = same && mode === 'flight' && ui.screen === 'flight';
+    if (session.inRoom && !flying !== mpAway) {
+      /* Said once a change, and not said at all for a pilot who arrives
+       * flying, which is what the board assumes. */
+      if (mpAway !== null || !flying) {
+        session.away(!flying);
+      }
+      mpAway = !flying;
+    }
+    const p = shell.quad.position;
+    /* Nearness for the name tags is from the eye, which is the camera
+     * while watching and the quad otherwise. */
+    const eye = watchId ? shell.camera.position : p;
+    mpHx = eye.x;
+    mpHy = eye.y;
+    mpHz = eye.z;
+    if (flying) {
+      const q = shell.quad.quaternion;
+      /* Motor RPM, signed in 3D mode (src/native/sim_abi.h). */
+      const spinning = Boolean(stateCurr) && Math.abs(stateCurr[14]) + Math.abs(stateCurr[15])
+        + Math.abs(stateCurr[16]) + Math.abs(stateCurr[17]) > 400;
+      session.uplink(p.x, p.y, p.z, q.x, q.y, q.z, q.w, spinning, mpResets);
+    }
+    mpCraft.begin();
+    watchSeen = false;
+    if (same) {
+      mpHostId = session.link.hostId;
+      session.eachRemote(mpDraw);
+    }
+    mpCraft.end();
+    if (mpCraft.group.visible && shell.quad.parent && mpCraft.group.parent !== shell.quad.parent) {
+      shell.quad.parent.add(mpCraft.group);
+    }
   }
 
   /* One sentence for the results screen when a ghost was being chased:
@@ -3712,6 +4086,7 @@ export async function boot({ loading, bootStart, mapId }) {
       }
     }
     input.set3d(run3d);
+    crashJudge.threeD(run3d);
   }
   /* How many times either export has been called, for the harness: a stock
    * flight must make none (window.__air). */
@@ -4435,6 +4810,9 @@ export async function boot({ loading, bootStart, mapId }) {
    * parks the craft on the surface it found, at.surface, facing at.yaw.
    */
   function resetCraft(at) {
+    /* A room's other pilots are told the craft was put somewhere it did not
+     * fly to, so they cut to it rather than sweep it through the scenery. */
+    mpResets += 1;
     /* Wherever it lands, the open air it last flew through is somewhere
      * else now. The next frame in the open records it again. */
     haveRecoverFrom = false;
@@ -4755,6 +5133,11 @@ export async function boot({ loading, bootStart, mapId }) {
    * A turtle the pilot may want to fly out of gets STUCK_TURTLE_MS instead.
    * This is the shell's recovery, not physics: the plant is never touched
    * until the moment X would touch it.
+   *
+   * In 3D a craft flat on its back is not stuck, it is sitting on its other
+   * base and flies off it on reverse thrust (onBase in src/game/collide.js
+   * has the owner's words), so within 60 degrees of flat on its back it is
+   * left where it is, as one on its belly is.
    */
   const STUCK_MS = 1500;
   const STUCK_TURTLE_MS = 5000;
@@ -4772,6 +5155,7 @@ export async function boot({ loading, bootStart, mapId }) {
       && !turtleRecover
       && st
       && plantUpZ(st) < TURTLE_EXIT_UPZ
+      && !(run3d && plantUpZ(st) <= -TURTLE_EXIT_UPZ)
       && plantSpeed(st) < STUCK_SPEED
       && plantRateMag(st) < STUCK_RATE;
     if (!still) {
@@ -5106,9 +5490,11 @@ export async function boot({ loading, bootStart, mapId }) {
    * map from the board, and the builder's seat is the pilot's own. The town
    * keys its marks 'city#'. The three house maps set a source of their own,
    * which is their own word on the board since 2026-10-21; before that the
-   * board had none, and the signs on them were never counted for anybody. */
+   * board had none, and the signs on them were never counted for anybody.
+   * Thomas More's Shop has its own since 2026-10-27, and the board's
+   * word went out before this one. */
   const MARK_MAP_WORDS = {
-    starter: 'yard', injected: 'board', canvas: 'own', house: 'house', heads: 'heads', bardwell: 'bardwell',
+    starter: 'yard', injected: 'board', canvas: 'own', house: 'house', heads: 'heads', bardwell: 'bardwell', warehouse: 'warehouse',
   };
   function markMapWord(mark) {
     return String(mark.key).startsWith('city#') ? 'city' : (MARK_MAP_WORDS[view.source] || null);
@@ -5413,6 +5799,113 @@ export async function boot({ loading, bootStart, mapId }) {
     }
   }
 
+  /*
+   * THE YARD TRACK'S RUN (see `yard` above). A fresh run starts it at the
+   * start gate again, filed under the run's own record key, and armed
+   * unless the map times the whoop only and a five inch is flying it.
+   */
+  function yardReset() {
+    yardAsked = false;
+    ui.yardHud.setAsking(false);
+    if (!yard) {
+      return;
+    }
+    yard.reset();
+    yard.armed = !view.yardWhoopOnly || runAirframe === 'whoop65';
+    yard.setRecordKey(recordKey());
+    yard.setWeight(runWeight);
+    yard.setTuned(offStock());
+  }
+
+  /* One frame's travel, scored as the race above scores its own: a beep
+   * at a gate and the lap called out loud. */
+  function yardStep(prev, curr, simNow, nowWall, allow) {
+    if (!yard) {
+      return;
+    }
+    const r = yard.step(prev, curr, simNow, nowWall, allow);
+    if (r.passed != null && typeof audio.event === 'function') {
+      audio.event('gate');
+    }
+    if (r.lap && ui.settings.sound) {
+      const yr = yard.race;
+      lapVoice.say(
+        lapCall(yr.log.length, yr.lastLapMs, yr.lastLapRecord),
+        (ui.settings.volume / 10) * (ui.settings.calloutLevel / 10),
+      );
+    }
+  }
+
+  /* A clean set down: on a whoop only track with a five inch, inside the
+   * painted zone, the swap is offered, once a landing. */
+  function yardLanded() {
+    if (!yard || !view.yardWhoopOnly || runAirframe === 'whoop65' || yardAsked || replayMode) {
+      return;
+    }
+    const p = shell.quad.position;
+    if (inAskZone(yard.track, p.x, p.z)) {
+      yardAsked = true;
+      ui.yardHud.setAsking(true);
+    }
+  }
+
+  /*
+   * The answer. No leaves the five inch where it is, and the track does not
+   * time it. Yes seats the whoop, swaps the plant as a change of aircraft
+   * between runs does (applySettings, under the title's mode for the one
+   * call), and puts the whoop on the track's start, nose to the start gate.
+   */
+  ui.yardHud.onAnswer = (yes) => {
+    ui.yardHud.setAsking(false);
+    if (!yes || !yard) {
+      return;
+    }
+    const t = yard.track;
+    ui.seatWhoopForYard();
+    const was = mode;
+    mode = 'title';
+    applySettings(ui.settings);
+    mode = was;
+    whenConfigReady(() => {
+      reset();
+      resetCraft({ x: t.start.x, z: t.start.z, yaw: t.start.yaw });
+      mode = 'flight';
+      ui.show('flight');
+      introMs = -1;
+    });
+  };
+
+  /* Once a frame: the HUD up near the track in flight, off everywhere
+   * else, and the swap card down the moment the quad is in the air. Not
+   * before the run's first takeoff, where the launch banner is in its
+   * place. */
+  function yardFrame(nowWall) {
+    const hud = ui.yardHud;
+    const on = Boolean(yard) && yard.near && !replayMode && airtimeMs > 0
+      && (mode === 'flight' || mode === 'paused') && (ui.screen === 'flight' || ui.screen === 'paused');
+    if (hud.asking && (!landed || mode !== 'flight' || ui.screen !== 'flight')) {
+      hud.setAsking(false);
+    }
+    hud.setVisible(on || hud.asking);
+    if (!yard || !(on || hud.asking)) {
+      return;
+    }
+    const yr = yard.race;
+    hud.update({
+      name: yard.track.name,
+      near: yard.near,
+      armed: yard.armed,
+      started: yard.started,
+      lapMs: yr.currentLapMs(simTimeMs),
+      next: yr.next,
+      gates: yr.gates.length,
+      lastMs: yr.lastLapMs,
+      bestMs: yr.bestMs,
+      record: yr.lastLapRecord,
+      flash: yr.flashText(nowWall),
+    });
+  }
+
   function reset() {
     /* A reset is the pilot taking the offer the fault banner made, so the
      * next fault is a new one and deserves to be reported in its turn. See
@@ -5479,6 +5972,7 @@ export async function boot({ loading, bootStart, mapId }) {
      */
     resetCraft(null);
     race.reset();
+    yardReset();
     if (run3d !== was3d) {
       race.setTuned(offStock());
       race.setRecordKey(recordKey());
@@ -5629,6 +6123,7 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     if (!keepPlace) {
       race = new Race(view.gates, view.trackClass ?? 'full');
+      yard = view.yardTrack ? new YardRace(view.yardTrack) : null;
       race.setWeight(runWeight);
       race.setTuned(offStock());
       race.setRecordKey(recordKey());
@@ -6558,7 +7053,7 @@ export async function boot({ loading, bootStart, mapId }) {
           runWeight = wantWeight;
           runGravityScale = wantScale;
           if (midLap) {
-            race.voidLap('Weight changed\nLap voided', performance.now());
+            race.noteChange();
           }
         } else {
           ui.settings.weight = runWeight;
@@ -6642,7 +7137,7 @@ export async function boot({ loading, bootStart, mapId }) {
       }
       if (moved) {
         if (race.currentLapMs(simTimeMs) != null) {
-          race.voidLap('Feel changed\nLap voided', performance.now());
+          race.noteChange();
         }
         /* Motor power moves where hover sits on the stick, and the keyboard's
          * throttle springs back to it: see syncKeyHover. */
@@ -7243,6 +7738,14 @@ export async function boot({ loading, bootStart, mapId }) {
     if (view.id === 'bardwell') {
       notice = {
         text: "The board keeps no runs for Joshua Bardwell's house, so its runs stay here.",
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
+    /* Nor for Thomas More's Shop: WAREHOUSE_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'warehouse') {
+      notice = {
+        text: "The board keeps no runs for Thomas More's Shop, so its runs stay here.",
         untilMs: performance.now() + 4200,
       };
       return;
@@ -8181,6 +8684,11 @@ export async function boot({ loading, bootStart, mapId }) {
     /* Here and on pointerdown, never inside wakeAudio, which a link's
      * timer also calls: the voice is opened by a gesture or not at all. */
     lapVoice.prime();
+    /* A room's sheets, while one is up, and its few keys in flight
+     * (src/net/together.js): 1 to 7, Q, Tab, Enter and G. */
+    if (together && together.handleKey(code, repeat)) {
+      return;
+    }
     /* Steam edition: career. Its screens take the keys while they are up. */
     if (career && career.handleKey(code, repeat)) {
       return;
@@ -8977,6 +9485,14 @@ export async function boot({ loading, bootStart, mapId }) {
      * A replay is a capture, not a flight, and counts nothing, as it sends
      * no visit.
      */
+    /* A TinyLaps track this tab just published draws its pictures while the craft is
+     * parked, and never in flight: see picturesFor in src/share/tinylaps.js. */
+    if (tinyLapsPictures) {
+      tinyLapsPictures.tick(landed || mode !== 'flight', nowWall);
+      if (tinyLapsPictures.done) {
+        tinyLapsPictures = null;
+      }
+    }
     if (!replayMode) {
       flightStats.tick(nowWall, {
         started: flownThisRun,
@@ -9111,7 +9627,9 @@ export async function boot({ loading, bootStart, mapId }) {
     if (career) {
       career.tick(nowWall);
     }
-    if (career && career.wantsPad()) {
+    if (together && together.wantsPad()) {
+      together.pollPad(padNav(), nowWall);
+    } else if (career && career.wantsPad()) {
       career.pollPad(padNav(), nowWall);
     } else if (ui.isModal()) {
       ui.pollPad(padNav());
@@ -9566,6 +10084,7 @@ export async function boot({ loading, bootStart, mapId }) {
          * 2026-10-05 a prompt read a name that was not declared, and every
          * frame after it faulted.
          */
+        yardLanded();
         try {
           ui.noteLanding({
             course: ghostCourseKey(),
@@ -9930,6 +10449,7 @@ export async function boot({ loading, bootStart, mapId }) {
             }
           }
           ghostOnRaceStep(simNow, nowWall, lapStartBefore, lapsBefore, res.passed != null);
+          yardStep(racePrev, pCurr, simNow, nowWall, allowPass);
           /* A lap counted this frame is called out loud, in every run and
            * on the last lap of one too, which the results screen covers but
            * the ear still hears. Read off the entry the flash was written
@@ -9940,9 +10460,18 @@ export async function boot({ loading, bootStart, mapId }) {
               (ui.settings.volume / 10) * (ui.settings.calloutLevel / 10),
             );
           }
+          /* A room's race reads the same lap, at the moment of its finish
+           * crossing on the frame clock, and times it from GO
+           * (src/net/roomrace.js). It never writes the sim's own clock. */
+          if (together && race.laps.length > lapsBefore && race.lapStartMs != null) {
+            together.lap(nowWall - (simNow - race.lapStartMs));
+          }
         }
         /* Steam edition: career. A lesson judges its own laps. */
-        if (!race.freestyle && !(career && career.owns()) && runComplete(race.lap, runLaps)) {
+        /* And a room's race in progress keeps the run open until the room's
+         * race is over, so the sim's results come up at its end. */
+        if (!race.freestyle && !(career && career.owns()) && !(together && together.ownsRun())
+          && runComplete(race.lap, runLaps)) {
           mode = 'results';
           if (turtleWait || turtleFlip.active) {
             if (turtleWait && !turtleFlip.active) {
@@ -9991,6 +10520,7 @@ export async function boot({ loading, bootStart, mapId }) {
       ghostPrev.qw = qPrev.w;
     }
     ghostFrame(simNow);
+    mpFrame(nowWall);
 
     /*
      * The world is the title picture, the flight picture, the pause
@@ -10197,6 +10727,12 @@ export async function boot({ loading, bootStart, mapId }) {
       introMs = -1;
     }
 
+    /* Watching ends with the pause it rides on: anything that takes the
+     * screen (the room's grid, a menu, the title) puts the camera back. */
+    if (watchCam && watchCam.on && (mode !== 'paused' || ui.screen !== 'paused')) {
+      watchStop(true);
+    }
+
     /* Every camera but the lens keeps the boot near plane; the lens's own
      * is set in its branch below. See fpvNear. */
     setCameraNear(CAMERA_NEAR_OPEN);
@@ -10256,6 +10792,8 @@ export async function boot({ loading, bootStart, mapId }) {
         shell.camera.fov = fov;
         shell.camera.updateProjectionMatrix();
       }
+    } else if (watchCam && watchCam.on && !camOverride) {
+      watchFrame(nowWall);
     } else if (introMs >= 0 && (mode === 'flight' || mode === 'paused') && !camOverride) {
       if (mode === 'flight') {
         /* Punch-out skips the orbit and the approach. TAKEOFF_THROTTLE,
@@ -10480,6 +11018,7 @@ export async function boot({ loading, bootStart, mapId }) {
       titleAcc -= ts;
       titleStepMs += ts > 100 ? 100 : ts;
     }
+    yardFrame(nowWall);
     if (worldLive) {
       if (view.onCue !== playCue) {
         view.onCue = playCue;
@@ -10513,7 +11052,10 @@ export async function boot({ loading, bootStart, mapId }) {
         }
       }
 
-      const focus = camOverride
+      /* Watching another pilot, the shadows and the grass's wind go with
+       * the camera riding behind them: at the parked quad they would end
+       * in a hard edge a field away from the quad on screen. */
+      const focus = camOverride || (watchCam && watchCam.on)
         ? shell.camera.position
         : (mode === 'title' ? shell.quad.position : pCurr);
       view.updateShadowFocus(focus);
@@ -10851,7 +11393,10 @@ export async function boot({ loading, bootStart, mapId }) {
        * for the same reason the houses are, so its speed, altitude, gate
        * distance and the freestyle HUD's metres are divided by that. The
        * whoop's speed comes back on the OSD with it, as a whoop's speed. */
-      const whoopHud = mapById(view.id).hudScale || (view.trackClass === 'micro' ? MICRO_SCALE : 0);
+      /* And the whoop on Bardwell's yard track, which is built at a whoop
+       * room's size for the whoop drawn there. */
+      const whoopHud = mapById(view.id).hudScale || (view.trackClass === 'micro' ? MICRO_SCALE : 0)
+        || (view.yardWhoopOnly && runAirframe === 'whoop65' ? MICRO_SCALE : 0);
       setLifeScale(whoopHud);
       const p = shell.quad.position;
       const nextGt = view.gates && view.gates[race.nextSceneIndex()];
@@ -11109,9 +11654,12 @@ export async function boot({ loading, bootStart, mapId }) {
        */
       /* A first flight names the control: see src/ui/firstflight.js. */
       const guidedStart = guidedTakeoff(race);
-      const start = guidedStart || (ui.settings.launchControl
+      /* A room's race holds its grid until GO, and a throttle before it is
+       * a false start, so the line says wait rather than throttle up. */
+      const onGrid = Boolean(together && together.onGrid());
+      const start = onGrid ? 'Wait for GO' : (guidedStart || (ui.settings.launchControl
         ? 'L for launch control, or throttle up'
-        : 'Throttle up to take off');
+        : 'Throttle up to take off'));
       /* Practice is the one race that does not end, so it says so on the
        * line that promises what starts. See PRACTICE_LAPS. */
       let second = runLaps === PRACTICE_LAPS
@@ -11133,8 +11681,13 @@ export async function boot({ loading, bootStart, mapId }) {
             : '\nNo clock and no gates. Gaps and close calls count as you fly them.';
         }
       }
+      /* A room's race says what starts in its own panel and countdown, and
+       * the map's promise of no clock is not true of it. */
+      if (together && together.raceRoom()) {
+        second = '';
+      }
       ui.setBanner(`${start}${second}`);
-      if (guidedStart) {
+      if (guidedStart && !onGrid) {
         ui.noteGuideShown();
       }
     } else if (guidedText) {
@@ -11532,6 +12085,59 @@ export async function boot({ loading, bootStart, mapId }) {
    * `race` at call time; this one captured the object identity at boot, so
    * after a map swap it answered with the previous map's race. */
   window.__race = () => race;
+  /* Flying together, for scripts/together-shots.js: what is on screen and
+   * the room it is in, or null before anything asked for a room. */
+  window.__together = () => (together ? together.debugState() : null);
+  /* For scripts/together-shots.js: the watching camera as it is now, and
+   * what one of its frames costs, timed riding behind the pilot watched on
+   * the real map's colliders with a camera of its own. Harness only. */
+  window.__watch = () => ({
+    id: watchId,
+    phase: watchCam ? watchCam.phase : '',
+    cam: shell.camera.position.toArray(),
+    look: new THREE.Vector3(0, 0, -1).applyQuaternion(shell.camera.quaternion).toArray(),
+    fov: shell.camera.fov,
+    quadVisible: shell.quad.visible,
+    craft: pCurr.toArray(),
+    target: watchSeen ? [watchPose.px, watchPose.py, watchPose.pz] : null,
+    /* Where on screen the quad watched is, in CSS pixels. */
+    onScreen: watchSeen ? (() => {
+      const v = new THREE.Vector3(watchPose.px, watchPose.py, watchPose.pz).project(shell.camera);
+      return [((v.x + 1) / 2) * innerWidth, ((1 - v.y) / 2) * innerHeight];
+    })() : null,
+    classOn: document.documentElement.classList.contains('tg-watching'),
+  });
+  window.__watchBench = async (n = 2000) => {
+    const { WatchCam } = await import('./render/watchcam.js');
+    const cam = new WatchCam();
+    const eye = new THREE.PerspectiveCamera(85, 16 / 9, 0.2, 1000);
+    const pose = { ...watchPose, cut: false };
+    cam.go(eye, 0);
+    cam.phase = 'riding';
+    const t0 = performance.now();
+    for (let i = 0; i < n; i += 1) {
+      pose.px += 0.13;
+      cam.frame(eye, pose, i * 16.7, watchWorld, watchHome);
+    }
+    return (performance.now() - t0) / n;
+  };
+  /* The other pilots' craft: how many it is built for and drew last frame. */
+  window.__roomCraft = () => (mpCraft ? { size: mpCraftSize, drawn: mpCraft.group.getObjectByName('room-craft-bodies').count, tagged: mpCraft.tagged(), most: mpCraft.tagMost } : null);
+  /* The yard track's race and where it stands, for the harness. */
+  window.__yard = () => (yard ? {
+    id: yard.track.id,
+    near: yard.near,
+    armed: yard.armed,
+    started: yard.started,
+    next: yard.race.next,
+    laps: yard.race.laps.slice(),
+    asking: ui.yardHud.asking,
+    start: { ...yard.track.start },
+    centre: { ...yard.track.centre },
+    y: yard.track.y,
+    scale: yard.track.scale,
+    gates: yard.track.gates.map((g) => ({ ...g.position, heading: g.heading, virtual: g.virtual, centreY: g.aperture.centreY })),
+  } : null);
   /* The whoop room's race line, for the harness: its state, or null on a
    * world that has none. */
   window.__raceLine = () => (view && view.raceLine ? view.raceLine : null);
@@ -12286,6 +12892,13 @@ export async function boot({ loading, bootStart, mapId }) {
   });
   window.__race = () => ({
     laps: race ? race.laps : [],
+    /* Where the order stands and where each station is, for the checks that
+     * fly the course (scripts/gate-settings-check.js): harness only. */
+    next: race && !race.freestyle ? race.next : -1,
+    lapStartMs: race ? race.lapStartMs : null,
+    mixed: race ? race.mixed : false,
+    gates: race && !race.freestyle
+      ? race.gates.map((g) => ({ x: g.x, y: g.y, z: g.z, az: g.az })) : [],
   });
   window.__craftState = () => ({
     mode,
@@ -13507,6 +14120,114 @@ export async function boot({ loading, bootStart, mapId }) {
       shell.camera.updateProjectionMatrix();
     }
     setCameraNear(CAMERA_NEAR_OPEN);
+  }
+
+  /* What the watching camera asks of the map: the ground under a point,
+   * and how far a point is from the nearest solid. Made once, not once a
+   * frame; `view` is read when they are called, so a new map needs none. */
+  const watchWorld = {
+    floor: (x, z, y) => view.height(x, z, y, y),
+    gap: (x, y, z) => (view.colliders ? view.colliders.gapAt(x, y, z, 0.4) : Infinity),
+  };
+  /* Where the camera lands on the way back: the goggles, as this frame
+   * worked them out, and the pilot's own lens. */
+  const watchHome = { pos: fpvPos, quat: fpvQuat, fov: 85 };
+
+  function watchCamReady() {
+    if (watchCam) {
+      return Promise.resolve(watchCam);
+    }
+    if (!watchCamLoading) {
+      watchCamLoading = import('./render/watchcam.js').then(({ WatchCam }) => {
+        watchCam = new WatchCam();
+        return watchCam;
+      }).catch((e) => {
+        watchCamLoading = null;
+        throw e;
+      });
+    }
+    return watchCamLoading;
+  }
+
+  function watchStart(id, same = false) {
+    if (same) {
+      if (!watchId) {
+        return false;
+      }
+      watchId = id;
+      watchSeen = false;
+      return true;
+    }
+    if (!id || camOverride) {
+      return false;
+    }
+    if (mode === 'flight' && ui.screen === 'flight') {
+      ui.act('pause');
+      ui.show('paused');
+    }
+    if (mode !== 'paused' || ui.screen !== 'paused') {
+      return false;
+    }
+    /* The pad shot is over: the pilot has already seen their quad, and
+     * coming home into the middle of it would cut the camera away again. */
+    introMs = -1;
+    watchId = id;
+    watchSeen = false;
+    document.documentElement.classList.add('tg-watching');
+    /* The pause menu is hidden, not gone: nothing on it keeps the focus,
+     * or Enter would press a row the pilot cannot see. */
+    if (document.activeElement && document.activeElement !== document.body
+        && !document.activeElement.closest('#tg')) {
+      document.activeElement.blur();
+    }
+    watchCamReady().then((cam) => {
+      if (watchId === id) {
+        cam.go(shell.camera, performance.now());
+      }
+    }).catch((e) => {
+      watchStop(true);
+      mpSay(`Could not watch.\n${e.message ?? e}`, 5000);
+    });
+    return true;
+  }
+
+  function watchStop(now) {
+    const flying = Boolean(watchCam && watchCam.on);
+    if (!watchId && !flying) {
+      return;
+    }
+    watchId = 0;
+    watchSeen = false;
+    if (now || !flying || mode !== 'paused') {
+      if (watchCam) {
+        watchCam.stop();
+      }
+      document.documentElement.classList.remove('tg-watching');
+      /* Asked home before the camera had left the goggles (its file still
+       * on its way): it is home already, so the flight carries on. */
+      if (!now && !flying && mode === 'paused' && ui.screen === 'paused') {
+        ui.act('resume');
+      }
+      return;
+    }
+    watchCam.leave(shell.camera, performance.now());
+  }
+
+  function watchFrame(nowWall) {
+    watchHome.fov = ui.settings.cameraFov;
+    const phase = watchCam.frame(shell.camera, watchId && watchSeen ? watchPose : null, nowWall, watchWorld, watchHome);
+    shell.camera.up.set(0, 1, 0);
+    /* The pilot's own quad waits where it was left, and is in the picture
+     * whenever the camera is not inside it. */
+    shell.quad.visible = shell.camera.position.distanceToSquared(pCurr) > 0.09;
+    setCameraNear(fpvNear(shell.camera.position));
+    if (phase === 'home') {
+      document.documentElement.classList.remove('tg-watching');
+      shell.quad.visible = false;
+      if (ui.screen === 'paused') {
+        ui.act('resume');
+      }
+    }
   }
 
   /*

@@ -425,6 +425,38 @@ function linesBlock(near) {
   }
 }
 
+/*
+ * The stop sign's plate is solid (stopSignSolid in heads.js, the owner's
+ * ask of 2026-10-25, "so I can wall tap it"): lines along Street A at the
+ * plate's height, off its post, meet the plate from either side across
+ * its face, and lines past its four 45 degree corners and over its top
+ * do not, so it is an octagon and not a square. Plan offsets from the
+ * plate's middle, real metres, swept with the craft's own radius.
+ */
+const STOP = { px: -4.065, py: -11.05, h: 2.25 };
+const STOP_IN = [[0.2, 0], [-0.2, 0], [0, 0.3], [0, -0.3], [0.2, 0.2], [-0.2, -0.2], [0.33, 0], [0, 0.33]];
+const STOP_OUT = [[0.36, 0.36], [-0.36, 0.36], [0.36, -0.36], [-0.36, -0.36], [0, 0.46]];
+function stopSignBlock(near) {
+  const meets = (dy, dh, from) => {
+    for (let k = 0; k <= 100; k += 1) {
+      const p = worldAt(STOP.px + from * (1 - k / 50), STOP.py + dy, STOP.h + dh);
+      const hit = near(p).find((x) => x.name === 'stop sign' && hitAt([x], p, CRAFT_WORLD_R));
+      if (hit) {
+        return r3(STOP.px + from * (1 - k / 50));
+      }
+    }
+    return null;
+  };
+  const inside = STOP_IN.flatMap(([dy, dh]) => [1, -1].map((from) => ({ dy, dh, from, x: meets(dy, dh, from) })));
+  const missed = inside.filter((t) => t.x === null);
+  check('the stop sign\'s plate is solid across its face, from the street and from behind', missed.length === 0,
+    missed.length ? `through at ${missed.map((t) => `(${t.dy}, ${t.dh}) from the ${t.from > 0 ? 'east' : 'west'}`).join(', ')}`
+      : `${inside.length} lines meet it, the first at plan x ${inside[0].x}`);
+  const through = STOP_OUT.filter(([dy, dh]) => meets(dy, dh, 1) !== null);
+  check('and the air past its corners is open', through.length === 0,
+    through.length ? `meets it at ${through.map((t) => `(${t})`).join(', ')}` : `${STOP_OUT.length} lines clear`);
+}
+
 /* ------------------------------------------------------------------ */
 /* 4. The named gaps                                                   */
 /* ------------------------------------------------------------------ */
@@ -991,6 +1023,7 @@ async function main() {
   const L = layoutBlock();
   const { placed, near, own } = await placedBlock(L);
   linesBlock(near);
+  stopSignBlock(near);
   gapsBlock(placed, near);
   slotsBlock(own);
   roofsBlock(placed, near);

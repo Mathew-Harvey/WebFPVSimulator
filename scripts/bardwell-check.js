@@ -360,6 +360,8 @@ function raceLine() {
 const LINES = [
   ['the race, off the start and through all twenty two gates in order', raceLine()],
   ['in at the porch\'s west end over its railing and out through its front under a fern', [[-11, 9.9, 2.3], [-3.3, 9.9, 2.3], [-3.3, 9.9, 2.05], [-3.3, 5, 2.05]]],
+  ['up the front walk over the pen fence, up the steps and onto the porch to the door', [[-0.4, -8, 1.5], [-0.4, 7.0, 1.5], [-0.4, 10.6, 1.5]]],
+  ['from the porch out over the steps and down the walk, low', [[-0.4, 10.4, 1.2], [-0.4, 6.5, 1.2], [-0.4, 3.8, 1.2]]],
   ['through the woodshed\'s open west bay', [[-5.7, 20.6, 1.3], [-5.7, 29, 1.3]]],
   ['in under the lean-to and out of its west side', [[29.5, -27, 1.2], [29.5, -21, 1.2], [23.5, -21, 1.2]]],
   ['under the stand\'s deck', [[32.5, -21, 1.1], [32.5, -9, 1.1]]],

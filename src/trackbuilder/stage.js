@@ -71,6 +71,8 @@ import * as modelLib from './model.js';
 import { aperturesOf, elementById, apertureCenter, logoForDecal, dressOrder } from './model.js';
 import { apertureFrame, apertureCorners, clamp } from './geometry.js';
 import { isRoomType, roomWorldBoxes } from '../props/room.js';
+/* The whoop room the animation is shot in, in place of the black stage. */
+import { roomGroup, ROOM_SURROUND } from './stageroom.js';
 /* The game's own turf and the game's own way of painting a sponsor on it, for the race field. */
 import {
   GROUND_TURF, paintGroundLogo, paintGateHeader, paintGateSleeve, paintFlagSailPair, flagMast, flagSailProfile,
@@ -140,6 +142,18 @@ function poleBuilt(el, side, index) {
  */
 const AZIMUTH_OFF_AXIS = -55 * (Math.PI / 180);
 const ELEVATION = 40 * (Math.PI / 180);
+/*
+ * IN A ROOM the camera is lower and takes the far wall into the frame when it is near enough to be worth it, so
+ * the picture says where it is: the posters and the gate band behind the track. 30 degrees still reads the gates
+ * apart and leaves the wall a band of the frame; the wall's point is two metres up (the posters are at 2.3), and it
+ * is only asked for when holding it costs the track no more than ROOM_WALL_SHRINK of its size in the picture, because
+ * a wall that is far behind a small track would give the frame to the wall and shrink the track to a toy. Then the
+ * picture is the track on the mat, which is still the room.
+ */
+const ROOM_ELEVATION = 28 * (Math.PI / 180);
+const ROOM_WALL_SHRINK = 1.2;
+const ROOM_FIT_MARGIN = 1.1;
+const ROOM_WALL_SHOWN = 2.7;
 const FOV_DEG = 30;
 const FIT_MARGIN = 1.06;
 const AIM_HEIGHT = 0.35;
@@ -795,6 +809,54 @@ function shapeOfEl(el) {
 }
 
 /*
+ * THE DOCUMENT'S GROUND LOGOS, one plane each, at height z above the floor
+ * they lie on. Shared by the race field's grass and the whoop room's mat,
+ * because paint is the same paint on either: see fieldGroup for why a plane
+ * to a decal and not one canvas for the floor.
+ */
+function decalGroup(THREE, doc, logos, sizes, keep, z) {
+  const group = new THREE.Group();
+  const decalPx = Math.min(2048, 512 * (sizes.nameWidth / NAME_TEXTURE_W));
+  for (const el of doc.elements) {
+    if (ELEMENTS[el.type]?.kind !== KIND.DECAL) {
+      continue;
+    }
+    const mark = logoForDecal(doc, el);
+    const image = mark && logos ? logos.get(mark.id) : null;
+    if (!image) {
+      continue;
+    }
+    const w = Math.max(0.1, el.dims.width);
+    const d = Math.max(0.1, el.dims.depth);
+    const long = Math.max(w, d);
+    const dw = Math.max(8, Math.round((w / long) * decalPx));
+    const dh = Math.max(8, Math.round((d / long) * decalPx));
+    const dc = document.createElement('canvas');
+    dc.width = dw;
+    dc.height = dh;
+    paintGroundLogo(dc.getContext('2d'), dw, dh, { logo: image });
+    const tex = keep(new THREE.CanvasTexture(dc));
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 16;
+    const geo = keep(new THREE.PlaneGeometry(w, d));
+    /* Paint is over the grass and never fights it for depth: a field a
+     * hundred metres away is shot from far enough that a couple of
+     * centimetres is under the depth buffer's resolution. */
+    const mat = keep(new THREE.MeshStandardMaterial({
+      map: tex, roughness: 1, metalness: 0, transparent: true, depthWrite: false,
+      polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+    }));
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(el.position.x, el.position.y, z);
+    mesh.rotation.z = el.yaw || 0;
+    mesh.renderOrder = 1;
+    mesh.receiveShadow = true;
+    group.add(mesh);
+  }
+  return group;
+}
+
+/*
  * THE RACE FIELD, for an export that is asked to be set on one: the ground a
  * five inch track is flown on, seen the way the game paints it, in place of
  * the black stage and its pool of light.
@@ -866,43 +928,7 @@ function fieldGroup(THREE, doc, logos, sizes, keep) {
   group.add(floor);
 
   /* The sponsors. */
-  const decalPx = Math.min(2048, 512 * (sizes.nameWidth / NAME_TEXTURE_W));
-  for (const el of doc.elements) {
-    if (ELEMENTS[el.type]?.kind !== KIND.DECAL) {
-      continue;
-    }
-    const mark = logoForDecal(doc, el);
-    const image = mark && logos ? logos.get(mark.id) : null;
-    if (!image) {
-      continue;
-    }
-    const w = Math.max(0.1, el.dims.width);
-    const d = Math.max(0.1, el.dims.depth);
-    const long = Math.max(w, d);
-    const dw = Math.max(8, Math.round((w / long) * decalPx));
-    const dh = Math.max(8, Math.round((d / long) * decalPx));
-    const dc = document.createElement('canvas');
-    dc.width = dw;
-    dc.height = dh;
-    paintGroundLogo(dc.getContext('2d'), dw, dh, { logo: image });
-    const tex = keep(new THREE.CanvasTexture(dc));
-    tex.colorSpace = THREE.SRGBColorSpace;
-    tex.anisotropy = 16;
-    const geo = keep(new THREE.PlaneGeometry(w, d));
-    /* Paint is over the grass and never fights it for depth: a field a
-     * hundred metres away is shot from far enough that a couple of
-     * centimetres is under the depth buffer's resolution. */
-    const mat = keep(new THREE.MeshStandardMaterial({
-      map: tex, roughness: 1, metalness: 0, transparent: true, depthWrite: false,
-      polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
-    }));
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.set(el.position.x, el.position.y, 0.03);
-    mesh.rotation.z = el.yaw || 0;
-    mesh.renderOrder = 1;
-    mesh.receiveShadow = true;
-    group.add(mesh);
-  }
+  group.add(decalGroup(THREE, doc, logos, sizes, keep, 0.03));
   return group;
 }
 
@@ -1086,6 +1112,14 @@ export function buildStage(THREE, doc, path, {
    */
   field = false,
   logos = null,
+  /*
+   * SET ON A WHOOP TRACK, to draw it in its room: the walls with the sim's posters on them, the mat and the
+   * boards, and the course's ground logos painted on the mat. `roomArt` is { table, image, geometry }, the wall art
+   * as animate.js loads it, and a room without it is drawn bare, as the sim draws one whose art did not arrive.
+   * Ignored on a five inch track, whose setting is the field.
+   */
+  room = false,
+  roomArt = null,
 } = {}) {
   const sizes = detail || detailOf(width, height);
   const trash = [];
@@ -1095,6 +1129,7 @@ export function buildStage(THREE, doc, path, {
   };
 
   const micro = trackClassOf(doc) === 'micro';
+  const inRoom = room && micro && !field;
   const tubeOD = micro ? RACEGOW_PIPE_OD : FRAME_TUBE_OD;
 
   /*
@@ -1129,7 +1164,7 @@ export function buildStage(THREE, doc, path, {
   const jointR = tubeR * JOINT_SCALE;
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(field ? COL_SURROUND : COL_FLOOR);
+  scene.background = new THREE.Color(field ? COL_SURROUND : inRoom ? ROOM_SURROUND : COL_FLOOR);
 
   /* The one conversion. Document is Z up, Three is Y up. */
   const root = new THREE.Group();
@@ -1617,11 +1652,23 @@ export function buildStage(THREE, doc, path, {
   const azimuth = theta + AZIMUTH_OFF_AXIS;
 
   const floorZ = box.min.y - 0.001;
+  let roomCeiling = null;
+  let roomHeight = 0;
   if (field) {
     /* The race field, in document coordinates, under the track. */
     const turf = fieldGroup(THREE, doc, logos, sizes, keep);
     turf.position.z = floorZ;
     root.add(turf);
+  } else if (inRoom) {
+    /* The room: its floor, walls and posters, with the course's ground logos painted on the mat. */
+    const shell = roomGroup(THREE, doc, keep, roomArt);
+    shell.group.position.z = floorZ;
+    root.add(shell.group);
+    const paint = decalGroup(THREE, doc, logos, sizes, keep, 0.004);
+    paint.position.z = floorZ;
+    root.add(paint);
+    roomCeiling = shell.ceiling;
+    roomHeight = shell.height;
   } else {
     /* The floor. Large enough that its edge is never in shot, and black past
      * the pool so the track stands on nothing. The pool is sized against the
@@ -1653,7 +1700,7 @@ export function buildStage(THREE, doc, path, {
    */
   const nameCorners = [];
   if (nameplate) {
-    const nameTex = keep(nameTexture(THREE, doc.name, sizes.nameWidth, field));
+    const nameTex = keep(nameTexture(THREE, doc.name, sizes.nameWidth, field || inRoom));
     const nameW = radius * 1.1;
     const nameH = nameW * 0.25;
     const nameGeo = keep(new THREE.PlaneGeometry(nameW, nameH));
@@ -1716,6 +1763,59 @@ export function buildStage(THREE, doc, path, {
   for (const [dx, dz, dy] of nameCorners) {
     fitPts.push(new THREE.Vector3(dx, dz, -dy));
   }
+  if (inRoom && logos) {
+    /* The ground logos are part of the picture, so a mark at the edge of the track is not cropped away. */
+    for (const el of doc.elements) {
+      const mark = ELEMENTS[el.type]?.kind === KIND.DECAL ? logoForDecal(doc, el) : null;
+      if (!mark || !logos.get(mark.id)) {
+        continue;
+      }
+      /* A mark well out from the track is left to the edge of the picture, or the track would shrink to hold it. */
+      if (Math.hypot(el.position.x - centre.x, -el.position.y - centre.z) > 1.3 * radius) {
+        continue;
+      }
+      const hw = Math.max(0.1, el.dims.width) / 2;
+      const hd = Math.max(0.1, el.dims.depth) / 2;
+      const c = Math.cos(el.yaw || 0);
+      const sn = Math.sin(el.yaw || 0);
+      for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+        const lx = sx * hw;
+        const ly = sy * hd;
+        fitPts.push(new THREE.Vector3(
+          el.position.x + lx * c - ly * sn, floorZ, -(el.position.y + lx * sn + ly * c),
+        ));
+      }
+    }
+  }
+  if (inRoom) {
+    /* Where the line from the track's middle straight away from the lens meets the room's wall, in Three's frame
+     * (x as the document's, z minus its y, the room being 0 to width by minus depth to 0). */
+    const awayX = -Math.cos(azimuth);
+    const awayZ = Math.sin(azimuth);
+    let reach = Infinity;
+    if (awayX > 1e-6) { reach = Math.min(reach, (doc.field.width - centre.x) / awayX); }
+    if (awayX < -1e-6) { reach = Math.min(reach, (0 - centre.x) / awayX); }
+    if (awayZ > 1e-6) { reach = Math.min(reach, (0 - centre.z) / awayZ); }
+    if (awayZ < -1e-6) { reach = Math.min(reach, (-doc.field.depth - centre.z) / awayZ); }
+    if (reach > 0 && Number.isFinite(reach)) {
+      const wallPt = new THREE.Vector3(
+        centre.x + awayX * reach, floorZ + ROOM_WALL_SHOWN, centre.z + awayZ * reach,
+      );
+      const eye = new THREE.Vector3(
+        Math.cos(azimuth) * Math.cos(ROOM_ELEVATION), Math.sin(ROOM_ELEVATION), -Math.sin(azimuth) * Math.cos(ROOM_ELEVATION),
+      );
+      /* The distance a set of points needs, aimed the way the animation aims. */
+      const needed = (pts) => {
+        const bx = new THREE.Box3().setFromPoints(pts);
+        const c = bx.getCenter(new THREE.Vector3());
+        const at = new THREE.Vector3(c.x, bx.min.y + AIM_HEIGHT * (bx.max.y - bx.min.y), c.z);
+        return fitDistance(THREE, pts, at, eye, FOV_DEG, width / height);
+      };
+      if (needed([...fitPts, wallPt]) <= ROOM_WALL_SHRINK * needed(fitPts)) {
+        fitPts.push(wallPt);
+      }
+    }
+  }
 
   const framedBox = new THREE.Box3().setFromPoints(fitPts);
   const fitR = Math.max(0.6, framedBox.getBoundingSphere(new THREE.Sphere()).radius);
@@ -1745,13 +1845,17 @@ export function buildStage(THREE, doc, path, {
       Math.sin(elev),
       -Math.sin(az) * Math.cos(elev),
     );
-    const dist = Math.max(fitR * 0.5, FIT_MARGIN * fitDistance(
+    const dist = Math.max(fitR * 0.5, (inRoom ? ROOM_FIT_MARGIN : FIT_MARGIN) * fitDistance(
       THREE, fitPts, aim, eye, FOV_DEG, aspect,
     ));
     camera.position.copy(aim).addScaledVector(eye, dist);
     camera.lookAt(aim);
+    /* The ceiling is a lid from above, so it is drawn only for a lens that is under it. */
+    if (roomCeiling) {
+      roomCeiling.visible = camera.position.y - floorZ < roomHeight;
+    }
   };
-  placeCamera(azimuth, ELEVATION);
+  placeCamera(azimuth, inRoom ? ROOM_ELEVATION : ELEVATION);
   /*
    * A CAMERA THE CALLER SUPPLIES, in document coordinates, overrides the
    * framing above. It exists so an export can be shot from exactly the
@@ -1776,7 +1880,7 @@ export function buildStage(THREE, doc, path, {
    * face is grey rather than black.
    */
   const keyEl = (60 * Math.PI) / 180;
-  const key = new THREE.DirectionalLight(0xffffff, 2.1);
+  const key = new THREE.DirectionalLight(0xffffff, inRoom ? 1.5 : 2.1);
   const keyDist = Math.max(6, fitR * 3);
   const throwKey = (az) => {
     const keyAz = az + (40 * Math.PI) / 180;
@@ -1806,7 +1910,10 @@ export function buildStage(THREE, doc, path, {
    * a ground to bounce off, which is what the game's hemisphere is. */
   scene.add(field
     ? new THREE.HemisphereLight(0xdfeadf, 0x2c4a2a, 0.85)
-    : new THREE.HemisphereLight(0xaeb6c0, 0x08080c, 0.24));
+    : inRoom
+      /* A room with its lights on: pale plaster does not want a key as hard as the stage's, and wants a warm bounce. */
+      ? new THREE.HemisphereLight(0xfff4ea, 0x9a8088, 1.15)
+      : new THREE.HemisphereLight(0xaeb6c0, 0x08080c, 0.24));
 
   /*
    * THE PANE. One quad, moved, rather than one per gate lit in turn. Its

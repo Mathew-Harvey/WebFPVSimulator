@@ -133,8 +133,8 @@ export class RoomSession {
     this.link.away(on);
   }
 
-  look(avatar) {
-    return this.link.look(avatar);
+  look(avatar, handle) {
+    return this.link.look(avatar, handle);
   }
 
   leave() {

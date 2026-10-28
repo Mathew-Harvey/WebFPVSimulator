@@ -297,6 +297,33 @@ const CAL = {
   IDENT_DELTA: 0.45,
   IDENT_GAP: 0.18,
   IDENT_HOLD_MS: 400,
+  /*
+   * A RADIO WITH SHORT THROWS NEVER REACHED IDENT_DELTA, AND THE WIZARD
+   * WAITED FOR IT FOR EVER.
+   *
+   * IDENT_DELTA is raw axis units from rest, which a radio sending the full
+   * -1 to 1 passes at under half stick. The sweep step only asks for
+   * SWEEP_TRAVEL, 0.55 of travel END TO END, so a radio whose sticks span
+   * 0.55 to 0.9 finishes the sweep and then has under 0.45 on each side of
+   * centre to give: a stick held hard against its stop, the axis strip
+   * showing it at the end of its range, and nothing happening.
+   *
+   *   bug-feffc32f, bug-03300b11  a Reely HT-4 through a PPM cable (0401:0401),
+   *                 both stuck at "hold the right stick fully to the right",
+   *                 one saying "ch 0 was indeed at the max of the previously
+   *                 measured range"
+   *   bug-faac0b57  a SIMtransmitter 6 (06f7:0003): "range too short for
+   *                 log as full axis move"
+   *
+   * So the bar is IDENT_SPAN of the travel the sweep measured on that side
+   * of that axis, never more than IDENT_DELTA and never less than
+   * IDENT_FLOOR, which is well clear of REST_NOISE. Any radio with 0.57 or
+   * more on the side being asked for, which is every radio that sends the
+   * whole range, gets exactly the old bar. The gap shrinks with it, in the
+   * same proportion it has to IDENT_DELTA.
+   */
+  IDENT_SPAN: 0.8,
+  IDENT_FLOOR: 0.2,
   RELEASE_MS: 280,
   /*
    * HOW FAR THE THROTTLE'S REST HAS TO BE FROM THE BOTTOM OF ITS TRAVEL
@@ -579,10 +606,88 @@ function listGamepads() {
   for (let i = 0; i < list.length; i += 1) {
     const gp = list[i];
     if (gp && gp.connected && gp.axes && gp.axes.length >= 4) {
-      out.push(gp);
+      out.push(firefoxTriggerView(gp));
     }
   }
   return out;
+}
+
+/*
+ * FIREFOX ON LINUX DOES NOT PUT THE THROTTLE ON AXIS 4 EITHER. IT PUTS IT IN
+ * A BUTTON.
+ *
+ * The table above firefoxRadio was right about where Firefox makes ROOM for
+ * Z and Rz, slots 4 and 5, and wrong about where it sends them. Its evdev
+ * backend, for any pad it calls standard, turns every ABS_Z event into the
+ * analog value of button 6 (the left trigger) and every ABS_RZ event into
+ * button 7, as (v + 1) / 2, and never moves slots 4 and 5 at all
+ * (LinuxGamepad.cpp, the `case ABS_Z` and `case ABS_RZ` of its event loop).
+ * A radio in AETR order sends its throttle on Z. So on Firefox on Linux the
+ * throttle was in a button the whole time, and the Firefox guess read a
+ * slot that sits at the 0 Firefox starts it at, for ever.
+ *
+ * Every Firefox radio ticket since says so in numbers, once the report
+ * learned to carry button travel:
+ *
+ *   bug-c9b9b4b4  Pocket, EdgeTX 2.11.7, Firefox 155: "doesnt see throttle,
+ *                 thinks yaw is throttle". Button 6 read 0 to 0.44, every
+ *                 axis still.
+ *   bug-75b812f5  Pocket, Firefox 156: "no throttle". Button 6, 0 to 1.
+ *   bug-264724a7  Pocket, Zen (Firefox 157): "moving the throttle axis does
+ *                 nothing... works correctly in evtest". Button 6, 0 to 1.
+ *   bug-ad12371a  Boxer, Firefox 152: "throttle stick not recognized at all".
+ *   bug-77a63e1e  DJI FPV Controller 3, Firefox 157: "the throttle just
+ *                 doesnt move". Button 6, 0 to 1.
+ *
+ * So the two slots are given back their channels here, once, where the pads
+ * are listed, and everything downstream (the guess, the wizard, the checks,
+ * the report) sees the radio's channels where the table says they are. The
+ * transform is exact: Firefox's own (v + 1) / 2, undone. A slot is only ever
+ * filled while it has never read anything but 0, so a Firefox that one day
+ * sends Z to the axis again, or a pad whose slot 4 is a real slider, keeps
+ * its own axis from its first movement on. Only Firefox builds an id as
+ * vendor, product and name joined by hyphens, so no other browser comes
+ * near this. It allocates one small array per Firefox radio per listing,
+ * nothing at all for any other pad.
+ */
+const firefoxLiveSlots = new Map();
+
+function firefoxTriggerView(gp) {
+  const b = gp.buttons;
+  if (gp.mapping !== 'standard' || gp.axes.length < 5 || !b || b.length < 8
+    || !FIREFOX_PAD_ID.test(String(gp.id || ''))) {
+    return gp;
+  }
+  const key = padKey(gp);
+  let live = firefoxLiveSlots.get(key) || 0;
+  if (gp.axes[4] !== 0) {
+    live |= 1;
+  }
+  if (gp.axes.length > 5 && gp.axes[5] !== 0) {
+    live |= 2;
+  }
+  firefoxLiveSlots.set(key, live);
+  const fill5 = gp.axes.length > 5 && !(live & 2);
+  if ((live & 1) && !fill5) {
+    return gp;
+  }
+  const axes = Array.from(gp.axes);
+  const asAxis = (btn) => Math.max(-1, Math.min(1, (btn ? btn.value : 0) * 2 - 1));
+  if (!(live & 1)) {
+    axes[4] = asAxis(b[6]);
+  }
+  if (fill5) {
+    axes[5] = asAxis(b[7]);
+  }
+  return {
+    id: gp.id,
+    index: gp.index,
+    mapping: gp.mapping,
+    connected: gp.connected,
+    timestamp: gp.timestamp,
+    buttons: b,
+    axes,
+  };
 }
 
 function padKey(gp) {
@@ -878,6 +983,16 @@ function movingChannel(channels) {
   return best;
 }
 
+/* How far from rest axis i has to be held, on the side it is being held,
+ * to count as the stick the wizard asked for. See IDENT_SPAN. */
+function identBar(c, i, v) {
+  if (!c.sweepMin || !c.sweepMax || i >= c.sweepMin.length || i >= c.rest.length) {
+    return CAL.IDENT_DELTA;
+  }
+  const side = v >= c.rest[i] ? c.sweepMax[i] - c.rest[i] : c.rest[i] - c.sweepMin[i];
+  return Math.max(CAL.IDENT_FLOOR, Math.min(CAL.IDENT_DELTA, CAL.IDENT_SPAN * side));
+}
+
 function channelSpec(axis, rest, sample, min, max) {
   const towardHigh = sample >= rest;
   return {
@@ -1110,9 +1225,41 @@ function calHint(c, travelled, need, gp, idleThrottle = 0, moving = null, blocke
         }
       }
     }
-    return travelled < need
-      ? `Keep going. Full travel on ${travelled} of ${need} axes so far.`
-      : 'Back to rest to continue.';
+    if (travelled < need) {
+      return `Keep going. Full travel on ${travelled} of ${need} axes so far.`;
+    }
+    /*
+     * AND "BACK TO REST" DID NOT SAY WHICH REST.
+     *
+     * The step waits until EVERY axis is back within NEAR_REST of where the
+     * centre step read it, and rest there is throttle all the way down and
+     * every switch where it was. bug-6afb51eb, a Radiomaster Pocket: "Stuck
+     * on step2. Centered the sticks, does not help". The report has the
+     * throttle at the middle, which is centring the sticks, and not rest.
+     * So name the axis that is holding the step up, and what rest is for it.
+     */
+    const live = gp.axes || [];
+    let worst = -1;
+    let worstD = CAL.NEAR_REST;
+    for (let i = 0; i < Math.min(live.length, c.rest ? c.rest.length : 0); i += 1) {
+      const d = Math.abs(live[i] - c.rest[i]);
+      if (d >= worstD) {
+        worst = i;
+        worstD = d;
+      }
+    }
+    if (worst < 0) {
+      return 'Back to rest to continue.';
+    }
+    if (Math.abs(c.rest[worst]) > 0.8 && c.max[worst] - c.min[worst] >= CAL.SWEEP_TRAVEL) {
+      return `Back to rest to continue: axis ${worst} has not come back to where it started.`
+        + ' If that is the throttle, put it all the way down, as it was at the start.';
+    }
+    if (c.max[worst] - c.min[worst] < CAL.SWEEP_TRAVEL) {
+      return `Back to rest to continue: axis ${worst} is not where it was at the start.`
+        + ' If you flipped a switch, flip it back.';
+    }
+    return `Back to rest to continue: let the sticks come back to the centre (axis ${worst} is still off it).`;
   }
   if (c.step === 'confirm') {
     /* A throttle reading this high with the sticks sitting where the pilot
@@ -3670,6 +3817,12 @@ export class InputManager {
     if (c.holdMs < CAL.SWEEP_REST_MS) {
       return;
     }
+    /* What each axis could give on each side of rest, as the sweep found
+     * it, for identBar. Kept apart from min and max, which go on widening
+     * with every sample and so would always contain the very deflection
+     * they are asked to judge. */
+    c.sweepMin = c.min.slice();
+    c.sweepMax = c.max.slice();
     c.step = 'throttle';
     c.phase = 'hold';
     c.holdMs = 0;
@@ -3679,8 +3832,9 @@ export class InputManager {
     const channel = c.step;
     if (c.phase === 'hold') {
       const pick = pickUnusedAxis(axes, c.rest, usedAxes(c.draft));
-      const unique = pick.bestAbs - pick.secondAbs >= CAL.IDENT_GAP;
-      if (pick.best < 0 || pick.bestAbs < CAL.IDENT_DELTA || !unique) {
+      const bar = pick.best < 0 ? CAL.IDENT_DELTA : identBar(c, pick.best, axes[pick.best]);
+      const unique = pick.bestAbs - pick.secondAbs >= CAL.IDENT_GAP * (bar / CAL.IDENT_DELTA);
+      if (pick.best < 0 || pick.bestAbs < bar || !unique) {
         c.holdMs = 0;
         return;
       }

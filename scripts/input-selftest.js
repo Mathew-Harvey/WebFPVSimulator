@@ -1825,6 +1825,58 @@ section('Firefox on Linux calls an EdgeTX radio a gamepad: bug-c9423f3e, bug-9cc
       im.mapUsable() === true);
   }
   {
+    /*
+     * bug-c9b9b4b4, bug-75b812f5, bug-264724a7, bug-ad12371a, bug-77a63e1e:
+     * what Firefox really does with Z and Rz on a pad it calls standard. Slots
+     * 4 and 5 stay at the 0 they start at, and the channels arrive as the
+     * values of buttons 6 and 7, (v + 1) / 2. Nothing parked yet: Firefox
+     * has sent no event, so every axis and button reads 0.
+     */
+    const pad = ffRadio('1209-4f54-EdgeTX Radiomaster Pocket Joystick (fresh)', [0, 0, 0, 0, 0, 0, 0, 0]);
+    pad.buttons = Array.from({ length: 28 }, () => ({ pressed: false, value: 0 }));
+    const rig = new Rig(pad);
+    const im = rig.im;
+    const btn = (i, v) => { pad.buttons[i] = { pressed: v > 0.5, value: v }; pad.timestamp += 1; };
+    rig.step();
+    check('Firefox Z in button 6, nothing sent yet: throttle at idle, not half',
+      im.channels.throttle === 0, JSON.stringify(im.channels));
+    btn(6, 1); rig.step();
+    check('the throttle stick fully up, which Firefox puts in button 6: full throttle',
+      near(im.channels.throttle, 1) && im.mapReport().guess === 'firefox', JSON.stringify(im.channels));
+    btn(6, 0.5); rig.step();
+    check('half way up: half throttle, Firefox\'s (v + 1) / 2 undone exactly',
+      near(im.channels.throttle, 0.5), JSON.stringify(im.channels));
+    btn(6, 0); btn(7, 1); rig.step();
+    check('channel 6 in button 7 flies nothing',
+      im.channels.throttle === 0 && im.channels.roll === 0 && im.channels.pitch === 0
+      && im.channels.yaw === 0, JSON.stringify(im.channels));
+    check('and the throttle is the stick a report sees moving on axis 4',
+      im.mapReport().axes.throttle === 4);
+  }
+  {
+    /* A slot that has ever read anything but 0 is a real axis and is left
+     * alone: a Firefox that sends Z to the axis again flies as before. */
+    const pad = ffRadio('1209-4f54-EdgeTX Radiomaster Pocket Joystick (old Firefox)', [0, 0, 0, 0, 0.3, 0, 0, 0]);
+    const rig = new Rig(pad);
+    rig.step();
+    pad.buttons[6] = { pressed: true, value: 1 };
+    rig.ax(4, 1); rig.step();
+    check('a slot 4 that moves is the axis it says, whatever button 6 holds',
+      near(rig.im.channels.throttle, 1), JSON.stringify(rig.im.channels));
+    pad.buttons[6] = { pressed: false, value: 0 };
+    rig.ax(4, 0); rig.step();
+    check('and at exactly 0 after moving it is still that axis: half throttle, not button 6\'s idle',
+      near(rig.im.channels.throttle, 0.5), JSON.stringify(rig.im.channels));
+  }
+  {
+    /* Chrome never builds that id, so its pads are passed through as they are. */
+    const pad = { ...makePad([0, 0, 0, 0, 0, 0, 0, 0], 28, 'Radiomaster Pocket Joystick (Vendor: 1209 Product: 4f54)'), mapping: 'standard' };
+    pad.buttons[6] = { pressed: true, value: 1 };
+    const rig = new Rig(pad);
+    rig.step();
+    check('a Chrome pad\'s button 6 is never read as an axis', rig.im.channels.throttle !== 1, JSON.stringify(rig.im.channels));
+  }
+  {
     const pad = { ...makePad([0, 0, 0, 0], 17, '054c-0ce6-Sony Interactive Entertainment DualSense Wireless Controller'), mapping: 'standard' };
     const rig = new Rig(pad);
     rig.step();
@@ -2530,6 +2582,52 @@ section('a device with thumbs and keys: a stick key takes the sticks, a finger t
   check('with no thumb sticks mounted, a desktop: a key flies the keyboard as ever and a touch event is harmless',
     r.im.hand === 'thumbs' && !r.im.isTouchPrimary() && r.im.source === 'the keyboard' && r.im.channels.throttle > 0.2,
     `${r.im.hand} ${r.im.source} ${r.im.channels.throttle}`);
+}
+
+section('a radio with short throws finishes the wizard: bug-feffc32f, bug-03300b11, bug-faac0b57');
+{
+  /* Sticks that reach 0.35 either side of centre: 0.7 end to end, which the
+   * sweep accepts, and under the 0.45 from rest that the identify steps
+   * used to insist on whatever the radio could give. */
+  const rig = new Rig(makePad([0, 0, -0.35, 0, 0], 3, '0401-0401-Unknown Gamepad short'));
+  const drove = driveWizard(rig, {
+    roll: 0, pitch: 1, yaw: 3, thr: 2, thrRest: -0.35, thrReturn: -0.35, full: 0.35,
+  });
+  check('every channel identifies on 0.35 of throw', drove === true, String(drove));
+  check('and reaches the check step', rig.view().step === 'confirm', rig.view().step);
+  rig.ax(0, 0.35); rig.step();
+  check('the stick held against its stop is full roll', Math.abs(rig.im.calibrationView().channels.roll) > 0.99,
+    JSON.stringify(rig.im.calibrationView().channels));
+}
+{
+  /* A full range radio still needs the old bar: a third of a stick is not
+   * a deliberate push. */
+  const rig = new Rig(makePad([0, 0, -1, 0, 0], 3, 'Full range radio'));
+  rig.im.startCalibration();
+  rig.waitStep('sweep');
+  for (const i of [0, 1, 3, 2]) {
+    rig.ax(i, 1); rig.step(); rig.ax(i, -1); rig.step(); rig.ax(i, i === 2 ? -1 : 0); rig.step();
+  }
+  rig.waitStep('throttle');
+  rig.ax(2, 1); rig.waitPhase('release'); rig.ax(2, -1); rig.waitStep('roll');
+  rig.ax(0, 0.35); rig.run(1200);
+  check('on a radio that sends the whole range, 0.35 of roll is still not taken as the push',
+    rig.view().step === 'roll' && rig.view().phase === 'hold', `${rig.view().step} ${rig.view().phase}`);
+}
+section('the full range step says which rest it is waiting for: bug-6afb51eb');
+{
+  const rig = new Rig(makePad([0, 0, -1, 0, 1, -1, 0, 0], 24, 'Radiomaster Pocket Joystick hint'));
+  rig.im.startCalibration();
+  rig.waitStep('sweep');
+  for (const i of [0, 1, 2, 3]) {
+    rig.ax(i, 1); rig.step(); rig.ax(i, -1); rig.step(); rig.ax(i, 0); rig.step();
+  }
+  rig.run(600);
+  const v = rig.view();
+  check('the sticks centred and the throttle left in the middle: still on the full range step', v.step === 'sweep', v.step);
+  check('and the hint names the throttle and where it goes', /axis 2/.test(v.hint) && /all the way down/.test(v.hint), v.hint);
+  rig.ax(2, -1); rig.run(600);
+  check('throttle down: on to the throttle step', rig.view().step === 'throttle', rig.view().step);
 }
 
 console.log(failed ?`\n${failed} failed, ${passed} passed` : `\nall ${passed} passed`);

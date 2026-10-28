@@ -462,11 +462,17 @@ export class RoomLink {
     this.sendJson({ t: 'away', on: this.awayOn });
   }
 
-  /* A new look from the room's page. Kept for the hello too, so a pilot
-   * who drops and comes back comes back as they now look. */
-  look(avatar) {
+  /* A new look from the room's page, and a new name with it if the pilot
+   * typed one. Kept for the hello too, so a pilot who drops and comes back
+   * comes back as they now look and are called. */
+  look(avatar, handle) {
     this.avatar = avatar;
-    return this.sendJson({ t: 'look', avatar });
+    if (typeof handle !== 'string') {
+      return this.sendJson({ t: 'look', avatar });
+    }
+    /* A new name too, kept for the hello as the look is. */
+    this.handle = handle;
+    return this.sendJson({ t: 'look', avatar, handle });
   }
 
   settings(room) {

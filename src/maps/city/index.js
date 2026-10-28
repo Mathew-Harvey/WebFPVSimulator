@@ -771,6 +771,56 @@ function coveredAlready(list, x, z, y) {
   return false;
 }
 
+/*
+ * HAS THE AUTHOR ALREADY COLLIDED THIS OBJECT, SOMEWHERE OTHER THAN ITS MIDDLE?
+ *
+ * coveredAlready asks about the centre of the object's box, which is the
+ * right question for a thing that is solid where it is drawn and the wrong
+ * one for a thing whose box is mostly arm. A utility pole is a 0.4 m post
+ * with crossarms 2.1 m long and, on the lamp poles, a 1.3 m arm and shade out
+ * over the road, and the town collides the post and nothing else, by hand,
+ * beside every makePole (`ctx.collide`, 0.44 m square, to the pole's top).
+ * The centre of the box is out under the lamp arm, so it read as uncovered.
+ *
+ * Then COVER_MIN_FILL could not see the air either, because the pole is
+ * baked into one mesh per material: the crossarms and the cable bundle that
+ * runs down the pole are one 'dark' mesh whose own box is the crossarm's
+ * width by the pole's height, and the sum of mesh boxes it measures came out
+ * as full. So the pass stood a solid block over the whole thing, 1.9 by 2.1 m
+ * from the footway to 9.85 m, built by the slab cut out of the arms at the
+ * top and filled to the ground under them.
+ *
+ *   bug-32feeb4a  "Bumped into this invisible wall next to the power pole
+ *                 near the gum vending machines on the corner": the lamp
+ *                 pole at (-2.6, -60.5) in approach.js, read off the page
+ *                 with __colliderBoxes.
+ *
+ * So a TALL object with an authored rectangle standing wholly inside its own
+ * footprint, as high as its middle, is a post the author has already decided
+ * the collision of, and it is left to that. Wholly inside, so a wall or a
+ * kerb running past a bench is not mistaken for the bench's own. Tall,
+ * because measured on the town it is the nine poles whose box centre is
+ * out under an arm and nothing else, where the rule alone also took four
+ * tunnel walkways (0.5 m slabs with a kerb collider along one edge) and a
+ * low cart, all of which are solid where they are drawn and keep their box.
+ */
+const AUTHORED_POST_MIN_HEIGHT = 3;
+function authoredInside(list, b) {
+  const midY = (b.y0 + b.y1) * 0.5;
+  for (let i = 0; i < list.length; i += 1) {
+    const c = list[i];
+    if (c.x0 < b.x0 || c.x1 > b.x1 || c.z0 < b.z0 || c.z1 > b.z1) {
+      continue;
+    }
+    const top = c.top === undefined ? BOX_CEIL : c.top;
+    const bottom = c.bottom === undefined ? BOX_FLOOR : c.bottom;
+    if (bottom <= midY && top >= midY) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /* The town's drawn geometry now comes from ./drawn.js, which subdivides a
  * sloped mesh into a staircase rather than handing the fit one box for it. */
 
@@ -2041,7 +2091,7 @@ function buildColliders(world) {
     return v;
   };
   const fitStats = {
-    fitted: 0, unmatched: 0, split: 0, extraBoxes: 0, coverSplit: 0, lifted: 0, topTrims: 0, sideTrims: 0, maxTopTrim: 0, maxSideTrim: 0, totalTopTrim: 0, covered: 0, seeThrough: 0, roofLifts: 0, droppedEmpty: 0, tight: 0, worst: [],
+    fitted: 0, unmatched: 0, split: 0, extraBoxes: 0, coverSplit: 0, lifted: 0, topTrims: 0, sideTrims: 0, maxTopTrim: 0, maxSideTrim: 0, totalTopTrim: 0, covered: 0, authoredInside: 0, seeThrough: 0, roofLifts: 0, droppedEmpty: 0, tight: 0, worst: [],
   };
   /*
    * The boxes a split rectangle produced beyond its first.
@@ -2230,6 +2280,10 @@ function buildColliders(world) {
       continue;
     }
     if (coveredAlready(world.colliders, cx, cz, b.y0 + sy * 0.5)) {
+      continue;
+    }
+    if (sy >= AUTHORED_POST_MIN_HEIGHT && authoredInside(world.colliders, b)) {
+      fitStats.authoredInside += 1;
       continue;
     }
     /*

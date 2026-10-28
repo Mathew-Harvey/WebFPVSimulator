@@ -226,6 +226,7 @@ import {
 } from './tuneinvite.js';
 import { ChaseHud, chaseCallText } from './chasehud.js';
 import { BalloonHud } from './balloonhud.js';
+import { FilmHud } from './filmhud.js';
 import { YardHud } from './yardhud.js';
 import {
   closeCallCount, drawMangaPage, drawRunCard, mangaPanels, pageSentence,
@@ -840,11 +841,12 @@ const scoringBoardBuilt = (where) => 'Scored run: two minutes from the first thi
  * under the bar, where it is the longest.
  */
 function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
-  const built = mapId === 'built' || mapId === 'house' || mapId === 'heads' || mapId === 'bardwell' || mapId === 'warehouse';
+  const built = mapId === 'built' || mapId === 'house' || mapId === 'heads' || mapId === 'bardwell' || mapId === 'warehouse' || mapId === 'drift';
   const where = mapId === 'house' ? "Nick's house"
     : mapId === 'heads' ? "Heads' house"
       : mapId === 'bardwell' ? "Joshua's house"
-        : mapId === 'warehouse' ? "Thomas's shop" : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
+        : mapId === 'warehouse' ? "Thomas's shop"
+          : mapId === 'drift' ? 'Drift Matsuri' : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
   if (mode === 'off') {
     return `${drawn ? '' : `${SCORING_UNDRAWN} `}${scoringOff(where)} ${built ? scoringMoreBuilt(where) : SCORING_MORE}`;
   }
@@ -882,6 +884,10 @@ const BARDWELL_OFF_BOARD = "The board keeps no runs for Joshua Bardwell's house,
 
 /* Thomas More's Shop, the same way. */
 const WAREHOUSE_OFF_BOARD = "The board keeps no runs for Thomas More's Shop, so a run flown there stays here."
+  + ' Fly the town for a run that can go up.';
+
+/* Drift Matsuri, the same way. */
+const DRIFT_OFF_BOARD = 'The board keeps no runs for Drift Matsuri, so a run flown there stays here.'
   + ' Fly the town for a run that can go up.';
 
 /*
@@ -5651,6 +5657,8 @@ export class Ui {
     this.chaseCarsOn = false;
     /* Balloon chase (src/ui/balloonhud.js). main.js says when it is up. */
     this.balloonHud = new BalloonHud(r);
+    /* Drift Matsuri's camera (src/ui/filmhud.js). main.js says when it is up. */
+    this.filmHud = new FilmHud(r);
     /* The yard track on a house map (src/ui/yardhud.js). main.js says when
      * it is up. */
     this.yardHud = new YardHud(r);
@@ -10555,7 +10563,7 @@ export class Ui {
          * to Scored, would send them to fix something that is not the
          * reason. */
         const built = this.settings.map === 'built' || this.settings.map === 'house' || this.settings.map === 'heads'
-          || this.settings.map === 'bardwell' || this.settings.map === 'warehouse';
+          || this.settings.map === 'bardwell' || this.settings.map === 'warehouse' || this.settings.map === 'drift';
         return [
           { label: 'Fly again', action: 'restart', primary: true },
           this.runPosted
@@ -10584,6 +10592,7 @@ export class Ui {
                 : this.settings.map === 'heads' ? HEADS_OFF_BOARD
                   : this.settings.map === 'bardwell' ? BARDWELL_OFF_BOARD
                     : this.settings.map === 'warehouse' ? WAREHOUSE_OFF_BOARD
+                      : this.settings.map === 'drift' ? DRIFT_OFF_BOARD
                       : (this.sharedMap ? BOARD_MAP_OFF_BOARD : BUILT_OFF_BOARD)) : (nothing
                 ? 'A run with no tricks in it is not a score. Fly one and it appears here.'
                 : (run && run.timed === false
@@ -16552,6 +16561,9 @@ export class Ui {
     this.scoreHud.setVisible(
       this.settings.mangaAndScoring
       && this.osdMode === 'freestyle'
+      /* Drift Matsuri's score is the take's, on the camera's own slate
+       * (src/ui/filmhud.js): two scores on one screen is one too many. */
+      && this.settings.map !== 'drift'
       && (this.screen === 'flight' || this.screen === 'paused'),
     );
   }

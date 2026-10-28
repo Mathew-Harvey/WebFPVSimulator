@@ -481,7 +481,7 @@ const AXIS_X = new THREE.Vector3(1, 0, 0);
  * alone. The entry is written out because it has moved with the directory:
  * it was three before looks.js came and four before egg.js, and with no
  * entry then the bar sat at 75 percent until the import resolved. */
-const MAP_MODULE_COUNT = { field: 1, city: 72, custom: 1, built: 5, house: 3, heads: 4, bardwell: 4, warehouse: 3 };
+const MAP_MODULE_COUNT = { field: 1, city: 72, custom: 1, built: 5, house: 3, heads: 4, bardwell: 4, warehouse: 3, drift: 3 };
 /* Where a map's modules live, so the loading bar can count them. Data, not a
  * ternary: the ternary read "field or else city", so a third map counted its
  * modules under the city's prefix and the bar sat at zero.
@@ -499,6 +499,7 @@ const MAP_MODULE_PREFIX = {
   heads: '/src/maps/heads/',
   bardwell: '/src/maps/bardwell/',
   warehouse: '/src/maps/warehouse/',
+  drift: '/src/maps/drift/',
 };
 
 /*
@@ -1676,7 +1677,9 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     chase.setCars(cars);
     chasePaidUpTo = 0;
-    ui.setChaseCars(cars.length);
+    /* On Drift Matsuri the camera is the game (filmFeed below), and the
+     * Tail meter would be a second meter for the same cars. */
+    ui.setChaseCars(view.filmGame ? 0 : cars.length);
     carTouched = false;
     chaseCrashed = false;
     carClockRead = -1;
@@ -1741,9 +1744,159 @@ export async function boot({ loading, bootStart, mapId }) {
     chaseCraft.vy = chaseVel.y;
     chaseCraft.vz = chaseVel.z;
     chase.step(clock, chaseCraft, carFeed, carTouched, chaseCrashed);
+    if (view.filmGame) {
+      filmFeed(clock, st);
+    }
     carTouched = false;
     chaseCrashed = false;
     chaseToCounter(clock);
+  }
+
+  /*
+   * DRIFT MATSURI'S CAMERA (src/game/film.js, src/maps/drift/), fed at the
+   * chase's stride from the same poses, in the air only: the craft's camera
+   * as the pilot flies it, the craft's turn with the spawn's and the
+   * camera's tilt on it, its forward, up and right in the world, and the
+   * body rates. A touch of a car is a crash to the camera, as a crash the
+   * shell called is. Scratch objects only: nothing is allocated.
+   */
+  const filmCam = {
+    x: 0, y: 0, z: 0, fx: 0, fy: 0, fz: -1, ux: 0, uy: 1, uz: 0, rx: 1, ry: 0, rz: 0, p: 0, q: 0, r: 0,
+  };
+  const filmQuat = new THREE.Quaternion();
+  const filmAxis = new THREE.Vector3();
+  function filmFeed(clock, st) {
+    const film = view.filmGame.film;
+    simQuatToThree(st[7], st[8], st[9], st[10], filmQuat);
+    filmQuat.premultiply(qSpawn).multiply(qTilt);
+    filmAxis.set(0, 0, -1).applyQuaternion(filmQuat);
+    filmCam.fx = filmAxis.x;
+    filmCam.fy = filmAxis.y;
+    filmCam.fz = filmAxis.z;
+    filmAxis.set(0, 1, 0).applyQuaternion(filmQuat);
+    filmCam.ux = filmAxis.x;
+    filmCam.uy = filmAxis.y;
+    filmCam.uz = filmAxis.z;
+    filmAxis.set(1, 0, 0).applyQuaternion(filmQuat);
+    filmCam.rx = filmAxis.x;
+    filmCam.ry = filmAxis.y;
+    filmCam.rz = filmAxis.z;
+    filmCam.x = chaseCraft.x;
+    filmCam.y = chaseCraft.y;
+    filmCam.z = chaseCraft.z;
+    filmCam.p = st[11];
+    filmCam.q = st[12];
+    filmCam.r = st[13];
+    film.step(clock, filmCam, carFeed, carTouched || chaseCrashed);
+  }
+
+  /*
+   * Once a frame on Drift Matsuri: the lens the judge measures through, the
+   * viewfinder in flight and paused, and the frame's callouts. A take that
+   * is cut is kept as this browser's best on the map if it is.
+   */
+  /*
+   * HARNESS ONLY: a camera rig for Drift Matsuri's mockups
+   * (window.__filmRig). The headless container cannot fly a five inch
+   * after a drift car, so the rig puts the camera where a pilot would be,
+   * off one car's pose, every frame, after the cars are posed, and feeds the
+   * real judge what that camera sees, on the lap clock, with the craft
+   * sitting on the tower. A rig's camera does not turn on its own, so its
+   * rates are zero. Nothing calls it in play.
+   */
+  let filmRig = null;
+  const filmRigLook = new THREE.Vector3();
+  function filmRigFrame() {
+    const r = filmRig;
+    const game = view && view.filmGame;
+    const a = carCurr[r.slot];
+    if (!game || !a || !a.on || mode !== 'flight') {
+      return;
+    }
+    const b = carCurr[r.with ?? r.slot] && carCurr[r.with ?? r.slot].on ? carCurr[r.with ?? r.slot] : a;
+    const rx = -a.hz;
+    const rz = a.hx;
+    const px = a.x + a.hx * r.along + rx * r.side;
+    const pz = a.z + a.hz * r.along + rz * r.side;
+    filmRigLook.set((a.x + b.x) / 2 + a.hx * (r.lead || 0), (a.y + b.y) / 2 + 0.7, (a.z + b.z) / 2 + a.hz * (r.lead || 0));
+    camOverride = [px, a.y + r.up, pz, filmRigLook.x, filmRigLook.y, filmRigLook.z];
+    shell.camera.position.set(camOverride[0], camOverride[1], camOverride[2]);
+    shell.camera.up.set(0, 1, 0);
+    shell.camera.lookAt(filmRigLook);
+    shell.camera.updateMatrixWorld();
+    const q = shell.camera.quaternion;
+    filmAxis.set(0, 0, -1).applyQuaternion(q);
+    filmCam.fx = filmAxis.x;
+    filmCam.fy = filmAxis.y;
+    filmCam.fz = filmAxis.z;
+    filmAxis.set(0, 1, 0).applyQuaternion(q);
+    filmCam.ux = filmAxis.x;
+    filmCam.uy = filmAxis.y;
+    filmCam.uz = filmAxis.z;
+    filmAxis.set(1, 0, 0).applyQuaternion(q);
+    filmCam.rx = filmAxis.x;
+    filmCam.ry = filmAxis.y;
+    filmCam.rz = filmAxis.z;
+    filmCam.x = camOverride[0];
+    filmCam.y = camOverride[1];
+    filmCam.z = camOverride[2];
+    filmCam.p = 0;
+    filmCam.q = 0;
+    filmCam.r = 0;
+    game.film.step(simTimeMs, filmCam, carCurr, false);
+  }
+  window.__filmRig = (r) => {
+    filmRig = r ? { along: -5, side: 0, up: 1.6, lead: 0, ...r } : null;
+    if (!r) {
+      camOverride = null;
+    }
+    return view && view.filmGame ? view.filmGame.film.view() : null;
+  };
+  window.__filmCut = () => {
+    if (view && view.filmGame && view.filmGame.film.running) {
+      view.filmGame.film.finish(simTimeMs, 'cut');
+    }
+  };
+  window.__film = () => (view && view.filmGame ? { view: { ...view.filmGame.film.view() }, summary: view.filmGame.film.summary } : null);
+
+  const FILM_BEST_KEY = 'webfpv.drift.best.v1';
+  let filmBest = -1;
+  function filmFrame() {
+    const game = view && view.filmGame;
+    ui.filmHud.setVisible(Boolean(game) && !replayMode && (ui.screen === 'flight' || ui.screen === 'paused'));
+    if (!game) {
+      return;
+    }
+    if (filmBest < 0) {
+      filmBest = 0;
+      try {
+        filmBest = Number(localStorage.getItem(FILM_BEST_KEY)) || 0;
+      } catch {
+        filmBest = 0;
+      }
+      ui.filmHud.setBest(filmBest);
+    }
+    const film = game.film;
+    film.setLens(Math.tan((shell.camera.fov * Math.PI) / 360), shell.camera.aspect);
+    const evs = film.drainEvents();
+    if (evs) {
+      for (const e of evs) {
+        if ((e.type === 'cut' || e.type === 'crash') && e.summary && e.summary.score > filmBest) {
+          e.newBest = true;
+          filmBest = e.summary.score;
+          try {
+            localStorage.setItem(FILM_BEST_KEY, String(filmBest));
+          } catch {
+            /* A private window keeps it for the session only. */
+          }
+        }
+      }
+      ui.filmHud.events(evs);
+      if (evs.some((e) => e.newBest)) {
+        ui.filmHud.setBest(filmBest);
+      }
+    }
+    ui.filmHud.update(film.view());
   }
 
   /*
@@ -6079,6 +6232,11 @@ export async function boot({ loading, bootStart, mapId }) {
     counterBailAt = -1;
     /* The chase too, and the smoke of the last run's drift car. */
     chase.reset();
+    /* And Drift Matsuri's take, which rolls again from the next take off. */
+    if (view.filmGame) {
+      view.filmGame.film.reset();
+      ui.filmHud.reset();
+    }
     chasePaidUpTo = 0;
     ui.resetChase();
     carTouched = false;
@@ -7808,6 +7966,14 @@ export async function boot({ loading, bootStart, mapId }) {
     if (view.id === 'bardwell') {
       notice = {
         text: "The board keeps no runs for Joshua Bardwell's house, so its runs stay here.",
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
+    /* Nor for Drift Matsuri: DRIFT_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'drift') {
+      notice = {
+        text: 'The board keeps no runs for Drift Matsuri, so its runs stay here.',
         untilMs: performance.now() + 4200,
       };
       return;
@@ -11103,6 +11269,7 @@ export async function boot({ loading, bootStart, mapId }) {
       /* The cars, at the same clock, drawn at the craft's alpha in flight;
        * the title's and the finish's own clocks are whole steps, and the
        * title carries its fraction in titleAcc. */
+      filmFrame();
       syncBalloons();
       if (balloonGame) {
         if (mode === 'title' || (mode === 'flight' && balloonIdle)) {
@@ -11121,6 +11288,9 @@ export async function boot({ loading, bootStart, mapId }) {
           trafficFrame(simTimeMs + Math.floor(Math.max(0, finishCamMs)), 1);
         } else {
           trafficFrame(simTimeMs, a);
+        }
+        if (filmRig) {
+          filmRigFrame();
         }
       }
 
@@ -11738,7 +11908,10 @@ export async function boot({ loading, bootStart, mapId }) {
       let second = runLaps === PRACTICE_LAPS
         ? '\nPractice: no lap limit. The green gate starts your lap'
         : '\nThe green gate starts your lap';
-      if (race.freestyle) {
+      if (race.freestyle && view.filmGame) {
+        /* Drift Matsuri: the take is the game, and it starts in the air. */
+        second = '\nYou are the camera. Film the drift battles for a minute.';
+      } else if (race.freestyle) {
         /* The counter counts the lines in every position (decision 2), so
          * even Lines only has something to promise now. With Manga and
          * scoring off none of that count is drawn, so the line promises

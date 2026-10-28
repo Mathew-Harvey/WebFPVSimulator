@@ -173,6 +173,22 @@ export const MAPS = [
     hudScale: 3.5,
     load: () => import('./warehouse/index.js'),
   },
+  /*
+   * DRIFT MATSURI, on the owner's ask of 28 October 2026: a drift circuit
+   * at a spring festival under the cherry blossom, after Ebisu's Minami
+   * course, with drift cars battling round it in tandem, and a mini game
+   * where the pilot is the camera and every take is judged on the footage
+   * (src/maps/drift/, src/game/film.js). Built by the built map's pipeline
+   * and flown on the five inch at life size; off the board like the houses.
+   */
+  {
+    id: 'drift',
+    name: 'Drift Matsuri',
+    mode: 'freestyle',
+    note: 'A drift festival under the cherry blossom. Tandem battles run the course all day: you are the camera. Chase the cars, keep them in the middle of the shot, get both in frame, and land the money shot at the clipping zones.',
+    buildMs: MAP_BUILD_MS.drift,
+    load: () => import('./drift/index.js'),
+  },
 ];
 
 /* The house's document id (src/maps/house/yard.js), here so the stamps can
@@ -187,6 +203,9 @@ export const BARDWELL_DOC_ID = 'trk-ba4dbe11';
 
 /* Thomas More's Shop's (src/maps/warehouse/yard.js), the same way. */
 export const WAREHOUSE_DOC_ID = 'trk-7a3e0f27';
+
+/* Drift Matsuri's (src/maps/drift/yard.js), the same way. */
+export const DRIFT_DOC_ID = 'trk-d81f7a75';
 
 export function mapById(id) {
   return MAPS.find((m) => m.id === id) ?? MAPS[0];

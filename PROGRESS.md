@@ -72617,3 +72617,4 @@ The owner, 10:36Z in the goat herding thread, after the bug sweep reply: "push t
 - Latency: no change. One arithmetic expression in a poll that already ran; no allocation, no extra event, sampling untouched. Checked by reading the diff and `input-selftest` (410 passed). Proxy only.
 - Not run: `npm run verify` (not physics, plant, ABI or build), `lint:input` (about 5 minutes, known flakes). Not flown. A held key now keeps climbing, so a long hold reaches full stick sooner than before at 750 ms (0.34 before, about 0.66 now).
 - The owner, 2026-10-28 10:58:31Z: "push to main", for this entry (sim PR 174). Main had not moved since the branch was cut (b0890a8), so it fast-forwarded and the checks above stand for what landed. No board change. Not flown yet.
+- The owner, 2026-10-28 11:43:09Z: "push to main", for PR 176 (the catch fence fix). Main had not moved since the merge into the branch (8384502), so main fast-forwarded.

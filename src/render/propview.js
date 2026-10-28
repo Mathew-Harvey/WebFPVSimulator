@@ -218,6 +218,10 @@ export function buildPropView() {
 
   /* What the props bake was made from. */
   let bakedDiscs = null;
+  /* The front blur's material the colour was read from: a career livery
+   * repaints it (src/render/herocraft.js paint), and the colour is copied
+   * again every frame so a repaint shows without a bake. */
+  let colorFrom = null;
   let bakedScale = NaN;
   let bakedTilt = NaN;
   let bakedFwd = NaN;
@@ -353,6 +357,7 @@ export function buildPropView() {
       if (!color) {
         color = f.d.material.color;
         opacity = f.d.material.opacity;
+        colorFrom = f.d.material;
       }
       /* Spin is left out: the disc is round. */
       mDisc.makeTranslation(f.x, f.y, f.z);
@@ -429,6 +434,9 @@ export function buildPropView() {
           || o.fwd !== bakedFwd || o.up !== bakedUp
           || camera.fov !== bakedFov || camera.aspect !== bakedAspect) {
           bake(o.discs, scale, o, camera.fov, camera.aspect);
+        }
+        if (colorFrom) {
+          propMat.color.copy(colorFrom.color);
         }
         camera.updateMatrixWorld();
         props.matrix.copy(camera.matrixWorld);

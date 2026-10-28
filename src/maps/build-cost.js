@@ -69,4 +69,7 @@ export const MAP_BUILD_MS = {
    * more parts; measured by node scripts/shots.js when it is next run on a
    * quiet container. */
   warehouse: 1700,
+  /* Drift Matsuri (src/maps/drift/): a plot of trees and a festival round a
+   * drift course. An estimate until it is measured. */
+  drift: 2600,
 };

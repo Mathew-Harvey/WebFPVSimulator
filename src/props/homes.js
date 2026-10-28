@@ -169,6 +169,16 @@ export const MATERIALS = {
   whRed: { c: 0x9d3d42, tint: 0x5a3050, noReceive: true },
   whLamp: { f: 0xfff6e2, noCast: true },
   whAsphalt: { c: 0x50535a, tint: 0x3a3850 },
+
+  /* Drift Matsuri (src/maps/drift/): the torii's vermilion and its black
+   * cap, the indigo of a festival happi coat and a nobori, a nobori's red,
+   * and tyre rubber. Every other colour it draws is one of the town's. */
+  drToriiRed: { c: 0xe4472c, tint: 0x7a3a5a },
+  drToriiBlack: { c: 0x2b2830, tint: 0x221f2c },
+  drIndigo: { c: 0x2e4382, tint: 0x2a2e5a },
+  drNoboriRed: { c: 0xd8333d, tint: 0x6e2f52 },
+  drTyre: { c: 0x2f2e34, tint: 0x24222e },
+  drSkin: { c: 0xebc6a2, tint: 0x8a6a7a },
 };
 
 /*

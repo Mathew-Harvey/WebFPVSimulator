@@ -72,7 +72,7 @@ export function isBuiltInWorld(id) {
 /*
  * The aircraft a room is flown on: a whoop room's whoop, a five inch room's
  * five inch, and for freestyle what the world is for (the houses are a
- * whoop's), else what the host was flying, which the pose unit says: the
+ * whoop's, until the quad picker of 2026-10-28), now what the host was flying, which the pose unit says: the
  * host's page picks 1 cm for a whoop and 2 cm for a five inch.
  */
 export function craftForRoom(room) {
@@ -85,10 +85,8 @@ export function craftForRoom(room) {
   if (room.way === '5inch') {
     return '5inch';
   }
-  const m = MAPS.find((x) => x.id === room.map);
-  if (m && m.craft) {
-    return m.craft;
-  }
+  /* A world no longer names the aircraft: since the quad picker
+   * (2026-10-28) either flies any of them, so the host's pose unit says. */
   return room.scale >= 100 ? 'whoop65' : '5inch';
 }
 

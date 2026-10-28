@@ -6303,6 +6303,49 @@
         color: var(--deep); font-weight: 600;
       }
       .name-dialog-btn:disabled { opacity: 0.45; cursor: default; }
+      /*
+       * THE QUAD PICKER (askQuad in src/ui/ui.js): two manga panels on the
+       * dialog's surface, paper under ink like the menus, each a picture of
+       * the real model facing the reader, a stamp, a name and two lines. The
+       * recommended panel wears the mint a record wears; the one the cursor
+       * is on is outlined in sakura, so "chosen" and "suggested" never look
+       * like the same thing.
+       */
+      .name-dialog-box.quad-pick { width: min(640px, 94vw); }
+      .quad-pick-row {
+        display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+        margin: 6px 0 14px;
+      }
+      @media (max-width: 520px) { .quad-pick-row { grid-template-columns: 1fr; } }
+      .quad-pick-card {
+        position: relative; appearance: none; cursor: pointer; text-align: left;
+        display: flex; flex-direction: column; gap: 4px;
+        padding: 10px 12px 12px; font: inherit; color: var(--ink-line);
+        background: var(--cream); border: 3px solid var(--ink-line); border-radius: 2px;
+        box-shadow: 4px 4px 0 var(--ink-line);
+        transition: transform 0.08s ease-out;
+      }
+      .quad-pick-card:hover { transform: translate(-1px, -1px); }
+      .quad-pick-card:focus { outline: none; }
+      .quad-pick-card:focus-visible, .quad-pick-card:focus {
+        box-shadow: 4px 4px 0 var(--ink-line), 0 0 0 3px var(--sakura);
+      }
+      .quad-pick-art {
+        display: block; width: 100%; aspect-ratio: 440 / 280; object-fit: contain;
+        background: #fffaf0; border: 2px solid var(--ink-line);
+      }
+      .quad-pick-stamp {
+        position: absolute; top: 16px; right: 16px; transform: rotate(-6deg);
+        padding: 3px 8px; font-weight: 800; font-size: 13px; letter-spacing: 0.06em;
+        text-transform: uppercase; color: var(--ink-line); background: var(--amber);
+        border: 2px solid var(--ink-line);
+      }
+      .quad-pick-card.is-rec .quad-pick-stamp { background: var(--mint); }
+      .quad-pick-name { font-size: 20px; font-weight: 800; margin-top: 4px; }
+      .quad-pick-line { font-size: 13px; line-height: 1.4; }
+      .quad-pick-note { font-size: 13px; line-height: 1.4; font-weight: 700; }
+      @media (prefers-reduced-motion: reduce) { .quad-pick-card { transition: none; } }
+      @media (forced-colors: active) { .quad-pick-card:focus { outline: 3px solid Highlight; } }
       /* Discard, on the unsaved guard. The only button in this product
          that throws work away, so it is the only one wearing a warning
          colour: quiet until the pointer is on it, and never the default. */

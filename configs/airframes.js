@@ -477,3 +477,34 @@ export function simIdFor(id) {
 export function trackClassFor(id) {
   return airframeById(id).trackClass;
 }
+
+/*
+ * HOW MUCH LARGER THAN THE AIRCRAFT A MAP IS, for the world scale seam in
+ * src/render/frame.js, the quad picker's ask of 2026-10-28.
+ *
+ * Every aircraft has a HOME: the size of world its feel was tuned and
+ * signed off in, as a multiple of life size. The five inch's is life size.
+ * The whoop's is MICRO_SCALE, because the whoop flies the five inch's plant
+ * and what the owner calls the whoop's feel is that plant in a room built
+ * MICRO_SCALE times life size (simId on the whoop above). A map is built at
+ * its own multiple, `mapScale`: the town 1, the houses 3.5, a RaceGOW room
+ * MICRO_SCALE.
+ *
+ * The aircraft is put into the map at home / map: the world scale, sim
+ * metres per world metre. A ratio within SNAP of 1 is set to exactly 1. That
+ * is what keeps every pairing that flew before the picker the same flight to
+ * the bit: the whoop in a house is 3.43 / 3.5, two percent from 1, and the
+ * owner signed that one off as it is. Only a pairing a pilot could not seat
+ * before (a five inch indoors, a whoop outdoors) gets a number that is not 1.
+ */
+export const WORLD_SCALE_SNAP = 0.03;
+
+export function homeScaleFor(id) {
+  return airframeById(id).trackClass === 'micro' ? MICRO_SCALE : 1;
+}
+
+export function worldScaleFor(id, mapScale) {
+  const s = Number.isFinite(mapScale) && mapScale > 0 ? mapScale : 1;
+  const ws = homeScaleFor(id) / s;
+  return Math.abs(ws - 1) <= WORLD_SCALE_SNAP ? 1 : ws;
+}

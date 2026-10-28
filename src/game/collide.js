@@ -239,6 +239,45 @@ export function setCraftAirframe(dims) {
   CRAFT_WORLD_HULL = simLenToWorld(CRAFT_HULL_R);
   CRAFT_WORLD_V_HALF = simLenToWorld(CRAFT_V_HALF);
   CRAFT_WORLD_V_OFF = simLenToWorld(CRAFT_V_OFF);
+  seatWorldLengths();
+}
+
+/*
+ * THE CONTACT LENGTHS FOLLOW THE WORLD SCALE. Every length below that is a
+ * fixed number (a clip depth, a travel gate, a set down ring) was tuned with
+ * the world at the aircraft's own scale, which until the quad picker
+ * (2026-10-28) was true of every pairing: a five inch on a life size map and
+ * a whoop on a map built 3.5 times life size both fly at a world scale of 1.
+ * The picker adds pairings where it is not, a five inch in a house and a
+ * whoop in the town, and there each of these has to mean the same thing
+ * about the AIRCRAFT that it meant before, so each is written in sim metres
+ * and taken through the seam here. At a world scale of 1 simLenToWorld is
+ * the identity, so every pairing that flew before reads the same numbers.
+ * Called from setCraftAirframe, which the shell calls after every change of
+ * world scale, between runs only.
+ */
+const SIM_BOUNCE_SEPARATION = 0.008;
+const SIM_BURIED_MARGIN = 0.10;
+const SIM_CLIP_CENTER_EPS = 0.010;
+const SIM_CLIP_DEEP = 0.08;
+const SIM_STUCK_TRAVEL_MAX = 0.40;
+const SIM_BURIED_DEPTH = 0.22;
+const SIM_THRASH_TRAVEL = 0.60;
+const SIM_RECOVER_OUT = [0, 0.25, 0.5, 1.0, 1.5, 2.0, 2.75, 3.5];
+const SIM_REST_MARGIN_DRAG = 1.0;
+function seatWorldLengths() {
+  BOUNCE_SEPARATION = simLenToWorld(SIM_BOUNCE_SEPARATION);
+  BURIED_MARGIN = simLenToWorld(SIM_BURIED_MARGIN);
+  CLIP_CENTER_EPS = simLenToWorld(SIM_CLIP_CENTER_EPS);
+  CLIP_DEEP = simLenToWorld(SIM_CLIP_DEEP);
+  STUCK_TRAVEL_MAX = simLenToWorld(SIM_STUCK_TRAVEL_MAX);
+  BURIED_DEPTH = simLenToWorld(SIM_BURIED_DEPTH);
+  THRASH_TRAVEL = simLenToWorld(SIM_THRASH_TRAVEL);
+  for (let i = 0; i < SIM_RECOVER_OUT.length; i += 1) {
+    RECOVER_OUT[i] = simLenToWorld(SIM_RECOVER_OUT[i]);
+  }
+  REST_MARGIN = simLenToWorld(SIM_REST_MARGIN);
+  REST_MARGIN_DRAG = simLenToWorld(SIM_REST_MARGIN_DRAG);
 }
 
 /* The vertical semi-axis at a given tilt of the prop plane from level, in
@@ -2310,7 +2349,7 @@ export const PROP_PLANE_MAX_UP_DOT = 0.5;
  * now tumble, and the number is only an OSD / audio threshold. */
 export const BOUNCE_SPEED_MAX = 18.0;
 export const BOUNCE_COOLDOWN_MS = 180;
-export const BOUNCE_SEPARATION = 0.008;
+export let BOUNCE_SEPARATION = 0.008;
 
 /*
  * A CRASH IS A RESET, and the two lines it draws beside GRAZE_SPEED_MAX.
@@ -3120,7 +3159,7 @@ export const DIRT_UPZ = 0.50;
  * attitude. 91 percent of a RaceGOW opening now scores where 69 did.
  */
 const DIRT_SPAN = 0.22 / FIVE_INCH_WORLD_R;
-export const BURIED_MARGIN = 0.10;
+export let BURIED_MARGIN = 0.10;
 
 /* The band for the airframe currently seated, in WORLD metres, because the
  * clearance every caller measures is a world height above a world surface. */
@@ -3532,12 +3571,12 @@ export function groundOutcome(descentRate, horizontal, tiltDeg) {
  * nudges that far, so a centre more than that inside is not leftover
  * slop, it is through the face.
  */
-export const CLIP_CENTER_EPS = 0.010;
-export const CLIP_DEEP = 0.08;
+export let CLIP_CENTER_EPS = 0.010;
+export let CLIP_DEEP = 0.08;
 export const CLIP_CONFIRM_MS = 180;
 export const STUCK_UNRESOLVED_MS = 350;
-export const STUCK_TRAVEL_MAX = 0.40;
-export const BURIED_DEPTH = 0.22;
+export let STUCK_TRAVEL_MAX = 0.40;
+export let BURIED_DEPTH = 0.22;
 export const BURIED_CONFIRM_MS = 180;
 export const CLIP_CRASH_HOLD_MS = 800;
 export const CLIP_SPAWN_GRACE_MS = 500;
@@ -3580,7 +3619,7 @@ export const THRASH_RATE = 12.0;      /* rad/s, about 690 deg/s */
  */
 export const THRASH_THROTTLE = 0.55;
 export const THRASH_MS = 700;
-export const THRASH_TRAVEL = 0.60;
+export let THRASH_TRAVEL = 0.60;
 
 /*
  * WHERE A CRASHED CRAFT IS PUT BACK: SET DOWN ON A FLAT SURFACE, the ground
@@ -3648,7 +3687,7 @@ export const THRASH_TRAVEL = 0.60;
  * and went back to the start line; the plain answer, the same pavement a
  * quarter metre out from the wall, was never asked. Measured 2026-09-24.
  */
-const RECOVER_OUT = [0, 0.25, 0.5, 1.0, 1.5, 2.0, 2.75, 3.5];
+const RECOVER_OUT = SIM_RECOVER_OUT.slice();
 const RECOVER_DIR = [[1, 0], [-1, 0], [0, 1], [0, -1], [0.7, 0.7], [-0.7, 0.7], [0.7, -0.7], [-0.7, -0.7]];
 const FOOTPRINT = [[1, 0], [-1, 0], [0, 1], [0, -1],
   [Math.SQRT1_2, Math.SQRT1_2], [-Math.SQRT1_2, Math.SQRT1_2], [Math.SQRT1_2, -Math.SQRT1_2], [-Math.SQRT1_2, -Math.SQRT1_2]];
@@ -3703,8 +3742,13 @@ const TAKEOFF_ROOM_SPAN = 2;
  * still left under 5 cm. One metre leaves the rings' widest step of 0.75 m
  * room to be crossed.
  */
-const REST_MARGIN = CRAFT_WORLD_R * TAKEOFF_ROOM_SPAN;
-const REST_MARGIN_DRAG = 1.0;
+/* REST_MARGIN was CRAFT_WORLD_R times the span, read once at module load,
+ * when the five inch is seated: 0.347 m, and both airframes are that size
+ * at a world scale of 1. It stays that number, in sim metres, and follows
+ * the world scale through seatWorldLengths like the lengths above. */
+const SIM_REST_MARGIN = CRAFT_WORLD_R * TAKEOFF_ROOM_SPAN;
+let REST_MARGIN = SIM_REST_MARGIN;
+let REST_MARGIN_DRAG = SIM_REST_MARGIN_DRAG;
 
 /* Can a craft be set down on the surface under (px, pz), seen from fromY?
  * Writes the parked centre and the surface to `out` when it can. */

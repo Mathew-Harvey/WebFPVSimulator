@@ -93,27 +93,27 @@ export const MAPS = [
     mode: 'freestyle',
     note: "Nick Burns' house, flown on a whoop: every room, the stairs, the garage, the pergola, the pool and the street.",
     buildMs: MAP_BUILD_MS.house,
-    /* Drawn as the whoop, the five inch's physics under it: the owner's ask
-     * of 18 October 2026, "for just this map, lets introduce a new quad.
-     * 75mm whoop, the flight physics don't change, but the pre launch
-     * cinematic does". See buildCraft in src/render/craft.js.
+    /*
+     * BUILT 3.5 TIMES LIFE SIZE (S in src/maps/house/house.js), and that is
+     * all this map says about scale. `mapScale` is what the world scale seam
+     * reads (worldScaleFor in configs/airframes.js): the whoop, whose home is
+     * a room MICRO_SCALE times life size, flies it at exactly 1, the flight
+     * the owner called great, and a five inch flies it at 1 / 3.5, a real
+     * five inch in a real house. The HUD reads the same number, so either
+     * prints its own speed and height (hudLifeScale in src/main.js).
      *
-     * `hudScale` is the house's S (house.js), and it is what the OSD reads
-     * so the flight display reads as the whoop in a real house: the owner,
-     * 2026-10-21, "in the house maps the ui needs to reflect a 1s 75mm
-     * whoop, so speed and battery stats need editing, the flight feel is
-     * good though". Display only: see whoopHud in src/main.js. */
-    craftModel: 'whoop65',
-    /* Flown on the whoop and nothing else, the owner's call on bug-3261ce67
-     * (2026-10-23): a five inch seated here was drawn as a whoop and flew a
-     * five inch's plant, "it sounds like a 5 inch, but i think it might be
-     * whoop sized". The aircraft this world is for is `craft`: choosing the
-     * map seats it, and a five inch is moved off the map. See keepOffForcedMaps
-     * in src/ui/ui.js. The whoop flies the five inch's plant, tune and
-     * weight (simId in configs/airframes.js), so the flight is the one the
-     * owner liked here, and `hudScale` still sets the OSD. */
+     * Until the quad picker (2026-10-28) this map carried two stand-ins for
+     * that: `craftModel`, which drew the whoop over a five inch's plant, and
+     * `hudScale`, which divided the OSD by S whatever was seated. Both were
+     * a five inch dressed as a whoop, which is the "whoop sized five inch"
+     * of bug-3261ce67, and both are gone.
+     *
+     * `craft` is the aircraft this world is BUILT FOR: the one the picker
+     * recommends and seats first. It no longer keeps the other off the map:
+     * the owner's pick of 2026-10-28, a five inch here as a "Tight!" option.
+     */
     craft: 'whoop65',
-    hudScale: 3.5,
+    mapScale: 3.5,
     load: () => import('./house/index.js'),
   },
   /*
@@ -128,9 +128,9 @@ export const MAPS = [
     mode: 'freestyle',
     note: "Heads' house from Infinity Loops, flown on a whoop: the garage, the basement, the stairs, every room, the yard and the corner.",
     buildMs: MAP_BUILD_MS.heads,
-    craftModel: 'whoop65',
+    /* 3.5 times life size, as Nick's house: see there. */
     craft: 'whoop65',
-    hudScale: 3.5,
+    mapScale: 3.5,
     load: () => import('./heads/index.js'),
   },
   /*
@@ -168,9 +168,9 @@ export const MAPS = [
     mode: 'freestyle',
     note: "Thomas More's Shop, flown on a whoop: the dock wall, the crate aisle to the white office, the workshop, the wide doorway into the machine room, and the spray room.",
     buildMs: MAP_BUILD_MS.warehouse,
-    craftModel: 'whoop65',
+    /* 3.5 times life size, as Nick's house: see there. */
     craft: 'whoop65',
-    hudScale: 3.5,
+    mapScale: 3.5,
     load: () => import('./warehouse/index.js'),
   },
   /*

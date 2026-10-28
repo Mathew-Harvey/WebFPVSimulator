@@ -92,6 +92,7 @@ const MAP_ROOTS = {
   heads: 'src/maps/heads/index.js',
   bardwell: 'src/maps/bardwell/index.js',
   warehouse: 'src/maps/warehouse/index.js',
+  goats: 'src/maps/goats/index.js',
 };
 
 /* three@0.160.0's add-ons, and what each imports besides 'three'. Read off

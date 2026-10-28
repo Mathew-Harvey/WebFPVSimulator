@@ -1104,6 +1104,22 @@
       .balloon-result-line { font-size: 14px; color: var(--cream); }
       .balloon-result-next { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--cream); opacity: 0.8; }
       @media (prefers-reduced-motion: reduce) { .balloon-flash { animation: none; } }
+      /* 90%ER GOAT HERDING (src/ui/goathud.js): the goats home, of how
+         many, the clock since the first ran and whose goat is on the run,
+         down the left under the score, because the right is where a goat
+         seen and a goat home are called out. */
+      .goat-hud { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+      .goat-hud.is-off { display: none; }
+      .goat-box {
+        position: absolute; left: clamp(18px, 3vw, 40px); top: 24%;
+        display: flex; flex-direction: column; align-items: flex-start; line-height: 1; max-width: 40vw;
+      }
+      .goat-head { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--cream); font-weight: 700; }
+      .goat-count { font-size: clamp(30px, 3.6vw, 44px); font-weight: 800; font-style: italic; color: var(--mint); margin-top: 2px; }
+      .goat-box.is-all .goat-count { color: #ffd23a; }
+      .goat-of { font-size: 12px; letter-spacing: 0.08em; color: var(--cream); margin-top: 2px; }
+      .goat-clock { font-size: clamp(16px, 1.8vw, 22px); font-weight: 800; color: var(--amber); margin-top: 6px; }
+      .goat-run { font-size: 12px; letter-spacing: 0.06em; color: var(--cream); margin-top: 6px; }
       /* THE YARD TRACK (src/ui/yardhud.js): near a house map's track, its
          name, the lap clock in amber, the gate wanted next and the last and
          best laps, top middle under the launch banner's line; nothing away

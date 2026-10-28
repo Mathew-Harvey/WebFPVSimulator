@@ -69,4 +69,7 @@ export const MAP_BUILD_MS = {
    * more parts; measured by node scripts/shots.js when it is next run on a
    * quiet container. */
   warehouse: 1700,
+  /* The 90%er goat herding map (src/maps/goats/): Heads' house and the
+   * neighbourhood round it. An estimate until it is measured, below. */
+  goats: 3800,
 };

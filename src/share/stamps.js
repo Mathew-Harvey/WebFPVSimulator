@@ -45,7 +45,7 @@
 
 import { readAutosave } from '../trackbuilder/storage.js';
 import { docModeOf } from '../trackbuilder/elements.js';
-import { HOUSE_DOC_ID, HEADS_DOC_ID, BARDWELL_DOC_ID, WAREHOUSE_DOC_ID } from '../maps/registry.js';
+import { HOUSE_DOC_ID, HEADS_DOC_ID, BARDWELL_DOC_ID, WAREHOUSE_DOC_ID, GOATS_DOC_ID } from '../maps/registry.js';
 
 export const STAMPS_KEY = 'webfpv.stf.stamps.v1';
 
@@ -166,6 +166,9 @@ export function stampKeyForMap(mapId) {
   }
   if (mapId === 'warehouse') {
     return `built:${WAREHOUSE_DOC_ID}`;
+  }
+  if (mapId === 'goats') {
+    return `built:${GOATS_DOC_ID}`;
   }
   if (mapId !== 'built') {
     return null;

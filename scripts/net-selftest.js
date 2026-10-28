@@ -311,8 +311,11 @@ console.log('room links');
 
   check('a whoop room is flown on a whoop and a five inch room on a five inch',
     craftForRoom({ way: 'whoop', map: 'city' }) === 'whoop65' && craftForRoom({ way: '5inch', map: 'house' }) === '5inch');
-  check('freestyle on a house is a whoop\'s, because the house is',
-    craftForRoom({ way: 'freestyle', map: 'house', scale: 50 }) === 'whoop65');
+  /* Since the quad picker (2026-10-28) a house no longer names its own
+   * aircraft: either flies it, and the host's pose unit says which. */
+  check('freestyle on a house follows the host\'s pose unit too, since either quad flies it',
+    craftForRoom({ way: 'freestyle', map: 'house', scale: 50 }) === '5inch'
+    && craftForRoom({ way: 'freestyle', map: 'house', scale: 100 }) === 'whoop65');
   check('freestyle on a board map follows the host\'s pose unit',
     craftForRoom({ way: 'freestyle', map: 'a-board-map', scale: 100 }) === 'whoop65'
     && craftForRoom({ way: 'freestyle', map: 'a-board-map', scale: 50 }) === '5inch');
@@ -349,6 +352,9 @@ console.log('room links');
     v.searchParams.get('map') === 'built' && v.searchParams.get('mapshare') === 'pines-1' && v.searchParams.get('room') === 'K7QX2M' && v.searchParams.get('craft') === 'whoop65');
   check('and drops the invite, so a copied address is not one', v.hash === '');
   check('an address already right is not written again', addressInRoom(inRoom, { map: 'built', mapshare: 'pines-1' }, 'K7QX2M') === '');
+  check('the host swapping quads puts the new one in the address',
+    new URL(addressInRoom(inRoom, { map: 'built', mapshare: 'pines-1' }, 'K7QX2M', true, '5inch')).searchParams.get('craft') === '5inch'
+    && addressInRoom(inRoom, { map: 'built', mapshare: 'pines-1' }, 'K7QX2M', true, 'whoop65') === '');
   const out = new URL(addressOutOfRoom(`${inRoom}#i=${invite}`));
   check('leaving takes the room and the invite off and nothing else', !out.searchParams.has('room') && out.hash === '' && out.searchParams.get('mapshare') === 'pines-1');
   check('and is nothing to write when there was no room', addressOutOfRoom('https://webfpv.org/sim/?map=city') === '');
@@ -741,6 +747,56 @@ async function raceScene(url) {
  * room as its host, and the two who went come back in on the new map by
  * the code and invite the board sent, as a page does after its reload.
  */
+/*
+ * The host swapping quads (swapQuad in src/net/together.js, the owner's ask
+ * of 2026-10-28): the room's pose unit changes under two pilots. A pose in
+ * the old unit read in the new one is twice or half as far, so each pilot
+ * reads nothing for a moment and drops what it held, and a pilot parked on
+ * the spawn, which sends nothing while it sits still, sends once more so
+ * it is seen again.
+ */
+async function swapScene(url) {
+  console.log('the host swapping the room\'s quad');
+  const mk = (handle) => new RoomSession({
+    url, key: randomBytes(16).toString('hex'), handle, avatar: rollAvatar(rnd),
+  });
+  const a = mk('Swap host');
+  const b = mk('Swap pilot');
+  try {
+    a.host({
+      name: 'Swap test', way: 'freestyle', map: 'house', mapName: "Nick Burns' house", scale: 100,
+    });
+    check('a whoop room opens on the house', await until(() => a.inRoom));
+    b.join(a.room.code, { invite: a.invite });
+    check('a pilot joins it in the whoop\'s unit', await until(() => b.inRoom && a.link.pilots.size === 2) && b.units === 100);
+    const park = setInterval(() => b.uplink(5, 0.1, 5, 0, 0, 0, 1), 1000 / 60);
+    let seen = false;
+    check('the host draws the pilot parked', await until(() => {
+      a.eachRemote((id, pose) => { seen = Math.abs(pose.px - 5) < 0.02; });
+      return seen;
+    }));
+    const sentBefore = b.posesSent;
+    b.link.settings({ scale: 50 });
+    await wait(300);
+    check('only the host can swap it', a.room.scale === 100 && b.units === 100);
+    a.link.settings({ scale: 50 });
+    check('the host swaps to the five inch, and both pilots take its unit', await until(() => a.units === 50 && b.units === 50));
+    check('the host drops the pose it held, read in the old unit', a.remotes.size === 0);
+    check('and reads none for a moment', a.settling());
+    await wait(1000);
+    check('the pilot, still parked, sent once more after the swap and no more', b.posesSent === sentBefore + 1, `${b.posesSent - sentBefore}`);
+    seen = false;
+    check('and the host draws it where it parked, in the new unit', await until(() => {
+      a.eachRemote((id, pose) => { seen = Math.abs(pose.px - 5) < 0.02 && Math.abs(pose.pz - 5) < 0.02; });
+      return seen;
+    }));
+    clearInterval(park);
+  } finally {
+    a.leave();
+    b.leave();
+  }
+}
+
 async function voteScene(url) {
   console.log('a vote on a new map through the board');
   const pilots = ['Mover', 'Follower', 'Stayer'].map((n) => {
@@ -1345,6 +1401,7 @@ if (!boardDir || typeof WebSocket === 'undefined') {
     await raceScene(url);
     await talkScene(url);
     await voteScene(url);
+    await swapScene(url);
     await namesScene(url, async () => {
       board.kill('SIGTERM');
       await new Promise((r) => { board.once('exit', r); });

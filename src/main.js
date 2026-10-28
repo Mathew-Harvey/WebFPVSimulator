@@ -3521,6 +3521,39 @@ export async function boot({ loading, bootStart, mapId }) {
     },
     airborne: () => mode === 'flight' && !landed && !launchStaging,
     whoop: () => ui.settings.airframe === 'whoop65',
+    /*
+     * The room's quad changed under the pilot: the host swapped quads, and
+     * a room is one aircraft for everybody in it (swapQuad in
+     * src/net/together.js, the owner's ask of 2026-10-28). It is the swap
+     * the Quad screen makes between runs, under the title's mode for the
+     * one call as Bardwell's yard does above, and then a fresh run from the
+     * map's spawn: the plant is another aircraft, at another world scale in
+     * a house, so where the old one was is not a state the new one can
+     * carry on from. A pilot in flight stays in flight, and one on a menu
+     * stays on it. False when there was nothing to swap.
+     */
+    swapQuad: (id) => {
+      if (replayMode || airframeById(id).id !== id || ui.settings.airframe === id) {
+        return false;
+      }
+      ui.seatRoomQuad(id);
+      const was = mode;
+      mode = 'title';
+      applySettings(ui.settings);
+      mode = was;
+      if (was === 'flight' || was === 'paused') {
+        whenConfigReady(() => {
+          reset();
+          introMs = -1;
+          if (ui.screen !== 'flight') {
+            ui.renderMenu();
+          }
+        });
+      } else if (ui.screen !== 'flight') {
+        ui.renderMenu();
+      }
+      return true;
+    },
     /* What the pilot flies with, so a room's lines name a control they
      * have: G means nothing on a radio or a phone. */
     hands: () => {

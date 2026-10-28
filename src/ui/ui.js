@@ -4348,6 +4348,38 @@ function craftItem(s, midRun) {
 }
 
 /*
+ * THE AIRCRAFT ROW IN A ROOM, a readout and not a choice. A room is one
+ * aircraft for everybody in it, the host's (craftForRoom in
+ * src/net/roomlinks.js), and joining one swaps a pilot onto it. Swapping
+ * back from here used to take a pilot out of the room's world as well,
+ * because the whoop had no freestyle and the houses had no five inch; since
+ * the quad picker (2026-10-28) either flies anywhere, so the swap would
+ * leave a whoop among five inches drawn as one of them. Leaving the room
+ * gives the row back.
+ *
+ * The host of a free flight room swaps everybody instead: the row opens the
+ * room's own card for it (swapQuad in src/net/together.js), and the quad
+ * changes here when the room has heard it.
+ */
+function roomCraftItem(s, info) {
+  const af = airframeById(s.airframe);
+  if (info.host && info.freestyle) {
+    return {
+      label: 'Aircraft',
+      value: af.name,
+      note: `Everybody in a room flies the same quad, and this room flies the ${af.name.toLowerCase()}. You are the host, so a swap here swaps everybody in the room with you.`,
+      action: 'room-quad',
+    };
+  }
+  return {
+    label: 'Aircraft',
+    value: af.name,
+    note: `Everybody in a room flies the same quad, and this room flies the ${af.name.toLowerCase()}. ${info.freestyle ? 'The host can swap it for everybody.' : 'Leave the room to change it.'}`,
+    action: 'noop',
+  };
+}
+
+/*
  * Where the camera tilt starts costing enough yaw to be worth a word, and
  * what to offer instead. 40 is where sin(t) passes 0.64, so nearly two
  * thirds of a yaw becomes picture roll; 500 puts a 40 degree mount back to
@@ -9819,7 +9851,7 @@ export class Ui {
          * decoration, and decoration is what gives way.
          */
         { label: 'The machine', section: true },
-        craftItem(s, midRun),
+        this.roomInfo ? roomCraftItem(s, this.roomInfo) : craftItem(s, midRun),
         tuneItem(s, midRun),
         {
           label: 'Share this tune',
@@ -14069,7 +14101,9 @@ export class Ui {
      * the host's aircraft as it stands. Back on the picker leaves the pilot
      * on the world cards with nothing changed.
      */
-    if (!this.quadPicking && (action.startsWith('map:') || action.startsWith('boardmap:'))) {
+    /* In a room the quad is the room's (roomCraftItem), so a world picked
+     * from inside one is flown on it, and there is nothing to ask. */
+    if (!this.quadPicking && !this.roomInfo && (action.startsWith('map:') || action.startsWith('boardmap:'))) {
       const world = entry.item.map || null;
       if (!world || world.mode === 'freestyle') {
         this.askQuad(world, entry.name || entry.label || (world && world.name) || 'This map').then((craft) => {
@@ -19545,6 +19579,16 @@ export class Ui {
       return;
     }
     this.seatMap(world.id);
+  }
+
+  /* The room's quad, when the host swaps quads (swapQuad in main.js). */
+  seatRoomQuad(id) {
+    if (this.settings.airframe === id) {
+      return;
+    }
+    seatAirframe(this.settings, id);
+    this.settings.airframeAsked = true;
+    saveSettings(this.settings);
   }
 
   /*

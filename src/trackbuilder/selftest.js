@@ -145,11 +145,8 @@ import { BANNER_SIZE, GATE_BANNER_H, flagMast, flagSailProfile } from '../art/ba
 import { courseFromDocument } from '../game/trackdoc.js';
 import { GUIDE, guideFromKnots, knotsFromPath, tessellateGuide } from '../game/guide.js';
 import { GATE_SCALE, MICRO_SCALE } from '../game/track.js';
-import { PRACTICE_LAPS, Race, fmt as raceFlashTime, gateAcross, gateUp, runComplete, stationLegMin } from '../game/race.js';
+import { PRACTICE_LAPS, Race, gateAcross, gateUp, runComplete, stationLegMin } from '../game/race.js';
 import { LapVoice, lapCall, pickVoice } from '../render/voice.js';
-import { formatTime } from '../ui/ui.js';
-import { lapText } from '../ui/yardhud.js';
-import { fmtMs } from '../net/together.js';
 import {
   Colliders, hitOutcome, groundOutcome, GROUND_LAND, GROUND_BOUNCE, GROUND_CRASH,
   GROUND_TUMBLE, GROUND_SLIDE, canPerch, shouldScorePass, shouldEnterTurtle,
@@ -2316,26 +2313,12 @@ function suiteCrashRule() {
     && lapCall(2, 125000) === 'Lap 2, 2 minutes 5.00',
     `${lapCall(3, 63200, true)} | ${lapCall(2, 125000)}`);
 
-  /*
-   * A LAP A WHISKER UNDER A MINUTE. Every lap clock took seconds from the
-   * raw milliseconds and rounded them on the way out, so 59.996 s printed
-   * 60.00 and 1:59.996 printed 1:60.00, and the yard's clock, which padded
-   * before it rounded, printed 69.996 s as 1:010.00. All of them round to
-   * the hundredth first now and carry the minute, as the board's formatLap
-   * always did. Each clock that prints a lap is asked the same questions.
-   */
-  {
-    const clocks = [['formatTime', formatTime], ['lapText', lapText], ['fmtMs', fmtMs], ['the race flash', raceFlashTime]];
-    const asked = [[59996, '1:00.00'], [119996, '2:00.00'], [69996, '1:10.00'], [59994, '59.99'], [61234, '1:01.23'], [9996, '10.00'], [12340, '12.34']];
-    for (const [name, fn] of clocks) {
-      const got = asked.map(([ms]) => fn(ms));
-      check(`${name} carries the minute when a lap rounds up to it: 59.996 s is 1:00.00, 1:59.996 is 2:00.00, 69.996 s is 1:10.00`,
-        asked.every(([, want], i) => got[i] === want), got.join(' '));
-    }
-    check('and the lap called out loud says a minute, never 60.00 seconds',
-      lapCall(1, 59996) === 'Lap 1, 1 minute 0.00' && lapCall(2, 119996) === 'Lap 2, 2 minutes 0.00',
-      `${lapCall(1, 59996)} | ${lapCall(2, 119996)}`);
-  }
+  /* A lap a whisker under a minute is called as one minute, never as
+   * 60.00 seconds: the flash and every other lap clock are asked the same
+   * in scripts/lapclock-selftest.js. */
+  check('the lap called out loud carries the minute: 59.996 s is 1 minute 0.00',
+    lapCall(1, 59996) === 'Lap 1, 1 minute 0.00' && lapCall(2, 119996) === 'Lap 2, 2 minutes 0.00',
+    `${lapCall(1, 59996)} | ${lapCall(2, 119996)}`);
   const rec = new Race([{
     position: { x: 0, y: 0, z: 0 },
     heading: 0,

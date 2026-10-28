@@ -2443,13 +2443,16 @@ export function formatTime(ms) {
   if (ms == null || !Number.isFinite(ms)) {
     return '--.--';
   }
-  const total = ms / 1000;
-  const m = Math.floor(total / 60);
-  const s = total - m * 60;
+  /* Rounded to the hundredth first and the minute carried from that, so
+   * 59.996 s reads 1:00.00 and not 60.00, and 1:59.996 reads 2:00.00 and
+   * not 1:60.00. The board's formatLap has always done it this way. */
+  const cs = Math.round(ms / 10);
+  const m = Math.floor(cs / 6000);
+  const s = ((cs - m * 6000) / 100).toFixed(2);
   if (m > 0) {
-    return `${m}:${s.toFixed(2).padStart(5, '0')}`;
+    return `${m}:${s.padStart(5, '0')}`;
   }
-  return s.toFixed(2);
+  return s;
 }
 
 function formatDelta(ms) {

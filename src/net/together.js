@@ -374,14 +374,16 @@ function thumbOf(room) {
     : `${board}/api/tracks/${encodeURIComponent(room.map)}/thumb`;
 }
 
-function fmtMs(ms) {
+export function fmtMs(ms) {
   if (!(ms > 0)) {
     return '';
   }
-  const s = ms / 1000;
-  const m = Math.floor(s / 60);
-  const rest = (s - m * 60).toFixed(2).padStart(5, '0');
-  return m ? `${m}:${rest}` : (s).toFixed(2);
+  /* Hundredths first, then the minute carried, as ui.js formatTime: a
+   * 59.996 s lap is 1:00.00, never 60.00. */
+  const cs = Math.round(ms / 10);
+  const m = Math.floor(cs / 6000);
+  const rest = ((cs - m * 6000) / 100).toFixed(2);
+  return m ? `${m}:${rest.padStart(5, '0')}` : rest;
 }
 
 function loadStore() {
@@ -1677,7 +1679,17 @@ export function createTogether(shell) {
     pending = null;
     voteKey = '';
     if (data.vote) {
-      setTimeout(() => voteHeard({ vote: data.vote, now: data.now }, performance.now()), BANNER_MS);
+      /* After the welcome's own banner. By then the vote may be over, or
+       * already drawn by a tally heard meanwhile, and BANNER_MS of it has
+       * run: the welcome's copy and clock drawn late showed a vote that had
+       * ended, or one ending 4.2 s after it really did. */
+      const until = data.vote.until;
+      setTimeout(() => {
+        const v = currentVote();
+        if (v && v.until === until && !voteKey) {
+          voteHeard({ vote: v, now: data.now + (performance.now() - now) }, performance.now());
+        }
+      }, BANNER_MS);
     }
     if (race) {
       race.welcome(data, now);

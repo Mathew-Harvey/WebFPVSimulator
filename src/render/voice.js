@@ -46,9 +46,11 @@ const RATE = 1.1;
  * a speech engine is free to read as a time of day.
  */
 export function lapCall(n, ms, record = false) {
-  const total = ms / 1000;
-  const m = Math.floor(total / 60);
-  const s = (total - m * 60).toFixed(2);
+  /* The flash's arithmetic: hundredths first, then the minute carried, so
+   * a 59.996 s lap is "1 minute 0.00" and never "60.00". */
+  const cs = Math.round(ms / 10);
+  const m = Math.floor(cs / 6000);
+  const s = ((cs - m * 6000) / 100).toFixed(2);
   const time = m > 0 ? `${m} minute${m === 1 ? '' : 's'} ${s}` : s;
   return `Lap ${n}, ${time}${record ? '. New track record' : ''}`;
 }

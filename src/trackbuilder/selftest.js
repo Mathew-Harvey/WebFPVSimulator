@@ -145,8 +145,11 @@ import { BANNER_SIZE, GATE_BANNER_H, flagMast, flagSailProfile } from '../art/ba
 import { courseFromDocument } from '../game/trackdoc.js';
 import { GUIDE, guideFromKnots, knotsFromPath, tessellateGuide } from '../game/guide.js';
 import { GATE_SCALE, MICRO_SCALE } from '../game/track.js';
-import { PRACTICE_LAPS, Race, gateAcross, gateUp, runComplete, stationLegMin } from '../game/race.js';
+import { PRACTICE_LAPS, Race, fmt as raceFlashTime, gateAcross, gateUp, runComplete, stationLegMin } from '../game/race.js';
 import { LapVoice, lapCall, pickVoice } from '../render/voice.js';
+import { formatTime } from '../ui/ui.js';
+import { lapText } from '../ui/yardhud.js';
+import { fmtMs } from '../net/together.js';
 import {
   Colliders, hitOutcome, groundOutcome, GROUND_LAND, GROUND_BOUNCE, GROUND_CRASH,
   GROUND_TUMBLE, GROUND_SLIDE, canPerch, shouldScorePass, shouldEnterTurtle,
@@ -2312,6 +2315,27 @@ function suiteCrashRule() {
     lapCall(3, 63200, true) === 'Lap 3, 1 minute 3.20. New track record'
     && lapCall(2, 125000) === 'Lap 2, 2 minutes 5.00',
     `${lapCall(3, 63200, true)} | ${lapCall(2, 125000)}`);
+
+  /*
+   * A LAP A WHISKER UNDER A MINUTE. Every lap clock took seconds from the
+   * raw milliseconds and rounded them on the way out, so 59.996 s printed
+   * 60.00 and 1:59.996 printed 1:60.00, and the yard's clock, which padded
+   * before it rounded, printed 69.996 s as 1:010.00. All of them round to
+   * the hundredth first now and carry the minute, as the board's formatLap
+   * always did. Each clock that prints a lap is asked the same questions.
+   */
+  {
+    const clocks = [['formatTime', formatTime], ['lapText', lapText], ['fmtMs', fmtMs], ['the race flash', raceFlashTime]];
+    const asked = [[59996, '1:00.00'], [119996, '2:00.00'], [69996, '1:10.00'], [59994, '59.99'], [61234, '1:01.23'], [9996, '10.00'], [12340, '12.34']];
+    for (const [name, fn] of clocks) {
+      const got = asked.map(([ms]) => fn(ms));
+      check(`${name} carries the minute when a lap rounds up to it: 59.996 s is 1:00.00, 1:59.996 is 2:00.00, 69.996 s is 1:10.00`,
+        asked.every(([, want], i) => got[i] === want), got.join(' '));
+    }
+    check('and the lap called out loud says a minute, never 60.00 seconds',
+      lapCall(1, 59996) === 'Lap 1, 1 minute 0.00' && lapCall(2, 119996) === 'Lap 2, 2 minutes 0.00',
+      `${lapCall(1, 59996)} | ${lapCall(2, 119996)}`);
+  }
   const rec = new Race([{
     position: { x: 0, y: 0, z: 0 },
     heading: 0,
@@ -4932,6 +4956,23 @@ function suiteRoadsAndVehicles() {
     threw = e;
   }
   check('hostile roads and vehicles never throw', threw === null, threw && threw.message);
+
+  /* A piece typed with one of Object's own member names, from a shared link
+   * or a published file: the table lookup read Object.prototype as a piece,
+   * and normalize threw, so the track would not open at all. It is an
+   * unknown type like any other now, dropped with a note. */
+  for (const type of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) {
+    let read = null;
+    let err = null;
+    try {
+      read = normalize({ ...toPlain(createTrack('proto')), elements: [{ id: 'el-1', type, position: { x: 1, y: 1, z: 0 } }] });
+    } catch (e) {
+      err = e;
+    }
+    check(`a piece typed "${type}" is dropped as an unknown type, and the track still opens`,
+      err === null && read.doc.elements.length === 0 && read.repairs.some((r) => r.includes(`unknown type "${type}"`)),
+      err ? err.message : read.repairs.join('; '));
+  }
   if (hostile) {
     const [h1, h2, h3, h4, h5] = hostile.doc.elements;
     check('bad nodes are dropped, with a note', h1.nodes.length === 2 && h1.nodes[1].x === 5

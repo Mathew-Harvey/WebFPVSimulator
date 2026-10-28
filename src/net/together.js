@@ -480,6 +480,7 @@ export function createTogether(shell) {
    * it is over. */
   let voteKey = '';
   let voteEnds = 0;
+  let voteTimer = 0;
   let lastVote = null;
   /* Pilots muted for this visit: the board never knows. */
   const muted = new Set();
@@ -2118,6 +2119,7 @@ export function createTogether(shell) {
     let shownTab = '';
     let reactAt = 0;
     const was = cleanAvatar(store.avatar);
+    const wasName = readPilotName() || '';
     const history = [];
     const draft = { name: readPilotName() || '' };
     const commit = (next) => {
@@ -2328,8 +2330,11 @@ export function createTogether(shell) {
         /* In a room, the others see it too: the board tells everybody,
          * this page included, and the room's list is drawn from that. */
         const now = cleanAvatar(store.avatar);
-        if (session && session.inRoom && JSON.stringify(now) !== JSON.stringify(was)) {
-          session.look(now);
+        const name = readPilotName() || '';
+        if (session && session.inRoom && (JSON.stringify(now) !== JSON.stringify(was) || name !== wasName)) {
+          /* A new name goes with the look: the board shows it where the
+           * room shows pilots' own names (the owner's report of 2026-10-28). */
+          session.look(now, name !== wasName ? name : undefined);
           oweCard();
         }
         if (after) after();
@@ -3372,6 +3377,7 @@ export function createTogether(shell) {
       return;
     }
     session.link.answerVote(go);
+    hideVoteSplash();
     sound('select');
     banner(me().avatar, go ? 'hello' : 'calm', go ? `You're going to ${v.mapName}` : 'You are staying here',
       go ? 'When the vote ends, the new map loads.' : 'The others who stay keep flying with you.', go ? 'mint' : '', { ms: 2600 });
@@ -3406,23 +3412,61 @@ export function createTogether(shell) {
       return;
     }
     if (myAnswer(v) !== null) {
+      hideVoteSplash();
       return;
     }
-    const ask = {
-      keys: 'Y to go with them, N to stay. Say nothing and you stay.',
-      touch: 'Go with them, or stay here. Say nothing and you stay.',
-      pad: 'Pause, then Room, to go with them. Say nothing and you stay.',
-    }[by] || 'Go with them, or stay here. Say nothing and you stay.';
-    banner(host ? host.avatar : null, 'wow', `${host ? host.handle : 'The host'} is moving to ${v.mapName}`, ask, 'amber', {
-      ms,
-      extra: by === 'pad' ? null : [
-        btn('Go', 'small mint', () => answerVote(true), { 'data-k': 'vote-go' }),
-        btn('Stay', 'small ghost', () => answerVote(false), { 'data-k': 'vote-stay' })],
-    });
+    if (!voteBox.hidden && voteBox.dataset.key === key) {
+      return;
+    }
+    showVoteSplash(v, host, by, ms, key);
     sound('move');
   }
 
+  /*
+   * The question, across the middle of the screen whatever the pilot is
+   * doing, the owner's ask of 2026-10-28: "all participants should get a
+   * splash across the middle of their screen even if they are flying that
+   * says do they want to follow". It does not pause the flight: the
+   * pilot answers with Y or N, or a press, or flies on and stays. The bar
+   * under it runs down to the end of the vote in CSS, so nothing here
+   * runs per frame.
+   */
+  function showVoteSplash(v, host, by, ms, key) {
+    const who = host ? host.handle : 'The host';
+    const keys = by === 'keys';
+    const how = {
+      keys: 'Press Y to follow, N to stay.',
+      touch: 'Tap Follow or Stay.',
+      pad: 'Pause, then Room, to follow.',
+    }[by] || 'Follow, or stay here.';
+    const pic = thumbOf({ map: v.map, way: room() ? room().way : 'freestyle' });
+    voteBox.dataset.key = key;
+    voteBox.replaceChildren(h('div.vsheet.sheet.halftone.amber-edge', { role: 'alertdialog', 'aria-label': `${who} is moving the room to ${v.mapName}` },
+      h('span.kicker', { text: 'The host is changing the map' }),
+      lettered(`FOLLOW ${who.toUpperCase()}?`, [INKS.cream, INKS.amber], 44, 600),
+      h('div.vrow', null,
+        pic ? h('div.vpic', { style: { backgroundImage: `url("${pic}")` } }) : null,
+        h('div.vwords', null, h('b', { text: v.mapName }),
+          h('span', { text: `${who} is taking the room there. Stay and you keep flying here with whoever else stays.` }))),
+      by === 'pad' ? null : h('div.btnrow', null,
+        btn(keys ? 'Follow  (Y)' : 'Follow', 'mint', () => answerVote(true), { 'data-k': 'vote-go' }),
+        btn(keys ? 'Stay  (N)' : 'Stay', 'ghost', () => answerVote(false), { 'data-k': 'vote-stay' })),
+      h('small.vhow', { text: `${how} Say nothing and you stay.` }),
+      h('div.vbar', null, h('i', { style: { animationDuration: `${Math.round(ms)}ms` } }))));
+    voteBox.hidden = false;
+    clearTimeout(voteTimer);
+    voteTimer = setTimeout(hideVoteSplash, ms + 400);
+  }
+
+  function hideVoteSplash() {
+    clearTimeout(voteTimer);
+    voteBox.hidden = true;
+    voteBox.replaceChildren();
+    delete voteBox.dataset.key;
+  }
+
   function voteOver(data) {
+    hideVoteSplash();
     const was = lastVote;
     lastVote = null;
     voteKey = '';
@@ -3688,7 +3732,11 @@ export function createTogether(shell) {
   /* Who is being watched, and the way to another pilot and back. */
   const watchBox = h('div.watchbar');
   watchBox.hidden = true;
-  layer.append(chip, pit, standBox, posBox, roster, logBox, talk, helloBox, qbar, bannerBox, countBox, watchBox, toastBox);
+  /* The host's move to another map, asked across the middle of the
+   * screen (the owner's ask of 2026-10-28: a banner was not clear). */
+  const voteBox = h('div.tg-vote');
+  voteBox.hidden = true;
+  layer.append(chip, pit, standBox, posBox, roster, logBox, talk, helloBox, qbar, bannerBox, countBox, voteBox, watchBox, toastBox);
 
   let rosterOn = false;
   let qbarTimer = null;
@@ -4019,6 +4067,7 @@ export function createTogether(shell) {
     countBox.hidden = true;
     posBox.hidden = true;
     standBox.hidden = true;
+    hideVoteSplash();
     logBox.replaceChildren();
     helloBox.replaceChildren();
     helloQueue.length = 0;

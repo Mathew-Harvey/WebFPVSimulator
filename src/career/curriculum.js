@@ -1722,7 +1722,7 @@ export const CHAPTERS = [
             'Beat your best lap by a quarter of a second. Six laps to do it.',
           ],
           sticks: [{ stick: 'throttle', dir: 'hold' }, { stick: 'roll', dir: 'both' }, { stick: 'yaw', dir: 'both' }],
-          note: 'The ghost is your best lap of this session. Turn ghosts off in the pilot screen and you race the clock alone.',
+          note: 'The ghost is your best lap of this session. The Ghost row on the pause menu turns it off, and then you race the clock alone.',
         },
         objectives: [
           { kind: 'gates', text: 'Beat your best lap', beat: 250, maxLaps: 6, hint: 'Race the ghost.' },

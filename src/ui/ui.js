@@ -10398,6 +10398,9 @@ export class Ui {
         { label: 'Resume', action: 'resume', primary: true },
         { label: 'Restart lesson', action: 'restart', note: 'From the pad, with a fresh clock.' },
         { label: 'Briefing', action: 'career-briefing', note: `What ${this.careerLesson.title} asks for, and the sticks it uses.` },
+        /* A lesson that races the pilot's ghost (Beat Your Ghost) carries
+         * the Ghost row, so the ghost its briefing names can be found. */
+        ...((this.careerLesson.objectives || []).some((o) => o.beat != null) ? this.ghostItems() : []),
         { label: 'Back to the career', action: 'career-hub', note: 'The skill tree and your stars.' },
         { label: 'Does it feel wrong?', section: true },
         {

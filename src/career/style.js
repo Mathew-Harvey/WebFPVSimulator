@@ -439,7 +439,9 @@ body.career-flight:not(.career-score) #ui .score-combo { visibility: hidden; }
 #career .cr-livery-chips i + i { border-left: 2px solid var(--c-ink); }
 #career .cr-paint { grid-template-columns: minmax(0, 7fr) minmax(0, 4fr); gap: clamp(18px, 2.6vw, 44px); align-content: start; padding: clamp(18px, 4vh, 52px) clamp(16px, 3.4vw, 56px) 64px; }
 #career .cr-paint-main, #career .cr-paint-side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-#career .cr-paint-side { padding-top: clamp(30px, 6vh, 90px); position: sticky; top: 0; align-self: start; }
+/* As specific as the page's own rule that sets its children relative, or
+   the preview would scroll away with the grid it is the preview of. */
+#career .cr-screen.has-paper.cr-paint > .cr-paint-side { padding-top: clamp(30px, 6vh, 90px); position: sticky; top: 0; align-self: start; }
 #career .cr-paint-side > .cr-btn { align-self: flex-start; }
 #career .cr-livery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 12px; }
 #career .cr-livery {
@@ -733,9 +735,28 @@ body.career-score #career .cr-obj { top: 150px; }
   #career .cr-coach-face { width: 80px; margin: 0; }
   #career .cr-level, #career .cr-res-page, #career .cr-paint { grid-template-columns: minmax(0, 1fr); }
   #career .cr-level-side, #career .cr-res-side, #career .cr-paint-side { padding-top: 0; }
-  #career .cr-paint-side { position: static; }
+  /* The preview rides along the foot of the page as a tray, so the quad in
+     the livery the cursor is on stays in sight while the grid scrolls. */
+  #career[data-screen="paint"] .cr-paint { display: flex; flex-direction: column; }
+  #career .cr-screen.has-paper.cr-paint > .cr-paint-side {
+    position: sticky; top: auto; bottom: -52px; z-index: 2; align-self: stretch; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px 12px;
+    /* Paper under the tray, down past the key bar, with an ink rule along
+       its top: the swatches scroll under it, not through it. A sticky box
+       stops short of its page by the page's own foot padding (52px here,
+       24px on a phone, above), so it is set that far below the edge. */
+    margin: 0 calc(-1 * clamp(16px, 3.4vw, 56px)); padding: 12px clamp(16px, 3.4vw, 56px) 46px;
+    background-color: var(--c-paper); border-top: 4px solid var(--c-ink);
+  }
+  #career .cr-paint-show {
+    flex: 1 1 260px; display: grid; grid-template-columns: 64px minmax(0, 1fr); grid-template-rows: auto auto;
+    column-gap: 12px; row-gap: 2px; align-items: center; justify-items: start; text-align: left;
+    padding: 8px 12px; transform: none; box-shadow: 5px 5px 0 var(--c-ink);
+  }
+  #career .cr-paint-pic { width: 64px; grid-row: 1 / 3; }
+  #career .cr-paint-name { font-size: 20px; align-self: end; }
+  #career .cr-paint-from { align-self: start; }
+  #career .cr-livery { scroll-margin-bottom: 190px; }
   #career .cr-cover-pair { grid-template-columns: minmax(0, 1fr); }
-  #career .cr-paint-pic { width: min(100%, 180px); }
   #career .cr-fork { grid-template-columns: minmax(0, 1fr); grid-auto-rows: max-content; align-content: start; }
   #career .cr-fork-side { min-height: 0; padding-top: 64px; justify-content: flex-start; }
   #career .cr-fork-mid { width: auto; flex-direction: row; flex-wrap: wrap; }
@@ -745,8 +766,17 @@ body.career-score #career .cr-obj { top: 150px; }
 }
 @media (max-width: 600px) {
   #career .cr-legend { display: none; }
+  #career .cr-screen.has-paper.cr-paint > .cr-paint-side { bottom: -24px; padding-bottom: 12px; }
   #career .cr-screen.has-paper { padding-bottom: 24px; scroll-padding-bottom: 0; }
   #career .cr-save-note { margin-left: 0; }
+}
+@media (max-height: 560px) {
+  /* A phone on its side: the tray at its smallest, so the grid keeps most
+     of the page. */
+  #career .cr-screen.has-paper.cr-paint > .cr-paint-side { padding-top: 8px; }
+  #career .cr-paint-show { grid-template-columns: 48px minmax(0, 1fr); padding: 5px 10px; }
+  #career .cr-paint-pic { width: 48px; }
+  #career .cr-paint-name { font-size: 17px; }
 }
 @media (max-height: 820px) {
   #career .cr-res-time b { font-size: clamp(28px, 3.2vw, 44px); }

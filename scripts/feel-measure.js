@@ -84,6 +84,11 @@ const TESTS = [
   { name: 'cruise', h: 150, stick: [0, 1, 0, 0.8], ms: 2500, angle: true },
   { name: 'drop', h: 1.0, stick: [0, 0, 0, 0], ms: 2500, ground: true },
   { name: 'dive', h: 2.0, stick: [0, 1, 0, 0.4], ms: 3000, angle: true, ground: true },
+  /* A wall met square on: angle mode, half pitch, a little over hover, from
+   * `d` aircraft metres in front of a tall face. And a drop onto the top of
+   * something solid (a roof, a table, a ledge), not the map's ground. */
+  { name: 'wall', h: 1.5, d: 6, stick: [0, 0.5, 0, 0.36], ms: 2500, angle: true, at: 'wall' },
+  { name: 'ledge', h: 1.0, stick: [0, 0, 0, 0], ms: 2500, ground: true, at: 'ledge' },
 ];
 
 /* In the page: find an open column near the spawn, then fly one test. */
@@ -134,6 +139,92 @@ fm.column = () => {
       }
       if (!level) continue;
       return { x, z, surf: g.surf, r };
+    }
+  }
+  return null;
+};
+/* The way positive pitch stick flies at the identity pose, in the world:
+ * the plant's -x (the cruise test's travel, measured), which is Three.js
+ * +z turned by the spawn's yaw. */
+fm.fwd = () => {
+  const yaw = window.__map().spawn.yaw;
+  return { x: Math.sin(yaw), z: Math.cos(yaw) };
+};
+/* A tall face square across the nose, with open air between: rings out from
+ * the spawn, and the start put exactly d aircraft metres from where the
+ * hull first touches it. */
+fm.wallSpot = (h, d) => {
+  const m = window.__map();
+  const sp = m.spawn;
+  const ws = fm.ws();
+  const f = fm.fwd();
+  const reach = (d + 8) / ws;
+  for (let r = 0; r <= 160; r += 3) {
+    const n = r === 0 ? 1 : Math.max(8, Math.round(r));
+    for (let i = 0; i < n; i += 1) {
+      const a = (i / n) * Math.PI * 2;
+      const x = sp.x + r * Math.cos(a);
+      const z = sp.z + r * Math.sin(a);
+      window.__placeCraft(x, sp.y + 400, z);
+      const g = window.__ground();
+      if (!Number.isFinite(g.surf)) continue;
+      const hits = [];
+      for (const dh of [-0.6, 0, 1.5, 3.0]) {
+        const y = g.surf + (h + dh) / ws;
+        const k = window.__hit(x, y, z, x + f.x * reach, y, z + f.z * reach);
+        if (!k.kind) break;
+        const dot = k.nx * f.x + k.nz * f.z;
+        if (dot > -0.9) break;
+        hits.push(k.t * reach);
+      }
+      if (hits.length !== 4) continue;
+      if (Math.max(...hits) - Math.min(...hits) > 0.05 / ws) continue;
+      const D = Math.min(...hits);
+      if (D * ws < d + 1) continue;
+      const sx = x + f.x * (D - d / ws);
+      const sz = z + f.z * (D - d / ws);
+      window.__placeCraft(sx, sp.y + 400, sz);
+      const g2 = window.__ground();
+      if (!Number.isFinite(g2.surf) || Math.abs(g2.surf - g.surf) > 0.002) continue;
+      const up = window.__hit(sx, g.surf + 0.3 / ws + 0.05, sz, sx, g.surf + 4 / ws, sz);
+      if (up.kind) continue;
+      return { x: sx, z: sz, surf: g.surf, r, wall: D * ws - (D - d / ws) * ws, kind: hits.length };
+    }
+  }
+  return null;
+};
+/* The flat top of something solid, at least half a metre over the ground,
+ * wide enough that a drop from h lands on it and not off its edge. */
+fm.ledgeSpot = (h) => {
+  const m = window.__map();
+  const sp = m.spawn;
+  const ws = fm.ws();
+  for (let r = 0; r <= 160; r += 2) {
+    const n = r === 0 ? 1 : Math.max(8, Math.round(r));
+    for (let i = 0; i < n; i += 1) {
+      const a = (i / n) * Math.PI * 2;
+      const x = sp.x + r * Math.cos(a);
+      const z = sp.z + r * Math.sin(a);
+      window.__placeCraft(x, sp.y + 400, z);
+      const g = window.__ground();
+      if (!Number.isFinite(g.surf)) continue;
+      const top = g.surf + 60 / ws;
+      const tops = [];
+      for (const [dx, dz] of [[0, 0], [0.5, 0], [-0.5, 0], [0, 0.5], [0, -0.5]]) {
+        const px = x + dx / ws;
+        const pz = z + dz / ws;
+        const k = window.__hit(px, top, pz, px, g.surf - 0.01, pz);
+        if (!k.kind || k.ny < 0.98) break;
+        tops.push(top + k.t * (g.surf - 0.01 - top));
+      }
+      if (tops.length !== 5) continue;
+      if (Math.max(...tops) - Math.min(...tops) > 0.003) continue;
+      /* A collider's top, not the map's ground: the ground is not a
+       * collider, so a hit at all says it. */
+      /* Clear air over it to the drop height and well past it. */
+      const over = window.__hit(x, tops[0] + 0.02, z, x, tops[0] + (h + 3) / ws, z);
+      if (over.kind) continue;
+      return { x, z, surf: tops[0], r, ground: g.surf };
     }
   }
   return null;
@@ -206,6 +297,32 @@ function metrics(T, r) {
     out.speed = Math.hypot(s[4], s[5], s[6]);
     out.vh = Math.hypot(s[4], s[5]);
     out.dz = s[3] - z0;
+  } else if (T.name === 'wall') {
+    /* Pitch flies -x: the wall closes along it. The hit is the first step
+     * that loses more than half a metre a second of it. */
+    const vx = (s) => -s[4];
+    let k = -1;
+    for (let i = 1; i < rows.length; i += 1) {
+      if (vx(rows[i]) < vx(rows[i - 1]) - 0.5 && vx(rows[i - 1]) > 0.5) {
+        k = i;
+        break;
+      }
+    }
+    out.hitMs = k < 0 ? null : Math.round((rows[k][0] - t0) * 1000);
+    out.hitSpeed = k < 0 ? null : vx(rows[k - 1]);
+    out.hitDz = k < 0 ? null : rows[k - 1][3] - z0;
+    let back = 0;
+    if (k >= 0) {
+      for (let i = k; i < Math.min(rows.length, k + 400); i += 1) {
+        back = Math.min(back, vx(rows[i]));
+      }
+    }
+    out.rebound = k < 0 ? null : -back;
+    const last = rows[rows.length - 1];
+    out.endX = -(last[1] - r.base[1]);
+    out.endDz = last[3] - z0;
+    out.endSpeed = Math.hypot(last[4], last[5], last[6]);
+    out.bounces = r.bounces;
   } else {
     /* Ground tests: the surface is h under the start in the aircraft's own
      * metres. */
@@ -371,10 +488,23 @@ async function main() {
       if (only && !only.some((o) => T.name.startsWith(o))) {
         continue;
       }
+      let here = spot;
+      if (T.at === 'wall') {
+        here = await ev(`return window.__fm.wallSpot(${T.h}, ${T.d})`);
+      } else if (T.at === 'ledge') {
+        here = await ev(`return window.__fm.ledgeSpot(${T.h})`);
+      }
+      if (!here) {
+        console.log(`  ${T.name.padEnd(8)} no place for it on this map`);
+        continue;
+      }
+      if (T.at) {
+        report[`${T.name}Spot`] = here;
+      }
       const runs = [];
       for (let k = 0; k < repeats; k += 1) {
         /* eslint-disable-next-line no-await-in-loop */
-        const r = await ev(`return await window.__fm.fly(${JSON.stringify(T)}, ${JSON.stringify(spot)});`);
+        const r = await ev(`return await window.__fm.fly(${JSON.stringify(T)}, ${JSON.stringify(here)});`);
         runs.push(metrics(T, r));
       }
       report.results[T.name] = summarise(runs);

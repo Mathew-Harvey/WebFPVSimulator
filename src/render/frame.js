@@ -74,7 +74,38 @@
  * at. tests/thresholds.json carries the declared value so that changing it
  * has to be done in two places on purpose.
  */
-export const WORLD_SCALE = 1;
+export let WORLD_SCALE = 1;
+
+/*
+ * THE SEAM IS USED AGAIN, PER FLIGHT, since 2026-10-28: the quad picker
+ * (the owner's ask of that day) seats either aircraft on any map. A five
+ * inch in Nick Burns' house, built three and a half times life size, flies
+ * a real five inch in a real house when the world is 3.5 times larger than
+ * the aircraft, and a whoop in the town, built at life size, flies the
+ * houses' whoop when the world is 1 / 3.43 of the aircraft. Both are this
+ * number, and nothing else changes: the plant, the tune and the module are
+ * the ones the aircraft flies at home.
+ *
+ * What the paragraph above says about the lever still holds. This does not
+ * make anything LOOK bigger; it changes how many world metres a metre of
+ * flight buys, which is exactly what flying a smaller or larger machine
+ * through the same rooms is. The lap time argument is why a race track
+ * keeps its own aircraft at 1 and the other one is practice only.
+ *
+ * Set by src/main.js (syncCraftScale) between runs only, from
+ * worldScaleFor in configs/airframes.js, never mid flight: everything that
+ * was converted under the old number would be in the wrong frame. Every
+ * caller reads WORLD_SCALE through these functions or as a live binding, so
+ * a set reaches them all. At 1 every function here is the identity to the
+ * bit, so every flight that was flown at 1 is the same flight.
+ */
+export function setWorldScale(s) {
+  if (!(s > 0.05 && s < 20)) {
+    throw new Error(`frame: world scale ${s} is not a scale`);
+  }
+  WORLD_SCALE = s;
+  return WORLD_SCALE;
+}
 
 /* A length in sim metres as a length in world metres. Sizes and offsets that
  * belong to the AIRCRAFT go through this on their way into the scene: its

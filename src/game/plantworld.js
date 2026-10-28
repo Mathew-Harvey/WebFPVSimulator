@@ -74,7 +74,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { threePosToSim, threeDirToSim, simPosToThree, simQuatToThree, simLenToWorld } from '../render/frame.js';
+import { threePosToSim, simPosToThree, simQuatToThree, simLenToWorld } from '../render/frame.js';
 import { contactMaterial } from './collide.js';
 
 const A = { x: 0, y: 0, z: 0 };
@@ -176,7 +176,11 @@ export function setMover(sim, m, cx, cy, cz, hx, hy, hz, vx, vy, vz, kind, visib
   }
   threePosToSim(cx - hx, cy - hy, cz - hz, A);
   threePosToSim(cx + hx, cy + hy, cz + hz, B);
-  threeDirToSim(vx, vy, vz, V);
+  /* A velocity is a length a second, so it takes the world scale the way a
+   * position does: threePosToSim, which is linear and carries no offset,
+   * not threeDirToSim, which is for unit directions. The same at a world
+   * scale of 1 to the bit. */
+  threePosToSim(vx, vy, vz, V);
   sim.e.sim_world_mover(
     m,
     Math.min(A.x, B.x), Math.min(A.y, B.y), Math.min(A.z, B.z),
@@ -194,7 +198,7 @@ export function setMover(sim, m, cx, cy, cz, hx, hy, hz, vx, vy, vz, kind, visib
  * out is three doubles and is returned. Allocates nothing.
  */
 export function moverVelocityInPlant(vx, vy, vz, c, s, out) {
-  threeDirToSim(vx, vy, vz, V);
+  threePosToSim(vx, vy, vz, V);
   out[0] = c * V.x + s * V.y;
   out[1] = c * V.y - s * V.x;
   out[2] = V.z;
@@ -289,7 +293,10 @@ export function addVehicle(sim, m, road, car) {
   const mat = contactMaterial(car.kind || 'train');
   const code = sim.e.sim_world_vehicle(
     m, road, simLen(car.offset || 0),
-    car.topSpeed, car.lateral, car.drift || 0,
+    /* A speed and an acceleration have a length in them and take the world
+     * scale; the drift gain is per unit of acceleration and takes it the
+     * other way. All three are the numbers they were at a scale of 1. */
+    simLen(car.topSpeed), simLen(car.lateral), (car.drift || 0) / simLen(1),
     simLen(car.length), simLen(car.width), simLen(car.height), simLen(car.clearance || 0),
     mat.e, mat.mu,
   );
@@ -424,7 +431,8 @@ export function readVehicles(sim, out) {
     /* A turn about the plant's +z is a turn about Three.js +y, the same way:
      * frame.js's change of basis is a proper rotation. */
     o.yawRate = f[b + 11];
-    o.curvature = f[b + 14];
+    /* One over a length, so the other way through the scale. */
+    o.curvature = f[b + 14] / simLenToWorld(1);
     o.slip = f[b + 15];
   }
   return out;

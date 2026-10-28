@@ -453,8 +453,16 @@ function seatedFreestyleMap(s) {
 }
 
 /*
- * The one aircraft a map is flown on, or null when any will do (`craft` in
- * src/maps/registry.js: Nick Burns' house and Heads', the whoop's).
+ * The aircraft a map RECOMMENDS, or null when it is the five inch's (`craft`
+ * in src/maps/registry.js: the whoop's houses and the shop). It was the one
+ * aircraft the map could be flown on, and keepOffForcedMaps put a five inch
+ * that arrived in a house back in the town (bug-3261ce67), because the house
+ * was a whoop's room built 3.5 times life size and a five inch in it was a
+ * five inch shrunk to a whoop's size with a five inch's hands. The quad
+ * picker (the owner, 2026-10-28) seats either aircraft anywhere at its own
+ * size: the world scale is set per flight from the map's built scale
+ * (`mapScale`), so a five inch in a house is a real five inch in a real
+ * house, which is tight, and a whoop in the town is a real whoop in a town.
  */
 function craftForMap(id) {
   const m = MAPS.find((x) => x.id === id);
@@ -462,21 +470,50 @@ function craftForMap(id) {
 }
 
 /*
- * A map that belongs to another aircraft is not this one's to sit on. Called
- * wherever the aircraft is seated, so a five inch that arrives from a stored
- * profile, the gate or a shelf is put back in the town rather than flown in
- * a house it is not for (bug-3261ce67). The town is the world any aircraft
- * that offers freestyle can be put in.
+ * THE QUAD PICKER'S REMEMBERED ANSWERS, one per map, as "map:craft" pairs in
+ * one string, because loadSettings keeps a stored key only when its typeof
+ * matches the default's. Read through quadPicks, which drops anything that
+ * is not a known map and a known aircraft, so a hand edited blob cannot seat
+ * a machine nobody ships.
  */
-function keepOffForcedMaps(s) {
-  const here = craftForMap(s.map);
-  if (here && here !== s.airframe) {
-    s.map = 'city';
+function quadPicks(s) {
+  const out = {};
+  for (const pair of String((s && s.quadPicks) || '').split(',')) {
+    const [map, craft] = pair.split(':');
+    if (map && AIRFRAME_IDS.includes(craft)) {
+      out[map] = craft;
+    }
   }
-  const mine = craftForMap(s.freestyleMap);
-  if (mine && mine !== s.airframe) {
-    s.freestyleMap = '';
+  return out;
+}
+
+function rememberQuadPick(s, map, craft) {
+  const picks = quadPicks(s);
+  picks[map] = craft;
+  s.quadPicks = Object.entries(picks).map(([m, c]) => `${m}:${c}`).join(',');
+}
+
+/*
+ * What the picker says about each aircraft on a map: the stamp over its
+ * picture and the one line under its name. The recommended one is what the
+ * map was built for. The other is honest about what it is: a five inch in a
+ * room built for a whoop is tight, and a whoop in a world built for a five
+ * inch makes everything huge. No sizes and no numbers: a pilot needs to know
+ * what it will feel like, not how it is done.
+ */
+const QUAD_PICK_CRAFT = [
+  { id: '5inch', name: 'Five inch', art: 'assets/quads/5inch.webp', line: 'A 6S race quad. Fast, heavy, and flies on its props.' },
+  { id: 'whoop65', name: 'Whoop', art: 'assets/quads/whoop.webp', line: 'A 65 mm ducted whoop. Small enough to bump off walls and keep going.' },
+];
+
+function quadPickStamp(craftId, rec, mapScale) {
+  if (craftId === rec) {
+    return { stamp: 'Recommended', note: 'What this map was built for.' };
   }
+  if (craftId === '5inch' && mapScale > 1) {
+    return { stamp: 'Tight!', note: 'Built for a whoop. Every doorway is a gap.' };
+  }
+  return { stamp: 'Giant world', note: 'Built for a five inch. Everything is huge.' };
 }
 
 /*
@@ -1059,6 +1096,8 @@ const DEFAULTS = {
    * of seating one on their behalf.
    */
   freestyleMap: '',
+  /* The quad picker's answer per map, "map:craft" pairs: see quadPicks. */
+  quadPicks: '',
   /* Which Betaflight diff the module is initialised from. A string for the
    * same reason map is: loadSettings only accepts a stored key whose typeof
    * matches the default, and an unknown id falls back to the first tune in
@@ -2081,8 +2120,6 @@ export function loadSettings() {
   } else if (wanted !== s.airframe) {
     seatAirframe(s, wanted);
   }
-  /* A stored seat from before a house was the whoop's alone. */
-  keepOffForcedMaps(s);
   /* A profile whose pitch differs from its roll has to show three axes,
    * whatever the stored menu shape says, or the rows would be editing a
    * pitch the pilot cannot see. */
@@ -2299,7 +2336,6 @@ export function seatAirframe(s, id) {
   s.hangar = hangar;
   s.airframe = to.id;
   s.seatedFor = to.id;
-  keepOffForcedMaps(s);
   if (back) {
     /* Each value through the same gate the loader puts it through, against
      * this aircraft: the tune, pack and weight lines below, the lens list
@@ -4312,6 +4348,38 @@ function craftItem(s, midRun) {
 }
 
 /*
+ * THE AIRCRAFT ROW IN A ROOM, a readout and not a choice. A room is one
+ * aircraft for everybody in it, the host's (craftForRoom in
+ * src/net/roomlinks.js), and joining one swaps a pilot onto it. Swapping
+ * back from here used to take a pilot out of the room's world as well,
+ * because the whoop had no freestyle and the houses had no five inch; since
+ * the quad picker (2026-10-28) either flies anywhere, so the swap would
+ * leave a whoop among five inches drawn as one of them. Leaving the room
+ * gives the row back.
+ *
+ * The host of a free flight room swaps everybody instead: the row opens the
+ * room's own card for it (swapQuad in src/net/together.js), and the quad
+ * changes here when the room has heard it.
+ */
+function roomCraftItem(s, info) {
+  const af = airframeById(s.airframe);
+  if (info.host && info.freestyle) {
+    return {
+      label: 'Aircraft',
+      value: af.name,
+      note: `Everybody in a room flies the same quad, and this room flies the ${af.name.toLowerCase()}. You are the host, so a swap here swaps everybody in the room with you.`,
+      action: 'room-quad',
+    };
+  }
+  return {
+    label: 'Aircraft',
+    value: af.name,
+    note: `Everybody in a room flies the same quad, and this room flies the ${af.name.toLowerCase()}. ${info.freestyle ? 'The host can swap it for everybody.' : 'Leave the room to change it.'}`,
+    action: 'noop',
+  };
+}
+
+/*
  * Where the camera tilt starts costing enough yaw to be worth a word, and
  * what to offer instead. 40 is where sin(t) passes 0.64, so nearly two
  * thirds of a yaw becomes picture roll; 500 puts a 40 degree mount back to
@@ -4689,7 +4757,11 @@ function locationHashScreen() {
  * fly, this is the one function that has to change.
  */
 function freestyleOffered(airframeId, mapId) {
-  return airframeById(airframeId).trackClass !== 'micro' || craftForMap(mapId) === airframeId;
+  /* Since the quad picker (2026-10-28) a whoop flies any freestyle world it
+   * was picked for, so a whoop seated in one keeps freestyle; a whoop with
+   * a track seated is still a racer, as before. */
+  return airframeById(airframeId).trackClass !== 'micro'
+    || MAPS.some((m) => m.id === mapId && m.mode === 'freestyle');
 }
 
 /*
@@ -5122,15 +5194,16 @@ export class Ui {
      * remembered is that the question was asked: the gate is the root of the
      * menu and it opens every visit. See craftGate below.
      */
-    /* A map that is one aircraft's alone names it whatever ?craft= says, so
-     * an old ?map=house&craft=5inch link lands on the whoop. */
+    /* A map's link seats the map, and the aircraft the link names, or the
+     * one the map recommends when it names none. Until the quad picker a
+     * house named the whoop whatever ?craft= said. */
     let linkedMapId = null;
     try {
       linkedMapId = new URLSearchParams(window.location.search).get('map');
     } catch (e) {
       /* No URL to read. */
     }
-    const linkedAf = craftForMap(linkedMapId) || linkedCraft();
+    const linkedAf = linkedCraft() || craftForMap(linkedMapId);
     if (craftForMap(linkedMapId)) {
       this.settings.map = linkedMapId;
       this.settings.freestyleMap = linkedMapId;
@@ -7089,6 +7162,85 @@ export class Ui {
       yesBtn.addEventListener('click', () => finish(true));
       noBtn.addEventListener('click', () => finish(false));
       yesBtn.focus();
+    });
+  }
+
+  /*
+   * THE QUAD PICKER: two pictures, the five inch and the whoop, each with a
+   * stamp that says what it is on this map and one line under its name. On
+   * the same overlay askConfirm uses, for the same reasons, and with the
+   * same deaf period, because it opens under the click that chose the map.
+   * The cursor starts on the aircraft this pilot last picked here, else the
+   * one the map recommends, so Enter flies what they flew last time.
+   * Arrows move between the two, Enter or a click picks, Escape is Back.
+   * A radio pilot gets the same three through the pad (see pollPad).
+   * Resolves the aircraft id, or null for Back.
+   */
+  askQuad(world, mapName) {
+    const rec = (world && world.craft) || '5inch';
+    const scale = (world && world.mapScale) || 1;
+    const start = quadPicks(this.settings)[world ? world.id : 'built'] || rec;
+    return new Promise((resolve) => {
+      this.nameWait = resolve;
+      this.quadDialog = true;
+      const box = el('div', 'name-dialog-box quad-pick');
+      box.append(el('h2', null, 'Pick your quad'));
+      box.append(el('p', 'lede', mapName));
+      const row = el('div', 'quad-pick-row');
+      const cards = QUAD_PICK_CRAFT.map((c) => {
+        const tag = quadPickStamp(c.id, rec, scale);
+        const card = btn(`quad-pick-card${c.id === rec ? ' is-rec' : ''}`);
+        const img = el('img', 'quad-pick-art');
+        img.src = c.art;
+        img.alt = '';
+        img.decoding = 'async';
+        card.append(img, el('span', 'quad-pick-stamp', tag.stamp), el('strong', 'quad-pick-name', c.name),
+          el('span', 'quad-pick-line', c.line), el('span', 'quad-pick-note', tag.note));
+        card.setAttribute('aria-label', `${c.name}, ${tag.stamp}. ${tag.note}`);
+        card.dataset.craft = c.id;
+        row.append(card);
+        return card;
+      });
+      box.append(row);
+      const foot = el('div', 'name-dialog-row');
+      const back = btn('name-dialog-btn', 'Back');
+      foot.append(back);
+      box.append(foot);
+      this.nameDialog.textContent = '';
+      this.nameDialog.append(box);
+      this.nameDialog.hidden = false;
+      const openedAt = performance.now();
+      const finish = (v) => {
+        if (performance.now() - openedAt < CONFIRM_DEAF_MS) {
+          return;
+        }
+        this.quadDialog = false;
+        this.closeNameDialog(v);
+      };
+      const onKey = (e) => {
+        const at = cards.indexOf(document.activeElement);
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+          e.preventDefault();
+          e.stopPropagation();
+          const next = at < 0 ? 0 : (at + (e.key === 'ArrowRight' ? 1 : cards.length - 1)) % cards.length;
+          cards[next].focus();
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          e.stopPropagation();
+          finish(at >= 0 ? cards[at].dataset.craft : null);
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          finish(null);
+        }
+      };
+      this.nameKeyHandler = onKey;
+      this.nameDialog.addEventListener('keydown', onKey, true);
+      for (const card of cards) {
+        card.addEventListener('click', () => finish(card.dataset.craft));
+      }
+      back.addEventListener('click', () => finish(null));
+      (cards.find((c) => c.dataset.craft === start) || cards[0]).focus();
     });
   }
 
@@ -9699,7 +9851,7 @@ export class Ui {
          * decoration, and decoration is what gives way.
          */
         { label: 'The machine', section: true },
-        craftItem(s, midRun),
+        this.roomInfo ? roomCraftItem(s, this.roomInfo) : craftItem(s, midRun),
         tuneItem(s, midRun),
         {
           label: 'Share this tune',
@@ -13851,7 +14003,8 @@ export class Ui {
       } : null;
     }
     if (item.map && item.map.id !== 'built' && item.map.id !== 'custom') {
-      const craft = craftForMap(item.map.id) || this.settings.airframe;
+      /* The host's own aircraft: the quad picker lets either fly any world. */
+      const craft = this.settings.airframe;
       return {
         ...base, map: item.map.id, name: item.label || entry.name, way: 'freestyle', whoop: craft === 'whoop65',
       };
@@ -13940,6 +14093,39 @@ export class Ui {
         this.onFlySeated();
       }
     };
+    /*
+     * THE QUAD PICKER, between choosing a world and flying it (the owner,
+     * 2026-10-28: "a quad selector at the start of each map, whoop or 5
+     * inch, with a recommended quad for the map"). A world from the
+     * registry or the board, and never while hosting, where the room flies
+     * the host's aircraft as it stands. Back on the picker leaves the pilot
+     * on the world cards with nothing changed.
+     */
+    /* In a room the quad is the room's (roomCraftItem), so a world picked
+     * from inside one is flown on it, and there is nothing to ask. */
+    if (!this.quadPicking && !this.roomInfo && (action.startsWith('map:') || action.startsWith('boardmap:'))) {
+      const world = entry.item.map || null;
+      if (!world || world.mode === 'freestyle') {
+        this.askQuad(world, entry.name || entry.label || (world && world.name) || 'This map').then((craft) => {
+          if (!craft) {
+            return;
+          }
+          rememberQuadPick(this.settings, world ? world.id : 'built', craft);
+          if (craft !== this.settings.airframe) {
+            seatAirframe(this.settings, craft);
+            this.settings.airframeAsked = true;
+          }
+          saveSettings(this.settings);
+          this.quadPicking = true;
+          try {
+            this.pickerAction(id, entry, ev);
+          } finally {
+            this.quadPicking = false;
+          }
+        });
+        return;
+      }
+    }
     if (action.startsWith('boardmap:')) {
       this.openBoardMap(action.slice('boardmap:'.length), fly);
       return;
@@ -19395,6 +19581,16 @@ export class Ui {
     this.seatMap(world.id);
   }
 
+  /* The room's quad, when the host swaps quads (swapQuad in main.js). */
+  seatRoomQuad(id) {
+    if (this.settings.airframe === id) {
+      return;
+    }
+    seatAirframe(this.settings, id);
+    this.settings.airframeAsked = true;
+    saveSettings(this.settings);
+  }
+
   /*
    * Seat a map: the one place a chosen world or track becomes the thing the
    * next flight is in.
@@ -19427,10 +19623,10 @@ export class Ui {
        * first in the registry, and so the gate can tell a pilot who has
        * chosen a world from one who never has. */
       this.settings.freestyleMap = id;
-      /* The aircraft the world is for: the whoop's houses seat the whoop,
-       * and a whoop leaving one for another world is a five inch again,
-       * because the whoop has no other freestyle (freestyleOffered). */
-      const want = m.craft || (freestyleOffered(this.settings.airframe, id) ? null : '5inch');
+      /* The aircraft is the pilot's, picked on the quad picker before this
+       * (askQuad) or already seated. It used to be the world's: the whoop's
+       * houses seated the whoop, and a whoop leaving one was a five inch. */
+      const want = freestyleOffered(this.settings.airframe, id) ? null : '5inch';
       if (want && want !== this.settings.airframe) {
         seatAirframe(this.settings, want);
         this.settings.airframeAsked = true;
@@ -20970,6 +21166,27 @@ export class Ui {
        * could send a form or confirm a question with a flick.
        */
       const rest = !now.up && !now.down && !now.left && !now.right && !now.select && !now.back;
+      /* The quad picker is the one dialog a radio pilot has to answer, or
+       * no map could be flown from the pad: left and right move between
+       * the two quads, select picks, back is Back. */
+      const key = (k) => this.nameDialog.dispatchEvent(new KeyboardEvent('keydown', {
+        key: k, code: k, bubbles: true, cancelable: true,
+      }));
+      if (this.quadDialog && this.dialogPadArmed) {
+        if (now.back && !this.padPrev.back) {
+          this.dialogPadArmed = false;
+          key('Escape');
+        } else if (now.left && !this.padPrev.left) {
+          key('ArrowLeft');
+        } else if (now.right && !this.padPrev.right) {
+          key('ArrowRight');
+        } else if (now.select && !this.padPrev.select) {
+          this.dialogPadArmed = false;
+          key('Enter');
+        }
+        this.padPrev = now;
+        return;
+      }
       if (!this.dialogPadArmed) {
         this.dialogPadArmed = rest;
       } else if ((now.back && !this.padPrev.back) || (now.left && !this.padPrev.left)) {

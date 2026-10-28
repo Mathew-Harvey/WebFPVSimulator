@@ -71,6 +71,9 @@
  *   vote    the host moving the room to another map: the banner that
  *           asks, N to stay and the room left to the page; then Change
  *           map, the picker, the tally, and the whole room moving
+ *   swap    the host swapping quads: a pilot moved onto the new quad with
+ *           the splash, the world scale with it, and the page as host
+ *           swapping everybody back from the room's page
  *
  * The race scene also has the host leave in the countdown.
  *
@@ -3608,6 +3611,111 @@ async function sceneVote() {
   }
 }
 
+/*
+ * The host swapping quads, the owner's ask of 2026-10-28: everybody in the
+ * room is moved onto the host's new quad with a splash across the middle
+ * of the screen that says so. First the page is a pilot and a host in Node
+ * swaps; then the page is the host and swaps from the room's page, and the
+ * pilot in Node hears it. Nick's house is built at three and a half times
+ * life size for the whoop, so the swap moves the world scale too.
+ */
+async function sceneSwap() {
+  console.log('\nswap: the host swapping the room\'s quad');
+  const kite = bot('Kite Runner', 331);
+  const moss = bot('Moss Comet', 337);
+  const room = await hostRoom(kite, {
+    name: 'Swappers', way: 'freestyle', map: 'house', mapName: "Nick Burns' house", scale: 100,
+  });
+  const at = `/index.html?mp=1&board=${encodeURIComponent(boardOrigin)}&map=house&craft=whoop65`;
+  const page = await open(at, seedFor({ met: true, name: 'Swap Pilot', map: 'house', airframe: 'whoop65' }));
+  const shot = shooter(page, 'swap');
+  const scaleNow = () => page.evaluate("import('/src/render/frame.js').then((f) => f.WORLD_SCALE)");
+  const quadNow = () => page.evaluate('window.__ui.settings.airframe');
+  let hover = null;
+  try {
+    await joinByCode(page, room.code);
+    await page.until(`${T} && window.__together().inRoom`, 15000);
+    await page.until("window.__mode === 'flight' && window.__ui.screen === 'flight'", 20000);
+    check('a whoop room on Nick\'s house is flown on the whoop, at the house\'s own scale', await quadNow() === 'whoop65' && await scaleNow() === 1, `${await quadNow()} ${await scaleNow()}`);
+    const youId = (await state(page)).you;
+    await wait(1500);
+
+    kite.s.link.settings({ scale: 50 });
+    const splashed = await page.until(SEES('Kite Runner swapped quads', '#tg .tg-swap'), 10000).then(() => true, () => false);
+    const words = await page.evaluate("(document.querySelector('#tg .tg-swap') || {}).textContent || ''");
+    check('the host swapping to the five inch splashes across the middle of the screen, naming the host and the quad', splashed && words.includes('five inch'), words);
+    check('the splash is lettered', await page.evaluate("Boolean(document.querySelector('#tg .tg-swap canvas.lettered'))"));
+    check('the page is on the five inch now', await page.until("window.__ui.settings.airframe === '5inch'", 5000).then(() => true, () => false));
+    const s5 = await scaleNow();
+    check('and the house is life size to it', Math.abs(s5 - 1 / 3.5) < 1e-9, s5);
+    check('and it is still flying, under the splash', await page.until("window.__mode === 'flight' && window.__ui.screen === 'flight'", 5000).then(() => true, () => false));
+    const st = await state(page);
+    check('the room says five inch, and the poses are in its unit', st.scale === 50 && st.units === 50, `${st.scale} ${st.units}`);
+    check('the address carries the five inch, for a reload', await page.evaluate("location.search.includes('craft=5inch')"));
+    await settled(page, '#tg .tg-swap .vsheet');
+    const mid = await page.evaluate(`(() => { const r = document.querySelector('#tg .tg-swap .vsheet').getBoundingClientRect();
+      const cx = (r.left + r.right) / 2, cy = (r.top + r.bottom) / 2;
+      return Math.abs(cx - innerWidth / 2) < innerWidth * 0.1 && Math.abs(cy - innerHeight / 2) < innerHeight * 0.15; })()`);
+    check('the splash sits in the middle of the screen', mid);
+    const on = await overlaps(page, '#tg .tg-swap .vsheet', CLEAR_OF);
+    check('the splash covers none of the shell\'s instruments', !on, on);
+    await shot('pilot-splash');
+    check('the host hears the page\'s quad again after the swap', await until(() => kite.s.remotes.has(youId), 5000));
+    check('and the splash goes on its own', await page.until("document.querySelector('#tg .tg-swap').hidden", 8000).then(() => true, () => false));
+
+    /* A pilot's Quad screen names the room's quad and who can swap it. */
+    const AIRCRAFT_ROW = "(() => { window.__ui.act('pause'); window.__ui.show('paused'); window.__ui.show('quad'); const it = window.__ui.items().find((x) => x && x.label === 'Aircraft'); return it ? { note: it.note, action: it.action } : null; })()";
+    const row = await page.evaluate(AIRCRAFT_ROW);
+    check('a pilot\'s Quad screen names the room\'s quad, says the host can swap it, and swaps nothing itself',
+      row && row.action === 'noop' && row.note.includes('this room flies the five inch') && row.note.includes('The host can swap it for everybody'), JSON.stringify(row));
+    await page.evaluate("(() => { window.__ui.show('paused'); window.__ui.act('resume'); return 1; })()");
+    await page.until("window.__mode === 'flight' && window.__ui.screen === 'flight'", 5000);
+
+    /* The page is the host now, and swaps everybody back. */
+    kite.s.leave();
+    check('the page is the host once the host leaves', await page.until(`${T} && window.__together().host === window.__together().you`, 10000).then(() => true, () => false));
+    await joinRoom(moss, room.code, '');
+    await page.until(`${T} && window.__together().pilots === 2`, 10000);
+    /* Flying, so the page has Watch a pilot too: the host's longest list. */
+    hover = hoverNear(moss);
+    await wait(2000);
+    await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); window.__ui.act('room-sheet'); return 1; })()");
+    await sheetIs(page, 'room');
+    check('the host\'s room page has Swap quads', await page.evaluate(SEES('Swap quads', '#tg .tg-menu')) && await page.evaluate(SEES('Everyone swaps', '#tg .tg-menu')));
+    check('beside Watch a pilot, and every button of the page still on screen', await page.evaluate(SEES('Watch a pilot', '#tg .tg-menu')) && (await offSheet(page)) === '', await offSheet(page));
+    await shot('host-room');
+    await pressKey(page, 'swap-quad');
+    await sheetIs(page, 'swapQuad');
+    check('Swap quads asks first, with Cancel under the focus', await page.evaluate("document.activeElement && document.activeElement.dataset.k === 'no'"));
+    check('every button of the card is on screen', (await offSheet(page)) === '', await offSheet(page));
+    await shot('host-ask');
+    await pressKey(page, 'yes');
+    check('the pilot in the room hears the whoop', await until(() => moss.s.room && moss.s.room.scale === 100, 5000));
+    check('the host is splashed too, as the one who swapped', await page.until(SEES('You swapped quads', '#tg .tg-swap'), 10000).then(() => true, () => false));
+    check('and is back in the air with everybody, not left on the pause menu', await page.until("window.__mode === 'flight' && window.__ui.screen === 'flight'", 5000).then(() => true, () => false));
+    check('and is on the whoop, at the house\'s own scale', await page.until("window.__ui.settings.airframe === 'whoop65'", 5000).then(() => true, () => false) && await scaleNow() === 1);
+    await shot('host-splash');
+
+    /* The host's Quad screen row opens the same card. */
+    await page.until("document.querySelector('#tg .tg-swap').hidden", 8000).catch(() => {});
+    const hostRow = await page.evaluate(AIRCRAFT_ROW);
+    check('the host\'s Aircraft row says a swap there swaps everybody', hostRow && hostRow.action === 'room-quad' && hostRow.note.includes('swaps everybody in the room with you'), JSON.stringify(hostRow));
+    await page.evaluate("(() => { const ui = window.__ui; ui.setCursor(ui.items().findIndex((x) => x && x.label === 'Aircraft')); ui.select(); return 1; })()");
+    check('and pressing it opens the swap card', await sheetIs(page, 'swapQuad', 5000).then(() => true, () => false));
+    await pressKey(page, 'no');
+    check('and Cancel keeps the whoop', await quadNow() === 'whoop65' && (await state(page)).scale === 100);
+    endChecks(page);
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.message}`);
+    await shot('failed').catch(() => {});
+  } finally {
+    if (hover) clearInterval(hover);
+    for (const b of [kite, moss]) b.s.leave();
+    await page.close();
+  }
+}
+
 async function sceneWatch() {
   console.log('\nwatch: riding behind another pilot');
   const kite = bot('Kite Runner', 211);
@@ -3973,6 +4081,7 @@ try {
   if (wanted('watch')) { await freshBoard(); await sceneWatch(); }
   if (wanted('watchedge')) { await freshBoard(); await sceneWatchEdges(); }
   if (wanted('vote')) { await freshBoard(); await sceneVote(); }
+  if (wanted('swap')) { await freshBoard(); await sceneSwap(); }
   if (wanted('overview')) { await freshBoard(); await sceneOverview(); }
 } finally {
   if (board) board.kill('SIGKILL');

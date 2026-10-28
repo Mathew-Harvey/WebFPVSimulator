@@ -964,6 +964,8 @@ export const TOGETHER_CSS = `
 #tg .roomsheet .tg-menu { display: grid; gap: 12px; align-content: start; padding: 2px 8px 8px 2px; }
 #tg .roomsheet .tg-menu .btn { justify-content: flex-start; width: 100%; }
 #tg .roomsheet .tg-menu .btn small { margin-left: auto; font-size: 11px; font-style: normal; letter-spacing: 0.06em; opacity: 0.75; }
+#tg .roomsheet .tg-menu.long { gap: 8px; }
+#tg .roomsheet .tg-menu.long .btn { padding-block: 8px; }
 #tg .roomsheet .pane { min-height: 0; max-height: 100%; overflow: auto; border: 3px solid var(--ink); background: var(--white); padding: 8px 12px; align-self: start; }
 #tg .infotags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 #tg .lab-h { font-weight: 900; text-transform: uppercase; font-size: 12px; letter-spacing: 0.1em; color: var(--ink); }
@@ -1051,6 +1053,15 @@ export const TOGETHER_CSS = `
 #tg .tg-vote .vhow { font-size: 14px; font-weight: 700; color: var(--quiet); }
 #tg .tg-vote .vbar { align-self: stretch; justify-self: stretch; height: 8px; margin: 0 -18px; background: var(--ink); }
 #tg .tg-vote .vbar i { display: block; height: 100%; background: var(--amber); transform-origin: left; animation: tg-vote-bar linear forwards; }
+/* The host's swap of the room's quad: the same panel, in mint, with the
+ * quad on paper where the vote has the map, and no buttons, because there
+ * is nothing to answer. A press puts it away early. */
+#tg .tg-swap .vsheet { cursor: pointer; }
+#tg .sheet.mint-edge { box-shadow: 8px 8px 0 var(--mint), 12px 12px 0 var(--ink); }
+#tg .tg-swap .vpic.quad { background: var(--cream) center / contain no-repeat; }
+#tg .tg-swap .vbar i { background: var(--mint); }
+#tg .swaprow { display: flex; gap: 14px; align-items: center; color: var(--ink); font-weight: 700; font-size: 16px; }
+#tg .swappic { flex: none; width: 120px; aspect-ratio: 16 / 10; border: 3px solid var(--ink); background: var(--cream) center / contain no-repeat; }
 @keyframes tg-vote-in { from { transform: scale(1.25); opacity: 0; } }
 @keyframes tg-vote-bar { from { transform: scaleX(1); } to { transform: scaleX(0); } }
 #tg .speedlines {

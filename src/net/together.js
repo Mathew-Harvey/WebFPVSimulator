@@ -1009,7 +1009,7 @@ export function createTogether(shell) {
    * takes them with it, wherever they were in the stack, so neither Back
    * nor a press can reach one that would talk to a room that is not there.
    */
-  const ROOM_SHEETS = new Set(['room', 'roomSettings', 'scene', 'race', 'confirm', 'report', 'share', 'claim']);
+  const ROOM_SHEETS = new Set(['room', 'roomSettings', 'scene', 'race', 'confirm', 'report', 'share', 'claim', 'swapQuad']);
 
   function dropRoomSheets() {
     const top = stack[stack.length - 1];
@@ -1070,7 +1070,7 @@ export function createTogether(shell) {
       return;
     }
     try {
-      const next = addressInRoom(window.location.href, w.link, r.code, shell.mp);
+      const next = addressInRoom(window.location.href, w.link, r.code, shell.mp, shell.whoop() ? 'whoop65' : '5inch');
       if (next) {
         window.history.replaceState(window.history.state, '', next);
       }
@@ -1097,7 +1097,7 @@ export function createTogether(shell) {
       return;
     }
     shell.roomInfo({
-      code: r.code, name: r.name, n: session.link.pilots.size, host: isHost(), race: RoomRace.racing(r.way),
+      code: r.code, name: r.name, n: session.link.pilots.size, host: isHost(), race: RoomRace.racing(r.way), freestyle: r.way === 'freestyle',
     });
   }
 
@@ -1494,7 +1494,7 @@ export function createTogether(shell) {
         paintChip();
         /* Host tools open on a page that is no longer the host's would
          * send words the board refuses: they close. */
-        if (!isHost() && (topName() === 'roomSettings' || (topName() === 'confirm' && aboutHostTool))) {
+        if (!isHost() && (topName() === 'roomSettings' || topName() === 'swapQuad' || (topName() === 'confirm' && aboutHostTool))) {
           pop();
           toast('You are not the host now.', 'warn');
         }
@@ -1506,6 +1506,7 @@ export function createTogether(shell) {
         paintChip();
         infoForShell();
         writeAddress();
+        quadHeard(data.room);
         if (!data.room.card && data.room.map !== cardMap) {
           oweCard();
         }
@@ -1619,6 +1620,11 @@ export function createTogether(shell) {
         moved(data);
         break;
       case 'settingsRefused':
+        if (swapAsked) {
+          swapAsked = '';
+          toast('The room could not swap quads just now.', 'warn');
+          break;
+        }
         if (streamSaving) {
           streamSaving = false;
           streamBad = (data.fields || []).includes('stream');
@@ -1744,11 +1750,18 @@ export function createTogether(shell) {
       for (const name of ['room', 'share', 'scene', 'race', 'roomSettings', 'claim']) {
         refresh(name);
       }
+      /* The host may have swapped quads while this pilot was away. */
+      if (quadHeard(session.room)) {
+        return;
+      }
       banner(hostPilot() ? hostPilot().avatar : me().avatar, 'hello', 'Back in', 'The room is just as you left it.', 'mint');
       return;
     }
     welcomedOnce = true;
     const r = session.room;
+    /* A swap between the room's listing and this welcome: the pilot is not
+     * in the air yet, so it is said with the welcome rather than splashed. */
+    const swapped = quadHeard(r, true);
     if (was && was.kind === 'host') {
       sheetShare({ first: true, entry: was.entry });
       return;
@@ -1768,8 +1781,9 @@ export function createTogether(shell) {
       let hi = r.typedChat ? 'Say hi with 1 to 6, or Enter to type.' : 'Say hi with 1 to 6, or Q for the lines.';
       if (by === 'touch') hi = 'Say hi: tap the room card, then Talk.';
       else if (by === 'pad') hi = 'Say hi: pause, then Room, then Talk.';
+      const onto = swapped ? `This room flies the ${QUADS[craftForRoom(r)].name} now, so you are on one. ` : '';
       banner(hp ? hp.avatar : null, 'hello', `Welcome to ${r.name}`,
-        `${hp && hp.id !== session.you ? `${hp.handle} is hosting. ` : ''}${who}. ${hi}${via ? ` Your ${VIA_NAMES[via]} name: pause, then Room.` : ''}`);
+        `${hp && hp.id !== session.you ? `${hp.handle} is hosting. ` : ''}${who}. ${onto}${hi}${via ? ` Your ${VIA_NAMES[via]} name: pause, then Room.` : ''}`);
     });
   }
 
@@ -3147,6 +3161,14 @@ export function createTogether(shell) {
   }
 
   /* The room's page, from the pause menu's Room row. */
+  /* The room page's list of buttons, set closer when it is long: a host
+   * with somebody to watch has eight since Swap quads, and the last of
+   * them, Leave room, has to stay on a 720 pixel screen. */
+  function menuOf(...kids) {
+    const list = kids.flat(3).filter((k) => k != null && k !== false);
+    return h(list.length > 7 ? 'div.tg-menu.long' : 'div.tg-menu', null, list);
+  }
+
   function sheetRoom() {
     if (!roomToOpen()) {
       return;
@@ -3173,7 +3195,7 @@ export function createTogether(shell) {
         btn('Back', 'small ghost', () => back(), { 'data-k': 'back' })),
         h('div.rule'),
         h('div.roomsheet', null,
-          h('div.tg-menu', null,
+          menuOf(
             racing ? h('button.btn.ghost', {
               type: 'button', 'data-k': 'race', 'data-autofocus': true, on: { click: () => sheetRace() },
             }, h('span', { text: 'Race' }), h('small', { text: raceNote })) : null,
@@ -3187,6 +3209,7 @@ export function createTogether(shell) {
             btn('Invite pilots', 'ghost', () => sheetShare(), { 'data-k': 'invite' }),
             isHost() ? btn('Room settings', 'ghost', () => sheetSettings(), { 'data-k': 'settings' }) : null,
             voteRows(),
+            swapRow(r),
             btn('Your look', 'ghost', () => sheetEditor(() => refresh('room')), { 'data-k': 'look' }),
             namesHere(r) ? btn(`${VIA_NAMES[namesHere(r)]} name`, 'ghost', () => sheetClaim(), { 'data-k': 'claim' }) : null,
             btn('Leave room', 'danger', () => sheetConfirm('leave'), { 'data-k': 'leave' })),
@@ -3519,6 +3542,145 @@ export function createTogether(shell) {
     travel(r, invite);
   }
 
+  /* ---- the room's quad, swapped by the host ---- */
+
+  /*
+   * The owner's ask of 2026-10-28: the host swaps quads and everybody in
+   * the room is swapped with them, with a splash across the middle of the
+   * screen that says so. A room is one aircraft (craftForRoom in
+   * src/net/roomlinks.js), named by its pose unit, so the swap is the host
+   * sending the other unit through the room's settings, which the board
+   * already takes from a host; it sends every pilot the room again, and
+   * each page seats the new quad when it hears it (quadHeard). No vote,
+   * because a room flying two aircraft is not one room, and no change to
+   * the board.
+   *
+   * Freestyle rooms only: a race room's track is built for one aircraft.
+   * Not during a room race or a vote on a map, which both hold the room to
+   * what it is.
+   */
+  const QUADS = {
+    whoop65: { name: 'whoop', label: 'Whoop', art: 'assets/quads/whoop.webp', scale: 100 },
+    '5inch': { name: 'five inch', label: 'Five inch', art: 'assets/quads/5inch.webp', scale: 50 },
+  };
+  const SWAP_SPLASH_MS = 4500;
+  let swapAsked = '';
+  let swapTimer = null;
+
+  function otherQuad(r) {
+    return craftForRoom(r) === 'whoop65' ? '5inch' : 'whoop65';
+  }
+
+  /* Why the host cannot swap now, or '' when they can. */
+  function swapBlocked() {
+    const r = room();
+    if (!r || !isHost()) return 'Only the host can swap quads.';
+    if (r.way !== 'freestyle') return 'A race room keeps its quad. Host a free flight room to swap.';
+    if (racingNow()) return 'Not during a race.';
+    if (currentVote()) return 'Not while the room votes on a map.';
+    return '';
+  }
+
+  function swapRow(r) {
+    return isHost() && r.way === 'freestyle' && !racingNow() && !currentVote() ? h('button.btn.ghost', {
+      type: 'button', 'data-k': 'swap-quad', on: { click: () => sheetSwapQuad() },
+    }, h('span', { text: 'Swap quads' }), h('small', { text: 'Everyone swaps' })) : null;
+  }
+
+  function sheetSwapQuad() {
+    const why = swapBlocked();
+    if (why) {
+      toast(why, 'warn');
+      return;
+    }
+    const to = otherQuad(room());
+    const q = QUADS[to];
+    const under = stack.length ? stack[stack.length - 1].render : null;
+    open('swapQuad', () => h('div', null, under ? under() : null, h('div.modal-back', null, h('div.modal.sheet.sakura.halftone', null,
+      lettered(`EVERYBODY ON THE ${q.name.toUpperCase()}?`, [INKS.cream, INKS.mint], 38, 500),
+      h('div.swaprow', null,
+        h('div.swappic', { style: { backgroundImage: `url("${q.art}")` } }),
+        h('span', { text: `Everybody in the room swaps to the ${q.name} with you, and starts again from the spawn.` })),
+      h('div.btnrow', null,
+        btn('Swap quads', 'amber', () => askSwap(to), { 'data-k': 'yes' }),
+        /* Cancel has the focus: twenty pilots back to the spawn is not one
+         * stray press away. */
+        btn('Cancel', 'ghost', () => back(), { 'data-k': 'no', 'data-autofocus': true }))))));
+  }
+
+  function askSwap(to) {
+    const why = swapBlocked();
+    if (why) {
+      toast(why, 'warn');
+      back();
+      return;
+    }
+    swapAsked = to;
+    session.link.settings({ scale: QUADS[to].scale });
+    /* Into the air with everybody else, as a move to another map is. */
+    closeAll();
+    if (shell.paused()) {
+      shell.resume();
+    }
+  }
+
+  /*
+   * The room as the board says it is, against the quad this pilot is on:
+   * a freestyle room on the other one has been swapped, and the shell seats
+   * the room's (swapQuad in src/main.js). `first` is the welcome, when the
+   * pilot is not flying yet and the welcome says it instead of a splash.
+   * True when the quad was swapped.
+   */
+  function quadHeard(r, first = false) {
+    if (!r || r.way !== 'freestyle' || sameCraft(r) || !sameWorld(r) || !shell.swapQuad) {
+      swapAsked = '';
+      return false;
+    }
+    const to = craftForRoom(r);
+    /* Back to the goggles first: the quad being watched from is the one
+     * being swapped. */
+    stopWatch(true);
+    if (!shell.swapQuad(to)) {
+      swapAsked = '';
+      return false;
+    }
+    swapAsked = '';
+    writeAddress();
+    refresh('room');
+    if (!first) {
+      showSwapSplash(to);
+    }
+    return true;
+  }
+
+  function showSwapSplash(to) {
+    const q = QUADS[to];
+    const byMe = isHost();
+    const hp = hostPilot();
+    const who = hp && !byMe ? hp.handle : 'The host';
+    const title = byMe ? `EVERYBODY ON THE ${q.name.toUpperCase()}` : `YOU'RE ON THE ${q.name.toUpperCase()}`;
+    const words = byMe
+      ? `You swapped quads, so everybody in the room is on the ${q.name} now. Back to the spawn, all of you.`
+      : `${who} swapped quads, so you are on the ${q.name} now, the same as everybody here. Back to the spawn.`;
+    swapBox.replaceChildren(h('div.vsheet.sheet.halftone.mint-edge', { role: 'status', 'aria-label': `${title.toLowerCase()}. ${words}`, on: { click: () => hideSwapSplash() } },
+      h('span.kicker', { text: byMe ? 'You swapped quads' : `${who} swapped quads` }),
+      lettered(title, [INKS.cream, INKS.mint], 44, 600),
+      h('div.vrow', null,
+        h('div.vpic.quad', { style: { backgroundImage: `url("${q.art}")` } }),
+        h('div.vwords', null, h('b', { text: q.label }), h('span', { text: words }))),
+      h('div.vbar', null, h('i', { style: { animationDuration: `${SWAP_SPLASH_MS}ms` } }))));
+    swapBox.hidden = false;
+    sound('move');
+    clearTimeout(swapTimer);
+    swapTimer = setTimeout(hideSwapSplash, SWAP_SPLASH_MS + 300);
+  }
+
+  function hideSwapSplash() {
+    clearTimeout(swapTimer);
+    swapBox.hidden = true;
+    swapBox.replaceChildren();
+  }
+
   /* The room's page while a vote runs, and the host's way to start one. */
   function voteRows() {
     const v = currentVote();
@@ -3763,11 +3925,14 @@ export function createTogether(shell) {
    * screen (the owner's ask of 2026-10-28: a banner was not clear). */
   const voteBox = h('div.tg-vote');
   voteBox.hidden = true;
+  /* The host's swap of the room's quad, said the same way (swapQuad). */
+  const swapBox = h('div.tg-vote.tg-swap');
+  swapBox.hidden = true;
   /* The overview's panels: the race board, the moments, the pilot card,
    * the course strip, the keys. */
   const ovBox = h('div.ovhud');
   ovBox.hidden = true;
-  layer.append(chip, pit, standBox, posBox, roster, logBox, ovBox, talk, helloBox, qbar, bannerBox, countBox, voteBox, watchBox, toastBox);
+  layer.append(chip, pit, standBox, posBox, roster, logBox, ovBox, talk, helloBox, qbar, bannerBox, countBox, voteBox, swapBox, watchBox, toastBox);
 
   let rosterOn = false;
   let qbarTimer = null;
@@ -4099,6 +4264,7 @@ export function createTogether(shell) {
     posBox.hidden = true;
     standBox.hidden = true;
     hideVoteSplash();
+    hideSwapSplash();
     logBox.replaceChildren();
     helloBox.replaceChildren();
     helloQueue.length = 0;
@@ -5506,6 +5672,8 @@ export function createTogether(shell) {
       dropSession();
     } else if (action === 'room-talk') {
       sheetScene();
+    } else if (action === 'room-quad') {
+      sheetSwapQuad();
     }
   }
 
@@ -5590,6 +5758,9 @@ export function createTogether(shell) {
         watchRode: store.watchRode,
         map: room() ? room().map : '',
         vote: currentVote(),
+        scale: room() ? room().scale : 0,
+        units: session ? session.units : 0,
+        swapSplash: !swapBox.hidden,
       };
     },
     leave,

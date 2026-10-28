@@ -57,7 +57,7 @@ import { createGpuGate } from './render/gpugate.js';
 import { AUTO_FLOOR, autoPresetMove, createAutoScale } from './render/autoscale.js';
 import { createLatencyMeter } from './render/latency.js';
 import { moveRigid, predictDelta, PREDICT_MAX_MS } from './render/predict.js';
-import { simPosToThree, simQuatToThree, simLenToWorld, threePosToSim, threeDirToSim, WORLD_SCALE } from './render/frame.js';
+import { simPosToThree, simQuatToThree, simLenToWorld, threePosToSim, threeDirToSim, WORLD_SCALE, setWorldScale } from './render/frame.js';
 import { CAMERA_LENS_FORWARD, CAMERA_LENS_UP, CAMERA_MOUNT_FORWARD, CAMERA_MOUNT_UP, cameraTiltRad, clampCameraAngle, makeLensShake, fpvLensClear } from './render/lens.js';
 import { MotorAudio } from './render/audio.js';
 import { LapVoice, lapCall } from './render/voice.js';
@@ -134,7 +134,7 @@ import { celTimeCount } from './render/celmat.js';
 import { MAPS, mapById } from './maps/registry.js';
 import { MAP_PRELOAD } from './maps/preload.js';
 import { TUNES, tuneById, tunePath } from '../configs/registry.js';
-import { airframeById, simIdFor } from '../configs/airframes.js';
+import { airframeById, simIdFor, worldScaleFor } from '../configs/airframes.js';
 import { buildWhoopCraft } from './render/whoopcraft.js';
 import { hoverStickPercent, normaliseRates, ratesAreDefault, ratesDiff, ratesSummary, TOUCH_RATE_DEFAULTS } from '../configs/rates.js';
 import { clearPidsFor, PID_AXES, pidCliKey, pidsDiffFor, SLIDER_KEYS, SLIDERS } from '../configs/pids.js';
@@ -204,6 +204,18 @@ function seatRestHeight(dims) {
   const h = dims && Number.isFinite(dims.vHalfDown) ? dims.vHalfDown : 0.033;
   SPAWN_ALT = h;
   REST_HEIGHT = h;
+}
+/*
+ * REST_HEIGHT IN WORLD METRES. Both numbers above are the aircraft's own,
+ * sim metres, and SPAWN_ALT only ever meets the plant. REST_HEIGHT also sits
+ * on a world surface: a parked centre is a world height over a world floor.
+ * While the world scale was 1 the two were the same number and the shell
+ * added it to world heights as it stood; since the quad picker (2026-10-28)
+ * seats a five inch in a house built 3.5 times life size, every world sum
+ * takes it through the seam here. The identity at a world scale of 1.
+ */
+function restW() {
+  return simLenToWorld(REST_HEIGHT);
 }
 /* Raising the throttle this far off the ground is a deliberate takeoff. The
  * launch latch uses 0.05, which is right for arming a run from rest but
@@ -292,6 +304,10 @@ const SURFACE_BIAS = 0.40;
  * because a landing that teleported the view up 30 cm would read as a bounce
  * the pilot did not fly.
  */
+/* Sim metres, a height about the aircraft on its pad, so it goes through
+ * the seam where it meets the world (the quad picker, 2026-10-28): a five
+ * inch in a house built 3.5 times life size is lifted 1.05 world metres,
+ * which is the same 30 cm it is lifted on the town. */
 const PARKED_LIFT = 0.30;
 /*
  * How fast the parked lift goes once the craft is moving across the ground
@@ -560,9 +576,11 @@ async function loadMap(shell, id, loading, options) {
   loading.detail = '';
   loading.start('world');
   await yieldToPaint();
-  /* The model this world draws the craft as (`craftModel` in
-   * ./maps/registry.js, the house's whoop), before the world is built so
-   * its warmPrograms links it, and the airframe's own on every other. */
+  /* The model this world draws the craft as, before the world is built so
+   * its warmPrograms links it. Since the quad picker (2026-10-28) that is
+   * the seated airframe's own on every map: no map draws one aircraft over
+   * another's plant any more, so `craftModel` is null everywhere and this
+   * puts back the airframe's model after a profile from before. */
   if (typeof shell.setCraftModel === 'function') {
     shell.setCraftModel(entry.craftModel || null);
   }
@@ -1121,6 +1139,8 @@ export async function boot({ loading, bootStart, mapId }) {
   })();
 
   let view = null;
+  /* The harness's world scale, when it forces one: see seatWorldScale. */
+  let forcedWorldScale = null;
   /*
    * RESIZE IS APPLIED ONCE A FRAME, NOT ONCE AN EVENT.
    *
@@ -1597,6 +1617,8 @@ export async function boot({ loading, bootStart, mapId }) {
   /* Hand the current map's solids to the plant. Called whenever a map is
    * adopted, before the reset that seats the craft in it. */
   function uploadPlantWorld() {
+    /* The world scale first: every solid below is converted through it. */
+    seatWorldScale();
     passStats.shapes = uploadWorld(sim, view.colliders);
     worldSolids = view.solids || null;
     worldSolidDown = null;
@@ -3539,6 +3561,39 @@ export async function boot({ loading, bootStart, mapId }) {
     },
     airborne: () => mode === 'flight' && !landed && !launchStaging,
     whoop: () => ui.settings.airframe === 'whoop65',
+    /*
+     * The room's quad changed under the pilot: the host swapped quads, and
+     * a room is one aircraft for everybody in it (swapQuad in
+     * src/net/together.js, the owner's ask of 2026-10-28). It is the swap
+     * the Quad screen makes between runs, under the title's mode for the
+     * one call as Bardwell's yard does above, and then a fresh run from the
+     * map's spawn: the plant is another aircraft, at another world scale in
+     * a house, so where the old one was is not a state the new one can
+     * carry on from. A pilot in flight stays in flight, and one on a menu
+     * stays on it. False when there was nothing to swap.
+     */
+    swapQuad: (id) => {
+      if (replayMode || airframeById(id).id !== id || ui.settings.airframe === id) {
+        return false;
+      }
+      ui.seatRoomQuad(id);
+      const was = mode;
+      mode = 'title';
+      applySettings(ui.settings);
+      mode = was;
+      if (was === 'flight' || was === 'paused') {
+        whenConfigReady(() => {
+          reset();
+          introMs = -1;
+          if (ui.screen !== 'flight') {
+            ui.renderMenu();
+          }
+        });
+      } else if (ui.screen !== 'flight') {
+        ui.renderMenu();
+      }
+      return true;
+    },
     /* What the pilot flies with, so a room's lines name a control they
      * have: G means nothing on a radio or a phone. */
     hands: () => {
@@ -4536,7 +4591,7 @@ export async function boot({ loading, bootStart, mapId }) {
     if (lastGroundHits > 0 || (!turtleOnSupport && wy - hy < turtleClearance())) {
       return hy;
     }
-    return wy - REST_HEIGHT;
+    return wy - restW();
   }
 
   function setCrashflip(on) {
@@ -4918,7 +4973,7 @@ export async function boot({ loading, bootStart, mapId }) {
     const lift = turtleFlipLift(u);
     worldPosToSim(
       turtleFlip.wx,
-      turtleFlip.surfaceY + REST_HEIGHT + lift,
+      turtleFlip.surfaceY + restW() + lift,
       turtleFlip.wz,
       pSim,
     );
@@ -4981,7 +5036,7 @@ export async function boot({ loading, bootStart, mapId }) {
     takingOff = false;
     startPitch = 0;
     groundY = turtleFlip.surfaceY;
-    lastClearance = REST_HEIGHT;
+    lastClearance = restW();
     setTurtleParkMotors(true);
     adoptSimClock();
     acc = 0;
@@ -5010,13 +5065,13 @@ export async function boot({ loading, bootStart, mapId }) {
     landed = false;
     flownThisRun = true;
     introMs = -1;
-    parkedLift = PARKED_LIFT;
+    parkedLift = simLenToWorld(PARKED_LIFT);
     turtleResumeGate = false;
     dumpTurtleIterm();
     rcPending.length = 0;
     poseFromState(stateCurr, pProbe);
     const hy = turtleSupportY(pProbe.x, pProbe.y, pProbe.z);
-    worldPosToSim(pProbe.x, hy + REST_HEIGHT, pProbe.z, pSim);
+    worldPosToSim(pProbe.x, hy + restW(), pProbe.z, pSim);
     {
       const st = stateCurr;
       const code = sim.e.sim_set_pose(
@@ -5383,9 +5438,9 @@ export async function boot({ loading, bootStart, mapId }) {
      * something, around the last open air, which by construction is on the
      * near side of it. */
     const found = findRestSpot(
-      view.colliders, recoverGroundAt, REST_HEIGHT, pCurr.x, pCurr.y, pCurr.z, from, restSpot, keepOut,
+      view.colliders, recoverGroundAt, restW(), pCurr.x, pCurr.y, pCurr.z, from, restSpot, keepOut,
     ) || Boolean(from && findRestSpot(
-      view.colliders, recoverGroundAt, REST_HEIGHT, from.x, from.y, from.z, from, restSpot, keepOut,
+      view.colliders, recoverGroundAt, restW(), from.x, from.y, from.z, from, restSpot, keepOut,
     ));
     if (!found) {
       /* No flat surface within three and a half metres is clear and
@@ -7182,7 +7237,71 @@ export async function boot({ loading, bootStart, mapId }) {
    * and swapping them mid lap would move the hull under a craft that is
    * already resolving a contact.
    */
+  /*
+   * HOW BIG THIS MAP IS TO THIS AIRCRAFT, the quad picker's (the owner,
+   * 2026-10-28). The map's own multiple of life size is `mapScale` in
+   * src/maps/registry.js, or a track's class for a track; worldScaleFor in
+   * configs/airframes.js turns it and the aircraft into the number
+   * src/render/frame.js converts with, and every pairing that flew before
+   * the picker comes out at exactly 1. Bardwell's yard track is a whoop room
+   * inside a life size map (`whoopYard`), and a whoop there flies the room,
+   * so it keeps 1 as it always has.
+   *
+   * forcedWorldScale is the harness's (window.__forceWorldScale), for
+   * scripts/feel-measure.js to fly one aircraft on one map at two scales and
+   * show the flight is the same in the aircraft's own metres.
+   */
+  function mapScaleOf(v) {
+    const entry = v ? mapById(v.id) : null;
+    if (entry && Number.isFinite(entry.mapScale)) {
+      return entry.mapScale;
+    }
+    return v && v.trackClass === 'micro' ? MICRO_SCALE : 1;
+  }
+  function wantWorldScale() {
+    if (forcedWorldScale !== null) {
+      return forcedWorldScale;
+    }
+    const entry = view ? mapById(view.id) : null;
+    if (entry && entry.whoopYard && airframeById(runAirframe).trackClass === 'micro') {
+      return 1;
+    }
+    return worldScaleFor(runAirframe, mapScaleOf(view));
+  }
+  /* Seat the scale; true when it moved. Everything the shell derived from
+   * the old one follows: the hull, the rest height and the drawn craft. The
+   * caller owns the world's solids, which have to be uploaded again. */
+  function seatWorldScale() {
+    const want = wantWorldScale();
+    if (want === WORLD_SCALE) {
+      return false;
+    }
+    setWorldScale(want);
+    setCraftAirframe(airframeById(runAirframe).dims);
+    seatRestHeight(airframeById(runAirframe).dims);
+    if (typeof shell.swapCraft === 'function') {
+      shell.swapCraft(runAirframe);
+    }
+    return true;
+  }
+
+  /* How many world metres are a real metre where the craft is, for what the
+   * HUD prints: the map's own multiple, and Bardwell's yard track, a whoop
+   * room inside a life size map, when the whoop flies it. */
+  function hudLifeScale() {
+    if (view.yardWhoopOnly && runAirframe === 'whoop65') {
+      return MICRO_SCALE;
+    }
+    return mapScaleOf(view);
+  }
+
   function syncCraftScale() {
+    /* A new aircraft may want a new world scale, and the solids the plant
+     * holds were converted through the old one. */
+    if (seatWorldScale() && view) {
+      uploadPlantWorld();
+      seatWorldFrame();
+    }
     setCraftAirframe(airframeById(runAirframe).dims);
     /* Where this aircraft's centre sits when it is parked, which is where
      * the shell puts the ground plane, the spawn and the landed test. See
@@ -9243,7 +9362,7 @@ export async function boot({ loading, bootStart, mapId }) {
   /* Eased toward PARKED_LIFT while the craft is down, so the view rises off
    * the grass rather than jumping. Once the craft is up it is let go by the
    * climb and the travel, never by the clock: see liftFloorY. */
-  let parkedLift = PARKED_LIFT;
+  let parkedLift = simLenToWorld(PARKED_LIFT);
   /*
    * THE VIEW DOES NOT SINK BEFORE THE CRAFT LIFTS (bug-2d0907fa, "the quad
    * starts sinking into the ground first before it gets lift"; bug-eaae5428,
@@ -9661,8 +9780,8 @@ export async function boot({ loading, bootStart, mapId }) {
     lockArg.edge = edge;
     lockArg.wrong = !aim.correct;
     /* In the whoop's metres in a room built MICRO_SCALE times life size,
-     * like the OSD's speed and altitude (see whoopHud). */
-    lockArg.distance = aim.distance / (view.trackClass === 'micro' ? MICRO_SCALE : 1);
+     * like the OSD's speed and altitude (see hudLifeScale). */
+    lockArg.distance = aim.distance / hudLifeScale();
     lockArg.size = Math.max(34, Math.min(vh * 0.62, raw));
     lockArg.x = Math.min(maxX, Math.max(minX, sx));
     lockArg.y = Math.min(maxY, Math.max(minY, sy));
@@ -10445,7 +10564,7 @@ export async function boot({ loading, bootStart, mapId }) {
          * this frame's own tilt aware extent, and hits and sawGroundHit
          * are what the plant actually saw across the frame's steps.
          */
-        if (hits === 0 && !sawGroundHit && clearance > vHalfFrame + 0.05) {
+        if (hits === 0 && !sawGroundHit && clearance > vHalfFrame + simLenToWorld(0.05)) {
           takingOff = false;
           lcBoost = false;
         } else if (!lcBoost) {
@@ -10634,7 +10753,7 @@ export async function boot({ loading, bootStart, mapId }) {
        * cos(pitch), and a local nose-down rotation puts the arms on the
        * foam. Crash recovery on grass keeps startPitch at 0 and this
        * reduces to the old seating. */
-      pCurr.y = groundY + simLenToWorld(REST_HEIGHT) * Math.cos(startPitch);
+      pCurr.y = groundY + restW() * Math.cos(startPitch);
       if (startPitch) {
         qPad.setFromAxisAngle(AXIS_X, -startPitch);
         qPrev.multiply(qPad);
@@ -11058,7 +11177,7 @@ export async function boot({ loading, bootStart, mapId }) {
     const parked = (landed || launchStaging || turtleWait || turtleFlip.active) && !poseLock;
     if (parked) {
       liftFloorY = null;
-      parkedLift += (PARKED_LIFT - parkedLift) * Math.min(1, dt * 0.006);
+      parkedLift += (simLenToWorld(PARKED_LIFT) - parkedLift) * Math.min(1, dt * 0.006);
     } else if (poseLock) {
       liftFloorY = null;
       parkedLift += (0 - parkedLift) * Math.min(1, dt * 0.006);
@@ -11321,7 +11440,7 @@ export async function boot({ loading, bootStart, mapId }) {
           /* Chase camera: smoothed spring arm behind the ghost */
           replayScratchDir.set(0, 0, -1).applyQuaternion(replayScratchQuat);
           const micro = CRAFT_R < 0.15;
-          const BACK = micro ? 0.55 : 1.6;
+          const BACK = simLenToWorld(micro ? 0.55 : 1.6);
           const UP = BACK * 0.35;
           const AHEAD = BACK * 1.1;
           /*
@@ -11810,9 +11929,15 @@ export async function boot({ loading, bootStart, mapId }) {
        * whoop's speed comes back on the OSD with it, as a whoop's speed. */
       /* And the whoop on Bardwell's yard track, which is built at a whoop
        * room's size for the whoop drawn there. */
-      const whoopHud = mapById(view.id).hudScale || (view.trackClass === 'micro' ? MICRO_SCALE : 0)
-        || (view.yardWhoopOnly && runAirframe === 'whoop65' ? MICRO_SCALE : 0);
-      setLifeScale(whoopHud);
+      /* Since the quad picker (2026-10-28) this is the MAP'S multiple of
+       * life size, whichever aircraft flies it, because a world metre over
+       * it is a real metre in the house or the room whatever is in it: a
+       * five inch in Nick's house reads its own speed, and a whoop in the
+       * town reads a whoop's. The speed is the plant's, in sim metres, so it
+       * goes to world metres through the seam first. At every pairing that
+       * flew before the picker these are the numbers they were. */
+      const life = hudLifeScale();
+      setLifeScale(life);
       const p = shell.quad.position;
       const nextGt = view.gates && view.gates[race.nextSceneIndex()];
       ui.setOsd({
@@ -11835,7 +11960,7 @@ export async function boot({ loading, bootStart, mapId }) {
          * airframe's cells. Both whoop and five inch now say what their plant
          * is, so the ratio is 1; it stays because `cells` and the plant are
          * two facts that could part again. Display only. */
-        volts: st[18] * (whoopHud ? 1 : airframeById(runAirframe).cells) / plantFacts(runAirframe).cells,
+        volts: st[18] * airframeById(runAirframe).cells / plantFacts(runAirframe).cells,
         lastLapMs: race.lastLapMs,
         packFrac: (st[18] - plantFacts(runAirframe).cells * 3.3) / (plantFacts(runAirframe).cells * (4.2 - 3.3)),
         /* The same biased fromY every contact query in this file uses, and
@@ -11844,10 +11969,10 @@ export async function boot({ loading, bootStart, mapId }) {
          * craft's own height finds the deck the quad is UNDER rather than
          * the road it is over, and the readout prints a negative altitude
          * under the overbridge. See SURFACE_BIAS. */
-        altitude: (p.y - view.height(p.x, p.z, p.y - SURFACE_BIAS, p.y)) / (whoopHud || 1),
+        altitude: (p.y - view.height(p.x, p.z, p.y - SURFACE_BIAS, p.y)) / life,
         /* Null on an airframe whose OSD has no speed, and the readout goes.
          * See osdSpeed in configs/airframes.js. */
-        speedKph: whoopHud ? speed * 3.6 / whoopHud : (airframeById(runAirframe).osdSpeed ? speed * 3.6 : null),
+        speedKph: life !== 1 || airframeById(runAirframe).osdSpeed ? simLenToWorld(speed) * 3.6 / life : null,
         throttle: input.channels.throttle,
         flightMode: (turtleWait || turtleFlip.active) ? 'turtle' : (angleModeOn ? 'angle' : 'acro'),
         /* No damage model, so nothing to count down. How much this run has
@@ -13333,6 +13458,25 @@ export async function boot({ loading, bootStart, mapId }) {
     gates: race && !race.freestyle
       ? race.gates.map((g) => ({ x: g.x, y: g.y, z: g.z, az: g.az })) : [],
   });
+  /* The module itself, for scripts/feel-measure.js: a probe wraps its step
+   * to read the state after every 1 ms step, which is the only clock the
+   * flight feel can be measured on without a frame's jitter in it. Read
+   * only by the harness; nothing here calls it. */
+  window.__simModule = () => sim;
+  /* Fly the seated aircraft at another world scale, or null for the one the
+   * map and the aircraft ask for: scripts/feel-measure.js, which flies one
+   * aircraft at two scales on one map to show the seam converts everything.
+   * Between runs, as every scale change is: the craft is set down at the
+   * spawn after it. Harness only. */
+  window.__forceWorldScale = (ws) => {
+    forcedWorldScale = ws == null ? null : Number(ws);
+    if (seatWorldScale()) {
+      uploadPlantWorld();
+      seatWorldFrame();
+    }
+    reset();
+    return WORLD_SCALE;
+  };
   window.__craftState = () => ({
     mode,
     flownThisRun,
@@ -13464,7 +13608,7 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     poseFromState(stateCurr, pProbe);
     const hy = view.height(pProbe.x, pProbe.z, pProbe.y - SURFACE_BIAS, pProbe.y);
-    const seatY = kind === 'invertedAir' ? hy + 4 : hy + REST_HEIGHT;
+    const seatY = kind === 'invertedAir' ? hy + 4 : hy + restW();
     worldPosToSim(pProbe.x, seatY, pProbe.z, pSim);
     let qw = 1;
     let qx = 0;
@@ -13502,7 +13646,7 @@ export async function boot({ loading, bootStart, mapId }) {
     statePrev = stateCurr;
     raiseGroundFromState(stateCurr);
     lastGroundHits = sim.e.sim_ground_contacts();
-    lastClearance = kind === 'invertedAir' ? 4 : REST_HEIGHT;
+    lastClearance = kind === 'invertedAir' ? 4 : restW();
     turtleOnSupport = lastGroundHits > 0 && kind !== 'invertedAir';
     if (kind === 'inverted') {
       turtleOnSupport = true;

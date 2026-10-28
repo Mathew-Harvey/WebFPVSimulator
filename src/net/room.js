@@ -63,6 +63,21 @@ const POSE_SLACK_MS = 4;
 const SAME_TURN_DOT = 1 - 3.8e-9;
 /* How often the links are looked at for a retry. */
 const PEER_TICK_MS = 1000;
+/*
+ * A NEW POSE UNIT, when the host swaps the room's quad (swapQuad in
+ * src/net/together.js): the board sends every pilot the room with the new
+ * scale, and a pose sent by a pilot who has not heard it yet is in the old
+ * unit, which reads at twice or half the distance. So for UNIT_SETTLE_MS
+ * after hearing it no pose is read or sent and the ones held are dropped,
+ * and then every pilot sends once whether or not it moved, because a quad
+ * parked on the spawn sends nothing and would stay unseen. The first pose
+ * after the moment always lands after the moment has ended for whoever
+ * reads it: it left later than the room reached its sender, and came by
+ * the board, which sent both pilots the room at once. An old pose is only
+ * read late by a pilot whose own link takes over a quarter of the moment
+ * each way. The splash over the swap lasts longer.
+ */
+const UNIT_SETTLE_MS = 600;
 
 export class RoomSession {
   /*
@@ -76,6 +91,8 @@ export class RoomSession {
     this.now = now;
     this.onEvent = onEvent;
     this.units = SCALES[0];
+    this.unitsAt = -Infinity;
+    this.resendAt = 0;
     this.remotes = new Map();
     this.up = new Uint8Array(POSE_UP_BYTES);
     this.lastSentAt = -Infinity;
@@ -169,6 +186,12 @@ export class RoomSession {
       const units = data.room && data.room.scale;
       if (SCALES.includes(units) && units !== this.units) {
         this.units = units;
+        if (name === 'room') {
+          const t = this.now();
+          this.unitsAt = t;
+          this.resendAt = t + UNIT_SETTLE_MS;
+          this.remotes.clear();
+        }
       }
       if (name === 'welcome') {
         /* A resume after a deploy can come back with other ids; the poses
@@ -195,7 +218,7 @@ export class RoomSession {
 
   /* A pose that came over a direct link: the 16 bytes the pilot sent. */
   peerPose(id, bytes) {
-    if (!this.link.pilots.has(id) || bytes.length !== POSE_UP_BYTES || bytes[0] !== KIND_POSE) {
+    if (!this.link.pilots.has(id) || bytes.length !== POSE_UP_BYTES || bytes[0] !== KIND_POSE || this.settling()) {
       return;
     }
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -211,7 +234,15 @@ export class RoomSession {
     }
   }
 
+  /* Inside UNIT_SETTLE_MS of a new pose unit. */
+  settling() {
+    return this.now() - this.unitsAt < UNIT_SETTLE_MS;
+  }
+
   poses(bytes) {
+    if (this.settling()) {
+      return;
+    }
     const at = this.now();
     decodeFrame(bytes, this.units, (id, pose) => {
       if (id === this.link.you || !this.link.pilots.has(id)) {
@@ -249,11 +280,19 @@ export class RoomSession {
     if (t - this.lastSentAt < POSE_INTERVAL_MS - POSE_SLACK_MS) {
       return false;
     }
+    /* Nobody reads a pose in the moment after a new unit, so none goes. */
+    if (this.settling()) {
+      return false;
+    }
+    const L = this.last;
+    if (this.resendAt && t >= this.resendAt) {
+      this.resendAt = 0;
+      L.flags = -1;
+    }
     const flags = poseFlags(spinning, resets);
     const ix = Math.round(px * this.units);
     const iy = Math.round(py * this.units);
     const iz = Math.round(pz * this.units);
-    const L = this.last;
     const dot = Math.abs(qx * L.qx + qy * L.qy + qz * L.qz + qw * L.qw);
     if (flags === L.flags && ix === L.ix && iy === L.iy && iz === L.iz && dot >= SAME_TURN_DOT) {
       return false;

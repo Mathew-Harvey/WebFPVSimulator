@@ -71,9 +71,10 @@ export function isBuiltInWorld(id) {
 
 /*
  * The aircraft a room is flown on: a whoop room's whoop, a five inch room's
- * five inch, and for freestyle what the world is for (the houses are a
- * whoop's), else what the host was flying, which the pose unit says: the
- * host's page picks 1 cm for a whoop and 2 cm for a five inch.
+ * five inch, and for freestyle the host's, which the pose unit says: the
+ * host's page picks 1 cm for a whoop and 2 cm for a five inch, and a swap
+ * of quads changes it (swapQuad in src/net/together.js). Until the quad
+ * picker of 2026-10-28 a freestyle world named its own aircraft instead.
  */
 export function craftForRoom(room) {
   if (!room) {
@@ -85,10 +86,8 @@ export function craftForRoom(room) {
   if (room.way === '5inch') {
     return '5inch';
   }
-  const m = MAPS.find((x) => x.id === room.map);
-  if (m && m.craft) {
-    return m.craft;
-  }
+  /* A world no longer names the aircraft: since the quad picker
+   * (2026-10-28) either flies any of them, so the host's pose unit says. */
   return room.scale >= 100 ? 'whoop65' : '5inch';
 }
 
@@ -151,16 +150,21 @@ export function readRoomAddress(search, hash) {
 /*
  * The address bar for a pilot in a room: the world they are on and the
  * room's code, nothing else of the room's. Returns the new href, or '' when
- * it would not change.
+ * it would not change. `craft` is the aircraft being flown, when the page
+ * says; without it the address keeps the one it had.
  */
-export function addressInRoom(href, worldLink, code, mp = true) {
+export function addressInRoom(href, worldLink, code, mp = true, craft = '') {
   const url = new URL(href);
   /* The aircraft stays: it is the one being flown, and a copied address
-   * opens on it. */
+   * opens on it. Since the host can swap quads (2026-10-28) the one being
+   * flown can change in the room, so the page names it. */
   for (const k of WORLD_PARAMS) {
     if (k !== 'craft') {
       url.searchParams.delete(k);
     }
+  }
+  if (craft) {
+    url.searchParams.set('craft', craft);
   }
   for (const [k, v] of Object.entries(worldLink || {})) {
     url.searchParams.set(k, v);

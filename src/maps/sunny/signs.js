@@ -217,8 +217,8 @@ const SIGNS = {
     panel(g, w, h, '#f6c431', INK, 6, 3);
     lettered(g, 'LUCKY 7', w / 2, h / 2, w * 0.86, h * 0.5, '#e0483a', CREAM);
   } },
-  tavern: { paint: fascia('#2c2a33', '#f6c431', 'CORNER TAVERN', 'COLD ONES · POOL · DARTS', '#000') },
-  neonBar: { h: 48, paint: neon('BAR', '#5ad8ff') },
+  tavern: { paint: fascia('#2c2a33', '#f6c431', 'CORNER TAVERN', 'POOL · DARTS · JUKEBOX', '#000') },
+  neonPool: { h: 48, paint: neon('POOL', '#5ad8ff') },
   tavernHang: { h: 64, paint: (g, w, h) => {
     panel(g, w, h, '#a87a52', INK, 30, 4);
     g.fillStyle = '#f6c431';
@@ -460,6 +460,30 @@ const SIGNS = {
     panel(g, w, h, '#a87a52', INK, 3, 3);
     lettered(g, 'SUNNYFIELD DUMP', w / 2, h / 2 + 1, w * 0.9, h * 0.62, CREAM, INK);
   } },
+  /* The water tower's band, wrapped round the tank twice. */
+  waterName: { h: 96, paint: (g, w, h) => {
+    g.fillStyle = CREAM;
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = '#2f4a7c';
+    g.fillRect(0, 0, w, h * 0.09);
+    g.fillRect(0, h * 0.91, w, h * 0.09);
+    lettered(g, 'SUNNYFIELD', w / 2, h / 2 + 2, w * 0.8, h * 0.66, '#2f4a7c', CREAM);
+    for (const x of [w * 0.05, w * 0.95]) {
+      g.fillStyle = '#e0483a';
+      g.beginPath();
+      for (let k = 0; k < 10; k += 1) {
+        const a = -Math.PI / 2 + (k * Math.PI) / 5;
+        const r = k % 2 ? h * 0.1 : h * 0.24;
+        g.lineTo(x + r * Math.cos(a), h / 2 + r * Math.sin(a));
+      }
+      g.closePath();
+      g.fill();
+    }
+  } },
+  skate: { h: 64, paint: (g, w, h) => {
+    panel(g, w, h, '#2fa4a0', INK, 4, 3);
+    lettered(g, 'SKATE AT YOUR OWN RISK', w / 2, h / 2 + 1, w * 0.9, h * 0.5, '#f6c431', INK);
+  } },
   park: { h: 64, paint: (g, w, h) => {
     panel(g, w, h, '#3f8a52', CREAM, 6, 3);
     words(g, 'SUNNYFIELD PARK', w / 2, h * 0.4, w * 0.9, h * 0.34, CREAM);
@@ -539,6 +563,35 @@ export function paintSigns(signs) {
 const NORMAL = { n: [0, 0, -1], s: [0, 0, 1], e: [1, 0, 0], w: [-1, 0, 0], up: [0, 1, 0] };
 
 /*
+ * A sign round a drum: a strip of quads a sixth of a metre or so wide
+ * round the arc, each facing out from the drum's axis. Seen from outside,
+ * the picture reads left to right as the heading grows, which is the way
+ * round a plan heading turns, east toward north.
+ */
+function roundSign(s, u0, u1, v0, v1, pos, nor, uv, idx) {
+  const span = s.w / s.r;
+  const n = Math.max(4, Math.ceil(s.w / 0.4));
+  const base = pos.length / 3;
+  for (let i = 0; i <= n; i += 1) {
+    const t = i / n;
+    const a = s.a + (t - 0.5) * span;
+    const c = Math.cos(a);
+    const sn = Math.sin(a);
+    const R = s.r + s.lift;
+    for (const [dy, tv] of [[-s.ht / 2, 0], [s.ht / 2, 1]]) {
+      const [x, y, z] = worldAt(s.px + R * c, s.py + R * sn, s.h + dy);
+      pos.push(x, y, z);
+      nor.push(c, 0, -sn);
+      uv.push(u0 + t * (u1 - u0), v0 + tv * (v1 - v0));
+    }
+  }
+  for (let i = 0; i < n; i += 1) {
+    const a = base + i * 2;
+    idx.push(a, a + 2, a + 3, a, a + 3, a + 1);
+  }
+}
+
+/*
  * Every sign as a quad on its cell, one mesh: positions in the world,
  * `lift` out from the face it is hung on, normals for the light.
  */
@@ -560,6 +613,10 @@ export function signMesh(THREE, signs, atlas, material) {
     const u1 = (cell.x + cell.w - 0.5) / atlas.w;
     const v0 = 1 - (cell.y + cell.h - 0.5) / atlas.h;
     const v1 = 1 - (cell.y + 0.5) / atlas.h;
+    if (s.face === 'round') {
+      roundSign(s, u0, u1, v0, v1, pos, nor, uv, idx);
+      continue;
+    }
     n.fromArray(NORMAL[s.face]);
     if (s.face === 'up') {
       up.set(0, 0, -1);

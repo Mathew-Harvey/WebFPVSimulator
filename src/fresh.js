@@ -278,6 +278,7 @@
     'src/maps/sunny/houses.js',
     'src/maps/sunny/index.js',
     'src/maps/sunny/landmarks.js',
+    'src/maps/sunny/palette.js',
     'src/maps/sunny/plan.js',
     'src/maps/sunny/signs.js',
     'src/maps/sunny/streets.js',

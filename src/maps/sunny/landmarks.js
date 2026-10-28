@@ -308,10 +308,13 @@ function gorge(T) {
     T.paint('sfRockDark', G.x0 - 0.04, G.y0, h - 0.6, G.x0, G.y1, h, true);
     T.paint('sfRockDark', G.x1, G.y0, h - 0.6, G.x1 + 0.04, G.y1, h, true);
   }
+  /* Nine bays a side, one outcrop in each, so two on the same wall are
+   * never closer than 1.6 m along it, nor nearer an end than 2.8 m. */
+  const bay = (G.y1 - G.y0 - 4) / 9;
   for (let k = 0; k < 18; k += 1) {
     const west = k % 2 === 0;
-    const y = G.y0 + 4 + r.range(0, G.y1 - G.y0 - 8);
-    const len = r.range(3, 8);
+    const len = r.range(3, Math.min(8, bay - 1.6));
+    const y = G.y0 + 2 + Math.floor(k / 2) * bay + 0.8 + r.range(0, bay - 1.6 - len);
     const out = r.range(0.8, 3.2);
     const h0 = lo + r.range(0, G.depth - 3);
     const h1 = Math.min(-0.6, h0 + r.range(1.5, 4.5));
@@ -420,6 +423,11 @@ function hill(T) {
     for (const s of [-1, 1]) {
       for (let k = 0; k < 3; k += 1) {
         const x = MILL_X + s * (9 + k * 9);
+        /* Not in front of the letters, which stand on the second tier,
+         * nor behind them, where a canopy muddies the word. */
+        if (x > LETTERS.x0 - 3) {
+          continue;
+        }
         T.asset({ type: 'tree', style: 'broad', dims: { size: 0.8 + 0.1 * k, variant: 7 + k * 13 + (s > 0 ? 5 : 0) } }, 1, x, t.y0 + 2.5, t.h, 0);
       }
     }
@@ -452,9 +460,10 @@ function hill(T) {
   }
   T.sign('mansionGate', G.px, G.py - 0.09, G.h + 0.65, 3.4, 0.9, 's', 0.0);
   T.box('sfIron', G.px - 1.8, G.py - 0.08, G.h, G.px + 1.8, G.py + 0.08, G.h + 1.15, { kind: 'wall', name: 'gate plate' });
-  T.box('sfTrim', G.px + G.w / 2 + 2.2, G.py - 0.8, 0.9, G.px + G.w / 2 + 4.2, G.py - 0.7, 2.1, { kind: 'wall', name: 'keep out' });
-  T.post('sfWood', G.px + G.w / 2 + 3.2, G.py - 0.75, 0, 0.9, 0.06, { kind: 'pole', name: 'sign post' });
-  T.sign('keepOut', G.px + G.w / 2 + 3.2, G.py - 0.81, 1.5, 1.9, 1.1, 's', 0.002);
+  /* The board is screwed to the wall's face, under its coping: stood off
+   * the wall on a post it made a slot too narrow to fly. */
+  T.box('sfTrim', G.px + G.w / 2 + 2.2, G.py - 0.42, 0.3, G.px + G.w / 2 + 4.2, G.py - 0.3, 1.5, { kind: 'wall', name: 'keep out' });
+  T.sign('keepOut', G.px + G.w / 2 + 3.2, G.py - 0.43, 0.9, 1.9, 1.1, 's', 0.002);
   /* A wall along the hill's foot either side of the gate. */
   for (const [a, b] of [[TIERS[0].x0 - RUN, G.px - G.w / 2 - 1.2], [G.px + G.w / 2 + 1.2, TIERS[0].x1 + RUN]]) {
     T.box('sfStone', a, G.py - 0.3, 0, b, G.py + 0.3, 1.6, { kind: 'wall', name: 'estate wall' });
@@ -635,41 +644,37 @@ function dump(T) {
   T.paint('sfGlass', 59.95, 217, 1.1, 60, 220, 2.1);
   T.paint('sfSteel', OAK_X - 3, 220, 0.02, OAK_X + 3, 230, 0.06);
 
-  /* The mounds, each a heap of earth with junk on it: the heap's solid is
-   * stacked boxes inside its slope. */
-  const mounds = [
-    { px: 22, py: 250, r: 15, h: 7 },
-    { px: 66, py: 262, r: 12, h: 5.5 },
-    { px: 128, py: 268, r: 10, h: 5 },
-  ];
-  const junk = ['sfTrim', 'sfRust', 'sfSteel', 'sfWood', 'sfButter', 'sfRoofTeal', 'sfDoorRed', 'sfSky'];
-  for (const m of mounds) {
+  /* The mounds, each a heap of earth with junk on it, the junk spaced so
+   * no two pieces make a slot. */
+  const grounds = MOUNDS.map((m) => {
     T.cone('sfDirt', m.px, m.py, 0, m.r, m.h, 9, false);
-    for (let k = 0; k < 6; k += 1) {
-      const f = (k + 1) / 6;
-      const s = m.r * (1 - f) * 0.7;
-      if (s > 0.5) {
-        T.hidden(m.px - s, m.py - s, (m.h * k) / 6, m.px + s, m.py + s, m.h * f, 'wall', 'mound');
-      }
-    }
-    for (let k = 0; k < 16; k += 1) {
+    const ground = moundSolid(T, m);
+    const n = Math.round(m.r * 2.4);
+    const here = [];
+    for (let k = 0; k < n; k += 1) {
       const a = r.range(0, TAU);
-      const d = r.range(0.25, 0.85) * m.r;
+      const d = r.range(0.2, 0.9) * m.r;
       const [dx, dy] = around(d, a);
-      const surf = m.h * (1 - d / m.r);
-      const w = r.range(0.6, 1.8);
-      const dd = r.range(0.5, 1.2);
-      const hh = r.range(0.5, 1.6);
-      T.box(r.pick(junk), m.px + dx - w / 2, m.py + dy - dd / 2, surf - 0.3, m.px + dx + w / 2, m.py + dy + dd / 2, surf - 0.3 + hh, { kind: 'wall', name: 'junk' });
+      const x = m.px + dx;
+      const y = m.py + dy;
+      if (here.some(([u, v]) => (u - x) * (u - x) + (v - y) * (v - y) < JUNK_APART * JUNK_APART)) {
+        continue;
+      }
+      here.push([x, y]);
+      junkPiece(T, r, x, y, 0, ground);
     }
-  }
-  /* An old sofa on top of the first, and a bathtub. */
-  const m0 = mounds[0];
-  T.box('sfLilac', m0.px - 1.0, m0.py - 0.45, m0.h - 0.4, m0.px + 1.0, m0.py + 0.45, m0.h + 0.05, { kind: 'wall', name: 'sofa' });
-  T.box('sfLilac', m0.px - 1.0, m0.py + 0.2, m0.h + 0.05, m0.px + 1.0, m0.py + 0.45, m0.h + 0.55, { kind: 'wall', name: 'sofa' });
-  T.box('sfLilac', m0.px - 1.0, m0.py - 0.45, m0.h + 0.05, m0.px - 0.8, m0.py + 0.45, m0.h + 0.3, { kind: 'wall', name: 'sofa' });
-  T.box('sfLilac', m0.px + 0.8, m0.py - 0.45, m0.h + 0.05, m0.px + 1.0, m0.py + 0.45, m0.h + 0.3, { kind: 'wall', name: 'sofa' });
-  T.box('sfTrim', mounds[1].px + 2, mounds[1].py - 0.4, mounds[1].h * 0.6, mounds[1].px + 3.6, mounds[1].py + 0.4, mounds[1].h * 0.6 + 0.6, { kind: 'wall', name: 'bathtub' });
+    return ground;
+  });
+  /* An old sofa on top of the first, and a bathtub on the second. */
+  const m0 = MOUNDS[0];
+  const s0 = footing(T, grounds[0], m0.px - 1.0, m0.py - 0.45, m0.px + 1.0, m0.py + 0.45);
+  T.box('sfLilac', m0.px - 1.0, m0.py - 0.45, s0, m0.px + 1.0, m0.py + 0.45, s0 + 0.45, { kind: 'wall', name: 'sofa' });
+  T.box('sfLilac', m0.px - 1.0, m0.py + 0.2, s0 + 0.45, m0.px + 1.0, m0.py + 0.45, s0 + 0.95, { kind: 'wall', name: 'sofa' });
+  T.box('sfLilac', m0.px - 1.0, m0.py - 0.45, s0 + 0.45, m0.px - 0.8, m0.py + 0.45, s0 + 0.7, { kind: 'wall', name: 'sofa' });
+  T.box('sfLilac', m0.px + 0.8, m0.py - 0.45, s0 + 0.45, m0.px + 1.0, m0.py + 0.45, s0 + 0.7, { kind: 'wall', name: 'sofa' });
+  const m1 = MOUNDS[1];
+  const b1 = footing(T, grounds[1], m1.px + 2, m1.py - 0.4, m1.px + 3.6, m1.py + 0.4);
+  T.box('sfTrim', m1.px + 2, m1.py - 0.4, b1, m1.px + 3.6, m1.py + 0.4, b1 + 0.6, { kind: 'wall', name: 'bathtub' });
 
   /* The car cubes, stacked four high in three stacks, a quad's width
    * apart. */
@@ -686,6 +691,231 @@ function dump(T) {
   T.box('sfYellow', 20, 222, 0, 31, 224.6, 2.4, { kind: 'wall', name: 'old bus' });
   T.paint('sfGlassDark', 21, 221.98, 1.2, 30.5, 222, 1.9);
   tyrePile(T);
+  /* Loose junk over the flat between the heaps, and stray tyres. */
+  for (let k = 0; k < 40; k += 1) {
+    const x = r.range(P.x0 + 4, P.x1 - 4);
+    const y = r.range(P.y0 + 12, P.y1 - 3);
+    const clear = MOUNDS.every((m) => Math.hypot(x - m.px, y - m.py) > m.r + 1.5)
+      && Math.hypot(x - TYRES.px, y - TYRES.py) > TYRES.r + 1.5
+      && Math.abs(x - OAK_X) > 6
+      && !(x > 98 && y < 232)
+      && !(x > 114 && x < 128 && y > 226 && y < 244)
+      && !(x > 16 && x < 35 && y < 228)
+      && Math.hypot(x - DOZER.px, y - DOZER.py) > 5;
+    if (!clear) {
+      continue;
+    }
+    if (k % 3 === 0) {
+      T.torus('sfTyre', x, y, 0.2, 0.42, 0.18, 0, 0, 6, 12, null);
+      T.hidden(x - 0.4, y - 0.4, 0, x + 0.4, y + 0.4, 0.38, 'wall', 'tyre');
+    } else {
+      junkPiece(T, r, x, y, 0.02);
+    }
+  }
+  bulldozer(T, DOZER.px, DOZER.py, 0);
+  containers(T);
+}
+
+/* Where the bulldozer is parked, at the second heap's foot. */
+const DOZER = { px: 58, py: 246 };
+
+/* The heaps, the first three tallest. */
+const MOUNDS = [
+  { px: 22, py: 252, r: 15, h: 8 },
+  { px: 66, py: 262, r: 12, h: 6.5 },
+  { px: 128, py: 268, r: 10, h: 5.5 },
+  { px: 44, py: 230, r: 7, h: 3.5 },
+  { px: 92, py: 272, r: 7, h: 3.5 },
+];
+
+/* Two pieces of junk on one heap stand at least this far apart, centre to
+ * centre: the widest two, two mattresses end to end, are then 1.4 m apart,
+ * the gap rule. */
+const JUNK_APART = 3.4;
+
+/* The cells of a heap's solid, metres a side. */
+const MOUND_CELL = 1.5;
+
+/*
+ * A heap's solid: a column for every cell of a grid over it, each as tall
+ * as the drawn cone is over the whole of its cell, so the solid is never
+ * outside the dirt and is under it by a cell's rise at most. Stacked
+ * squares inside the slope, as the heaps had first, left pockets three
+ * metres deep under the dirt at the foot, and every piece of junk on one
+ * stood over a slot. The cone is drawn with nine sides, so a point is
+ * inside it only within the nine-gon's inner radius, which is what the
+ * height is reckoned from.
+ *
+ * Returns the heap's ground: given a footprint, where a thing with that
+ * footprint rests, on the drawn dirt at the footprint's lowest corner and
+ * a hand into it, and the hidden boxes that fill under and round it.
+ */
+function moundSolid(T, m) {
+  const inner = m.r * NINE_GON;
+  const n = Math.ceil(m.r / MOUND_CELL);
+  for (let i = -n; i < n; i += 1) {
+    for (let j = -n; j < n; j += 1) {
+      const fx = Math.max(Math.abs(i), Math.abs(i + 1)) * MOUND_CELL;
+      const fy = Math.max(Math.abs(j), Math.abs(j + 1)) * MOUND_CELL;
+      const top = m.h * (1 - Math.sqrt(fx * fx + fy * fy) / inner) - 0.05;
+      if (top < 0.3) {
+        continue;
+      }
+      T.hidden(m.px + i * MOUND_CELL, m.py + j * MOUND_CELL, 0, m.px + (i + 1) * MOUND_CELL, m.py + (j + 1) * MOUND_CELL, top, 'wall', 'mound');
+    }
+  }
+  /* The drawn dirt's lowest over a box: at its corner farthest out. */
+  const dirtOver = (x0, y0, x1, y1) => {
+    const fx = Math.max(Math.abs(x0 - m.px), Math.abs(x1 - m.px));
+    const fy = Math.max(Math.abs(y0 - m.py), Math.abs(y1 - m.py));
+    return m.h * (1 - Math.sqrt(fx * fx + fy * fy) / inner);
+  };
+  const cell = (v) => Math.floor(v / MOUND_CELL);
+  return (x0, y0, x1, y1) => {
+    const base = Math.max(0.02, dirtOver(x0, y0, x1, y1) - 0.1);
+    /* Under the thing, a footing to the ground. Then on each side that
+     * faces up the heap, the rest of the cell between the thing and the
+     * next column, in steps no wider than STEP and each as high as the
+     * dirt over it: the next column up is taller than the thing's foot by
+     * more than a quad, and without these the space beside the thing
+     * under the dirt was a slot. */
+    const fill = [[x0, y0, x1, y1, base]];
+    const steps = (a, b, box) => {
+      const n = Math.ceil((b - a) / JUNK_STEP - 1e-9);
+      for (let k = 0; k < n; k += 1) {
+        const [sx0, sy0, sx1, sy1] = box(a + ((b - a) * k) / n, a + ((b - a) * (k + 1)) / n);
+        fill.push([sx0, sy0, sx1, sy1, dirtOver(sx0, sy0, sx1, sy1) - 0.05]);
+      }
+    };
+    if (x0 > m.px) {
+      steps(m.px + cell(x0 - m.px) * MOUND_CELL, x0, (a, b) => [a, y0, b, y1]);
+    } else if (x1 < m.px) {
+      steps(x1, m.px + (cell(x1 - m.px) + 1) * MOUND_CELL, (a, b) => [a, y0, b, y1]);
+    }
+    if (y0 > m.py) {
+      steps(m.py + cell(y0 - m.py) * MOUND_CELL, y0, (a, b) => [x0, a, x1, b]);
+    } else if (y1 < m.py) {
+      steps(y1, m.py + (cell(y1 - m.py) + 1) * MOUND_CELL, (a, b) => [x0, a, x1, b]);
+    }
+    return { base, fill: fill.filter((f) => f[2] - f[0] > 1e-6 && f[3] - f[1] > 1e-6 && f[4] > 0.05) };
+  };
+}
+
+/* The widest step of the fill beside a thing on a heap. */
+const JUNK_STEP = 0.4;
+
+/* cos(TAU / 18): a nine-gon's inner radius over its outer. */
+const NINE_GON = 0.9396926207859084;
+
+/*
+ * Where a thing with this footprint rests on a heap, with its hidden
+ * footing and the fill beside it, so it never stands over or beside a gap
+ * a quad could be pushed into.
+ */
+function footing(T, ground, x0, y0, x1, y1) {
+  const { base, fill } = ground(x0, y0, x1, y1);
+  for (const [a0, b0, a1, b1, top] of fill) {
+    T.hidden(a0, b0, 0, a1, b1, top, 'wall', 'junk footing');
+  }
+  return base;
+}
+
+/*
+ * One piece of junk standing at (px, py): a fridge, a washing machine, a
+ * barrel, a television, a mattress, a crate. On the flat it stands on h;
+ * on a heap, given the heap's ground, it rests on the heap's solid. Each
+ * is solid as the box it is, so the heaps are things to weave and not
+ * haze.
+ */
+function junkPiece(T, r, px, py, h, ground = null) {
+  const kind = r.int(0, 5);
+  const c = r.pick(['sfTrim', 'sfSky', 'sfButter', 'sfMint', 'sfRust', 'sfRoofTeal', 'sfDoorRed', 'sfSteel']);
+  const crate = kind === 5 ? [r.range(0.6, 1.6), r.range(0.5, 1.1), r.range(0.5, 1.4)] : null;
+  const half = [[0.4, 0.35], [0.35, 0.35], [0.32, 0.32], [0.4, 0.3], [1.0, 0.7], crate && [crate[0] / 2, crate[1] / 2]][kind];
+  if (ground) {
+    h = footing(T, ground, px - half[0], py - half[1], px + half[0], py + half[1]);
+  }
+  if (kind === 0) {
+    /* A fridge, its door the street side, its handle. */
+    T.box(r.pick(['sfTrim', 'sfMint', 'sfButter']), px - 0.4, py - 0.35, h, px + 0.4, py + 0.35, h + 1.8, { kind: 'wall', name: 'fridge' });
+    T.paint('sfIron', px - 0.41, py - 0.36, h + 1.1, px + 0.41, py - 0.35, h + 1.14, true);
+    T.paint('sfSteel', px + 0.25, py - 0.4, h + 1.3, px + 0.3, py - 0.35, h + 1.7, true);
+  } else if (kind === 1) {
+    /* A washing machine and its round door. */
+    T.box('sfTrim', px - 0.35, py - 0.35, h, px + 0.35, py + 0.35, h + 0.9, { kind: 'wall', name: 'washer' });
+    T.cyl('sfGlassDark', [px, py - 0.35, h + 0.5], [px, py - 0.4, h + 0.5], 0.22, 10, null, true);
+  } else if (kind === 2) {
+    /* A barrel. */
+    T.cyl(r.pick(['sfRust', 'sfDoorNavy', 'sfDoorGreen']), [px, py, h], [px, py, h + 0.9], 0.32, 10);
+    T.post('sfRust', px, py, h + 0.3, h + 0.6, 0.3, { draw: false, kind: 'wall', name: 'barrel' });
+  } else if (kind === 3) {
+    /* A television, its screen, its aerial. */
+    T.box(r.pick(['sfWood', 'sfIron', 'sfSteel']), px - 0.4, py - 0.3, h, px + 0.4, py + 0.3, h + 0.6, { kind: 'wall', name: 'tv' });
+    T.paint('sfGlassDark', px - 0.3, py - 0.31, h + 0.1, px + 0.2, py - 0.3, h + 0.5, true);
+    T.cyl('sfIron', [px, py, h + 0.6], [px - 0.3, py, h + 1.1], 0.012, 3, null, true);
+    T.cyl('sfIron', [px, py, h + 0.6], [px + 0.3, py, h + 1.1], 0.012, 3, null, true);
+  } else if (kind === 4) {
+    /* A mattress, flat. */
+    T.box(r.pick(['sfSky', 'sfTrim', 'sfPink']), px - 1.0, py - 0.7, h, px + 1.0, py + 0.7, h + 0.25, { kind: 'wall', name: 'mattress' });
+  } else {
+    /* A crate or a cabinet. */
+    const [w, d, t] = crate;
+    T.box(c, px - w / 2, py - d / 2, h, px + w / 2, py + d / 2, h + t, { kind: 'wall', name: 'junk' });
+  }
+}
+
+/* The dump's bulldozer, parked at a heap's foot: tracks, body, cab, the
+ * blade out front, its exhaust. Solid as its boxes. */
+function bulldozer(T, px, py, h) {
+  for (const s of [-1, 1]) {
+    T.box('sfIron', px - 2.2, py + s * 1.15 - 0.4, h, px + 2.2, py + s * 1.15 + 0.4, h + 0.9, { kind: 'wall', name: 'dozer track' });
+  }
+  T.box('sfYellow', px - 1.8, py - 0.8, h + 0.6, px + 2.2, py + 0.8, h + 2.0, { kind: 'wall', name: 'dozer' });
+  T.box('sfYellow', px - 1.8, py - 0.75, h + 2.0, px - 0.2, py + 0.75, h + 3.4, { kind: 'wall', name: 'dozer cab' });
+  T.paint('sfGlassDark', px - 0.21, py - 0.6, h + 2.3, px - 0.19, py + 0.6, h + 3.2);
+  T.deco('sfIron', px - 1.9, py - 0.85, h + 3.4, px - 0.1, py + 0.85, h + 3.5);
+  /* The blade against the tracks' noses, so nothing between them is a
+   * slot. */
+  T.box('sfSteel', px + 2.2, py - 1.8, h, px + 2.5, py + 1.8, h + 1.3, { kind: 'wall', name: 'dozer blade' });
+  for (const s of [-1, 1]) {
+    T.cyl('sfYellow', [px + 0.6, py + s * 0.9, h + 1.3], [px + 2.2, py + s * 0.9, h + 0.7], 0.12, 6, null, true);
+  }
+  T.post('sfIron', px + 0.8, py + 0.5, h + 2.0, h + 3.1, 0.08, { kind: 'pole', name: 'dozer stack' });
+}
+
+/*
+ * THE CONTAINER ARCH: two stacks of shipping boxes, two high, and a long
+ * one laid across their tops, so there is a door four metres wide and five
+ * high to fly through, east to west. CONTAINER below is the gap's frame.
+ */
+export const CONTAINER = { x0: 117, x1: 123.1, yA: 230, yB: 236.6, d: 2.44, hc: 2.6 };
+
+function containers(T) {
+  const C = CONTAINER;
+  const colours = [['sfRust', 'sfRoofTeal'], ['sfDoorNavy', 'sfRed']];
+  [C.yA, C.yB].forEach((y0, i) => {
+    for (let k = 0; k < 2; k += 1) {
+      const m = colours[i][k];
+      T.box(m, C.x0, y0, k * C.hc, C.x1, y0 + C.d, (k + 1) * C.hc - 0.02, { kind: 'wall', name: 'container' });
+      /* Its ribs, both long sides, and its doors' bars on the west end. */
+      for (let x = C.x0 + 0.5; x < C.x1 - 0.3; x += 0.6) {
+        T.deco(m, x - 0.05, y0 - 0.05, k * C.hc + 0.1, x + 0.05, y0, (k + 1) * C.hc - 0.12, true);
+        T.deco(m, x - 0.05, y0 + C.d, k * C.hc + 0.1, x + 0.05, y0 + C.d + 0.05, (k + 1) * C.hc - 0.12, true);
+      }
+      for (const y of [y0 + 0.5, y0 + 0.95, y0 + 1.5, y0 + 1.95]) {
+        T.cyl('sfSteel', [C.x0 - 0.04, y, k * C.hc + 0.15], [C.x0 - 0.04, y, (k + 1) * C.hc - 0.15], 0.025, 4, null, true);
+      }
+    }
+  });
+  /* The long one across the tops, along y. */
+  const xm = (C.x0 + C.x1) / 2;
+  const y0 = C.yA - 0.6;
+  const y1 = C.yB + C.d + 0.6;
+  T.box('sfDoorGreen', xm - C.d / 2, y0, 2 * C.hc, xm + C.d / 2, y1, 3 * C.hc - 0.02, { kind: 'wall', name: 'container' });
+  for (let y = y0 + 0.5; y < y1 - 0.3; y += 0.6) {
+    T.deco('sfDoorGreen', xm - C.d / 2 - 0.05, y - 0.05, 2 * C.hc + 0.1, xm - C.d / 2, y + 0.05, 3 * C.hc - 0.12, true);
+    T.deco('sfDoorGreen', xm + C.d / 2, y - 0.05, 2 * C.hc + 0.1, xm + C.d / 2 + 0.05, y + 0.05, 3 * C.hc - 0.12, true);
+  }
 }
 
 /* The tyre pile that is always burning: tyres in rings round a cone, its
@@ -726,11 +956,156 @@ function tyrePile(T) {
 export const PARK = { x0: 303.5, x1: W, y0: 0, y1: 115.5 };
 export const POND = { px: 352, py: 58, r: 15 };
 export const BANDSTAND = { px: 330, py: 96, r: 5, posts: 8, h: 3.8 };
-/* The town's water tower and the power line's pylons stand in the park and
- * east of the plant's road: the document's (./yard.js), solid as every
- * one of the builder's is. */
-export const WATER_TOWER = { px: 320, py: 24, height: 20, radius: 4.2 };
+/* The power line's pylons stand east of the plant's road, the document's
+ * (./yard.js), solid as every one of the builder's is. The water tower is
+ * the town's own (waterTower below): `h` is the middle of its tank. */
+export const WATER_TOWER = { px: 320, py: 24, h: 24, R: 4.6 };
 export const PYLONS = [[394, 146], [394, 82], [394, 16]];
+
+/* A ring of hidden capsules lying round (px, py) at h, `r` out: a round
+ * deck's or a hand rail's solid, as the builder's water tower has. */
+function ringSolid(T, px, py, h, r, n, rad, name) {
+  for (let i = 0; i < n; i += 1) {
+    const [ax, ay] = around(r, (i / n) * TAU);
+    const [bx, by] = around(r, ((i + 1) / n) * TAU);
+    T.cap('sfSteel', [px + ax, py + ay, h], [px + bx, py + by, h], rad, { draw: false, kind: 'wall', name });
+  }
+}
+
+/*
+ * The town's water tower: a round tank on four raked legs, two rings of
+ * struts and crossed rods under them, a catwalk round the tank's lower
+ * half with its rail, a hat on top, a riser and its ladder down the
+ * middle, and the town's name round the tank's waist twice. The town's
+ * own rather than the builder's, whose band is lettered ひばり台.
+ */
+function waterTower(T) {
+  const { px, py, h, R } = WATER_TOWER;
+  /* The legs meet the tank where it is 3.5 m round. */
+  const legTop = h - Math.sqrt(R * R - 3.5 * 3.5);
+  const foot = 6.2;
+  const legs = [];
+  for (let i = 0; i < 4; i += 1) {
+    const a = TAU / 8 + (i * TAU) / 4;
+    const [fx, fy] = around(foot, a);
+    const [tx, ty] = around(3.5, a);
+    const b = [px + fx, py + fy, 0];
+    const t = [px + tx, py + ty, legTop];
+    legs.push({ b, t });
+    T.cap('sfSteel', b, t, 0.22, { kind: 'wall', name: 'tower leg' });
+    T.cyl('sfConcrete', [b[0], b[1], 0], [b[0], b[1], 0.35], 0.5, 8);
+  }
+  const lerp = (p, q, f) => [p[0] + (q[0] - p[0]) * f, p[1] + (q[1] - p[1]) * f, p[2] + (q[2] - p[2]) * f];
+  const rings = [0, 0.36, 0.7];
+  for (let k = 0; k < rings.length - 1; k += 1) {
+    for (let i = 0; i < 4; i += 1) {
+      const L = legs[i];
+      const M = legs[(i + 1) % 4];
+      const a0 = lerp(L.b, L.t, rings[k]);
+      const a1 = lerp(L.b, L.t, rings[k + 1]);
+      const b0 = lerp(M.b, M.t, rings[k]);
+      const b1 = lerp(M.b, M.t, rings[k + 1]);
+      T.cap('sfSteel', a1, b1, 0.09, { kind: 'pole', name: 'tower strut' });
+      T.cap('sfIron', a0, b1, 0.035, { kind: 'pole', name: 'tower rod' });
+      T.cap('sfIron', b0, a1, 0.035, { kind: 'pole', name: 'tower rod' });
+    }
+  }
+  /* The tank: a sphere of ten bands, solid as one round capsule. */
+  const BANDS = 10;
+  let prev = around(R, -TAU / 4);
+  for (let k = 1; k <= BANDS; k += 1) {
+    const next = around(R, -TAU / 4 + (k / BANDS) * (TAU / 2));
+    T.shell('sfSky', px, py, h + prev[1], h + next[1], Math.max(0.02, prev[0]), Math.max(0.02, next[0]), false, null, 36);
+    prev = next;
+  }
+  T.post('sfSky', px, py, h - 0.01, h + 0.01, R - 0.05, { draw: false, kind: 'wall', name: 'tank' });
+  /* Its belt, and the name painted on it, facing the town and away. */
+  T.cyl('sfTrim', [px, py, h - 0.9], [px, py, h + 0.9], R + 0.02, 36);
+  /* North west, toward Main Street, and south east. */
+  const face = (3 * TAU) / 8;
+  const arc = 0.45 * TAU * (R + 0.06);
+  T.roundSign('waterName', px, py, h, R + 0.03, face, arc, 1.7);
+  T.roundSign('waterName', px, py, h, R + 0.03, face + TAU / 2, arc, 1.7);
+  /* The hat and its finial. */
+  T.cone('sfRoofRed', px, py, h + R - 0.35, 1.7, 1.4, 12);
+  T.ball('sfYellow', px, py, h + R + 1.25, 0.22);
+  T.post('sfRoofRed', px, py, h + R - 0.1, h + R + 0.3, 0.6, { draw: false, kind: 'wall', name: 'tank hat' });
+  /* The catwalk round its waist, its rail and posts. */
+  T.disc('sfSteel', px, py, 5.1, legTop - 0.12, legTop, 32);
+  ringSolid(T, px, py, legTop - 0.1, 3.9, 16, 0.08, 'catwalk');
+  ringSolid(T, px, py, legTop - 0.1, 4.6, 16, 0.08, 'catwalk');
+  T.torus('sfSteel', px, py, legTop + 1.0, 5.0, 0.045, 0, 0, 4, 40);
+  ringSolid(T, px, py, legTop + 1.0, 5.0, 16, 0.05, 'catwalk rail');
+  for (let i = 0; i < 16; i += 1) {
+    const [x, y] = around(5.0, (i / 16) * TAU);
+    T.cyl('sfSteel', [px + x, py + y, legTop], [px + x, py + y, legTop + 1.0], 0.03, 4, null, true);
+  }
+  /* The riser down the middle, and the ladder beside it. */
+  T.post('sfSteel', px, py, 0, h - R + 0.4, 0.55, { kind: 'wall', name: 'riser' });
+  for (const d of [-0.25, 0.25]) {
+    T.cyl('sfIron', [px + 0.75, py + d, 0.4], [px + 0.75, py + d, legTop], 0.03, 4, null, true);
+  }
+  for (let y = 0.8; y < legTop; y += 0.45) {
+    T.cyl('sfIron', [px + 0.75, py - 0.25, y], [px + 0.75, py + 0.25, y], 0.02, 3, null, true);
+  }
+}
+
+/*
+ * THE SKATE CORNER, the town's own: two quarter pipes facing across a pad,
+ * a funbox between them, a rail and a ledge. A quarter pipe's ramp is the
+ * arc of a circle R round, H high, with a deck behind its coping; its solid
+ * is stacked boxes inside the arc, as frustumSolid stacks them inside a bank.
+ */
+const QP = { R: 2.2, H: 1.6, deck: 1.2, base: 0.03, steps: 6 };
+
+function quarterPipe(T, edge, dir, y0, y1) {
+  const { R, H, deck, base, steps } = QP;
+  const cx = edge + dir * R;
+  const cy = base + R;
+  const at = (hh) => cx - dir * Math.sqrt(R * R - (cy - hh) * (cy - hh));
+  const prof = [[cx, base]];
+  for (let k = 1; k <= 8; k += 1) {
+    const hh = base + (H * k) / 8;
+    prof.push([at(hh), hh]);
+  }
+  prof.push([edge - dir * deck, base + H], [edge - dir * deck, base]);
+  T.prism('sfTeal', 'y', prof, y0, y1);
+  for (let k = 0; k < steps; k += 1) {
+    const top = base + (H * (k + 1)) / steps;
+    const a = edge - dir * deck;
+    const b = at(top);
+    T.hidden(Math.min(a, b), y0, base + (H * k) / steps, Math.max(a, b), y1, top, 'wall', 'quarter pipe');
+  }
+  /* The coping, and the deck's rail at the back. */
+  T.cyl('sfSteel', [at(base + H), y0, base + H], [at(base + H), y1, base + H], 0.05, 6, null, true);
+  T.cap('sfSteel', [edge - dir * (deck - 0.1), y0, base + H + 0.9], [edge - dir * (deck - 0.1), y1, base + H + 0.9], 0.04, { kind: 'pole', name: 'deck rail' });
+  for (const y of [y0 + 0.1, y1 - 0.1]) {
+    T.post('sfSteel', edge - dir * (deck - 0.1), y, base + H, base + H + 0.9, 0.035, { kind: 'pole', name: 'deck rail' });
+  }
+}
+
+function skatePark(T) {
+  T.paint('sfConcrete', 360, 4, 0, 398, 34, 0.03);
+  quarterPipe(T, 364.5, 1, 15, 23);
+  quarterPipe(T, 393.5, -1, 15, 23);
+  T.sign('skate', 364.5 - QP.deck, 19, 0.85, 6.6, 1.1, 'w', 0.02);
+  /* The funbox: a flat top with a bank each side. */
+  const o = { x0: 373.5, x1: 384.5, y0: 15.5, y1: 22.5 };
+  const i = { x0: 376.5, x1: 381.5, y0: 17, y1: 21 };
+  T.frustum('sfSky', o, 0.03, i, 0.9);
+  T.frustumSolid(o, 0.03, i, 0.9, 4, 'funbox');
+  T.cyl('sfSteel', [i.x0, i.y0, 0.9], [i.x1, i.y0, 0.9], 0.04, 6, null, true);
+  T.cyl('sfSteel', [i.x0, i.y1, 0.9], [i.x1, i.y1, 0.9], 0.04, 6, null, true);
+  /* The rail, and the ledge with its steel edge. */
+  T.cap('sfSteel', [376, 10, 0.55], [382, 10, 0.55], 0.04, { kind: 'pole', name: 'rail' });
+  for (const x of [376.6, 381.4]) {
+    T.post('sfSteel', x, 10, 0.03, 0.55, 0.035, { kind: 'pole', name: 'rail leg' });
+  }
+  T.box('sfButter', 376.5, 27.4, 0.03, 381.5, 28.6, 0.5, { kind: 'wall', name: 'ledge' });
+  bench(T, 370, 32, 'n');
+  bin(T, 366, 32, 0.03);
+  T.deco('sfSteel', 376.5, 27.35, 0.42, 381.5, 27.45, 0.53);
+}
 
 function park(T) {
   const P = PARK;
@@ -764,7 +1139,12 @@ function park(T) {
   }
   T.disc('sfTrim', B.px, B.py, B.r + 0.4, B.h + 0.8, B.h + 1.1, 8);
   T.cone('sfRoofRed', B.px, B.py, B.h + 1.1, B.r + 0.6, 2.6, 8, false);
-  T.post('sfRoofRed', B.px, B.py, B.h + 1.3, B.h + 2.0, B.r * 0.55, { draw: false, kind: 'wall', name: 'bandstand roof' });
+  /* The roof's solid is stacked boxes inside the cone. A round cap this
+   * wide would reach down past the ring into the opening. */
+  for (const [z0, z1] of [[0, 0.8], [0.8, 1.6], [1.6, 2.2]]) {
+    const s = (B.r + 0.6) * (1 - z1 / 2.6) * 0.65;
+    T.hidden(B.px - s, B.py - s, B.h + 1.1 + z0, B.px + s, B.py + s, B.h + 1.1 + z1, 'wall', 'bandstand roof');
+  }
   T.hidden(B.px - B.r * 0.7, B.py - B.r * 0.7, B.h + 0.8, B.px + B.r * 0.7, B.py + B.r * 0.7, B.h + 1.1, 'wall', 'bandstand roof');
   T.post('sfYellow', B.px, B.py, B.h + 3.7, B.h + 4.4, 0.06, { kind: 'pole', name: 'finial' });
   /* The playground: swings, a roundabout, a climbing dome. */
@@ -784,12 +1164,8 @@ function park(T) {
   T.post('sfSteel', 370, 84, 0, 1.0, 0.06, { kind: 'pole', name: 'roundabout' });
   T.hidden(368.8, 82.8, 0, 371.2, 85.2, 0.35, 'wall', 'roundabout');
   T.disc('sfDirt', 380, 88, 6, 0, 0.03, 20, true);
-  /* The skate corner: two quarter pipes facing, a rail, a ledge. */
-  T.paint('sfConcrete', 360, 4, 0, 398, 34, 0.03);
-  T.asset({ type: 'quarterPipe', dims: { width: 6, height: 1.6, deck: 1.2 } }, 1, 364, 19, 0.03, 0);
-  T.asset({ type: 'quarterPipe', dims: { width: 6, height: 1.6, deck: 1.2 } }, 1, 394, 19, 0.03, Math.PI);
-  T.asset({ type: 'rail', dims: { length: 6, height: 0.5 } }, 1, 379, 12, 0.03, 0);
-  T.asset({ type: 'ledge', dims: { length: 5, height: 0.5, depth: 1.2 } }, 1, 379, 27, 0.03, 0);
+  skatePark(T);
+  waterTower(T);
   /* Trees round the edge and in clumps, benches by the paths, bins. */
   const r = rng(909);
   const spots = [];
@@ -801,7 +1177,7 @@ function park(T) {
     const onPath = Math.abs(y - B.py) < 3.5 || Math.abs(x - B.px) < 3.5;
     const skate = x > 356 && y < 38;
     const play = x > 364 && y > 78 && y < 106;
-    /* The water tower's legs and the pylons' line, both in ./yard.js. */
+    /* The water tower's legs, and the pylons' line in ./yard.js. */
     const kept = Math.hypot(x - WATER_TOWER.px, y - WATER_TOWER.py) < 10 || x > 386;
     if (nearPond || nearBand || onPath || skate || play || kept || spots.some(([a, b]) => Math.hypot(a - x, b - y) < 7)) {
       continue;

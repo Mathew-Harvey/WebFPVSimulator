@@ -64,6 +64,7 @@ export const MATERIALS = {
   sfHedge: { c: 0x4f9a52, tint: 0x3c5a6a },
   sfLawn: { c: 0x7cc05e, tint: 0x4e7a6a },
   sfWood: { c: 0xa87a52, tint: 0x5e4a62 },
+  sfPoleWood: { c: 0x75584a, tint: 0x4a3a56 },
   sfIron: { c: 0x2c2a33, tint: 0x22202e },
   sfSteel: { c: 0x9aa3ad, tint: 0x5c5a7c },
   sfBrick: { c: 0xb0634c, tint: 0x62527a },
@@ -75,7 +76,6 @@ export const MATERIALS = {
   sfOrange: { c: 0xf08a34, tint: 0x80504e },
   sfPurple: { c: 0x7d5bb4, tint: 0x45386e },
   sfTeal: { c: 0x2fa4a0, tint: 0x2f5a70 },
-  sfNeon: { f: 0xff6fa8, noCast: true },
   sfLamp: { f: 0xfff2c8, noCast: true },
   /* the donut */
   sfDough: { c: 0xd8954e, tint: 0x7c5462 },
@@ -94,5 +94,4 @@ export const MATERIALS = {
   sfRockDark: { c: 0x8e6244, tint: 0x553f58 },
   sfStone: { c: 0xb4aeb8, tint: 0x66607e },
   sfFire: { f: 0xff8a2a, noCast: true },
-  sfFlame: { f: 0xffd23c, noCast: true },
 };

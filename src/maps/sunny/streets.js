@@ -113,20 +113,105 @@ const CROSSINGS = [
   [OAK_X, MAPLE_Y + HALF + 2.6, 'x'], [PINE_X, MAPLE_Y + HALF + 2.6, 'x'],
 ];
 
-/* Where the utility poles stand, for ./yard.js: the residential streets'
- * verges, so their wires run the length of each street. */
-export const POLES = [
-  ...[12, 40, 68, 96].map((py) => [OAK_X - HALF - 0.7, py]),
-  ...[80, 112, 144, 176, 208, 240, 272].map((px) => [px, MAPLE_Y - HALF - 0.7]),
-  ...[78, 108, 138, 168, 198].map((px) => [px, BIRCH_Y + HALF + 0.7]),
-  ...[12, 40, 68, 96].map((py) => [PINE_X + HALF + 0.7, py]),
+/*
+ * THE UTILITY POLES, down the residential streets' verges, and their wires
+ * pole to pole the length of each street: a wooden pole, a crossarm across
+ * the street's line with three insulators, a transformer can on every
+ * other one, and a lower cable on the pole's road side. `out` is the plan
+ * direction from the road to the pole. Drawn by the town and not the
+ * builder's, whose pole is a Japanese one, lettered in Japanese.
+ */
+const POLE_H = 9;
+const ARM_H = 8.3;
+const ARM = 1.1;
+const INSULATORS = [-0.9, -0.4, 0.75];
+const RUNS = [
+  { along: 'y', out: [-1, 0], at: [12, 40, 68, 96].map((py) => [OAK_X - HALF - 0.7, py]) },
+  { along: 'x', out: [0, -1], at: [80, 112, 144, 176, 208, 240, 272].map((px) => [px, MAPLE_Y - HALF - 0.7]) },
+  { along: 'x', out: [0, 1], at: [78, 108, 138, 168, 198].map((px) => [px, BIRCH_Y + HALF + 0.7]) },
+  { along: 'y', out: [1, 0], at: [12, 40, 68, 96].map((py) => [PINE_X + HALF + 0.7, py]) },
 ];
+export const POLES = RUNS.flatMap((r) => r.at);
 
-/* The street lamps down Main Street, both sides, staggered. */
-export const LAMPS = [
-  ...[18, 76, 104, 132, 160, 188, 216, 256, 284, 314, 380].map((px) => [px, MN + 0.8, -Math.PI / 2]),
-  ...[30, 90, 118, 146, 174, 202, 230, 262, 316, 344, 372].map((px) => [px, MS - 0.8, Math.PI / 2]),
+function pole(T, run, px, py, k) {
+  const [ox, oy] = run.out;
+  /* The crossarm runs across the street's line. */
+  const ax = run.along === 'x' ? 0 : 1;
+  const ay = 1 - ax;
+  T.post('sfPoleWood', px, py, 0, POLE_H, 0.13, { kind: 'pole', name: 'utility pole' });
+  T.cyl('sfPoleWood', [px, py, POLE_H], [px, py, POLE_H + 0.12], 0.11, 8, 0.06, true);
+  const hx = ax * ARM + ay * 0.06;
+  const hy = ay * ARM + ax * 0.06;
+  T.box('sfPoleWood', px - hx, py - hy, ARM_H, px + hx, py + hy, ARM_H + 0.12, { kind: 'wall', name: 'crossarm' });
+  for (const d of [-0.6, 0.6]) {
+    T.cyl('sfIron', [px, py, ARM_H - 0.7], [px + ax * d, py + ay * d, ARM_H], 0.025, 4, null, true);
+  }
+  for (const d of INSULATORS) {
+    const x = px + ax * d;
+    const y = py + ay * d;
+    T.cyl('sfTrim', [x, y, ARM_H + 0.12], [x, y, ARM_H + 0.32], 0.055, 6, 0.035, true);
+  }
+  if (k % 2 === 0) {
+    const x = px + ox * 0.45;
+    const y = py + oy * 0.45;
+    T.cyl('sfSteel', [x, y, 6.2], [x, y, 7.3], 0.27, 10);
+    T.cyl('sfIron', [x, y, 7.3], [x, y, 7.37], 0.29, 10, null, true);
+    T.post('sfSteel', x, y, 6.47, 7.03, 0.27, { draw: false, kind: 'wall', name: 'transformer' });
+    T.deco('sfIron', Math.min(px, x) - 0.05, Math.min(py, y) - 0.05, 6.9, Math.max(px, x) + 0.05, Math.max(py, y) + 0.05, 7.0, true);
+  }
+  /* The lower cable's clamp, on the road side. */
+  T.deco('sfIron', px - ox * 0.2 - 0.06, py - oy * 0.2 - 0.06, 6.95, px - ox * 0.2 + 0.06, py - oy * 0.2 + 0.06, 7.1, true);
+}
+
+function poles(T) {
+  for (const run of RUNS) {
+    const ax = run.along === 'x' ? 0 : 1;
+    const ay = 1 - ax;
+    const [ox, oy] = run.out;
+    run.at.forEach(([px, py], k) => {
+      pole(T, run, px, py, k);
+      const next = run.at[k + 1];
+      if (!next) {
+        return;
+      }
+      const [qx, qy] = next;
+      for (const d of INSULATORS) {
+        T.wire('sfIron', [px + ax * d, py + ay * d, ARM_H + 0.3], [qx + ax * d, qy + ay * d, ARM_H + 0.3], 0.45, 0.025);
+      }
+      T.wire('sfIron', [px - ox * 0.2, py - oy * 0.2, 7.0], [qx - ox * 0.2, qy - oy * 0.2, 7.0], 0.6, 0.035);
+    });
+  }
+}
+
+/*
+ * THE LAMPS down Main Street, both pavements, staggered, at the kerb: a
+ * cast iron post on a fluted foot and a lantern globe under a hat, and a
+ * pennant on every other one, hung toward the road.
+ */
+const LAMPS = [
+  ...[18, 76, 104, 132, 160, 188, 216, 256, 284, 314, 380].map((px) => [px, MN + 0.8, -1]),
+  ...[30, 90, 118, 146, 174, 202, 230, 262, 316, 344, 372].map((px) => [px, MS - 0.8, 1]),
 ];
+const PENNANTS = ['sfRed', 'sfYellow', 'sfTeal'];
+
+function lamps(T) {
+  LAMPS.forEach(([px, py, toRoad], k) => {
+    T.cyl('sfIron', [px, py, KERB], [px, py, KERB + 0.8], 0.2, 8, 0.11);
+    T.post('sfIron', px, py, KERB, KERB + 0.62, 0.16, { draw: false, kind: 'pole', name: 'lamp foot' });
+    T.post('sfIron', px, py, KERB, KERB + 4.1, 0.08, { kind: 'pole', name: 'lamp post' });
+    T.cyl('sfIron', [px, py, KERB + 4.0], [px, py, KERB + 4.16], 0.14, 8, null, true);
+    T.ball('sfLamp', px, py, KERB + 4.45, 0.3);
+    T.post('sfLamp', px, py, KERB + 4.44, KERB + 4.46, 0.27, { draw: false, kind: 'pole', name: 'lamp globe' });
+    T.cone('sfIron', px, py, KERB + 4.68, 0.22, 0.24, 8);
+    if (k % 2 === 0) {
+      const m = PENNANTS[(k / 2) % PENNANTS.length];
+      const y0 = py + toRoad * 0.12;
+      const y1 = py + toRoad * 0.7;
+      T.cyl('sfIron', [px, y0, KERB + 3.7], [px, y1 + toRoad * 0.05, KERB + 3.7], 0.02, 4, null, true);
+      T.deco(m, px - 0.02, Math.min(y0, y1), KERB + 2.6, px + 0.02, Math.max(y0, y1), KERB + 3.65);
+    }
+  });
+}
 
 function crossing(T, px, py, axis) {
   /* Eight bars a metre long, half a metre apart, across the carriageway. */
@@ -242,6 +327,8 @@ function streetBoxes(T, px, py) {
 }
 
 export function streets(T) {
+  poles(T);
+  lamps(T);
   /* The carriageways, then the turning circle on top. */
   for (const [x0, y0, x1, y1] of ROADS) {
     T.paint('sfAsphalt', x0, y0, 0, x1, y1, ROAD_H);

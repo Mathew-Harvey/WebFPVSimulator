@@ -490,13 +490,15 @@ export function house(T, lot, seed, clear = false) {
   if (clear) {
     /* Open lawn. */
   } else if (frontKind < 0.3) {
-    /* A hedge along the front, broken for the path and the drive. */
-    const runs = [[0.3, du - 0.9]];
+    /* A hedge along the front, broken for the path and the drive, and
+     * run to the lot's edges so it meets a neighbour's: two hedges 0.6 m
+     * apart are a slot too tight to fly. */
+    const runs = [[0, du - 0.9]];
     const drive0 = garageW > 0 ? gu0 + 0.1 : null;
     if (drive0 !== null && left) {
       runs[0] = [gu1 + 0.1, du - 0.9];
     }
-    runs.push([du + 0.9, garageW > 0 && !left ? gu0 - 0.1 : Wl - 0.3]);
+    runs.push([du + 0.9, garageW > 0 && !left ? gu0 - 0.1 : Wl]);
     for (const [a, b] of runs) {
       if (b - a > 1.2) {
         L.box('sfHedge', a, 1.2, 0, b, 2.0, 1.0, { kind: 'canopy', name: 'hedge' });

@@ -113,8 +113,8 @@ function southSide(T) {
     name: 'corner store', wall: 'sfButter', fascia: 'sfOrange', sign: 'tuckShop', h: 5.2, d: 18,
     awning: ['sfTeal', 'sfTrim'], seed: 3, riser: 'sfTeal',
   });
-  store.box('sfTrim', 2, -0.1 + 0.3 - 1.25, 0, 3.3, 0.3 - 0.4, 0.95, { kind: 'wall', name: 'ice chest' });
-  store.sign('ice', 2.65, 0.3 - 1.25, 0.6, 1.1, 0.5, 'front', 0.005);
+  store.box('sfTrim', 2.7, -0.1 + 0.3 - 1.25, 0, 4.0, 0.3 - 0.4, 0.95, { kind: 'wall', name: 'ice chest' });
+  store.sign('ice', 3.35, 0.3 - 1.25, 0.6, 1.1, 0.5, 'front', 0.005);
   /* The frozen drink machine, its own glow. */
   store.box('sfRed', 4.0, -0.9, 0, 5.2, 0.25, 1.95, { kind: 'wall', name: 'drink machine' });
   store.sign('frosty', 4.6, -0.9, 1.2, 1.0, 1.3, 'front', 0.01);
@@ -125,7 +125,7 @@ function southSide(T) {
     name: 'tavern', wall: 'sfBrick', fascia: 'sfIron', sign: 'tavern', h: 6.4, d: 17, seed: 5,
     doorColour: 'sfWood', riser: 'sfIron',
   });
-  tav.sign('neonBar', 3.2, 0.24, 2.0, 1.5, 0.75, 'front', 0.02);
+  tav.sign('neonPool', 3.2, 0.24, 2.0, 1.5, 0.75, 'front', 0.02);
   tav.box('sfIron', 12.0, -0.2, 3.6, 12.12, 0.3, 4.2, { solid: false });
   tav.sign('tavernHang', 12.06, -0.65, 3.4, 0.9, 0.9, 'right', 0.07);
   tav.sign('tavernHang', 12.06, -0.65, 3.4, 0.9, 0.9, 'left', 0.07);
@@ -580,14 +580,16 @@ function school(T) {
   const cx = px0 + 17;
   const cy = S.y1 - 7;
   for (const [dx, dy] of [[-2, -2], [2, -2], [-2, 2], [2, 2]]) {
-    T.post('sfRed', cx + dx, cy + dy, 0, 3.2, 0.08, { kind: 'pole', name: 'frame post' });
+    T.post('sfRed', cx + dx, cy + dy, 0, 3.6, 0.08, { kind: 'pole', name: 'frame post' });
   }
   T.box('sfYellow', cx - 2.1, cy - 2.1, 2.0, cx + 2.1, cy + 2.1, 2.15, { kind: 'wall', name: 'deck' });
   T.prism('sfTeal', 'x', [[cy + 2.1, 0.1], [cy + 2.1, 0.25], [cy + 6.5, 0.4], [cy + 6.5, 0.25]].map(([y, h], k) => [k < 2 ? cy - 0.6 : cy + 0.6, h]), cx - 0.5, cx + 0.5);
   T.prism('sfTeal', 'y', [[cx + 2.1, 2.1], [cx + 6.0, 0.3], [cx + 6.0, 0.15], [cx + 2.1, 1.95]], cy - 0.55, cy + 0.55);
   T.hidden(cx + 2.1, cy - 0.5, 0.3, cx + 3.4, cy + 0.5, 1.4, 'wall', 'slide');
-  T.cone('sfRed', cx, cy, 3.2, 2.6, 1.6, 4, false);
-  T.hidden(cx - 1.6, cy - 1.6, 3.2, cx + 1.6, cy + 1.6, 3.8, 'wall', 'frame roof');
+  /* The roof stands a pilot's gap clear of the deck: 1.45 m, over the
+   * rule, where at 1.05 m it was a slot. */
+  T.cone('sfRed', cx, cy, 3.6, 2.6, 1.6, 4, false);
+  T.hidden(cx - 1.6, cy - 1.6, 3.6, cx + 1.6, cy + 1.6, 4.2, 'wall', 'frame roof');
 }
 
 /* A yellow school bus, drawn and solid as its box. */

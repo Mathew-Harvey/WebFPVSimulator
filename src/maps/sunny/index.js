@@ -51,6 +51,7 @@ import { sunnyLayout, sunnyFloor, sunnyMarkSpots, GORGE_HOLE, W, D, worldAt, chu
 import { sunnyDocument } from './yard.js';
 import { paintSigns, signMesh } from './signs.js';
 import { makeFx } from './fx.js';
+import { mergePalette } from './palette.js';
 
 const at = (px, py) => chunkOf(px - W / 2, D / 2 - py);
 
@@ -95,6 +96,38 @@ function frustumGeometry(f) {
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.computeVertexNormals();
   return g;
+}
+
+/* A cable's curve: straight between its ends in plan, hanging `sag` at
+ * its middle, a parabola as near a catenary as a span this short needs. */
+const WIRE_SEGMENTS = 10;
+function wireCurve(w) {
+  const a = new THREE.Vector3(...worldAt(w.a[0], w.a[1], w.a[2]));
+  const b = new THREE.Vector3(...worldAt(w.b[0], w.b[1], w.b[2]));
+  const c = a.clone().add(b).multiplyScalar(0.5);
+  c.y -= 2 * w.sag;
+  return new THREE.QuadraticBezierCurve3(a, c, b);
+}
+
+/*
+ * The cables again as one set of lines, which the builder draws beside its
+ * tubes for the same reason: a tube three centimetres thick is under a
+ * pixel from forty metres, and a line is always one.
+ */
+function wireLines(T) {
+  const pts = [];
+  for (const w of T.wires) {
+    const p = wireCurve(w).getPoints(WIRE_SEGMENTS);
+    for (let i = 0; i < WIRE_SEGMENTS; i += 1) {
+      pts.push(p[i].x, p[i].y, p[i].z, p[i + 1].x, p[i + 1].y, p[i + 1].z);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+  g.computeBoundingSphere();
+  const lines = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0x2c2a33 }));
+  lines.name = 'sunny wire lines';
+  return lines;
 }
 
 function drawTown(kit, T, low) {
@@ -168,6 +201,14 @@ function drawTown(kit, T, low) {
     const [x, , z] = worldAt((f.i.x0 + f.i.x1) / 2, (f.i.y0 + f.i.y1) / 2);
     kit.begin(0, 0, 0, 0, chunkOf(x, z));
     kit.add(f.m, frustumGeometry(f));
+  }
+  /* The cables: each a thin tube along its sag, three sided, as the
+   * builder's are (../built/index.js buildWires). */
+  for (const w of T.wires) {
+    const curve = wireCurve(w);
+    const mid = curve.getPoint(0.5);
+    kit.begin(0, 0, 0, 0, chunkOf(mid.x, mid.z));
+    kit.add(w.m, new THREE.TubeGeometry(curve, WIRE_SEGMENTS, w.r, 3, false));
   }
   for (const a of T.scaled) {
     const [x, y, z] = worldAt(a.px, a.py, a.h);
@@ -300,6 +341,11 @@ export async function buildMap(shell, onProgress, options) {
    * the board counts its partner signs under (MARK_MAP_WORDS in src/main.js). */
   map.id = 'sunny';
   map.source = 'sunny';
+  /* One batch a look in each chunk rather than one a colour: ./palette.js. */
+  const props = map.scene.getObjectByName('props');
+  const palette = props ? mergePalette(props) : { from: 0, to: 0 };
+  const stats = map.stats;
+  map.stats = () => ({ ...(stats ? stats() : {}), palette });
   /* The gorge, cut out of the ground. */
   openGround(map.scene, 'plot', GORGE_HOLE);
   openGround(map.scene, 'terrain', GORGE_HOLE);
@@ -314,6 +360,7 @@ export async function buildMap(shell, onProgress, options) {
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 4;
   map.scene.add(signMesh(THREE, T.signs, atlas, paintMaterial(THREE, tex)));
+  map.scene.add(wireLines(T));
   /* The steam, the smoke and the fire, on the map's clock. */
   const fx = makeFx(THREE);
   for (const m of fx.meshes) {

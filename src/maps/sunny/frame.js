@@ -98,6 +98,8 @@ export function rng(seed) {
  *            at a scale; its solids join the parts (scaledParts in ./plan.js)
  *   frusta   a rectangle rising to a smaller one: the hill's banks, a
  *            hipped roof, a junk mound's
+ *   wires    a cable hung between two plan points, sagging: the utility
+ *            poles' lines. Drawn only, never solid, as the builder's are
  *
  * `fine` on anything drawn marks detail the Low preset leaves out; a solid is
  * never fine, so the physics is the same on every preset.
@@ -115,6 +117,7 @@ export class Town {
     this.signs = [];
     this.scaled = [];
     this.frusta = [];
+    this.wires = [];
   }
 
   box(m, px0, py0, h0, px1, py1, h1, opts = {}) {
@@ -194,6 +197,19 @@ export class Town {
    * its middle; w across, ht up. */
   sign(key, px, py, h, w, ht, face, lift = 0.02) {
     this.signs.push({ key, px, py, h, w, ht, face, lift });
+  }
+
+  /* A sign wrapped round a vertical drum: centred on (px, py), `r` out,
+   * its middle at h up and at plan heading `a` (radians from east toward
+   * north); w along the curve, ht up. */
+  roundSign(key, px, py, h, r, a, w, ht, lift = 0.03) {
+    this.signs.push({ key, px, py, h, w, ht, face: 'round', r, a, lift });
+  }
+
+  /* A cable from a to b, plan [px, py, h], hanging `sag` metres at its
+   * middle, `r` thick. */
+  wire(m, a, b, sag, r = 0.03) {
+    this.wires.push({ m, a, b, sag, r });
   }
 
   asset(el, k, px, py, h, yaw) {

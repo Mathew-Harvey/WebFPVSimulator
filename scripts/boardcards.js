@@ -72,7 +72,7 @@ function usage() {
   console.log('  --dry              draw and report, upload nothing');
   console.log('  --worlds           draw the thumbnails of the worlds the simulator ships');
   console.log('                     (the town, Hibari Yard, Nick Burns\' house, Heads\' house,');
-  console.log('                     Joshua Bardwell\'s house) into');
+  console.log('                     Joshua Bardwell\'s house, Thomas More\'s Shop, Sunnyfield) into');
   console.log('                     assets/thumbs/, and nothing from the board');
   console.log('');
   console.log('  Every page draws the share card and the picker\'s thumbnail together.');
@@ -339,6 +339,9 @@ const WORLDS = [
    * lens instead, inside under the joists (CARD_LENS in
    * src/maps/warehouse/warehouse.js), and the orbit page uses that. */
   { id: 'warehouse', file: 'warehouse.jpg', name: "Thomas More's Shop" },
+  /* Sunnyfield, added 28 October 2026, picked by eye from four sides: the
+   * one with the hill's letters, the town hall and the gorge in it. */
+  { id: 'sunny', file: 'sunny.jpg', name: 'Sunnyfield', shot: { tp: 0.62, tr: 0.9, ta: -2.4 } },
 ];
 
 async function drawWorlds(opts) {

@@ -407,5 +407,6 @@ export const MAP_PRELOAD = {
     'maps/sunny/yard.js',
     'maps/sunny/signs.js',
     'maps/sunny/fx.js',
+    'maps/sunny/palette.js',
   ],
 };

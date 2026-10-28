@@ -3,8 +3,7 @@
  * Bardwell's house's. The town itself comes from ./plan.js as one structure
  * of its own; this is what the built map's document format already says
  * well: the plot, the light and the ground, where the pilot starts, the
- * named gaps, the roads the cars drive and the cars, the utility poles and
- * their wires, the street lamps, the water tower and the power line.
+ * named gaps, the roads the cars drive and the cars, and the power line.
  *
  * Built fresh on every call and the same every call, with a fixed id, so
  * the map keys its marks and stamps as one place, and the id is the
@@ -29,8 +28,7 @@
 
 import { SUNNY_DOC_ID } from '../registry.js';
 import { W, D, SPAWN, sunnyGaps, trafficLoops } from './plan.js';
-import { POLES, LAMPS } from './streets.js';
-import { WATER_TOWER, PYLONS } from './landmarks.js';
+import { PYLONS } from './landmarks.js';
 
 export const SUNNY_NAME = 'Sunnyfield';
 
@@ -41,9 +39,11 @@ const DEG = Math.PI / 180;
 /* The cars, each on one of the two loops (./plan.js trafficLoops), a lap
  * shared out evenly, every car on a loop at the loop's one speed so none
  * catches another. */
+/* Six, three a loop: a moving car is about fifteen draw calls with its
+ * shadow, so each one costs about what a whole chunk of the town does. */
 const CARS = [
   ['sedan', 2], ['wagon', 5], ['minivan', 3], ['boxtruck', 1],
-  ['hatch', 7], ['van', 2], ['sedan', 9], ['minivan', 6],
+  ['hatch', 7], ['van', 2],
 ];
 const SPEED = 12;
 
@@ -55,16 +55,9 @@ function rows() {
   for (const g of sunnyGaps()) {
     out.push(['gap', g.px, g.py, g.deg * DEG, { width: g.w, height: g.h1 - g.h0 }, { z: g.h0, name: g.name, points: g.points }]);
   }
-  /* The poles down the residential streets, their wires strung by the
-   * pipeline to the nearest neighbour; the lamps down Main Street. */
-  for (const [px, py] of POLES) {
-    out.push(['utilityPole', px, py, 0, { height: 9 }]);
-  }
-  for (const [px, py, yaw] of LAMPS) {
-    out.push(['lamp', px, py, Math.round(yaw / DEG) * DEG, { height: 7 }]);
-  }
-  /* The water tower in the park, the power line down the east side. */
-  out.push(['waterTower', WATER_TOWER.px, WATER_TOWER.py, 0, { height: WATER_TOWER.height, radius: WATER_TOWER.radius, tank: 1.2 }]);
+  /* The power line down the east side. The poles, the lamps and the water
+   * tower are the town's own (./streets.js, ./landmarks.js): the builder's
+   * are lettered in Japanese. */
   for (const [px, py] of PYLONS) {
     out.push(['pylon', px, py, 90 * DEG, { height: 30 }]);
   }

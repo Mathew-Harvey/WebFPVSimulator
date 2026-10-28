@@ -25,7 +25,7 @@ import { Town, worldAt, wx, wz, W, D, chunkOf } from './frame.js';
 import { streets, MAIN_Y, OAK_X, PINE_X, MAPLE_Y, HALF, MILL_X, MILL_END } from './streets.js';
 import { houses, hedgeGap } from './houses.js';
 import { downtown, DONUT, HALL as CIVIC, CHURCH, GAS, PADS } from './downtown.js';
-import { landmarks, GORGE, gorgeFloorAt, GORGE_BRIDGE, HALL as TURBINES, MANSION_GATE, BANDSTAND, PLANT } from './landmarks.js';
+import { landmarks, GORGE, gorgeFloorAt, GORGE_BRIDGE, HALL as TURBINES, MANSION_GATE, BANDSTAND, PLANT, CONTAINER } from './landmarks.js';
 import { partsOf } from '../../props/catalog.js';
 import { PARTNERS, MAP_ONLY_PARTNERS, PATRON_MAP_BRANDS, shownOn } from '../../partners/roster.js';
 import { signAspect } from '../../art/partnermark.js';
@@ -195,6 +195,7 @@ export function sunnyGaps() {
     { name: 'PUMP LANE', px: GAS.cx0 + 2, py: pumps, deg: 0, w: 3.2, h0: 0.4, h1: GAS.canopyH - M, points: 250 },
     { name: 'THE BIG GATE', px: MANSION_GATE.px, py: MANSION_GATE.py, deg: 90, w: MANSION_GATE.w - 2 * M, h0: M, h1: MANSION_GATE.h - 0.25 - M, points: 250 },
     { name: 'BANDSTAND', px: BANDSTAND.px, py: BANDSTAND.py, deg: 90, w: 2.4, h0: 1.1, h1: BANDSTAND.h + 0.8 - M, points: 250 },
+    { name: 'CONTAINER ARCH', px: (CONTAINER.x0 + CONTAINER.x1) / 2, py: (CONTAINER.yA + CONTAINER.d + CONTAINER.yB) / 2, deg: 0, w: CONTAINER.yB - CONTAINER.yA - CONTAINER.d - 2 * M, h0: M, h1: 2 * CONTAINER.hc - M, points: 500 },
     { name: 'PLANT GATE', px: (PLANT.x0 + PLANT.x1) / 2 + 2, py: PLANT.y0, deg: 90, w: 9 - 2 * M, h0: M, h1: 6.5 - M, points: 100 },
   ];
 }

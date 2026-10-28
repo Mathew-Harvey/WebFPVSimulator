@@ -185,7 +185,7 @@ export const MAPS = [
     id: 'sunny',
     name: 'Sunnyfield',
     mode: 'freestyle',
-    note: 'Sunnyfield, flown on a five inch: Main Street, the giant donut, the clock tower, the gorge, the power plant and its cooling towers, the hill with the big house, the dump and the park.',
+    note: 'Sunnyfield, flown on a five inch: Main Street, the giant donut, the clock tower, the gorge, the power plant and its cooling towers, the hill with the big house, the dump, the water tower and the skate park.',
     buildMs: MAP_BUILD_MS.sunny,
     load: () => import('./sunny/index.js'),
   },

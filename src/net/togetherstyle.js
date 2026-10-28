@@ -929,6 +929,30 @@ export const TOGETHER_CSS = `
 #tg .count-big canvas.hold { animation: tg-countin-hold 0.3s ease-out forwards; }
 @keyframes tg-countin-hold { from { transform: scale(2.4); opacity: 0; } }
 @keyframes tg-countin { 0% { transform: scale(2.4); opacity: 0; } 25% { transform: scale(1); opacity: 1; } 85% { transform: scale(1); opacity: 1; } 100% { transform: scale(0.8); opacity: 0; } }
+/* The host's move, asked across the middle of the screen (the owner's ask
+ * of 2026-10-28). No scrim: the pilot is still flying under it, so the
+ * panel is the only thing in the way and the world shows round it. Only
+ * the panel takes presses, so a stick drag on a phone either side of it
+ * still reaches the touch sticks. */
+/* Centred in the band between the shell's launch line, which runs to about
+ * 212 px from the top, and the stick and weight dials along the bottom. */
+#tg .tg-vote { position: absolute; inset: 0; display: grid; place-items: center; padding: 222px 14px 132px; }
+#tg .tg-vote .vsheet {
+  pointer-events: auto; width: min(640px, 100%); padding: 14px 18px 0; display: grid; gap: 10px; justify-items: start;
+  animation: tg-vote-in 0.32s cubic-bezier(.2,1.4,.4,1); overflow: hidden;
+}
+#tg .tg-vote .vrow { display: flex; gap: 14px; align-items: center; width: 100%; min-width: 0; }
+#tg .tg-vote .vpic { flex: none; width: 150px; aspect-ratio: 16 / 10; max-width: 40%; border: 3px solid var(--ink); background: var(--slate) center / cover no-repeat; }
+#tg .tg-vote .vwords { min-width: 0; display: grid; gap: 4px; }
+#tg .tg-vote .vwords b { font: 900 italic 22px var(--ui); }
+#tg .tg-vote .vwords span { font-weight: 700; font-size: 15px; }
+#tg .tg-vote .btnrow { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
+#tg .tg-vote .btnrow .btn { width: 100%; font-size: 20px; padding-block: 12px; }
+#tg .tg-vote .vhow { font-size: 14px; font-weight: 700; color: var(--quiet); }
+#tg .tg-vote .vbar { align-self: stretch; justify-self: stretch; height: 8px; margin: 0 -18px; background: var(--ink); }
+#tg .tg-vote .vbar i { display: block; height: 100%; background: var(--amber); transform-origin: left; animation: tg-vote-bar linear forwards; }
+@keyframes tg-vote-in { from { transform: scale(1.25); opacity: 0; } }
+@keyframes tg-vote-bar { from { transform: scaleX(1); } to { transform: scaleX(0); } }
 #tg .speedlines {
   position: absolute; inset: -20%; opacity: 0.45;
   background: repeating-conic-gradient(from 0deg at 50% 50%, rgba(11,17,22,0) 0 3deg, rgba(11,17,22,.55) 3deg 3.6deg, rgba(11,17,22,0) 3.6deg 8deg);
@@ -1013,6 +1037,9 @@ export const TOGETHER_CSS = `
   /* The column is the whole width here, so the banner takes it too, under
    * the chip. */
   #tg .tg-banner { max-width: calc(100% - 28px); top: 150px; }
+  #tg .tg-vote { padding: 150px 14px 120px; }
+  #tg .tg-vote .vpic { width: 96px; }
+  #tg .tg-vote .vwords span { font-size: 13px; }
   #tg .scene .pl, #tg .scene .pr { width: 30vw; bottom: 250px; }
   #tg .scene .transcript { left: 4vw; right: 4vw; bottom: 330px; }
   #tg .podium { gap: 8px; }
@@ -1023,7 +1050,7 @@ export const TOGETHER_CSS = `
  * The fades that time a line out stay, because they are how a line leaves. */
 @media (prefers-reduced-motion: reduce) {
   #tg .tg-enter > *, #tg .tg-enter .modal, #tg .tg-enter .scene *, #tg .toast, #tg .tg-banner, #tg .hello, #tg .talk .portrait.in,
-  #tg .tg-step.now i, #tg .shake, #tg .skeleton, #tg .count-big canvas { animation: none !important; }
+  #tg .tg-step.now i, #tg .shake, #tg .skeleton, #tg .count-big canvas, #tg .tg-vote .vsheet { animation: none !important; }
   #tg .btn, #tg .room, #tg .part, #tg .radio, #tg .switch, #tg .mapcard, #tg .pilot .chev, #tg .tg-banner,
   #tg .roomchip, #tg .roster, #tg .pit, #tg .standings { transition: none !important; }
 }

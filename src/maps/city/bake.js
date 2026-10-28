@@ -1181,6 +1181,269 @@ export function bakeCity(world, opts) {
 }
 
 /*
+ * FOG BANDS: drawing only the part of a town wide merge the fog leaves.
+ *
+ * MERGE_CELL is Infinity because the frame is short of draw calls (see the
+ * note there), so the static town is one mesh a material, a couple of hundred
+ * metres across each, and frustum culling never drops one. On Low the fog is
+ * solid from 46 m, and a census of the town on Low (2026-10-28, four parked
+ * views) put about 900,000 of its 950,000 triangles in meshes that straddle
+ * the fog's far edge: drawn whole, mostly as pixels of flat fog colour, or
+ * behind nearer walls.
+ *
+ * So a town wide bucket that is opaque, fogged and casts nothing has its
+ * triangles put in order along one axis after the merge, and keeps a small
+ * table of where each band of BAND_STEP metres starts in the buffer and how
+ * far its triangles reach. Each time the mesh is about to be drawn, the
+ * camera's own frustum cut off at the fog's far depth is projected onto the
+ * axis, and the draw range is trimmed to the first and last band that reach
+ * into it. Still one draw call a material, so the trade the merge was made
+ * for is untouched.
+ *
+ * WHY IT DOES NOT CHANGE THE PICTURE. Three's linear fog is by view depth,
+ * and at a depth past `fog.far` a fogged material is exactly the fog colour.
+ * A band left out lies wholly outside the camera's frustum or wholly deeper
+ * than `fog.far`, and a band's reach is its triangles' own vertices, so
+ * nothing that could show a pixel other than flat fog is dropped. What can
+ * change is a flat fog coloured silhouette that stood in front of the sky:
+ * shots before and after are the check for that, in PROGRESS.md.
+ *
+ * Opaque only, because reordering a transparent merge reorders its blending.
+ * Not casters, because the shadow pass draws through the same range and its
+ * camera is the light's. The range is set from the camera that is drawing,
+ * in onBeforeRender, so a second view of the scene gets its own.
+ */
+const BAND_STEP = 8;
+const BAND_AXIS = 2; /* z, as an index into a position: x is 0. */
+
+/*
+ * Put a merged geometry's triangles in order of band along BAND_AXIS, by each
+ * triangle's centroid, and return the table: where each band starts in the
+ * draw range's units (indices, or vertices for a geometry with no index) and
+ * the least and greatest coordinate its vertices reach. Per triangle rather
+ * than per merged member, because some members are one geometry hundreds of
+ * metres long (a hill, a road network) and a member's band would have to
+ * reach as far as it does. A counting sort, stable, so inside a band the
+ * triangles keep the order they were merged in and equal depth fragments
+ * resolve as they did. Null when the geometry is not one this can reorder.
+ */
+function bandGeometry(geo) {
+  if (geo.groups.length > 0 || Object.keys(geo.morphAttributes).length > 0) {
+    return null;
+  }
+  const pos = geo.attributes.position;
+  if (!pos || pos.isInterleavedBufferAttribute) {
+    return null;
+  }
+  const index = geo.index;
+  const tris = (index ? index.count : pos.count) / 3;
+  if (!Number.isInteger(tris) || tris < 1) {
+    return null;
+  }
+  const at = BAND_AXIS;
+  const P = pos.array;
+  const ps = pos.itemSize;
+  const vert = (t, k) => (index ? index.array[t * 3 + k] : t * 3 + k);
+  const band = new Int32Array(tris);
+  let bMin = Infinity;
+  let bMax = -Infinity;
+  for (let t = 0; t < tris; t += 1) {
+    const c = (P[vert(t, 0) * ps + at] + P[vert(t, 1) * ps + at] + P[vert(t, 2) * ps + at]) / 3;
+    const k = Math.floor(c / BAND_STEP);
+    band[t] = k;
+    bMin = Math.min(bMin, k);
+    bMax = Math.max(bMax, k);
+  }
+  const nb = bMax - bMin + 1;
+  if (!(nb >= 1) || nb > 1e5) {
+    return null;
+  }
+  const count = new Int32Array(nb + 1);
+  for (let t = 0; t < tris; t += 1) {
+    count[band[t] - bMin + 1] += 1;
+  }
+  for (let j = 0; j < nb; j += 1) {
+    count[j + 1] += count[j];
+  }
+  const slot = count.slice(0, nb);
+  const order = new Int32Array(tris);
+  for (let t = 0; t < tris; t += 1) {
+    order[slot[band[t] - bMin]++] = t;
+  }
+  const lo = new Float32Array(nb).fill(Infinity);
+  const hi = new Float32Array(nb).fill(-Infinity);
+  for (let t = 0; t < tris; t += 1) {
+    const j = band[t] - bMin;
+    for (let k = 0; k < 3; k += 1) {
+      const v = P[vert(t, k) * ps + at];
+      if (v < lo[j]) lo[j] = v;
+      if (v > hi[j]) hi[j] = v;
+    }
+  }
+  if (index) {
+    const src = index.array;
+    const dst = new src.constructor(src.length);
+    for (let n = 0; n < tris; n += 1) {
+      const t = order[n];
+      dst[n * 3] = src[t * 3];
+      dst[n * 3 + 1] = src[t * 3 + 1];
+      dst[n * 3 + 2] = src[t * 3 + 2];
+    }
+    index.array.set(dst);
+    index.needsUpdate = true;
+  } else {
+    for (const name of Object.keys(geo.attributes)) {
+      const a = geo.attributes[name];
+      if (a.isInterleavedBufferAttribute) {
+        return null;
+      }
+    }
+    for (const name of Object.keys(geo.attributes)) {
+      const a = geo.attributes[name];
+      const w = a.itemSize * 3;
+      const src = a.array;
+      const dst = new src.constructor(src.length);
+      for (let n = 0; n < tris; n += 1) {
+        dst.set(src.subarray(order[n] * w, order[n] * w + w), n * w);
+      }
+      src.set(dst);
+      a.needsUpdate = true;
+    }
+  }
+  /* Three vertices or three indices a triangle: the draw range's unit. */
+  const starts = new Int32Array(nb + 1);
+  for (let j = 0; j <= nb; j += 1) {
+    starts[j] = count[j] * 3;
+  }
+  return { axis: at, starts, lo, hi };
+}
+
+/* The fogged frustum's reach along the band axis, computed once for each
+ * camera pose and fog distance and shared by every banded mesh drawn from
+ * it. Five points: the eye and the frustum's four corner rays cut at the fog's
+ * far depth, unprojected through the camera's own inverse projection so a
+ * view offset or a zoom is honoured. */
+const reach = { camera: null, far: 0, axis: -1, seen: new Float64Array(32), min: 0, max: 0 };
+const corner = new THREE.Vector3();
+const CORNERS = [-1, -1, 1, -1, 1, 1, -1, 1];
+function samePose(camera, far, axis) {
+  if (reach.camera !== camera || reach.far !== far || reach.axis !== axis) {
+    return false;
+  }
+  const e = camera.matrixWorld.elements;
+  const p = camera.projectionMatrix.elements;
+  const seen = reach.seen;
+  for (let i = 0; i < 16; i += 1) {
+    if (seen[i] !== e[i] || seen[16 + i] !== p[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+function fogReach(camera, far, axis) {
+  if (samePose(camera, far, axis)) {
+    return reach;
+  }
+  const e = camera.matrixWorld.elements;
+  const p = camera.projectionMatrix.elements;
+  for (let i = 0; i < 16; i += 1) {
+    reach.seen[i] = e[i];
+    reach.seen[16 + i] = p[i];
+  }
+  reach.camera = camera;
+  reach.far = far;
+  reach.axis = axis;
+  const eye = e[12 + axis];
+  let min = eye;
+  let max = eye;
+  for (let k = 0; k < 8; k += 2) {
+    corner.set(CORNERS[k], CORNERS[k + 1], 1).applyMatrix4(camera.projectionMatrixInverse);
+    corner.multiplyScalar(far / -corner.z).applyMatrix4(camera.matrixWorld);
+    const v = corner.getComponent(axis);
+    min = Math.min(min, v);
+    max = Math.max(max, v);
+  }
+  reach.min = min;
+  reach.max = max;
+  return reach;
+}
+
+function fogBanded(mesh) {
+  const geo = mesh.geometry;
+  const t = geo.userData.fogBands;
+  const range = geo.drawRange;
+  const bands = t.lo.length;
+  mesh.onBeforeRender = (renderer, scene, camera) => {
+    const fog = scene.fog;
+    if (!fog || !fog.isFog || !camera.isPerspectiveCamera) {
+      range.start = 0;
+      range.count = Infinity;
+      return;
+    }
+    const r = fogReach(camera, fog.far, t.axis);
+    let first = -1;
+    let last = -1;
+    for (let j = 0; j < bands; j += 1) {
+      if (t.hi[j] >= r.min && t.lo[j] <= r.max) {
+        if (first < 0) {
+          first = j;
+        }
+        last = j;
+      }
+    }
+    if (first < 0) {
+      range.start = 0;
+      range.count = -1;
+      return;
+    }
+    range.start = t.starts[first];
+    range.count = t.starts[last + 1] - t.starts[first];
+  };
+  return mesh;
+}
+
+/*
+ * The floor under the fog bands.
+ *
+ * Trimming a band takes its pixels with it, and what was there was not
+ * nothing: it was flat fog colour, standing in front of the sky dome, which
+ * is not fog coloured. From 60 m up on Low the whole ground is past the fog,
+ * so without this the dome showed through the town as holes. One fogged
+ * plane under everything the bands hold, the size of what they cover, puts
+ * the fog colour back wherever the ground was. Two triangles, drawn after
+ * the opaque town (renderOrder 1) so the depth test throws away every pixel
+ * of it that real ground covers. Below the lowest banded vertex, so it never
+ * shows near the eye, and fogged like the town, so wherever it does show it
+ * is past the fog's far edge and exactly the fog colour.
+ */
+export function fogFloor(merged, color) {
+  const box = new THREE.Box3();
+  const one = new THREE.Box3();
+  for (const m of merged) {
+    if (m.geometry.userData.fogBands) {
+      m.geometry.computeBoundingBox();
+      one.copy(m.geometry.boundingBox).applyMatrix4(m.matrixWorld);
+      box.union(one);
+    }
+  }
+  if (box.isEmpty()) {
+    return null;
+  }
+  const w = box.max.x - box.min.x;
+  const d = box.max.z - box.min.z;
+  const geo = new THREE.PlaneGeometry(w, d);
+  geo.rotateX(-Math.PI / 2);
+  const mat = new THREE.MeshBasicMaterial({ color, fog: true });
+  const floor = new THREE.Mesh(geo, mat);
+  floor.name = 'fogFloor';
+  floor.position.set((box.min.x + box.max.x) / 2, box.min.y - 0.25, (box.min.z + box.max.z) / 2);
+  floor.renderOrder = 1;
+  floor.matrixAutoUpdate = false;
+  floor.updateMatrix();
+  return floor;
+}
+
+/*
  * The same bake as a generator, so a page can spread it over frames. It
  * yields a short label between its passes, every few hundred meshes of the
  * bucket walk and every few buckets of the merge, and returns what bakeCity
@@ -1197,6 +1460,7 @@ export function* bakeCitySteps(world, {
   atlasSize = 4096,
   releaseStillRigs = false,
   shadowProxyCell = 0,
+  fogBanding = false,
 } = {}) {
   const root = world.root;
   const { moving: animated, stillRigs, released } = findAnimated(world, { releaseStillRigs });
@@ -1331,6 +1595,11 @@ export function* bakeCitySteps(world, {
         castShadow: o.castShadow,
         receiveShadow: o.receiveShadow,
         renderOrder: o.renderOrder,
+        /* See fogBands below: only a town wide, opaque, fogged bucket that
+         * casts nothing has its members put in order and its draw range
+         * trimmed to what the fog leaves visible. */
+        banded: fogBanding && !Number.isFinite(span) && !o.castShadow
+          && mat.fog !== false && !mat.transparent,
         geos: [],
         meshes: [],
       };
@@ -1355,6 +1624,7 @@ export function* bakeCitySteps(world, {
 
   const merged = [];
   let mergedBuckets = 0;
+  let banded = 0;
   for (const b of buckets.values()) {
     if (mergedBuckets > 0 && mergedBuckets % 6 === 0) {
       yield 'merge';
@@ -1369,6 +1639,12 @@ export function* bakeCitySteps(world, {
       continue;
     }
     const geo = mergeGeometries(b.geos, false);
+    if (geo && b.banded) {
+      const t = bandGeometry(geo);
+      if (t) {
+        geo.userData.fogBands = t;
+      }
+    }
     for (const g of b.geos) {
       g.dispose();
     }
@@ -1377,6 +1653,10 @@ export function* bakeCitySteps(world, {
     }
     geo.computeBoundingSphere();
     const mesh = new THREE.Mesh(geo, b.material);
+    if (geo.userData.fogBands) {
+      fogBanded(mesh);
+      banded += 1;
+    }
     mesh.castShadow = b.castShadow;
     mesh.receiveShadow = b.receiveShadow;
     mesh.renderOrder = b.renderOrder;
@@ -1417,6 +1697,7 @@ export function* bakeCitySteps(world, {
       mergeCell: Number.isFinite(cell) ? cell : 'town',
       mergeShadowCell: shadowCell,
       mergeCullCell: cullCell,
+      fogBanded: banded,
       atlas,
       shadowProxies: proxies.stats,
       casterMinRadius: casters.minRadius,

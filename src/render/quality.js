@@ -155,6 +155,10 @@ const PRESETS = {
       cullRadius: 50,
       fogNear: 22,
       fogFar: 46,
+      /* Draw only the part of the town wide merge the fog leaves visible:
+       * fogBanded in src/maps/city/bake.js. High keeps the whole merge, so
+       * the far fog wall there is the authored one. */
+      fogBands: true,
       pixelBudget: 0.9e6,
       /* Allow the city pipeline to render below CSS resolution. The vendored
        * walker pipeline floors scale at 1.0; a Deck cannot afford that. */
@@ -200,6 +204,7 @@ const PRESETS = {
       cullRadius: 58,
       fogNear: 22,
       fogFar: 53,
+      fogBands: true,
       pixelBudget: 1.55e6,
       minScale: 0.85,
       preferScale: null,

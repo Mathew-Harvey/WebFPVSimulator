@@ -70,7 +70,7 @@ import { disposeSceneGraph } from '../../render/shell.js';
 import { SESSION_TEXTURES } from '../../render/session-textures.js';
 import { cityAnimation, findBoomBlocks } from './animation.js';
 import {
-  bakeCity, buildCullGrid, chunkInstanced, thinFoliage,
+  bakeCity, buildCullGrid, chunkInstanced, fogFloor, thinFoliage,
 } from './bake.js';
 import { cityReferences, boomColliderExtent } from './references.js';
 import { buildPlaces } from './places/index.js';
@@ -2601,11 +2601,17 @@ export async function buildMap(shell, onProgress, options) {
      * shell can press one of the town's buttons. */
     releaseStillRigs: true,
     shadowProxyCell: q.shadows ? q.city.shadowProxyCell : 0,
+    fogBanding: q.city.fogBands === true,
   });
   const thinned = thinFoliage(world.root, { keep: foliageKeep });
   const chunked = chunkInstanced(world.root, { cell: CULL_CELL });
   progress(0.92);
   const cull = buildCullGrid(world.root, { cell: CULL_CELL });
+  /* After the cull grid, which must not take it: see fogFloor in ./bake.js. */
+  const floor = fogFloor(baked.merged, PAL.fog);
+  if (floor) {
+    world.root.add(floor);
+  }
   const leafRound = q.city.leafRound ?? 0;
   /* Every blob and twin the near canopies swap between, for dispose(). */
   const leafSwapped = new Set();

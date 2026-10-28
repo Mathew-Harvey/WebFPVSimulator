@@ -57,6 +57,7 @@
  */
 
 import { MEDAL_RANK } from './objectives.js';
+import { TITLES, saveTitle } from './titles.js';
 import {
   LEVEL_QUESTIONS, PARTS, PASS_COUNT, parentsOf, partById, partOf, partsInOrder, treeLessons,
 } from './tree.js';
@@ -178,6 +179,8 @@ export function saveProgress(p, storage = globalThis.localStorage) {
   try {
     if (storage) {
       storage.setItem(PROGRESS_KEY, JSON.stringify(p));
+      /* The title on a key of its own, for a room (./titles.js). */
+      saveTitle(titleOf(p), storage);
     }
     return true;
   } catch (e) {
@@ -352,25 +355,29 @@ export function branchStats(p, branch) {
   return out;
 }
 
-/* Whether a licence part has been flown, every lesson of it, by the pilot
- * (a known licence is not a licence). */
-function licensed(p, partId) {
-  const part = partById(partId);
+/* Whether a part has been flown, every lesson of it, by the pilot. Known
+ * does not count: a known licence is not a licence, and a known part earns
+ * no livery. */
+function flownWhole(p, part) {
   return Boolean(part) && part.lessons.length > 0 && part.lessons.every((id) => lessonDone(p, id));
 }
 
+function licensed(p, partId) {
+  return flownWhole(p, partById(partId));
+}
+
+/* The liveries the pilot has earned, in the tree's order: one for each part
+ * flown whole (src/render/livery.js paints them). */
+export function liveriesEarned(p) {
+  return PARTS.filter((x) => x.livery && flownWhole(p, x)).map((x) => x.livery);
+}
+
 /*
- * The pilot's title, from the licences: the word on the licence card,
- * on the cover and in the results. A closed list, written here.
+ * The pilot's title, from the licences: the word on the licence card, on
+ * the cover, in the results and beside the handle in a room. A closed list,
+ * in ./titles.js, which a room reads without loading the career.
  */
-export const TITLES = Object.freeze({
-  student: 'Student pilot',
-  rookie: 'Rookie',
-  racer: 'Pro Racer',
-  freestyler: 'Pro Freestyler',
-  both: 'Pro Racer and Freestyler',
-  pro: 'WebFPV Pro',
-});
+export { TITLES };
 
 export function titleOf(p) {
   if (licensed(p, 'pro')) {
@@ -405,7 +412,7 @@ function openSet(p) {
  * Record a finished or failed run. Returns what changed, for the results
  * screen and the platform: whether this was the first finish, a better
  * medal, time or score, the stars it added, the parts it opened, and the
- * licence it earned, if any.
+ * licence and the livery it earned, if any.
  */
 export function recordRun(p, lessonId, { complete, ms, medal, score }, now = new Date()) {
   p.runs = (p.runs || 0) + 1;
@@ -421,6 +428,7 @@ export function recordRun(p, lessonId, { complete, ms, medal, score }, now = new
     opened: [],
     stars: 0,
     licence: null,
+    livery: null,
     previous: prev.medal || null,
     careerFinished: false,
   };
@@ -428,6 +436,7 @@ export function recordRun(p, lessonId, { complete, ms, medal, score }, now = new
     const before = openSet(p);
     const part = partOf(lessonId);
     const wasLicensed = part && part.licence ? licensed(p, part.id) : true;
+    const wasWhole = flownWhole(p, part);
     if (!prev.medal) {
       out.firstFinish = true;
       rec.firstAt = now.toISOString();
@@ -450,6 +459,9 @@ export function recordRun(p, lessonId, { complete, ms, medal, score }, now = new
     out.opened = [...after].filter((id) => !before.has(id));
     if (part && part.licence && !wasLicensed && licensed(p, part.id)) {
       out.licence = part.id;
+    }
+    if (part && part.livery && !wasWhole && flownWhole(p, part)) {
+      out.livery = part.livery;
     }
     const t = totals(p);
     if (!p.finishedAt && t.done === t.total) {

@@ -17,6 +17,7 @@
  *   FLIGHT     the flying display (objective, clock, coach, height gauge,
  *              the marker on the next target)
  *   RESULTS    the medal, the stars, what it opened, what next
+ *   PAINT      the Paint Shop: a livery for every part flown whole
  *   ACHIEVEMENTS  the Steam edition's list
  *
  * PICTURES THROUGH THE PAGE. A panel marked .cr-window is a hole in the
@@ -53,7 +54,7 @@ import {
   BRANCHES, LEVEL_QUESTIONS, PARTS, partById, partOf,
 } from './tree.js';
 import {
-  TITLES, branchStats, lessonRecord, lessonUnlocked, levelAnswers, partStats, titleOf, totals,
+  TITLES, branchStats, lessonRecord, lessonUnlocked, levelAnswers, liveriesEarned, partStats, titleOf, totals,
 } from './progress.js';
 import {
   checkSvg, coachSvg, lessonGlyph, lockSvg, medalSvg, starSvg,
@@ -62,6 +63,7 @@ import { sticksHtml } from './sticks.js';
 import { sticksIn } from './words.js';
 import { injectCareerStyle } from './style.js';
 import { achievementSvg } from '../steam/achievementart.js';
+import { LIVERIES, cssOf, liveryById } from '../render/livery.js';
 
 function el(tag, cls, text) {
   const n = document.createElement(tag);
@@ -173,7 +175,7 @@ function starRow(medal, cls = 'cr-stars') {
  * the page, a press away on the D-pad.
  */
 const PAD_CAPS = {
-  Enter: 'A', Esc: 'B', 'Q E': 'LB RB', R: '', T: '', L: '', K: '', Arrows: 'D-pad',
+  Enter: 'A', Esc: 'B', 'Q E': 'LB RB', R: '', T: '', L: '', K: '', P: '', Arrows: 'D-pad',
 };
 
 function keycap(key, cls = 'cr-key') {
@@ -242,6 +244,54 @@ function lessonOf(id) {
   return id ? lessonById(id) : null;
 }
 
+/*
+ * A five inch from above, nose up, in a livery: the Paint Shop's picture
+ * and the results'. Drawn, not rendered, so a page of them costs markup and
+ * nothing else. The colours go where src/render/herocraft.js puts them:
+ * the vinyl on the pack's label, its straps and the top plate's decals,
+ * the chrome on the camera cage, the antenna mount and the motor caps.
+ */
+function quadSvg(livery) {
+  const v = cssOf(livery.vinyl);
+  const c = cssOf(livery.chrome);
+  const ink = '#0b1116';
+  const carbon = '#2a3038';
+  const ends = [[46, 46], [154, 46], [46, 154], [154, 154]];
+  const arms = ends.map(([x, y]) => `<line x1="100" y1="100" x2="${x}" y2="${y}" stroke="${ink}" stroke-width="22" stroke-linecap="round"/>`
+    + `<line x1="100" y1="100" x2="${x}" y2="${y}" stroke="${carbon}" stroke-width="14" stroke-linecap="round"/>`).join('');
+  const props = ends.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="38" fill="rgba(157,179,200,0.2)" stroke="${ink}" stroke-width="3"/>`
+    + `<circle cx="${x}" cy="${y}" r="13" fill="#5b636e" stroke="${ink}" stroke-width="3"/>`
+    + `<circle cx="${x}" cy="${y}" r="6" fill="${c}" stroke="${ink}" stroke-width="2"/>`).join('');
+  return `<svg class="cr-quad" viewBox="0 0 200 200" aria-hidden="true">${props}${arms}`
+    + `<rect x="72" y="60" width="56" height="84" rx="9" fill="${carbon}" stroke="${ink}" stroke-width="4"/>`
+    + `<rect x="78" y="134" width="44" height="5" fill="${v}"/>`
+    + `<rect x="80" y="72" width="40" height="58" rx="5" fill="#1a1e24" stroke="${ink}" stroke-width="3"/>`
+    + `<rect x="80" y="90" width="40" height="22" fill="${v}" stroke="${ink}" stroke-width="3"/>`
+    + `<rect x="76" y="78" width="48" height="5" fill="${v}" stroke="${ink}" stroke-width="1.5"/>`
+    + `<rect x="76" y="119" width="48" height="5" fill="${v}" stroke="${ink}" stroke-width="1.5"/>`
+    + `<rect x="85" y="40" width="30" height="26" rx="6" fill="${c}" stroke="${ink}" stroke-width="4"/>`
+    + `<rect x="93" y="34" width="14" height="10" rx="3" fill="${ink}"/>`
+    + `<path d="M91 142 L109 142 L105 162 L95 162 Z" fill="${c}" stroke="${ink}" stroke-width="3"/>`
+    + `<line x1="100" y1="160" x2="100" y2="186" stroke="${ink}" stroke-width="4" stroke-linecap="round"/>`
+    + '</svg>';
+}
+
+/* Two chips, vinyl and chrome: a livery at the size of a word. */
+function liveryChips(livery) {
+  const chips = el('span', 'cr-livery-chips');
+  for (const hex of [livery.vinyl, livery.chrome]) {
+    const i = el('i');
+    i.style.background = cssOf(hex);
+    chips.append(i);
+  }
+  return chips;
+}
+
+/* The part whose lessons earn a livery, or null for the house paint. */
+function partOfLivery(id) {
+  return PARTS.find((x) => x.livery === id) || null;
+}
+
 export class CareerScreens {
   constructor(handlers) {
     injectCareerStyle();
@@ -261,9 +311,10 @@ export class CareerScreens {
     this.level = face('cr-level');
     this.brief = face('cr-brief');
     this.results = face('cr-results');
+    this.paintShop = face('cr-paint');
     this.ach = el('section', 'cr-screen cr-ach');
     this.hud = el('div', 'cr-hud');
-    this.root.append(this.cover, this.tree, this.fork, this.level, this.brief, this.results, this.ach, this.hud);
+    this.root.append(this.cover, this.tree, this.fork, this.level, this.brief, this.results, this.paintShop, this.ach, this.hud);
     document.body.append(this.root);
     this.focus = [];
     this.focusAt = 0;
@@ -312,7 +363,7 @@ export class CareerScreens {
   set screen(name) {
     this.root.dataset.screen = name || '';
     this.root.hidden = !name;
-    const menu = ['cover', 'tree', 'fork', 'level', 'briefing', 'results', 'achievements'].includes(name);
+    const menu = ['cover', 'tree', 'fork', 'level', 'briefing', 'results', 'paint', 'achievements'].includes(name);
     document.body.classList.toggle('career-menu', menu);
     document.body.classList.toggle('career-flight', name === 'flight');
     if (name !== 'flight') {
@@ -328,6 +379,7 @@ export class CareerScreens {
   faceEl() {
     return {
       cover: this.cover, tree: this.tree, fork: this.fork, level: this.level, briefing: this.brief, results: this.results,
+      paint: this.paintShop,
     }[this.screen] || null;
   }
 
@@ -482,7 +534,7 @@ export class CareerScreens {
    * ---------------------------------------------------------------- */
 
   showCover(p, {
-    next, stickMode = 2, keys = false, steam = false, achievements = null,
+    next, stickMode = 2, keys = false, steam = false, achievements = null, livery = LIVERIES[0].id,
   } = {}) {
     this.progress = p;
     this.stickMode = stickMode;
@@ -568,6 +620,20 @@ export class CareerScreens {
     this.levelBtn.addEventListener('click', () => this.h.toLevel());
     levelCard.append(this.levelBtn);
     side.append(levelCard);
+
+    const paintCard = el('div', 'cr-panel cr-paintcard');
+    const on = liveryById(livery);
+    const pic = el('div', 'cr-paintcard-pic');
+    pic.innerHTML = quadSvg(on);
+    const pw = el('div', 'cr-paintcard-words');
+    pw.append(el('span', 'cr-kick', 'Your quad'));
+    const earned = 1 + liveriesEarned(p).length;
+    pw.append(el('p', 'cr-panel-line', `${on.name} paint. ${earned} of ${LIVERIES.length} liveries earned: finish a part to earn its colours.`));
+    this.paintBtn = button('Paint Shop', 'P');
+    this.paintBtn.addEventListener('click', () => this.h.toPaint());
+    pw.append(this.paintBtn);
+    paintCard.append(pic, pw);
+    side.append(paintCard);
     grid.append(side);
     c.append(grid);
 
@@ -585,8 +651,8 @@ export class CareerScreens {
       ? 'Saved on this computer, and Steam Cloud keeps it with your account.'
       : 'Saved in this browser. Set my level has a save code to take it elsewhere.'));
     c.append(foot);
-    c.append(legendBar([['Arrows', 'Move'], ['Enter', 'Choose'], ['T', 'Tree'], ['L', 'Set my level'], ['Esc', 'Back']]));
-    const list = [this.goBtn, this.treeBtn, this.levelBtn, this.achBtn, this.coverBack];
+    c.append(legendBar([['Arrows', 'Move'], ['Enter', 'Choose'], ['T', 'Tree'], ['L', 'Set my level'], ['P', 'Paint Shop'], ['Esc', 'Back']]));
+    const list = [this.goBtn, this.treeBtn, this.levelBtn, this.paintBtn, this.achBtn, this.coverBack];
     this.hoverFocus(list);
     this.setFocus(list, 0);
     this.settle();
@@ -599,6 +665,8 @@ export class CareerScreens {
       this.h.toTree();
     } else if (k === 'level') {
       this.h.toLevel();
+    } else if (k === 'paint') {
+      this.h.toPaint();
     } else {
       this.listKey2(k);
     }
@@ -1389,7 +1457,9 @@ export class CareerScreens {
 
   showFlight(lesson) {
     this.screen = 'flight';
-    document.body.classList.toggle('career-score', lesson.objectives.some((o) => o.kind === 'score'));
+    /* The counter's total and combo are shown for a lesson that is scored
+     * by them: a score run, a combo, or close calls. */
+    document.body.classList.toggle('career-score', lesson.objectives.some((o) => o.kind === 'score' || o.kind === 'combo' || o.kind === 'close'));
     this.objKicker.textContent = `${lessonPlace(lesson)}  ${lesson.title}`;
     this.listKey = '';
     this.coach(null);
@@ -1521,14 +1591,20 @@ export class CareerScreens {
     const main = el('div', 'cr-res-main');
     main.append(el('span', 'cr-kick', `${lessonPlace(lesson)}: ${lesson.title}`));
     const extra = [];
+    let paintBtn = null;
     if (failed) {
       const why = {
-        crash: 'Crashed!', time: 'Out of time!', area: 'Out of bounds!', score: 'Not enough!',
+        crash: 'Crashed!', time: 'Out of time!', area: 'Out of bounds!', score: 'Not enough!', slow: 'Too slow!', laps: 'Out of laps!',
       }[status.failReason] || 'Try again!';
       main.append(lettered(why, 120, INKS.sakura, 'cr-title cr-res-word', 0.5));
-      const tip = status.failReason === 'score'
-        ? `${points(status.current && status.current.state ? status.current.state.best || 0 : 0)} banked. ${lesson.scoreTip || 'Link your lines: a combo pays more than the same moves one at a time.'}`
-        : (lesson.crashTip || 'Take a breath and try it again.');
+      /* The lesson's own word for each way a run ends early, then the crash
+       * tip, which is what most of them have. */
+      const tips = {
+        score: `${points(status.current && status.current.state ? status.current.state.best || 0 : 0)} banked. ${lesson.scoreTip || 'Link your lines: a combo pays more than the same moves one at a time.'}`,
+        slow: lesson.slowTip,
+        laps: lesson.lapsTip,
+      };
+      const tip = tips[status.failReason] || lesson.crashTip || 'Take a breath and try it again.';
       const coach = el('div', 'cr-res-coach');
       const art = el('div', 'cr-coach-face small');
       art.innerHTML = coachSvg();
@@ -1593,6 +1669,25 @@ export class CareerScreens {
         }
         extra.push(op);
       }
+      if (outcome && outcome.livery) {
+        const l = liveryById(outcome.livery);
+        const from = partOfLivery(l.id);
+        const lv = el('div', 'cr-panel cr-res-livery');
+        const pic = el('div', 'cr-res-livery-pic');
+        pic.innerHTML = quadSvg(l);
+        const words = el('div', 'cr-res-livery-words');
+        words.append(el('span', 'cr-kick sakura', 'New livery'), el('b', 'cr-res-opened-name', l.name));
+        words.append(el('p', 'cr-panel-line', `Every lesson of ${from ? from.title : 'it'} flown. Its colours are yours.`));
+        paintBtn = button('Paint it on', 'P', 'small');
+        paintBtn.addEventListener('click', () => {
+          this.h.paint(l.id);
+          paintBtn.querySelector('.cr-btn-label').textContent = 'On your quad';
+          paintBtn.disabled = true;
+        });
+        words.append(paintBtn);
+        lv.append(pic, words);
+        extra.push(lv);
+      }
       if (outcome && outcome.stars > 0) {
         const t = totals(progress);
         extra.push(el('div', 'cr-res-starsum', `+${outcome.stars} star${outcome.stars === 1 ? '' : 's'}, ${t.stars} in all`));
@@ -1636,8 +1731,9 @@ export class CareerScreens {
     }
     actions.append(...[nextBtn, retry, treeBtn, hubBtn].filter(Boolean));
     r.append(actions);
-    r.append(legendBar([['Enter', 'Choose'], ['R', 'Fly again'], ['T', 'Tree'], ['Esc', 'Career']]));
-    const list = [nextBtn, retry, treeBtn, hubBtn];
+    r.append(legendBar([['Enter', 'Choose'], ['R', 'Fly again'], ['T', 'Tree'], ...(paintBtn ? [['P', 'Paint it on']] : []), ['Esc', 'Career']]));
+    this.resPaint = paintBtn;
+    const list = [nextBtn, retry, treeBtn, hubBtn, paintBtn];
     this.hoverFocus(list);
     this.setFocus(list, 0);
     this.settle();
@@ -1649,8 +1745,130 @@ export class CareerScreens {
       if (at) {
         at.click();
       }
+    } else if (k === 'paint') {
+      if (this.resPaint && !this.resPaint.disabled) {
+        this.resPaint.click();
+      }
     } else {
       this.listKey2(k);
+    }
+  }
+
+  /* ---------------------------------------------------------------- *
+   * The Paint Shop: every livery, the earned ones to pick from and the
+   * rest with the part that earns them, and the quad drawn in whichever
+   * the cursor is on. Picking one paints the quad in the world behind the
+   * page at once (src/render/livery.js), and it stays on in every mode.
+   * ---------------------------------------------------------------- */
+
+  showPaint(p, { current = LIVERIES[0].id, said = '' } = {}) {
+    this.progress = p;
+    /* Painting redraws the page: it stays where it was scrolled to. */
+    const y = this.screen === 'paint' ? this.paintShop.scrollTop : 0;
+    this.screen = 'paint';
+    const v = this.clear(this.paintShop);
+    const earned = new Set([LIVERIES[0].id, ...liveriesEarned(p)]);
+    const main = el('div', 'cr-paint-main');
+    main.append(el('span', 'cr-kick', 'Your quad'), lettered('Paint Shop', 80, INKS.cream, 'cr-title', 0.45));
+    main.append(el('p', 'cr-panel-line wide', 'Fly every lesson of a part and its colours are yours. The paint you pick is on your quad on every map and in every mode.'));
+    const grid = el('div', 'cr-livery-grid');
+    const tiles = [];
+    for (const l of LIVERIES) {
+      const part = partOfLivery(l.id);
+      const has = earned.has(l.id);
+      const on = l.id === current;
+      const tile = el('button', `cr-livery${has ? '' : ' is-locked'}${on ? ' is-on' : ''}`);
+      tile.type = 'button';
+      tile.dataset.livery = l.id;
+      tile.setAttribute('aria-pressed', String(on));
+      tile.append(liveryChips(l), el('b', 'cr-livery-name', l.name));
+      const line = el('span', 'cr-livery-line');
+      if (on) {
+        line.textContent = 'On your quad';
+      } else if (has) {
+        line.textContent = part ? part.title : 'The house paint';
+      } else {
+        line.innerHTML = `${lockSvg()}<span>Finish ${part.title}</span>`;
+      }
+      tile.append(line);
+      tile.addEventListener('click', () => {
+        if (has) {
+          this.h.paint(l.id);
+        } else {
+          this.paintSaid.textContent = `Fly every lesson of ${part.title} to earn ${l.name}.`;
+          this.previewLivery(l.id);
+        }
+      });
+      tile.addEventListener('mouseenter', () => this.previewLivery(l.id));
+      grid.append(tile);
+      tiles.push(tile);
+    }
+    main.append(grid);
+    this.paintTiles = tiles;
+
+    const side = el('div', 'cr-paint-side');
+    const show = el('div', 'cr-panel cr-paint-show');
+    this.paintPic = el('div', 'cr-paint-pic');
+    this.paintName = el('b', 'cr-paint-name');
+    this.paintFrom = el('span', 'cr-paint-from');
+    show.append(this.paintPic, this.paintName, this.paintFrom);
+    side.append(show);
+    this.paintSaid = el('p', 'cr-paint-said', said);
+    side.append(this.paintSaid);
+    const back = button('Back', 'Esc');
+    back.addEventListener('click', () => this.h.paintBack());
+    side.append(back);
+    v.append(main, side);
+    v.append(legendBar([['Arrows', 'Move'], ['Enter', 'Paint it on'], ['Esc', 'Back']]));
+    const focus = [...tiles, back];
+    this.hoverFocus(focus);
+    const at = Math.max(0, tiles.findIndex((t) => t.dataset.livery === current));
+    this.setFocus(focus, at);
+    this.previewLivery(current);
+    v.scrollTop = y;
+    this.settle();
+  }
+
+  /* The quad on the right, in the livery the cursor is on. */
+  previewLivery(id) {
+    if (!this.paintPic) {
+      return;
+    }
+    const l = liveryById(id);
+    const part = partOfLivery(l.id);
+    this.paintPic.innerHTML = quadSvg(l);
+    this.paintName.textContent = l.name;
+    this.paintFrom.textContent = part ? `For flying every lesson of ${part.title}` : 'The house paint, yours from the start';
+  }
+
+  /* The swatches are a grid: up and down move a row, and down off the last
+   * row is Back. */
+  paintKey(k) {
+    if (k === 'back') {
+      this.h.paintBack();
+      return;
+    }
+    const tiles = this.paintTiles || [];
+    const n = tiles.length;
+    if ((k === 'up' || k === 'down') && n) {
+      const top = tiles[0].offsetTop;
+      let cols = tiles.findIndex((t) => t.offsetTop !== top);
+      if (cols <= 0) {
+        cols = n;
+      }
+      const i = this.focusAt;
+      if (k === 'down') {
+        this.focusAt = i >= n ? i : Math.min(n, i + cols);
+      } else {
+        this.focusAt = i >= n ? n - 1 : (i - cols >= 0 ? i - cols : i);
+      }
+      this.paintFocus();
+    } else {
+      this.listKey2(k);
+    }
+    const b = this.focus[this.focusAt];
+    if (b && b.dataset.livery) {
+      this.previewLivery(b.dataset.livery);
     }
   }
 }

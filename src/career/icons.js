@@ -123,6 +123,25 @@ const GLYPHS = {
   speed: `
     <path d="M10 46 A24 24 0 0 1 54 46" fill="none" stroke="#9db3c8" stroke-width="4"/>
     <path d="M32 46 L46 24" stroke="#ffd45c" stroke-width="5" stroke-linecap="round"/>`,
+  /* A ghost: the quad, and its last lap a pale step behind it. */
+  ghost: `
+    <g opacity="0.38" transform="translate(-2,14) scale(0.62)">${QUAD}</g>
+    <path d="M10 46 C18 40 24 38 32 36" fill="none" stroke="#9db3c8" stroke-width="3" stroke-dasharray="4 4" stroke-linecap="round"/>
+    <g transform="translate(24,6) scale(0.62)">${QUAD}</g>`,
+  /* Close: a wall, the quad a hand's width off it, and the rush between. */
+  close: `
+    <rect x="44" y="6" width="14" height="52" fill="#5a6f7f" stroke="${INK}" stroke-width="3"/>
+    <path d="M44 16 H58 M44 28 H58 M44 40 H58" stroke="${INK}" stroke-width="2"/>
+    <path d="M38 14 V26 M38 34 V40 M38 46 V54" stroke="#7dffb4" stroke-width="3.5" stroke-linecap="round"/>
+    <g transform="translate(2,13) scale(0.6)">${QUAD}</g>`,
+  /* A combo: three moves linked, and the multiplier they make. */
+  combo: `
+    <circle cx="13" cy="40" r="7" fill="#e8a8b8" stroke="${INK}" stroke-width="3"/>
+    <circle cx="29" cy="40" r="7" fill="#ffd45c" stroke="${INK}" stroke-width="3"/>
+    <circle cx="45" cy="40" r="7" fill="#7dffb4" stroke="${INK}" stroke-width="3"/>
+    <path d="M20 40 H22 M36 40 H38" stroke="${INK}" stroke-width="4" stroke-linecap="round"/>
+    <path d="M36 10 L50 26 M50 10 L36 26" stroke="#f3ead4" stroke-width="5" stroke-linecap="round"/>
+    <path d="M53 11 H60 L55.5 17 C61.5 17 61.5 26 54.5 25.5 L52.5 24.5" fill="none" stroke="#f3ead4" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>`,
 };
 
 /* The glyph for a lesson: its most telling objective. */
@@ -131,7 +150,7 @@ export function lessonGlyph(lesson) {
     return svg(GLYPHS[lesson.glyph], `cr-glyph cr-glyph-${lesson.glyph}`);
   }
   const kinds = lesson.objectives.map((o) => o.kind);
-  const pick = ['trick', 'segmented', 'attitude', 'gap', 'gates', 'orbit', 'rings', 'face', 'land', 'hold', 'score', 'speed', 'takeoff']
+  const pick = ['combo', 'trick', 'segmented', 'attitude', 'gap', 'close', 'gates', 'orbit', 'rings', 'face', 'land', 'hold', 'score', 'speed', 'takeoff']
     .find((k) => kinds.includes(k)) || 'takeoff';
   if (pick === 'segmented') {
     return svg(GLYPHS.trick, 'cr-glyph cr-glyph-trick');

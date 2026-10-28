@@ -52,6 +52,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { celMaterial } from './celmat.js';
+import { tintMaterial } from './livery.js';
 import { CRAFT_ARM, CRAFT_PROP_R } from '../game/collide.js';
 import { WORLD_SCALE } from './frame.js';
 import { CAMERA_MOUNT_FORWARD, CAMERA_MOUNT_UP } from './lens.js';
@@ -1568,5 +1569,17 @@ export function buildHeroCraft(opts = {}) {
     cameraMount,
     stator,
     propSpin: PROP_SPIN,
+    /* A career livery (src/render/livery.js): the vinyl and the chrome
+     * finishes retinted through their materials' colours, so a paint job
+     * costs no geometry and no draw call. The lite craft (the ghost, the
+     * Settings preview) is drawn through the studio lift and keeps the
+     * house paint. */
+    paint(livery) {
+      if (lite || !livery) {
+        return;
+      }
+      tintMaterial(vinylMat, C.livery, livery.vinyl);
+      tintMaterial(tpuMat, C.sakura, livery.chrome);
+    },
   };
 }

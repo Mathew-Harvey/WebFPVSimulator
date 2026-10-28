@@ -72,88 +72,90 @@ const blurbOf = (chapterId) => {
  * THE PARTS. `after` is what a part grows from: every one of them passed
  * (or, on the trunk, finished) opens it. `strict` parts open their lessons
  * one after another, the way the beginner lessons build on each other; in
- * any other part every lesson is open once the part is.
+ * any other part every lesson is open once the part is. `livery` is the
+ * paint a part earns when every lesson of it has been flown
+ * (src/render/livery.js, and the Paint Shop in ./screens.js).
  */
 export const PARTS = Object.freeze([
   /* The trunk. */
   {
-    id: 'c1', branch: 'trunk', title: 'First Hover', short: 'Angle mode, lift off to touchdown',
+    id: 'c1', livery: 'hover', branch: 'trunk', title: 'First Hover', short: 'Angle mode, lift off to touchdown',
     lessons: lessonsOf('c1'), blurb: blurbOf('c1'), after: [], strict: true, col: 2, row: 6,
   },
   {
-    id: 'c2', branch: 'trunk', title: 'Angle Navigation', short: 'Rings, poles and a first lap',
+    id: 'c2', livery: 'navigator', branch: 'trunk', title: 'Angle Navigation', short: 'Rings, poles and a first lap',
     lessons: lessonsOf('c2'), blurb: blurbOf('c2'), after: ['c1'], strict: true, col: 2, row: 5,
   },
   {
-    id: 'c3', branch: 'trunk', title: 'Switching to Acro', short: 'No more self levelling',
+    id: 'c3', livery: 'acro', branch: 'trunk', title: 'Switching to Acro', short: 'No more self levelling',
     lessons: lessonsOf('c3'), blurb: blurbOf('c3'), after: ['c2'], strict: true, col: 2, row: 4,
   },
   {
-    id: 'rk', branch: 'trunk', title: 'Rookie Licence', short: 'One checkride, then pick a way',
+    id: 'rk', livery: 'rookie', branch: 'trunk', title: 'Rookie Licence', short: 'One checkride, then pick a way',
     lessons: lessonsOf('rk'), blurb: blurbOf('rk'), after: ['c3'], strict: true, licence: true, col: 2, row: 3,
   },
 
   /* Race. */
   {
-    id: 'c7', branch: 'race', title: 'Gates', short: 'Out and back to hairpins',
+    id: 'c7', livery: 'gatekeeper', branch: 'race', title: 'Gates', short: 'Out and back to hairpins',
     lessons: lessonsOf('c7'), blurb: blurbOf('c7'), after: ['rk'], col: 1, row: 3,
   },
   {
-    id: 'c8', branch: 'race', title: 'Racing', short: 'Three laps of the official tracks',
+    id: 'c8', livery: 'podium', branch: 'race', title: 'Racing', short: 'Three laps of the official tracks',
     lessons: lessonsOf('c8'), blurb: blurbOf('c8'), after: ['c7'], col: 1, row: 2,
   },
   {
-    id: 'race-craft', branch: 'race', title: 'Race Craft', short: 'Starts, lines and a ghost to beat',
-    lessons: [], soon: true, after: ['c7'], col: 0, row: 2,
+    id: 'race-craft', livery: 'holeshot', branch: 'race', title: 'Race Craft', short: 'Starts, lines and a ghost to beat',
+    lessons: lessonsOf('rc'), blurb: blurbOf('rc'), after: ['c7'], col: 0, row: 2,
   },
   {
-    id: 'real-tracks', branch: 'race', title: 'Real Tracks', short: 'Race nights from the board',
-    lessons: [], soon: true, after: ['c8'], col: 1, row: 1,
+    id: 'real-tracks', livery: 'race-night', branch: 'race', title: 'Real Tracks', short: 'Race nights from the board',
+    lessons: lessonsOf('rt'), blurb: blurbOf('rt'), after: ['c8'], col: 1, row: 1,
   },
   {
-    id: 'whoop-league', branch: 'race', title: 'Whoop League', short: 'Tiny gates, indoors',
-    lessons: [], soon: true, after: ['race-craft'], col: 0, row: 1,
+    id: 'whoop-league', livery: 'tiny-whoop', branch: 'race', title: 'Whoop League', short: 'Tiny gates, indoors',
+    lessons: lessonsOf('wl'), blurb: blurbOf('wl'), after: ['race-craft'], col: 0, row: 1,
   },
   {
-    id: 'race-licence', branch: 'race', title: 'Pro Race Licence', short: 'The Championship',
+    id: 'race-licence', livery: 'pro-racer', branch: 'race', title: 'Pro Race Licence', short: 'The Championship',
     lessons: ['10-4'], blurb: 'Five laps of the Grand Prix, the longest official track. Fly it clean and you race for a living.',
     after: 'branch', licence: true, col: 0, row: 0, span: 2,
   },
 
   /* Freestyle. */
   {
-    id: 'c4', branch: 'freestyle', title: 'Big Gaps', short: 'Containers, bridges, a building',
+    id: 'c4', livery: 'gap-hunter', branch: 'freestyle', title: 'Big Gaps', short: 'Containers, bridges, a building',
     lessons: lessonsOf('c4'), blurb: blurbOf('c4'), after: ['rk'], col: 3, row: 3,
   },
   {
-    id: 'c5', branch: 'freestyle', title: 'Flips and Rolls', short: 'First flip to doubles',
+    id: 'c5', livery: 'flipper', branch: 'freestyle', title: 'Flips and Rolls', short: 'First flip to doubles',
     lessons: lessonsOf('c5'), blurb: blurbOf('c5'), after: ['rk'], col: 4, row: 3,
   },
   {
-    id: 'c6', branch: 'freestyle', title: 'Segmented', short: 'Knife edges and hangs',
+    id: 'c6', livery: 'segment', branch: 'freestyle', title: 'Segmented', short: 'Knife edges and hangs',
     lessons: lessonsOf('c6'), blurb: blurbOf('c6'), after: ['c5'], col: 4, row: 2,
   },
   {
-    id: 'proximity', branch: 'freestyle', title: 'Proximity', short: 'Trees, gardens and the town',
-    lessons: [], soon: true, after: ['c4'], col: 3, row: 2,
+    id: 'proximity', livery: 'proximity', branch: 'freestyle', title: 'Proximity', short: 'Trees, gardens and the town',
+    lessons: lessonsOf('px'), blurb: blurbOf('px'), after: ['c4'], col: 3, row: 2,
   },
   {
-    id: 'c9', branch: 'freestyle', title: 'Hibari Yard Tricks', short: 'Powerloop, Split-S, Matty Flip',
+    id: 'c9', livery: 'hibari', branch: 'freestyle', title: 'Hibari Yard Tricks', short: 'Powerloop, Split-S, Matty Flip',
     lessons: lessonsOf('c9'), blurb: blurbOf('c9'), after: ['c6', 'c4'], col: 4, row: 1,
   },
   {
-    id: 'lines', branch: 'freestyle', title: 'Lines', short: 'Combos, and your own line',
-    lessons: [], soon: true, after: ['proximity'], col: 3, row: 1,
+    id: 'lines', livery: 'lines', branch: 'freestyle', title: 'Lines', short: 'Combos, and your own line',
+    lessons: lessonsOf('ln'), blurb: blurbOf('ln'), after: ['proximity'], col: 3, row: 1,
   },
   {
-    id: 'freestyle-licence', branch: 'freestyle', title: 'Pro Freestyle Licence', short: 'Gap Final and Freestyle Final',
+    id: 'freestyle-licence', livery: 'pro-freestyler', branch: 'freestyle', title: 'Pro Freestyle Licence', short: 'Gap Final and Freestyle Final',
     lessons: ['10-2', '10-3'], blurb: 'Two finals: every gap at Gap School against the clock, then a Powerloop, a Split-S and the container tunnel in one run.',
     after: 'branch', licence: true, col: 3, row: 0, span: 2,
   },
 
   /* The crown. */
   {
-    id: 'pro', branch: 'crown', title: 'WebFPV Pro', short: 'The checkride, both licences',
+    id: 'pro', livery: 'pro', branch: 'crown', title: 'WebFPV Pro', short: 'The checkride, both licences',
     lessons: ['10-1'], blurb: 'Rings high and low, a flip, a roll, a knife edge and the pad, with no crashes. Both licences open it.',
     after: ['race-licence', 'freestyle-licence'], strict: true, licence: true, col: 2, row: 0,
   },

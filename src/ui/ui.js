@@ -131,7 +131,7 @@ const CAREER_PROGRESS_KEY = 'webfpv.career.v2';
 /* The save before the skill tree, which the career converts when it opens. */
 const CAREER_PROGRESS_KEY_V1 = 'webfpv.career.v1';
 /* tests/career-words.test.js holds this to the curriculum's own count. */
-const CAREER_LESSONS = 51;
+const CAREER_LESSONS = 73;
 /* The three tune and rating dialogs are fetched when a pilot opens one, not at
  * boot: they are menu only, and a page that never shares a tune should not
  * pay for the code that does. */

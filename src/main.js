@@ -11584,6 +11584,11 @@ export async function boot({ loading, bootStart, mapId }) {
         const counterEvents = score.drainEvents();
         noteCounterEvents(counterEvents);
         ui.scoreEvents(counterEvents);
+        /* Steam edition: career. What the counter paid, for a lesson that
+         * judges close calls or a banked combo. */
+        if (career) {
+          career.counter(counterEvents);
+        }
         /*
          * THE HORN.
          *
@@ -14300,7 +14305,9 @@ export async function boot({ loading, bootStart, mapId }) {
     if (!careerSaved) {
       careerSaved = { map: ui.settings.map, airframe: ui.settings.airframe };
     }
-    const key = careerKeyOf(w.doc);
+    /* A fixed map (the houses, the shop, the town) brings its own
+     * document, so its lessons hand none and are keyed by the map. */
+    const key = careerKeyOf(w.doc || { map: w.map });
     careerFailed = '';
     careerWorld = { map: w.map, doc: w.doc, key };
     careerToTitle();
@@ -14651,6 +14658,17 @@ export async function boot({ loading, bootStart, mapId }) {
      * the Steam edition's is kept with the account, and says so. */
     cloudSave: false,
     sound: careerSound,
+    /* Steam edition: career. The lessons flown in the real maps: is a map
+     * in this build, and a map or track from the board by its id (the
+     * Steam edition answers the board's reads from its shelf, see
+     * src/share/board.js), each with a fallback lesson when the answer is
+     * no. */
+    hasMap: (id) => MAPS.some((m) => m.id === id),
+    boardDocument: (kind, id) => (kind === 'track' ? fetchTrackDocument(id) : fetchMapDocument(id))
+      .then((payload) => (payload && payload.document ? payload.document : payload)),
+    /* Steam edition: career. The Paint Shop's pick, on the quad at once;
+     * the renderer reads the same key at boot (src/render/livery.js). */
+    setLivery: (l) => shell.setLivery(l),
   };
   /*
    * The career is fetched when a pilot first opens it, not at boot: it is

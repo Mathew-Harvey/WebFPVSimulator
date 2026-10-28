@@ -59,6 +59,7 @@ import * as THREE from 'three';
 import { celMaterial } from './celmat.js';
 import { WORLD_SCALE } from './frame.js';
 import { PROP_SPIN, inkShell } from './herocraft.js';
+import { tintMaterial } from './livery.js';
 import { WHOOP_TRUE_DIMS, MICRO_SCALE } from '../../configs/airframes.js';
 
 const WHOOP_DIMS = WHOOP_TRUE_DIMS;
@@ -380,6 +381,21 @@ export function buildWhoopCraft(opts = {}) {
     leds.push({ mesh: led, mat: ledMat, front, base: front ? 0xe8a8b8 : 0x7dffb4 });
   }
 
+  /*
+   * A career livery (src/render/livery.js): its chrome on the ducts, which
+   * are what a whoop is seen by, retinted through their material's colour.
+   * The model may still be on its way, so the livery is kept and painted
+   * once fill() knows what colour the ducts are.
+   */
+  let ductBase = null;
+  let wanted = null;
+  const paint = (livery) => {
+    wanted = livery || null;
+    if (ductBase != null && wanted && !lite) {
+      tintMaterial(ductMat, ductBase, wanted.chrome);
+    }
+  };
+
   /* What a failed fetch leaves: a plain plate, so the quad is still there. */
   const fallbackBody = () => {
     body.geometry.dispose();
@@ -414,6 +430,15 @@ export function buildWhoopCraft(opts = {}) {
       },
     });
     ducts.visible = true;
+    /* The ducts' own colour, the one most of their triangles wear, which a
+     * livery's chrome is painted over (paint below). */
+    const used = new Map();
+    for (const c of ductSec.col) {
+      used.set(c, (used.get(c) || 0) + 1);
+    }
+    const most = [...used.entries()].sort((a, b) => b[1] - a[1])[0];
+    ductBase = most ? model.palette[most[0]].getHex() : null;
+    paint(wanted);
     /* The motors and standoffs share one mesh: the stator glow lights both. */
     statorMesh.geometry = mergeSections([
       sectionGeometry(motorSec, model.palette),
@@ -478,6 +503,7 @@ export function buildWhoopCraft(opts = {}) {
     ready,
     /* Props in, same as the 5 inch and same as PLANT_SPIN in plant.c. */
     propSpin: PROP_SPIN,
+    paint,
   };
 }
 

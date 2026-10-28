@@ -29,8 +29,12 @@ import {
 import {
   MERGE_KEY, PROGRESS_KEY, PROGRESS_KEY_V1, chapterDone, clearKnown, decodeSave, emptyProgress, encodeSave,
   levelAnswers, lessonDone, lessonUnlocked, loadProgress, markKnown, mergeProgress, nextUp, normaliseProgress,
-  partOpen, partPassed, partStats, recordRun, saveProgress, setLevel, titleOf, totals,
+  liveriesEarned, partOpen, partPassed, partStats, recordRun, saveProgress, setLevel, titleOf, totals,
 } from '../../src/career/progress.js';
+import {
+  TITLES, TITLE_IDS, TITLE_KEY, savedTitleNumber, titleNumber, titleWords,
+} from '../../src/career/titles.js';
+import { LIVERIES, liveryById } from '../../src/render/livery.js';
 
 const fakeStorage = (initial = {}) => {
   const m = new Map(Object.entries(initial));
@@ -80,9 +84,9 @@ test('every part names real parts to grow from, sits on the grid, and no two ove
 
 test('a branch licence grows from every part of its branch that has lessons', () => {
   const race = parentsOf(partById('race-licence')).map((x) => x.id).sort();
-  assert.deepEqual(race, ['c7', 'c8']);
+  assert.deepEqual(race, ['c7', 'c8', 'race-craft', 'real-tracks', 'whoop-league']);
   const free = parentsOf(partById('freestyle-licence')).map((x) => x.id).sort();
-  assert.deepEqual(free, ['c4', 'c5', 'c6', 'c9']);
+  assert.deepEqual(free, ['c4', 'c5', 'c6', 'c9', 'lines', 'proximity']);
 });
 
 test('the order a pilot is led through starts at the trunk and puts the chosen branch first', () => {
@@ -147,8 +151,10 @@ test(`${PASS_COUNT} lessons of a branch part open the parts that grow from it`, 
   assert.equal(partPassed(p, partById('c7')), false);
   assert.equal(partOpen(p, partById('c8')), false);
   const out = finish(p, gates[PASS_COUNT - 1]);
-  assert.deepEqual(out.opened, ['c8']);
+  assert.deepEqual(out.opened.slice().sort(), ['c8', 'race-craft']);
   assert.equal(partOpen(p, partById('c8')), true);
+  assert.equal(partOpen(p, partById('race-craft')), true);
+  assert.equal(partOpen(p, partById('whoop-league')), false, 'Whoop League grows from Race Craft');
 });
 
 test('Hibari Yard Tricks wants both Segmented and Big Gaps passed', () => {
@@ -164,16 +170,16 @@ test('Hibari Yard Tricks wants both Segmented and Big Gaps passed', () => {
 test('a licence wants every lesson of every part of its branch, and the crown wants both', () => {
   const p = emptyProgress();
   trunk(p);
-  flyPart(p, 'c7');
-  partById('c8').lessons.slice(0, -1).forEach((id) => finish(p, id));
+  ['c7', 'c8', 'race-craft', 'whoop-league'].forEach((id) => flyPart(p, id));
+  partById('real-tracks').lessons.slice(0, -1).forEach((id) => finish(p, id));
   assert.equal(partOpen(p, partById('race-licence')), false);
-  finish(p, partById('c8').lessons.at(-1));
+  finish(p, partById('real-tracks').lessons.at(-1));
   assert.equal(partOpen(p, partById('race-licence')), true);
   const out = finish(p, '10-4', 'gold');
   assert.equal(out.licence, 'race-licence');
   assert.equal(titleOf(p), 'racer');
   assert.equal(partOpen(p, partById('pro')), false);
-  ['c4', 'c5', 'c6', 'c9'].forEach((id) => flyPart(p, id));
+  ['c4', 'c5', 'c6', 'c9', 'proximity', 'lines'].forEach((id) => flyPart(p, id));
   flyPart(p, 'freestyle-licence');
   assert.equal(titleOf(p), 'both');
   assert.equal(partOpen(p, partById('pro')), true);
@@ -207,7 +213,7 @@ test('a part marked known opens what grows from it, and earns no stars', () => {
   assert.equal(lessonUnlocked(p, '2-1'), true);
   assert.equal(partStats(p, partById('c1')).state, 'known');
   assert.equal(totals(p).stars, 0);
-  assert.equal(markKnown(p, 'race-craft', true), false, 'a part with no lessons cannot be known');
+  assert.equal(markKnown(p, 'no-such-part', true), false, 'a part the tree does not have cannot be known');
   assert.equal(markKnown(p, 'c1', false), true);
   assert.equal(lessonUnlocked(p, '2-1'), false);
 });
@@ -434,4 +440,57 @@ test('no storage at all is not an error', () => {
   const throwing = { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('full'); } };
   assert.deepEqual(loadProgress(throwing), emptyProgress());
   assert.equal(saveProgress(emptyProgress(), throwing), false);
+});
+
+/* ---------------- rewards: liveries and titles ---------------- */
+
+test('every part earns a livery of its own, and every livery but the house paint is earned by one part', () => {
+  const named = PARTS.map((x) => x.livery);
+  assert.equal(new Set(named).size, named.length, 'two parts earn the same livery');
+  for (const part of PARTS) {
+    assert.equal(liveryById(part.livery).id, part.livery, `${part.id} earns ${part.livery}, which is not a livery`);
+  }
+  assert.deepEqual(LIVERIES.slice(1).map((l) => l.id).sort(), [...named].sort());
+  assert.equal(named.includes(LIVERIES[0].id), false, 'the house paint is earned, not given');
+  for (const l of LIVERIES) {
+    assert.ok(Number.isInteger(l.vinyl) && l.vinyl >= 0 && l.vinyl <= 0xffffff, `${l.id} vinyl`);
+    assert.ok(Number.isInteger(l.chrome) && l.chrome >= 0 && l.chrome <= 0xffffff, `${l.id} chrome`);
+  }
+});
+
+test('a part flown whole earns its livery once, and a part marked known earns none', () => {
+  const p = emptyProgress();
+  const c1 = partById('c1');
+  const said = c1.lessons.map((id) => finish(p, id, 'bronze').livery);
+  assert.deepEqual(said, [...c1.lessons.slice(0, -1).map(() => null), 'hover']);
+  assert.equal(finish(p, c1.lessons[0], 'gold').livery, null, 'a better medal earns it again');
+  assert.deepEqual(liveriesEarned(p), ['hover']);
+  markKnown(p, 'c2');
+  assert.deepEqual(liveriesEarned(p), ['hover'], 'known is not flown');
+  flyPart(p, 'c2');
+  assert.deepEqual(liveriesEarned(p), ['hover', 'navigator']);
+  const failed = recordRun(p, 'c3-1', { complete: false });
+  assert.equal(failed.livery, null);
+});
+
+test('the title is kept on a key of its own when the career saves, as a number a room can send', () => {
+  assert.deepEqual([...TITLE_IDS].sort(), Object.keys(TITLES).sort());
+  for (const id of TITLE_IDS) {
+    assert.equal(titleWords(titleNumber(id)), TITLES[id]);
+    assert.ok(titleNumber(id) >= 1 && titleNumber(id) <= 31, 'a room carries 0 to 31');
+  }
+  for (const n of [0, -1, 99, 2.5, null, undefined, '2']) {
+    assert.equal(titleWords(n), '', `${n} is no title`);
+  }
+  const s = fakeStorage();
+  assert.equal(savedTitleNumber(s), 0, 'never opened is no title');
+  const p = emptyProgress();
+  saveProgress(p, s);
+  assert.equal(s.getItem(TITLE_KEY), 'student');
+  trunk(p);
+  saveProgress(p, s);
+  assert.equal(s.getItem(TITLE_KEY), titleOf(p));
+  assert.equal(titleWords(savedTitleNumber(s)), 'Rookie');
+  assert.equal(savedTitleNumber(fakeStorage({ [TITLE_KEY]: 'admiral' })), 0, 'a word this build does not know');
+  assert.equal(savedTitleNumber({ getItem: () => { throw new Error('no'); } }), 0);
 });

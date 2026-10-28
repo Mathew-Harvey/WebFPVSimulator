@@ -357,6 +357,34 @@ PLANS['10-2'] = async (L) => {
   return p;
 };
 
+/*
+ * Brake Points (rc-2): the straights fast and the hairpins slow, as four
+ * legs of the rig's own line, each one flown at its own speed and eased in
+ * and out, so the fast rings are crossed at the leg's cruise and the brake
+ * rings after an easing that a pilot's pull back stands for.
+ */
+PLANS['rc-2'] = async (L) => {
+  const p = await flyLesson(L);
+  p.climb(3);
+  const rings = p.run.objectives[0].rings;
+  const at = (i) => V(rings[i].c.x, rings[i].c.y, rings[i].c.z);
+  const leg = (pts, speed) => {
+    const c = p.craft().p;
+    p.acroRoute(splinePath([V(c.x, c.y, c.z), ...pts], speed));
+  };
+  const w3 = (x, y) => w(x, y, 3);
+  leg([at(0), at(1), w3(80, 92)], 16);
+  leg([at(2), at(3), at(4), at(5), w3(108, 94)], 6);
+  leg([at(6), w3(108, 62)], 16);
+  leg([at(7), at(8), at(9), at(10), w3(78, 62)], 6);
+  return p;
+};
+
+/* The Line (rc-3) is not flown here: its rings sit at a five foot gate's
+ * middle, a metre up, and the rig's height loop swings a metre either way
+ * in Acro at that height (tests/career/pilot.js path), so it misses rings a
+ * pilot flies through. Its medals are the track's lap medals instead. */
+
 const rows = [];
 for (const [id, plan] of Object.entries(PLANS)) {
   const lesson = lessonById(id);

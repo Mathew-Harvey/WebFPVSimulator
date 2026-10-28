@@ -3,9 +3,10 @@
  *
  * Every pilot in a room has a face: a head, hair, eyes, maybe something to
  * wear, in their own colours, and a livery that is both their jacket and
- * their quad. Only the part numbers travel (the board's AVATAR_FIELDS, eight
- * small integers), so a portrait costs a room nothing but those bytes, and
- * every machine draws it here from the same atlas.
+ * their quad. Only the part numbers travel (the board's AVATAR_FIELDS, nine
+ * small integers, the last the career's title), so a portrait costs a room
+ * nothing but those bytes, and every machine draws it here from the same
+ * atlas.
  *
  * THE PARTS are the owner's Grok sheets of 25 October 2026, cut and packed
  * into assets/avatar/parts.png (NOTICE, "Pilot avatars"; src/net/avatarparts.js
@@ -45,11 +46,17 @@
  */
 
 import { PARTS, UNIT } from './avatarparts.js';
+import { TITLE_IDS } from '../career/titles.js';
 
 const ATLAS_URL = new URL('../../assets/avatar/parts.png', import.meta.url).href;
 
-/* The board's fields (src/rooms.js AVATAR_FIELDS), each an integer 0 to 31. */
-export const AVATAR_FIELDS = ['face', 'hair', 'eyes', 'acc', 'skin', 'hairColour', 'eyeColour', 'livery'];
+/* The board's fields (src/rooms.js AVATAR_FIELDS), each an integer 0 to 31:
+ * the eight parts a portrait is drawn from, then `title`, the career's word
+ * for how far the pilot has flown (src/career/titles.js), which the room
+ * prints beside the handle and the portrait never reads. The editor never
+ * sets it: src/net/together.js adds it to the look it sends. */
+export const LOOK_FIELDS = ['face', 'hair', 'eyes', 'acc', 'skin', 'hairColour', 'eyeColour', 'livery'];
+export const AVATAR_FIELDS = [...LOOK_FIELDS, 'title'];
 
 export const HEADS = ['oval', 'round', 'sharp', 'square'];
 /* The styles after the twin tails are drawn here rather than cut from the
@@ -169,6 +176,7 @@ export const FIELD_COUNTS = {
   hairColour: HAIR_COLOURS.length,
   eyeColour: EYE_COLOURS.length,
   livery: LIVERIES.length + 1,
+  title: TITLE_IDS.length + 1,
 };
 
 export const EXPRESSIONS = ['calm', 'hello', 'laugh', 'wow', 'smug', 'oops', 'fierce', 'crash'];
@@ -220,6 +228,9 @@ export function rollAvatar(rand = Math.random) {
     hairColour: pick(HAIR_COLOURS.length),
     eyeColour: pick(EYE_COLOURS.length),
     livery: 1 + pick(LIVERIES.length),
+    /* A roll is a face, not a career: the title is added when a room is
+     * sent the look (src/net/together.js). */
+    title: 0,
   };
 }
 
@@ -1908,7 +1919,7 @@ export function avatarBust(raw, expr = 'calm', open = false, half = 0, shut = fa
     return null;
   }
   const av = cleanAvatar(raw);
-  const id = `${AVATAR_FIELDS.map((k) => av[k]).join('.')}|${expr}|${open ? 1 : 0}|${half}|${shut ? 1 : 0}`;
+  const id = `${LOOK_FIELDS.map((k) => av[k]).join('.')}|${expr}|${open ? 1 : 0}|${half}|${shut ? 1 : 0}`;
   const kept = bustCache.get(id);
   if (kept) {
     return kept;

@@ -80,6 +80,7 @@ body.career-flight:not(.career-score) #ui .score-combo { visibility: hidden; }
 #career[data-screen="briefing"] .cr-brief,
 #career[data-screen="results"] .cr-results,
 #career[data-screen="achievements"] .cr-ach { display: flex; }
+#career[data-screen="paint"] .cr-paint { display: grid; }
 #career[data-screen="tree"] .cr-tree,
 #career[data-screen="briefing"] .cr-brief { display: block; }
 #career[data-screen="fork"] .cr-fork,
@@ -124,7 +125,8 @@ body.career-flight:not(.career-score) #ui .score-combo { visibility: hidden; }
 #career[data-screen="fork"] .cr-scrim,
 #career[data-screen="level"] .cr-scrim,
 #career[data-screen="briefing"] .cr-scrim,
-#career[data-screen="results"] .cr-scrim { display: none; }
+#career[data-screen="results"] .cr-scrim,
+#career[data-screen="paint"] .cr-scrim { display: none; }
 
 /* A window: an ink frame round a hole in the paper, the live world in it. */
 #career .cr-window {
@@ -428,6 +430,52 @@ body.career-flight:not(.career-score) #ui .score-combo { visibility: hidden; }
 #career .cr-code[hidden], #career .cr-savecard .cr-btn[hidden] { display: none; }
 #career .cr-code-said { margin: 0; min-height: 1.3em; font-size: 14px; font-weight: 700; }
 
+/* ---------------- the paint shop ---------------- */
+/* A swatch per livery, two chips each, and the quad drawn large in the one
+   the cursor is on. A locked swatch is printed in grey ink. */
+#career .cr-quad { display: block; width: 100%; height: 100%; }
+#career .cr-livery-chips { display: inline-flex; flex: none; border: 3px solid var(--c-ink); box-shadow: 2px 2px 0 var(--c-ink); }
+#career .cr-livery-chips i { display: block; width: 18px; height: 22px; }
+#career .cr-livery-chips i + i { border-left: 2px solid var(--c-ink); }
+#career .cr-paint { grid-template-columns: minmax(0, 7fr) minmax(0, 4fr); gap: clamp(18px, 2.6vw, 44px); align-content: start; padding: clamp(18px, 4vh, 52px) clamp(16px, 3.4vw, 56px) 64px; }
+#career .cr-paint-main, #career .cr-paint-side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+#career .cr-paint-side { padding-top: clamp(30px, 6vh, 90px); position: sticky; top: 0; align-self: start; }
+#career .cr-paint-side > .cr-btn { align-self: flex-start; }
+#career .cr-livery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 12px; }
+#career .cr-livery {
+  font: inherit; color: var(--c-ink); text-align: left; cursor: pointer;
+  display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 10px; row-gap: 2px; align-items: center;
+  padding: 10px 12px; background: var(--c-card); border: 3px solid var(--c-ink); box-shadow: 4px 4px 0 var(--c-ink);
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
+}
+#career .cr-livery .cr-livery-chips { grid-row: 1 / 3; }
+#career .cr-livery-name { font-size: clamp(14px, 1.05vw, 17px); font-weight: 900; font-style: italic; text-transform: uppercase; line-height: 1.05; }
+#career .cr-livery-line { display: flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; color: var(--c-quiet); }
+#career .cr-livery-line svg { width: 13px; height: 13px; flex: none; }
+#career .cr-livery.is-on { background: var(--c-mint); }
+#career .cr-livery.is-on .cr-livery-line { color: var(--c-ink); }
+#career .cr-livery.is-locked { background: #ece5d2; }
+#career .cr-livery.is-locked .cr-livery-chips { filter: grayscale(1) opacity(0.45); }
+#career .cr-livery.is-locked .cr-livery-name { color: var(--c-quiet); }
+#career .cr-livery.is-focus, #career .cr-livery:hover {
+  transform: translate(-2px, -2px); box-shadow: 0 0 0 3px var(--c-sakura), 6px 6px 0 3px var(--c-ink); outline: none;
+}
+#career .cr-paint-show { align-items: center; text-align: center; transform: rotate(0.8deg); }
+#career .cr-paint-pic { width: min(100%, 300px); aspect-ratio: 1; }
+#career .cr-paint-name { font-size: clamp(22px, 2vw, 32px); font-weight: 900; font-style: italic; text-transform: uppercase; line-height: 1; }
+#career .cr-paint-from { font-size: clamp(13px, 0.95vw, 15px); font-weight: 700; color: var(--c-quiet); }
+#career .cr-paint-said { margin: 0; min-height: 1.3em; font-weight: 800; }
+#career .cr-paint-said:empty { display: none; }
+#career .cr-paint-said:not(:empty) { align-self: flex-start; padding: 8px 12px; background: var(--c-mint); border: 3px solid var(--c-ink); }
+#career .cr-paintcard { flex-direction: row; align-items: center; gap: 14px; transform: rotate(0.5deg); }
+#career .cr-paintcard-pic { width: clamp(72px, 7vw, 110px); aspect-ratio: 1; flex: none; }
+#career .cr-paintcard-words { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+#career .cr-paintcard .cr-btn { align-self: flex-start; }
+#career .cr-res-livery { flex-direction: row; align-items: center; gap: 14px; background: #fde3ea; transform: rotate(-0.8deg); }
+#career .cr-res-livery-pic { width: clamp(80px, 7vw, 118px); aspect-ratio: 1; flex: none; }
+#career .cr-res-livery-words { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+#career .cr-res-livery .cr-btn { align-self: flex-start; }
+
 /* ---------------- the briefing ---------------- */
 #career .cr-brief { padding: clamp(14px, 2.6vh, 36px) clamp(16px, 3vw, 52px) 56px; }
 #career .cr-brief-page {
@@ -679,8 +727,10 @@ body.career-score #career .cr-obj { top: 150px; }
   #career .cr-brief-coach .cr-balloon { margin: 0; }
   #career .cr-brief-coach .cr-balloon::after { right: auto; left: -18px; bottom: 26px; transform: rotate(135deg); }
   #career .cr-coach-face { width: 80px; margin: 0; }
-  #career .cr-level, #career .cr-res-page { grid-template-columns: minmax(0, 1fr); }
-  #career .cr-level-side, #career .cr-res-side { padding-top: 0; }
+  #career .cr-level, #career .cr-res-page, #career .cr-paint { grid-template-columns: minmax(0, 1fr); }
+  #career .cr-level-side, #career .cr-res-side, #career .cr-paint-side { padding-top: 0; }
+  #career .cr-paint-side { position: static; }
+  #career .cr-paint-pic { width: min(100%, 180px); }
   #career .cr-fork { grid-template-columns: minmax(0, 1fr); grid-auto-rows: max-content; align-content: start; }
   #career .cr-fork-side { min-height: 0; padding-top: 64px; justify-content: flex-start; }
   #career .cr-fork-mid { width: auto; flex-direction: row; flex-wrap: wrap; }

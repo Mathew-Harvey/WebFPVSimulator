@@ -22,6 +22,11 @@
  *   shell.presence(values)                     Steam's rich presence
  *   shell.onResult(info)                       achievements and stats
  *   shell.sound(name)                          a cue
+ *   shell.hasMap(id)                           is that map in this build
+ *   shell.boardDocument(kind, id)              a map or track from the
+ *                                              board, kind 'map' or 'track':
+ *                                              its document, or a rejection
+ *   shell.setLivery(livery)                    paint the pilot's quad
  *
  * WHAT THE GAME TELLS IT, by the hooks in main.js: frame(record) every
  * rendered frame while a lesson flies, tick() every frame, trick(t),
@@ -30,7 +35,8 @@
  *
  * STATES. idle (not in the career); the menus: cover (the career's front
  * page), tree, fork (race or freestyle, once), level (Set my level and the
- * save code) and achievements; then briefing, launching (Fly pressed, the
+ * save code), paint (the Paint Shop) and achievements; then briefing,
+ * launching (Fly pressed, the
  * game is starting the run), flight and results. The game's own screens are
  * hidden under every menu (./style.js, body.career-menu).
  *
@@ -58,13 +64,15 @@ import { chapterOf, lessonById } from './curriculum.js';
 import { createRun } from './objectives.js';
 import {
   clearKnown, decodeSave, encodeSave, lessonRecord, loadProgress, markKnown, mergeProgress,
-  nextUp, recordRun, saveProgress, setLevel,
+  nextUp, recordRun, saveProgress, setLevel, titleOf,
 } from './progress.js';
+import { saveTitle } from './titles.js';
 import { partOf } from './tree.js';
 import { CareerScreens } from './screens.js';
 import { createVisuals } from './visuals.js';
 import { sticksIn } from './words.js';
 import { INKS } from '../ui/lettering.js';
+import { liveryById, saveLivery, savedLivery } from '../render/livery.js';
 
 const KEYS = {
   ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down',
@@ -72,7 +80,7 @@ const KEYS = {
   Enter: 'select', Space: 'select', NumpadEnter: 'select',
   Escape: 'back', Backspace: 'back',
   KeyQ: 'prevChapter', PageUp: 'prevChapter', KeyE: 'nextChapter', PageDown: 'nextChapter',
-  KeyR: 'retry', KeyT: 'tree', KeyL: 'level', KeyK: 'known',
+  KeyR: 'retry', KeyT: 'tree', KeyL: 'level', KeyK: 'known', KeyP: 'paint',
 };
 
 /* How long a coach line stays up at least, how long before the same line
@@ -183,6 +191,9 @@ export function createCareer(shell) {
      * career only shows them. */
     achievements: () => openAchievements(),
     closeAchievements: () => closeAchievements(),
+    toPaint: () => toPaint(),
+    paintBack: () => toCover(),
+    paint: (id) => choosePaint(id),
   });
 
   /* Whether the quad flies on the keyboard: no radio or pad is chosen. */
@@ -193,6 +204,27 @@ export function createCareer(shell) {
   function achievementCount() {
     const list = shell.achievements ? shell.achievements() : null;
     return list && list.length ? { earned: list.filter((a) => a.unlocked).length, total: list.length } : null;
+  }
+
+  /* The Paint Shop, from the cover. A livery is the browser's own key, not
+   * the career's save, so main.js paints the quad at boot without loading
+   * the career; see src/render/livery.js. */
+  function toPaint() {
+    settleMenu();
+    state = 'paint';
+    screens.showPaint(progress, { current: savedLivery().id });
+    padCalm();
+  }
+
+  function choosePaint(id) {
+    const l = liveryById(id);
+    saveLivery(l.id);
+    if (shell.setLivery) {
+      shell.setLivery(l);
+    }
+    if (state === 'paint') {
+      screens.showPaint(progress, { current: l.id, said: `${l.name}: on your quad.` });
+    }
   }
 
   function openAchievements() {
@@ -255,6 +287,7 @@ export function createCareer(shell) {
       keys: flyingOnKeys(),
       steam: Boolean(shell.cloudSave),
       achievements: achievementCount(),
+      livery: savedLivery().id,
     });
     padCalm();
     shell.presence({ steam_display: '#Career', lesson: '' });
@@ -302,6 +335,8 @@ export function createCareer(shell) {
    * may have written it), and the cover. */
   function openHub() {
     progress = loadProgress();
+    /* A career saved before titles were kept for rooms gets its key now. */
+    saveTitle(titleOf(progress));
     lesson = null;
     toCover();
   }
@@ -326,9 +361,26 @@ export function createCareer(shell) {
     padCalm();
     const token = ++loadToken;
     try {
+      let world = await worldOf(lesson);
+      if (token !== loadToken || state !== 'briefing') {
+        return;
+      }
+      if (!world && lesson.fallback) {
+        /* The board could not be reached, or this build has no such map:
+         * the lesson's stand in, said so on its briefing. */
+        lesson = { ...lesson, ...lesson.fallback, fallen: true };
+        world = lesson.world;
+        screens.showBriefing(lesson, {
+          record: lessonRecord(progress, id), stickMode: shell.stickMode(), ready: false, keys: flyingOnKeys(), from: briefFrom,
+        });
+      }
+      if (!world) {
+        throw new Error('This lesson\'s map is not in this game.');
+      }
+      lesson = { ...lesson, world };
       await shell.enterWorld({
-        map: lesson.world.map,
-        doc: lesson.world.doc,
+        map: world.map,
+        doc: world.doc || null,
         airframe: lesson.airframe || '5inch',
       });
     } catch (e) {
@@ -346,13 +398,49 @@ export function createCareer(shell) {
     screens.setReady(true);
   }
 
+  /*
+   * THE WORLD A LESSON IS FLOWN IN, as this game can give it: the lesson's
+   * own, a map or track from the board fetched by its id (shell
+   * boardDocument, which the Steam edition answers from its shelf), or null
+   * when the board did not answer or this build has no such map, and the
+   * lesson's fallback is flown instead. A board document is fetched once a
+   * session: they are half a megabyte and a retry should not pay again.
+   */
+  const boardDocs = new Map();
+  async function worldOf(l) {
+    const w = l.world;
+    if (!w || (shell.hasMap && !shell.hasMap(w.map))) {
+      return null;
+    }
+    if (!w.board) {
+      return w;
+    }
+    if (!shell.boardDocument) {
+      return null;
+    }
+    const key = `${w.board.kind}:${w.board.id}`;
+    if (!boardDocs.has(key)) {
+      const asked = Promise.resolve(shell.boardDocument(w.board.kind, w.board.id)).catch(() => null);
+      boardDocs.set(key, asked);
+    }
+    const doc = await boardDocs.get(key);
+    if (!doc || !doc.field) {
+      boardDocs.delete(key);
+      return null;
+    }
+    return { ...w, doc };
+  }
+
   /* ---------------- flying ---------------- */
 
   function newRun() {
-    const doc = lesson.world.doc;
+    /* A fixed map's lessons (the houses, the shop, the town) ask only for
+     * its named gaps and the counter, so they need no field to place
+     * anything on. */
+    const field = lesson.world.doc ? lesson.world.doc.field : null;
     run = createRun(lesson, {
-      W: doc.field.width,
-      D: doc.field.depth,
+      W: field ? field.width : 160,
+      D: field ? field.depth : 160,
       gatesPerLap: shell.gatesPerLap(),
     });
     objectiveAt = -1;
@@ -586,6 +674,34 @@ export function createCareer(shell) {
           return { text: `Wrong gap. Next is ${cur.state.target}.`, tone: 'warn' };
         }
         return null;
+      case 'rings':
+        if (d === 'fast') {
+          return { text: `Too fast through that one: ${Math.round(cur.state.missSpeed * 3.6)} km/h. Brake earlier, come round and take it again.`, tone: 'warn' };
+        }
+        if (d === 'slow') {
+          return { text: `Too slow through that one: ${Math.round(cur.state.missSpeed * 3.6)} km/h. Carry more speed and take it again.`, tone: 'warn' };
+        }
+        return null;
+      case 'gates':
+        if (d === 'ghost' && cur.state.gain != null) {
+          const by = (cur.state.gain / 1000).toFixed(1);
+          return {
+            text: cur.state.gain > 0 ? `${by} s quicker. Find ${((o.beat - cur.state.gain) / 1000).toFixed(1)} s more.` : `${(-cur.state.gain / 1000).toFixed(1)} s behind your ghost. Smoother, not harder.`,
+            tone: 'info',
+          };
+        }
+        if (d === 'spread' && cur.state.spread != null) {
+          return { text: `Your laps are ${(cur.state.spread / 1000).toFixed(1)} s apart. Fly the same line every lap.`, tone: 'info' };
+        }
+        return null;
+      case 'combo':
+        if (d === 'short') {
+          return { text: `That combo banked ${cur.state.best} long. Keep the next thing coming before it banks.`, tone: 'info' };
+        }
+        if (d === 'need') {
+          return { text: 'Long enough, but it was missing one. Read the objective again.', tone: 'info' };
+        }
+        return null;
       default:
         return null;
     }
@@ -771,6 +887,21 @@ export function createCareer(shell) {
     }
   }
 
+  /* What the freestyle counter paid this frame (src/game/score.js events):
+   * close calls and banked combos, for the Proximity and Lines lessons. */
+  function counter(events) {
+    if (state !== 'flight' || !run || !events || !events.length) {
+      return;
+    }
+    const before = run.status();
+    if (run.counter(events) && before.current && before.current.kind === 'close') {
+      const st = run.status().current;
+      const n = st && st.state ? st.state.n : 0;
+      const of = before.current.objective.count;
+      screens.stamp(of ? `${n} OF ${of}` : 'CLOSE', INKS.sakura, 52);
+    }
+  }
+
   function crash() {
     if (state !== 'flight' || !run) {
       return;
@@ -820,6 +951,10 @@ export function createCareer(shell) {
       screens.levelKey(k);
       return true;
     }
+    if (state === 'paint') {
+      screens.paintKey(k);
+      return true;
+    }
     if (state === 'achievements') {
       if (k === 'back') {
         closeAchievements();
@@ -843,6 +978,8 @@ export function createCareer(shell) {
         retry();
       } else if (k === 'tree') {
         backToHub();
+      } else if (k === 'paint') {
+        screens.resultsKey(k);
       } else {
         screens.listKey2(k);
       }
@@ -939,6 +1076,7 @@ export function createCareer(shell) {
     tick,
     trick,
     gaps,
+    counter,
     crash,
     reset,
     handleKey,
@@ -971,6 +1109,7 @@ export function createCareer(shell) {
     openTree: (part) => toTree(part),
     openFork: () => toFork(),
     openLevel: () => toLevel(),
+    openPaint: () => toPaint(),
     fly: () => startFlight(),
     hands: (h) => screens.setHands(h),
   };

@@ -126,17 +126,42 @@ function fly(race, laps, speed = 10) {
   return { laps: race.laps.length, gates, lapM: length(one) };
 }
 
-const seen = new Set();
-for (const lesson of allLessons()) {
-  if (lesson.world.map !== 'custom') {
-    continue;
+/*
+ * Every race lesson the game can fly without the board: its own track, and
+ * the fallback of one whose track is on the board (the board's own are
+ * checked against copies in tests/career, see below). Laps are what a
+ * lesson's gates objective needs to be done: its laps, two for a lap that
+ * has to beat the one before it, and none for the start, which is gates.
+ */
+function lapsWanted(o) {
+  if (o.count != null) {
+    return 0;
   }
-  test(`lesson ${lesson.id} (${lesson.world.doc.name}): ${lesson.laps || 1} lap(s) can be flown and gold is a speed`, () => {
+  if (o.beat != null) {
+    return 2;
+  }
+  return o.laps ?? 1;
+}
+
+const seen = new Set();
+const raceLessons = [];
+for (const lesson of allLessons()) {
+  for (const l of [lesson, lesson.fallback ? { ...lesson, ...lesson.fallback } : null]) {
+    if (l && l.world.map === 'custom' && l.world.doc && l.objectives.some((o) => o.kind === 'gates')) {
+      raceLessons.push(l);
+    }
+  }
+}
+for (const lesson of raceLessons) {
+  const o = lesson.objectives.find((x) => x.kind === 'gates');
+  const want = lapsWanted(o);
+  test(`lesson ${lesson.id} (${lesson.world.doc.name}): ${want ? `${want} lap(s)` : `${o.count} gates`} can be flown and gold is a speed`, () => {
     const race = raceOf(lesson.world.doc);
-    const want = lesson.objectives.find((o) => o.kind === 'gates').laps ?? 1;
-    const flown = fly(race, want);
+    const flown = fly(race, Math.max(1, want));
     assert.ok(flown.laps >= want, `${flown.laps} laps counted of ${want}, ${flown.gates} gates`);
-    /* The lesson's own judge agrees, fed the same laps. */
+    /* The lesson's own judge agrees, fed the same laps, each one 300 ms
+     * faster than the last and none further apart than that, so a lap to
+     * beat is beaten and steady laps are steady. */
     const run = createRun(lesson, {
       W: lesson.world.doc.field.width, D: lesson.world.doc.field.depth, gatesPerLap: race.gates.length,
     });
@@ -146,14 +171,29 @@ for (const lesson of allLessons()) {
       fwd: { x: 0, y: 0, z: -1 }, up: { x: 0, y: 1, z: 0 }, speed: 8, height: 3, landed: false, gate: null, lap: null, score: 0, ...extra,
     });
     frame({});
+    if (want === 0) {
+      for (let k = 0; k < o.count; k += 1) {
+        simMs += 1500;
+        frame({ gate: k });
+      }
+    }
+    const lapMs = (k) => (o.steady != null ? 9000 - Math.min(o.steady / 2, 100) * k : 9000 - 300 * k);
     for (let k = 0; k < want; k += 1) {
       simMs += 9000;
-      frame({ lap: { ms: 9000 } });
+      frame({ lap: { ms: lapMs(k) } });
     }
     assert.equal(run.status().phase, 'complete');
-    /* Gold, less a run up, over the laps: an average speed. */
-    const avg = (flown.lapM * want) / Math.max(1, (lesson.medals.gold - 2000) / 1000);
-    assert.ok(avg <= GOLD_AVG_MAX, `gold asks for ${avg.toFixed(1)} m/s average over ${flown.lapM.toFixed(0)} m laps`);
+    /* Gold, less a run up, over the laps: an average speed. A room is
+     * built MICRO_SCALE times life size round a whoop that flies in real
+     * metres, so its lap is measured in those. The start's distance is the
+     * pads to its last gate, which a lap's first gates stand for here. */
+    const micro = (lesson.world.doc.trackClass || 'full') === 'micro';
+    const lapM = flown.lapM / (micro ? MICRO_SCALE : 1);
+    const metres = want ? lapM * want : (lapM * o.count) / Math.max(1, race.gates.length);
+    const avg = metres / Math.max(1, (lesson.medals.gold - (want ? 2000 : 0)) / 1000);
+    const max = micro ? WHOOP_GOLD_AVG_MAX : GOLD_AVG_MAX;
+    assert.ok(avg <= max, `gold asks for ${avg.toFixed(1)} m/s average over ${lapM.toFixed(0)} m laps`);
+    assert.ok(lesson.medals.silver > lesson.medals.gold, 'silver is slower than gold');
     seen.add(lesson.world.doc.id);
   });
 }
@@ -198,3 +238,32 @@ test('the UTT tracks are all eight RaceGOW layouts, each once, named in track or
     assert.ok(t.designer, `${t.id} names its builder`);
   }
 });
+
+/*
+ * THE BOARD'S TRACKS. A lesson on a track from the board fetches it when it
+ * opens, and this test cannot, so its laps were measured once with the
+ * same polyline as above from the board's copy on 2026-10-28 and are kept
+ * here: a lap in the room's own metres for a whoop, the field's for a five
+ * inch. A track republished much longer or shorter wants its medals set
+ * again, and this is where that shows.
+ */
+const BOARD_LAP_M = {
+  'trk-69109146': { lapM: 22.9, micro: true },
+  'trk-85c74ecc': { lapM: 25.9, micro: true },
+  'trk-d16e93ac': { lapM: 457.8, micro: false },
+};
+for (const lesson of allLessons()) {
+  if (!lesson.world.board || lesson.world.board.kind !== 'track') {
+    continue;
+  }
+  test(`lesson ${lesson.id} on the board's ${lesson.world.board.id}: gold is a speed on its measured lap`, () => {
+    const m = BOARD_LAP_M[lesson.world.board.id];
+    assert.ok(m, 'its lap was measured');
+    const laps = lesson.objectives.find((x) => x.kind === 'gates').laps ?? 1;
+    const avg = (m.lapM * laps) / ((lesson.medals.gold - 2000) / 1000);
+    assert.ok(avg <= (m.micro ? WHOOP_GOLD_AVG_MAX : GOLD_AVG_MAX), `gold asks for ${avg.toFixed(1)} m/s`);
+    const slow = (m.lapM * laps) / ((lesson.medals.silver - 2500) / 1000);
+    assert.ok(slow >= SILVER_AVG_MIN[m.micro ? 'micro' : 'full'], `silver is a crawl: ${slow.toFixed(2)} m/s`);
+    assert.equal(lesson.airframe === 'whoop65', m.micro, 'a room is flown on the whoop, a field on the five inch');
+  });
+}

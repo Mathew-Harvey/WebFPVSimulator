@@ -145,7 +145,18 @@ export class Town {
     this.scaled = [];
     this.frusta = [];
     this.wires = [];
+    /* Each shop's frame and measures, and the street furniture's plan
+     * circles, for the set dressing to keep clear of (./dress.js). */
+    this.shops = [];
+    this.taken = [];
     this.dressing = false;
+    this.widening = false;
+  }
+
+  /* A plan circle the set dressing keeps clear of: a lamp, a hydrant, a
+   * bench. Kept as ./dress.js clearOf reads a circle, u for px, v for py. */
+  take(px, py, r) {
+    this.taken.push({ u: px, v: py, r });
   }
 
   /* Everything drawn and not solid that fn writes is set dressing. */
@@ -159,13 +170,27 @@ export class Town {
     }
   }
 
+  /* Inside `dress`, set dressing that is fine and NOT near: drawn at every
+   * range on High and Medium. Paint on the ground and what is fixed to a
+   * wall, because a car park's lines or a window's mullions that appear as
+   * the quad closes on them are seen appearing, where a bench is not. */
+  wide(fn) {
+    const was = this.widening;
+    this.widening = true;
+    try {
+      fn();
+    } finally {
+      this.widening = was;
+    }
+  }
+
   /* A drawn part's flags: fine if asked, and fine and near if it is set
-   * dressing. */
+   * dressing (and not `wide`). */
   mark(p, fine) {
     if (p && (fine || (this.dressing && !p.solid))) {
       p.fine = true;
     }
-    if (p && this.dressing && !p.solid && p.draw) {
+    if (p && this.dressing && !this.widening && !p.solid && p.draw) {
       p.near = true;
     }
     return p;
@@ -210,15 +235,15 @@ export class Town {
    * a is py and it runs from px e0 to e1; along 'y' its a is px and it runs
    * from py e0 to e1. */
   prism(m, axis, profile, e0, e1, fine = false) {
-    this.prisms.push({ m, axis, profile, e0, e1, fine: fine || this.dressing, near: this.dressing });
+    this.prisms.push({ m, axis, profile, e0, e1, fine: fine || this.dressing, near: this.dressing && !this.widening });
   }
 
   cyl(m, a, b, r, seg = 8, rTop = null, fine = false) {
-    this.cyls.push({ m, a: worldAt(a[0], a[1], a[2]), b: worldAt(b[0], b[1], b[2]), r, seg, rTop, fine: fine || this.dressing, near: this.dressing });
+    this.cyls.push({ m, a: worldAt(a[0], a[1], a[2]), b: worldAt(b[0], b[1], b[2]), r, seg, rTop, fine: fine || this.dressing, near: this.dressing && !this.widening });
   }
 
   disc(m, px, py, r, h0, h1, seg = 24, fine = false) {
-    this.discs.push({ m, px, py, r, h0, h1, seg, fine: fine || this.dressing, near: this.dressing });
+    this.discs.push({ m, px, py, r, h0, h1, seg, fine: fine || this.dressing, near: this.dressing && !this.widening });
   }
 
   /* An open tube round (px, py) from y0, r0 round, to y1, r1 round; inward
@@ -231,21 +256,21 @@ export class Town {
   /* A ring standing on edge, its middle h up, its axis along the plan's
    * (nx, ny); tube t, `seg` round the tube and `round` round the ring. */
   torus(m, px, py, h, R, t, nx, ny, seg = 10, round = 32, scale = null) {
-    this.tori.push({ m, px, py, h, R, t, nx, ny, seg, round, scale, fine: this.dressing, near: this.dressing });
+    this.tori.push({ m, px, py, h, R, t, nx, ny, seg, round, scale, fine: this.dressing, near: this.dressing && !this.widening });
   }
 
   cone(m, px, py, h, r, height, seg = 10, fine = false) {
-    this.cones.push({ m, px, py, h, r, height, seg, fine: fine || this.dressing, near: this.dressing });
+    this.cones.push({ m, px, py, h, r, height, seg, fine: fine || this.dressing, near: this.dressing && !this.widening });
   }
 
   ball(m, px, py, h, r, fine = false) {
-    this.balls.push({ m, px, py, h, r, fine: fine || this.dressing, near: this.dressing });
+    this.balls.push({ m, px, py, h, r, fine: fine || this.dressing, near: this.dressing && !this.widening });
   }
 
   /* A ball of twenty faces rather than eighty, for what is small and many:
    * a flower, a tomato, a duck's head. */
   bead(m, px, py, h, r) {
-    this.balls.push({ m, px, py, h, r, bead: true, fine: true, near: this.dressing });
+    this.balls.push({ m, px, py, h, r, bead: true, fine: true, near: this.dressing && !this.widening });
   }
 
   /* A sign from the atlas on a plan face: 'n' faces north (+py), 's'
@@ -270,13 +295,14 @@ export class Town {
 
   asset(el, k, px, py, h, yaw) {
     this.scaled.push({ el, k, px, py, h, yaw });
+    this.take(px, py, el.type === 'car' ? 2.6 : 1.0);
   }
 
   /* A bank or a hipped roof: a closed solid from the plan rectangle `o`
    * ({ x0, y0, x1, y1 }) at h0 up to the rectangle `i` at h1, its four
    * faces sloped, its top flat. Drawn only: its solid is the caller's. */
   frustum(m, o, h0, i, h1, fine = false) {
-    this.frusta.push({ m, o, h0, i, h1, fine: fine || this.dressing, near: this.dressing });
+    this.frusta.push({ m, o, h0, i, h1, fine: fine || this.dressing, near: this.dressing && !this.widening });
   }
 
   /* The solid under a frustum, as n stacked boxes each inside the slope:

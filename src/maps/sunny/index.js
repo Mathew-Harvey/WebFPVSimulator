@@ -25,6 +25,14 @@
  * On Low, what the town marks `fine` is not drawn: window frames, sills,
  * sprinkles, rungs. Nothing fine is solid, so the flight is the same.
  *
+ * THE SET DRESSING (./dress.js: the yards' toys and furniture, the shops'
+ * roofs and backs, the street furniture, the clutter of the plant, the
+ * dump and the park) is fine and near: Low draws none of it, and High and
+ * Medium draw it in twelve cells of their own (./frame.js nearOf), each
+ * switched off past NEAR_R from the camera (nearCull), every frame after
+ * the pipeline's cull. Its draws are paid for by the palette merge
+ * (./palette.js), which folds the leaf batches of a chunk together.
+ *
  * This file is part of WebFPVSimulator.
  *
  * WebFPVSimulator is free software: you can redistribute it and/or modify
@@ -410,6 +418,24 @@ export async function buildMap(shell, onProgress, options) {
   map.source = 'sunny';
   /* One batch a look in each chunk rather than one a colour: ./palette.js. */
   const props = map.scene.getObjectByName('props');
+  /* The set dressing casts no shadow. Its pieces are a metre high at most
+   * and stand in the shade of the houses and shops beside them, so a
+   * shadow of each is a pass's worth of draws and triangles that nobody
+   * flying past would miss: the pipeline gave each near cell its own
+   * casters (proxyCasters in ../built/index.js), and they go here. */
+  if (props) {
+    for (const g of props.children) {
+      if (!g.name.startsWith('props:sn')) {
+        continue;
+      }
+      for (const m of [...g.children]) {
+        if (m.userData.shadowProxy) {
+          g.remove(m);
+          m.geometry.dispose();
+        }
+      }
+    }
+  }
   const palette = props ? mergePalette(props) : { from: 0, to: 0 };
   const stats = map.stats;
   /* The set dressing, switched by range from the camera every frame after

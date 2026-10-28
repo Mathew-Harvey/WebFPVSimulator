@@ -41,7 +41,7 @@ import { W } from './frame.js';
 export const HALF = 4.5;
 export const WALK = 3;
 export const KERB = 0.12;
-const ROAD_H = 0.02;
+export const ROAD_H = 0.02;
 
 export const MAIN_Y = 126;
 export const OAK_X = 50;
@@ -103,6 +103,9 @@ export const WALKS = [
   [PLANT_X + HALF, MN + WALK, PLANT_X + HALF + WALK, PLANT_END],
 ];
 
+/* Where the manholes are down Main Street, px; each is 2.1 m off the line. */
+export const MANHOLES = [24, 70, 120, 170, 214, 262, 320, 372];
+
 /* The crossings: [px, py, axis] where axis is the way the stripes run
  * (the way a walker crosses). */
 const CROSSINGS = [
@@ -138,6 +141,7 @@ function pole(T, run, px, py, k) {
   /* The crossarm runs across the street's line. */
   const ax = run.along === 'x' ? 0 : 1;
   const ay = 1 - ax;
+  T.take(px, py, 0.6);
   T.post('sfPoleWood', px, py, 0, POLE_H, 0.13, { kind: 'pole', name: 'utility pole' });
   T.cyl('sfPoleWood', [px, py, POLE_H], [px, py, POLE_H + 0.12], 0.11, 8, 0.06, true);
   const hx = ax * ARM + ay * 0.06;
@@ -188,7 +192,7 @@ function poles(T) {
  * cast iron post on a fluted foot and a lantern globe under a hat, and a
  * pennant on every other one, hung toward the road.
  */
-const LAMPS = [
+export const LAMPS = [
   ...[18, 76, 104, 132, 160, 188, 216, 256, 284, 314, 380].map((px) => [px, MN + 0.8, -1]),
   ...[30, 90, 118, 146, 174, 202, 230, 262, 316, 344, 372].map((px) => [px, MS - 0.8, 1]),
 ];
@@ -196,6 +200,7 @@ const PENNANTS = ['sfRed', 'sfYellow', 'sfTeal'];
 
 function lamps(T) {
   LAMPS.forEach(([px, py, toRoad], k) => {
+    T.take(px, py, 0.45);
     T.cyl('sfIron', [px, py, KERB], [px, py, KERB + 0.8], 0.2, 8, 0.11);
     T.post('sfIron', px, py, KERB, KERB + 0.62, 0.16, { draw: false, kind: 'pole', name: 'lamp foot' });
     T.post('sfIron', px, py, KERB, KERB + 4.1, 0.08, { kind: 'pole', name: 'lamp post' });
@@ -227,6 +232,7 @@ function crossing(T, px, py, axis) {
 
 /* A hydrant: a red barrel with a cap and two nozzles. */
 function hydrant(T, px, py) {
+  T.take(px, py, 0.4);
   T.post('sfRed', px, py, KERB, KERB + 0.75, 0.14, { kind: 'pole', name: 'hydrant' });
   T.cyl('sfRed', [px, py, KERB + 0.75], [px, py, KERB + 0.86], 0.17, 8, 0.07, true);
   T.cyl('sfRed', [px - 0.25, py, KERB + 0.5], [px + 0.25, py, KERB + 0.5], 0.06, 6, null, true);
@@ -235,12 +241,14 @@ function hydrant(T, px, py) {
 
 /* A stop sign at a corner, facing the traffic coming at it. */
 function stopSign(T, px, py, face) {
+  T.take(px, py, 0.5);
   T.post('sfSteel', px, py, KERB, KERB + 2.6, 0.04, { kind: 'pole', name: 'sign post' });
   T.sign('stop', px, py, KERB + 2.3, 0.75, 0.75, face, face === 'n' || face === 'e' ? 0.05 : 0.05);
 }
 
 /* A street name blade pair on a post at a corner. */
 function nameBlades(T, px, py, a, b) {
+  T.take(px, py, 0.8);
   T.post('sfSteel', px, py, KERB, KERB + 3.0, 0.04, { kind: 'pole', name: 'name post' });
   T.sign(a, px, py, KERB + 2.85, 1.4, 0.25, 's', 0.03);
   T.sign(a, px, py, KERB + 2.85, 1.4, 0.25, 'n', 0.03);
@@ -252,6 +260,7 @@ function nameBlades(T, px, py, a, b) {
  * the arm reaching `reach` along the plan axis, three heads hung off it. */
 function signals(T, px, py, axis, reach) {
   const top = KERB + 6.2;
+  T.take(px, py, 0.5);
   T.post('sfIron', px, py, KERB, top + 0.2, 0.13, { kind: 'pole', name: 'signal mast' });
   const end = axis === 'x' ? [px + reach, py, top] : [px, py + reach, top];
   T.cap('sfIron', [px, py, top], end, 0.08, { kind: 'pole', name: 'signal arm' });
@@ -271,6 +280,7 @@ function signals(T, px, py, axis, reach) {
 
 /* A bench on the pavement, its back to `back` ('n', 's', 'e', 'w'). */
 export function bench(T, px, py, back) {
+  T.take(px, py, 1.1);
   const along = back === 'n' || back === 's';
   const [hw, hd] = along ? [0.9, 0.25] : [0.25, 0.9];
   T.box('sfWood', px - hw, py - hd, KERB + 0.42, px + hw, py + hd, KERB + 0.48, { kind: 'wall', name: 'bench' });
@@ -292,12 +302,15 @@ export function bench(T, px, py, back) {
 
 /* A litter bin: a green drum. */
 export function bin(T, px, py, h = KERB) {
+  T.take(px, py, 0.5);
   T.post('sfDoorGreen', px, py, h, h + 0.9, 0.3, { kind: 'wall', name: 'bin' });
   T.cyl('sfIron', [px, py, h + 0.9], [px, py, h + 0.97], 0.33, 10, null, true);
 }
 
 /* The bus shelter on Main Street's south pavement, facing the road. */
 function busShelter(T, px, py) {
+  T.take(px, py - 0.4, 2.6);
+  T.take(px + 3.2, py + 1.2, 0.4);
   const y0 = py - 1.2;
   const y1 = py + 0.4;
   /* The roof, and the back and ends of glass on steel posts. */
@@ -320,6 +333,7 @@ function busShelter(T, px, py) {
 
 /* A newspaper box, a postbox. */
 function streetBoxes(T, px, py) {
+  T.take(px + 0.3, py, 0.9);
   T.box('sfDoorNavy', px - 0.3, py - 0.25, KERB, px + 0.3, py + 0.25, KERB + 1.15, { kind: 'wall', name: 'mailbox' });
   T.cyl('sfDoorNavy', [px - 0.3, py, KERB + 1.15], [px + 0.3, py, KERB + 1.15], 0.25, 10, null, true);
   T.box('sfRed', px + 0.5, py - 0.22, KERB, px + 0.95, py + 0.22, KERB + 1.0, { kind: 'wall', name: 'news box' });
@@ -381,7 +395,7 @@ export function streets(T) {
   T.paint('sfPaint', PLANT_X - HALF, MN + 6.2, ROAD_H, PLANT_X - 0.2, MN + 6.6, ROAD_H + 0.006);
 
   /* Manholes and drains. */
-  for (const px of [24, 70, 120, 170, 214, 262, 320, 372]) {
+  for (const px of MANHOLES) {
     T.disc('sfIron', px, MAIN_Y + (px % 2 ? 2.1 : -2.1), 0.42, 0, ROAD_H + 0.006, 12, true);
   }
   for (const px of [36, 84, 140, 196, 250, 330, 388]) {

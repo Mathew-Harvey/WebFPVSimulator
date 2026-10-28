@@ -331,11 +331,13 @@ function gorge(T) {
     const y = r.range(G.y0 + 6, G.y1 - 6);
     const s = r.range(0.7, 1.6);
     T.cap('sfRock', [x, y, lo + s * 0.6], [x, y, lo + s * 0.6], s, { kind: 'wall', name: 'boulder', look: 'capsule', seg: 7 });
+    T.take(x, y, s + 0.3);
   }
   for (let y = G.y0 - 2; y < G.y1 + 2; y += r.range(5, 9)) {
     for (const x of [G.x0 - r.range(1.0, 2.6), G.x1 + r.range(1.0, 2.6)]) {
       const s = r.range(0.6, 1.2);
       T.cap('sfRock', [x, y, s * 0.4], [x, y, s * 0.4], s, { kind: 'wall', name: 'rim rock', look: 'capsule', seg: 7 });
+      T.take(x, y, s + 0.3);
     }
   }
   /* The waterfall at the head, and its pool. */
@@ -705,6 +707,7 @@ function dump(T) {
     if (!clear) {
       continue;
     }
+    T.take(x, y, 1.6);
     if (k % 3 === 0) {
       T.torus('sfTyre', x, y, 0.2, 0.42, 0.18, 0, 0, 6, 12, null);
       T.hidden(x - 0.4, y - 0.4, 0, x + 0.4, y + 0.4, 0.38, 'wall', 'tyre');
@@ -717,10 +720,10 @@ function dump(T) {
 }
 
 /* Where the bulldozer is parked, at the second heap's foot. */
-const DOZER = { px: 58, py: 246 };
+export const DOZER = { px: 58, py: 246 };
 
 /* The heaps, the first three tallest. */
-const MOUNDS = [
+export const MOUNDS = [
   { px: 22, py: 252, r: 15, h: 8 },
   { px: 66, py: 262, r: 12, h: 6.5 },
   { px: 128, py: 268, r: 10, h: 5.5 },

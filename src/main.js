@@ -3396,6 +3396,36 @@ export async function boot({ loading, bootStart, mapId }) {
   const watchPose = {
     px: 0, py: 0, pz: 0, qx: 0, qy: 0, qz: 0, qw: 1, cut: false,
   };
+  /*
+   * THE OVERVIEW (src/render/overviewcam.js, src/net/fieldwatch.js,
+   * src/render/trails.js; the owner's ask of 28 October 2026). The flight
+   * is paused under it as it is under the follow camera, and the camera is
+   * carried out to a free rig the pilot flies round the field. ovField
+   * keeps every other pilot's trail from the moment this page is in a
+   * room, the owner's pick, so the trails are there when the overview
+   * opens; it is fed the pose each quad is drawn at, one distance check a
+   * pilot a frame. The camera, the trails' mesh and their files are not
+   * fetched until the overview first opens.
+   */
+  let ovOn = false;
+  let ovCam = null;
+  let ovTrails = null;
+  let ovLoading = null;
+  let ovField = null;
+  let ovFieldKey = '';
+  let ovFieldGates = null;
+  let ovPick = 0;
+  let ovKeep = false;
+  let ovTrail = 2;
+  let ovLastMs = 0;
+  let ovThrottle0 = null;
+  let ovPlaces = null;
+  let mpLivery = null;
+  let ovNow = 0;
+  const ovRig = { pos: null, quat: null, fov: 55 };
+  const ovCtl = { x: 0, z: 0, y: 0, turn: 0, tilt: 0, fast: false };
+  const ovKeepAt = { x: 0, y: 0, z: 0 };
+  let ovKeepSeen = false;
   const mpDraw = (id, pose, pilot) => {
     const dx = pose.px - mpHx;
     const dy = pose.py - mpHy;
@@ -3403,7 +3433,17 @@ export async function boot({ loading, bootStart, mapId }) {
     const d2 = dx * dx + dy * dy + dz * dz;
     /* The host's tag stays up however far: in a streamer room, the one the
      * viewers came to find. So does the tag of the pilot being watched. */
-    mpCraft.add(id, pose, pilot, d2, id === mpHostId || id === watchId);
+    mpCraft.add(id, pose, pilot, d2, ovOn || id === mpHostId || id === watchId,
+      ovOn && ovPlaces ? (ovPlaces.get(id) || 0) : 0, ovOn && id === ovPick, ovOn && ovKeep && ovPick && id !== ovPick);
+    if (ovField) {
+      ovField.note(id, pose.px, pose.py, pose.pz, pose.cut, ovNow);
+    }
+    if (id === ovPick && !pose.cut) {
+      ovKeepAt.x = pose.px;
+      ovKeepAt.y = pose.py;
+      ovKeepAt.z = pose.pz;
+      ovKeepSeen = true;
+    }
     if (id === watchId) {
       watchSeen = true;
       watchPose.px = pose.px;
@@ -3417,7 +3457,7 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     /* No hello while watching: the pilot's own quad is parked, and the
      * camera passing a pilot is not meeting them. */
-    if (d2 < 9 && !watchId) {
+    if (d2 < 9 && !watchId && !ovOn) {
       together.near(id, d2);
     }
   };
@@ -3514,6 +3554,9 @@ export async function boot({ loading, bootStart, mapId }) {
       if (mpCraft) {
         mpCraft.forget(id);
       }
+      if (ovField) {
+        ovField.forget(id);
+      }
     },
     sound: (kind) => ui.onUiSound(kind),
     /* Watching another pilot: the flight paused with its menu hidden and
@@ -3533,6 +3576,25 @@ export async function boot({ loading, bootStart, mapId }) {
     /* Whether the camera is still away from the goggles: watching, or on
      * its way home, when the hidden pause menu must not get a key. */
     watchBusy: () => Boolean(watchCam && watchCam.on),
+    /* The overview: the flight paused as for watching, the camera flown
+     * out to a free rig over the whole field. From watching, it flies
+     * across from behind the quad. watch(id) from the overview flies down
+     * behind that pilot, and unwatch() brings either home. */
+    overview: () => overviewStart(),
+    overviewing: () => ovOn,
+    /* The field's record of every pilot, for the race board. */
+    field: () => ovField,
+    /* What the overview's panels ask of it. */
+    overviewDo: (what, arg) => overviewDo(what, arg),
+    overviewState: () => ({
+      pick: ovPick, keep: ovKeep, trail: ovTrail, flying: Boolean(watchCam && watchCam.on && ovOn),
+    }),
+    /* The pilot's height over whatever is under them, for the pilot card. */
+    heightAt: (x, y, z) => (view ? y - view.height(x, z, y, y) : 0),
+    /* Places on the course, by id, for the name tags while watching. */
+    overviewPlaces: (places) => {
+      ovPlaces = places;
+    },
   };
 
   /* together.js, fetched the first time it is wanted and never before. */
@@ -3589,7 +3651,13 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     mpCraftLoading = true;
     try {
-      const { buildRoomCraft } = await import('./render/roomcraft.js');
+      const [{ buildRoomCraft, liveryColour }, { FieldWatch }] = await Promise.all([
+        import('./render/roomcraft.js'), import('./net/fieldwatch.js'),
+      ]);
+      mpLivery = liveryColour;
+      if (!ovField) {
+        ovField = new FieldWatch();
+      }
       if (mpCraft) {
         mpCraft.group.removeFromParent();
         mpCraft.dispose();
@@ -3649,10 +3717,29 @@ export async function boot({ loading, bootStart, mapId }) {
       }
       mpAway = !flying;
     }
+    if (ovField) {
+      /* The trails are this room's on this world: another of either
+       * starts them again. */
+      const fieldKey = `${room.code}|${room.map}|${same ? 1 : 0}`;
+      if (fieldKey !== ovFieldKey) {
+        ovFieldKey = fieldKey;
+        ovField.clear();
+      }
+      const courseGates = same && race && !race.freestyle && race.gates.length ? race.gates : null;
+      if (courseGates !== ovFieldGates) {
+        ovFieldGates = courseGates;
+        ovField.setCourse(courseGates);
+      }
+      const roomRace = together.raceNow ? together.raceNow() : null;
+      if (roomRace) {
+        ovField.race(roomRace.n, roomRace.go);
+      }
+    }
+    ovNow = nowWall;
     const p = shell.quad.position;
     /* Nearness for the name tags is from the eye, which is the camera
      * while watching and the quad otherwise. */
-    const eye = watchId ? shell.camera.position : p;
+    const eye = watchId || ovOn ? shell.camera.position : p;
     mpHx = eye.x;
     mpHy = eye.y;
     mpHz = eye.z;
@@ -11050,7 +11137,7 @@ export async function boot({ loading, bootStart, mapId }) {
 
     /* Watching ends with the pause it rides on: anything that takes the
      * screen (the room's grid, a menu, the title) puts the camera back. */
-    if (watchCam && watchCam.on && (mode !== 'paused' || ui.screen !== 'paused')) {
+    if (((watchCam && watchCam.on) || ovOn) && (mode !== 'paused' || ui.screen !== 'paused')) {
       watchStop(true);
     }
 
@@ -12441,6 +12528,17 @@ export async function boot({ loading, bootStart, mapId }) {
       return [((v.x + 1) / 2) * innerWidth, ((1 - v.y) / 2) * innerHeight];
     })() : null,
     classOn: document.documentElement.classList.contains('tg-watching'),
+    /* The overview: open, the camera's pose, the pilot picked, the trail
+     * length, the steps drawn and the pilots the field has kept. */
+    overview: {
+      on: ovOn,
+      cam: ovCam ? ovCam.pos.toArray() : null,
+      keep: ovKeep,
+      pick: ovPick,
+      trail: ovTrail,
+      steps: ovTrails && ovTrails.mesh.visible ? ovTrails.mesh.geometry.instanceCount : 0,
+      kept: ovField ? [...ovField.pilots.values()].map((p) => p.n) : [],
+    },
   });
   window.__watchBench = async (n = 2000) => {
     const { WatchCam } = await import('./render/watchcam.js');
@@ -14550,6 +14648,16 @@ export async function boot({ loading, bootStart, mapId }) {
     if (mode !== 'paused' || ui.screen !== 'paused') {
       return false;
     }
+    /* From the overview down behind a pilot: the overview is put away and
+     * the camera flies from where it is. */
+    if (ovOn) {
+      ovOn = false;
+      ovPick = id;
+      document.documentElement.classList.remove('tg-overview');
+      if (ovTrails) {
+        ovTrails.hide();
+      }
+    }
     /* The pad shot is over: the pilot has already seen their quad, and
      * coming home into the middle of it would cut the camera away again. */
     introMs = -1;
@@ -14564,6 +14672,7 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     watchCamReady().then((cam) => {
       if (watchId === id) {
+        cam.free(null);
         cam.go(shell.camera, performance.now());
       }
     }).catch((e) => {
@@ -14575,11 +14684,17 @@ export async function boot({ loading, bootStart, mapId }) {
 
   function watchStop(now) {
     const flying = Boolean(watchCam && watchCam.on);
-    if (!watchId && !flying) {
+    if (!watchId && !flying && !ovOn) {
       return;
     }
     watchId = 0;
     watchSeen = false;
+    ovOn = false;
+    ovKeep = false;
+    document.documentElement.classList.remove('tg-overview');
+    if (ovTrails) {
+      ovTrails.hide();
+    }
     if (now || !flying || mode !== 'paused') {
       if (watchCam) {
         watchCam.stop();
@@ -14595,9 +14710,376 @@ export async function boot({ loading, bootStart, mapId }) {
     watchCam.leave(shell.camera, performance.now());
   }
 
+  /* The overview's camera and trails, fetched the first time it opens. */
+  function overviewReady() {
+    if (ovCam) {
+      return Promise.resolve(ovCam);
+    }
+    if (!ovLoading) {
+      ovLoading = Promise.all([import('./render/overviewcam.js'), import('./render/trails.js')]).then(([oc, tr]) => {
+        ovCam = new oc.OverviewCam();
+        ovRig.pos = ovCam.pos;
+        ovRig.quat = ovCam.quat;
+        ovRig.fov = ovCam.fov;
+        ovTrails = tr.buildTrails();
+        ovTrails.lengths = tr.TRAIL_LENGTHS;
+        shell.keepAcrossMaps(ovTrails.mesh);
+        return ovCam;
+      }).catch((e) => {
+        ovLoading = null;
+        throw e;
+      });
+    }
+    return ovLoading;
+  }
+
+  /* What the overview frames: the course's gates, or else every pilot in
+   * the room and this one's own quad, with room round them. */
+  function overviewBounds() {
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minZ = Infinity;
+    let maxZ = -Infinity;
+    let y = Infinity;
+    const take = (x, py, z) => {
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (z < minZ) minZ = z;
+      if (z > maxZ) maxZ = z;
+      if (py < y) y = py;
+    };
+    if (race && !race.freestyle && race.gates.length) {
+      for (const g of race.gates) take(g.x, g.y, g.z);
+    } else {
+      take(pCurr.x, view ? view.height(pCurr.x, pCurr.z, pCurr.y, pCurr.y) : pCurr.y, pCurr.z);
+      if (ovField) {
+        for (const p of ovField.pilots.values()) take(p.lx, Math.min(p.ly, y), p.lz);
+      }
+      const pad = 15;
+      minX -= pad;
+      maxX += pad;
+      minZ -= pad;
+      maxZ += pad;
+    }
+    return { minX, maxX, minZ, maxZ, y: Number.isFinite(y) ? y : 0 };
+  }
+
+  function overviewAspect() {
+    return shell.camera.aspect || 16 / 9;
+  }
+
+  /*
+   * Into the overview: from flight, the flight pauses with its menu hidden
+   * as it does to watch a pilot; from watching, the camera flies up off the
+   * quad it was behind, and that pilot stays picked.
+   */
+  function overviewStart() {
+    if (ovOn) {
+      return true;
+    }
+    if (camOverride) {
+      return false;
+    }
+    if (watchId) {
+      ovPick = watchId > 0 ? watchId : ovPick;
+      watchId = 0;
+      watchSeen = false;
+    } else {
+      if (mode === 'flight' && ui.screen === 'flight') {
+        ui.act('pause');
+        ui.show('paused');
+      }
+      if (mode !== 'paused' || ui.screen !== 'paused') {
+        return false;
+      }
+      introMs = -1;
+      document.documentElement.classList.add('tg-watching');
+      if (document.activeElement && document.activeElement !== document.body
+          && !document.activeElement.closest('#tg')) {
+        document.activeElement.blur();
+      }
+    }
+    ovOn = true;
+    ovKeep = false;
+    ovThrottle0 = null;
+    document.documentElement.classList.add('tg-overview');
+    Promise.all([watchCamReady(), overviewReady()]).then(([cam, oc]) => {
+      if (!ovOn) {
+        return;
+      }
+      oc.setBounds(overviewBounds());
+      oc.whole(overviewAspect());
+      ovLastMs = performance.now();
+      cam.free(ovRig);
+      cam.go(shell.camera, ovLastMs);
+      if (shell.quad.parent && ovTrails.mesh.parent !== shell.quad.parent) {
+        shell.quad.parent.add(ovTrails.mesh);
+      }
+    }).catch((e) => {
+      watchStop(true);
+      mpSay(`Could not open the overview.\n${e.message ?? e}`, 5000);
+    });
+    return true;
+  }
+
+  /* The overview's buttons and keys, from src/net/together.js. */
+  function overviewDo(what, arg) {
+    if (!ovOn || !ovCam) {
+      return false;
+    }
+    if (what === 'whole' || what === 'map') {
+      ovCam.setBounds(overviewBounds());
+      ovKeep = false;
+      if (what === 'whole') ovCam.whole(overviewAspect());
+      else ovCam.map(overviewAspect());
+    } else if (what === 'pick') {
+      ovPick = arg || 0;
+      if (ovKeep) {
+        ovKeepSeen = false;
+        if (!ovPick) ovKeep = false;
+      }
+    } else if (what === 'keep') {
+      ovKeep = Boolean(arg) && Boolean(ovPick);
+      ovKeepSeen = false;
+      if (!ovKeep) {
+        ovCam.release();
+      }
+    } else if (what === 'trails') {
+      ovTrail = (arg ?? ovTrail + 1) % ovTrails.lengths.length;
+    } else if (what === 'zoom') {
+      ovCam.zoom(arg.steps, arg.ray || null, watchWorld);
+    } else if (what === 'grab') {
+      if (ovKeep && !arg.look) {
+        ovKeep = false;
+        ovCam.release();
+      }
+      if (arg.look) ovCam.look(arg.dx, arg.dy);
+      else ovCam.grab(arg.dx, arg.dy, arg.h, watchWorld);
+    } else if (what === 'turn') {
+      ovCam.look(arg.dx, arg.dy);
+    }
+    return true;
+  }
+
+  /* The pointer's ray from the camera, for a zoom toward it. */
+  const ovRay = new THREE.Vector3();
+  function overviewRay(ndcX, ndcY) {
+    ovRay.set(ndcX, ndcY, 0.5).unproject(shell.camera).sub(shell.camera.position).normalize();
+    return ovRay;
+  }
+
+  /*
+   * The overview's mouse and fingers, on the whole window while it is open
+   * and on nothing otherwise. A mouse: right drag looks round, left drag
+   * grabs the ground, the wheel zooms toward the pointer, and a click
+   * picks the pilot whose tag is nearest it (a second click on the one
+   * picked rides behind them, which together.js decides). Fingers: one
+   * drags the ground, two pinch to zoom, twist to turn, and slide up or
+   * down together to tilt. Anything a press lands on that is the room's
+   * own (a button, the board, the keys sheet, the chip) is left to it.
+   */
+  const ovPointers = new Map();
+  let ovPinch = null;
+  let ovDrag = null;
+  const ovTap = new THREE.Vector3();
+  function ovOwnTarget(e) {
+    const t = e.target;
+    return Boolean(t && t.closest && t.closest('button, a, input, select, textarea, [role="button"], #tg .ovboard, #tg .ovkeys, #tg .roomchip, #tg .modal, #tg .tg-banner.offers'));
+  }
+  function ovPickAt(cx, cy) {
+    const session = together && together.session;
+    if (!ovField || !session) {
+      return 0;
+    }
+    let best = 0;
+    let bestD2 = 60 * 60;
+    for (const [id, p] of ovField.pilots) {
+      if (id === session.you || !session.link.pilots.has(id)) {
+        continue;
+      }
+      ovTap.set(p.lx, p.ly, p.lz).project(shell.camera);
+      if (ovTap.z > 1) {
+        continue;
+      }
+      /* The tag stands over the quad: the gap between the two counts. */
+      const sx = ((ovTap.x + 1) / 2) * innerWidth;
+      const sy = ((1 - ovTap.y) / 2) * innerHeight;
+      const dx = cx - sx;
+      const dy = cy - sy < -30 ? cy - sy + 30 : (cy - sy < 0 ? 0 : cy - sy);
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bestD2) {
+        bestD2 = d2;
+        best = id;
+      }
+    }
+    return best;
+  }
+  function ovPinchOf() {
+    const [a, b] = [...ovPointers.values()];
+    return {
+      d: Math.hypot(b.x - a.x, b.y - a.y) || 1,
+      ang: Math.atan2(b.y - a.y, b.x - a.x),
+      my: (a.y + b.y) / 2,
+    };
+  }
+  window.addEventListener('pointerdown', (e) => {
+    if (!ovOn || !ovCam || ovOwnTarget(e)) {
+      return;
+    }
+    ovPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (ovPointers.size === 2) {
+      ovPinch = ovPinchOf();
+      ovDrag = null;
+    } else if (ovPointers.size === 1) {
+      ovDrag = { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, look: e.button === 2, at: performance.now(), moved: false };
+    }
+  });
+  window.addEventListener('pointermove', (e) => {
+    const pt = ovPointers.get(e.pointerId);
+    if (!ovOn || !ovCam || !pt) {
+      return;
+    }
+    pt.x = e.clientX;
+    pt.y = e.clientY;
+    if (ovPointers.size >= 2 && ovPinch) {
+      const now = ovPinchOf();
+      /* One wheel step is 16 percent of the way: a pinch to twice the
+       * spread is the same as about four of them. */
+      overviewDo('zoom', { steps: Math.log(now.d / ovPinch.d) / -Math.log(0.84), ray: null });
+      let dAng = now.ang - ovPinch.ang;
+      if (dAng > Math.PI) dAng -= 2 * Math.PI;
+      if (dAng < -Math.PI) dAng += 2 * Math.PI;
+      overviewDo('turn', { dx: -dAng / 0.0042, dy: (now.my - ovPinch.my) });
+      ovPinch = now;
+      return;
+    }
+    if (!ovDrag) {
+      return;
+    }
+    const dx = e.clientX - ovDrag.x;
+    const dy = e.clientY - ovDrag.y;
+    ovDrag.x = e.clientX;
+    ovDrag.y = e.clientY;
+    if (!ovDrag.moved && Math.hypot(e.clientX - ovDrag.x0, e.clientY - ovDrag.y0) < 6) {
+      return;
+    }
+    if (!ovDrag.moved) {
+      ovDrag.moved = true;
+      overviewDo('grab', { dx: e.clientX - ovDrag.x0 - dx, dy: e.clientY - ovDrag.y0 - dy, h: innerHeight, look: ovDrag.look });
+    }
+    overviewDo('grab', { dx, dy, h: innerHeight, look: ovDrag.look });
+  });
+  const ovPointerEnd = (e) => {
+    if (!ovPointers.has(e.pointerId)) {
+      return;
+    }
+    ovPointers.delete(e.pointerId);
+    const drag = ovDrag;
+    if (ovPointers.size < 2) {
+      ovPinch = null;
+    }
+    if (ovPointers.size === 0) {
+      ovDrag = null;
+    }
+    if (e.type === 'pointerup' && ovOn && drag && !drag.moved && !drag.look && performance.now() - drag.at < 600) {
+      const id = ovPickAt(e.clientX, e.clientY);
+      if (id && together) {
+        together.overviewTap(id);
+      }
+    }
+  };
+  window.addEventListener('pointerup', ovPointerEnd);
+  window.addEventListener('pointercancel', ovPointerEnd);
+  window.addEventListener('wheel', (e) => {
+    if (!ovOn || !ovCam || ovOwnTarget(e)) {
+      return;
+    }
+    e.preventDefault();
+    const lines = e.deltaMode === 1 ? 33 : (e.deltaMode === 2 ? innerHeight : 1);
+    const steps = Math.max(-3, Math.min(3, -(e.deltaY * lines) / 100));
+    overviewDo('zoom', { steps, ray: overviewRay((e.clientX / innerWidth) * 2 - 1, 1 - (e.clientY / innerHeight) * 2) });
+  }, { passive: false });
+  window.addEventListener('contextmenu', (e) => {
+    if (ovOn) {
+      e.preventDefault();
+    }
+  });
+
+  /* A stick near its middle is no move at all. */
+  function ovDead(v) {
+    return Math.abs(v) < 0.08 ? 0 : v;
+  }
+
+  /* Once a frame in the overview, before the camera follows it: the keys
+   * held, a radio or a pad's sticks, and the pilot kept in view. */
+  function overviewFrame(nowWall) {
+    const dt = ovLastMs ? nowWall - ovLastMs : 16;
+    ovLastMs = nowWall;
+    const k = input.keys;
+    ovCtl.x = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
+    ovCtl.z = (k.has('KeyW') ? 1 : 0) - (k.has('KeyS') ? 1 : 0);
+    ovCtl.y = (k.has('Space') || k.has('KeyE') ? 1 : 0) - (k.has('KeyC') || k.has('ControlLeft') ? 1 : 0);
+    ovCtl.fast = k.has('ShiftLeft') || k.has('ShiftRight');
+    ovCtl.turn = 0;
+    ovCtl.tilt = 0;
+    /* A radio, or a pad, which the game reads as one: the right stick
+     * slides, the left climbs and turns, as on a quad. The throttle is
+     * read from where it was when the overview opened, so a radio's
+     * throttle parked at the bottom does not sink the camera. */
+    if (input.source.startsWith('a radio') && input.mapUsable()) {
+      const c = input.channels;
+      if (ovThrottle0 === null) {
+        ovThrottle0 = c.throttle;
+      }
+      ovCtl.x += ovDead(c.roll);
+      ovCtl.z += ovDead(c.pitch);
+      ovCtl.turn += ovDead(c.yaw);
+      ovCtl.y += ovDead((c.throttle - ovThrottle0) * 2);
+    }
+    if (ovKeep && (ovCtl.x || ovCtl.z)) {
+      ovKeep = false;
+      ovCam.release();
+    }
+    if (ovKeep && ovKeepSeen && !ovCam.keep) {
+      ovCam.keepOn(ovKeepAt.x, ovKeepAt.y, ovKeepAt.z);
+    }
+    ovCam.frame(dt, ovCtl, ovKeep && ovKeepSeen ? ovKeepAt : null, watchWorld);
+  }
+
+  /* The trails, drawn after the camera has its pose for the frame. */
+  function overviewTrails(nowWall) {
+    const session = together && together.session;
+    const len = ovTrails.lengths[ovTrail].ms;
+    if (!session || !ovField || !mpLivery) {
+      ovTrails.hide();
+      return;
+    }
+    const pilots = session.link.pilots;
+    ovTrails.update(ovField, nowWall, len,
+      (id) => {
+        const p = pilots.get(id);
+        return p && id !== session.you ? mpLivery(p.avatar, id) : -1;
+      },
+      (id) => {
+        if (!ovPick) return 1;
+        if (id === ovPick) return 1.6;
+        return ovKeep ? 0.3 : 1;
+      },
+      (id) => ovField.lapStart(id));
+    if (shell.quad.parent && ovTrails.mesh.parent !== shell.quad.parent) {
+      shell.quad.parent.add(ovTrails.mesh);
+    }
+  }
+
   function watchFrame(nowWall) {
     watchHome.fov = ui.settings.cameraFov;
+    if (ovOn && ovCam) {
+      overviewFrame(nowWall);
+    }
     const phase = watchCam.frame(shell.camera, watchId && watchSeen ? watchPose : null, nowWall, watchWorld, watchHome);
+    if (ovOn && ovTrails) {
+      overviewTrails(nowWall);
+    }
     shell.camera.up.set(0, 1, 0);
     /* The pilot's own quad waits where it was left, and is in the picture
      * whenever the camera is not inside it. */

@@ -38,6 +38,12 @@
  * same curve ends exactly on the goggles' own pose and lens, so the cut
  * into flight is invisible.
  *
+ * THE OVERVIEW rides the same flight. Given a free rig instead of a quad
+ * (src/render/overviewcam.js, the owner's ask of 28 October 2026), the
+ * camera flies out of the goggles, or across from behind a quad, to the
+ * rig's pose and then sits on it, and home again on the same curve. The
+ * rig moves itself; this file only carries the camera to it and back.
+ *
  * Allocates nothing per frame.
  *
  * This file is part of WebFPVSimulator.
@@ -141,6 +147,9 @@ export class WatchCam {
     this.from = new THREE.Vector3();
     this.fromQuat = new THREE.Quaternion();
     this.fromFov = CHASE_FOV;
+    /* A free rig to sit on instead of a quad to chase: { pos, quat, fov },
+     * or null. */
+    this.rig = null;
     /* The chase rig. */
     this.seeded = false;
     this.atMs = -1;
@@ -166,6 +175,13 @@ export class WatchCam {
 
   get on() {
     return this.phase !== PHASE_OFF;
+  }
+
+  /* Sit on a free rig (the overview's) rather than behind a quad, or null
+   * to chase again. The next go() flies to whichever it is. */
+  free(rig) {
+    this.rig = rig || null;
+    this.seeded = false;
   }
 
   /* From wherever the camera is now to behind a quad: the first pilot
@@ -304,11 +320,18 @@ export class WatchCam {
     if (this.phase === PHASE_OFF) {
       return PHASE_OFF;
     }
-    const live = Boolean(pose) && !pose.cut;
-    if (live) {
+    const rig = this.rig;
+    if (rig) {
+      this.want.copy(rig.pos);
+      this.wantQuat.copy(rig.quat);
+      this.p.set(0, 0, -1).applyQuaternion(rig.quat);
+      this.look.copy(rig.pos).addScaledVector(this.p, 10);
+      this.seeded = true;
+    } else if (pose && !pose.cut) {
       this.chase(pose, nowMs, world);
     }
-    let fov = CHASE_FOV;
+    const lens = rig ? rig.fov : CHASE_FOV;
+    let fov = lens;
     if (this.phase === PHASE_RIDING) {
       if (this.seeded) {
         camera.position.copy(this.want);
@@ -329,7 +352,7 @@ export class WatchCam {
         }
         const u = clamp01((nowMs - this.t0) / this.dur);
         this.fly(camera, u, this.want, this.look, this.wantQuat);
-        fov = this.fromFov + (CHASE_FOV - this.fromFov) * easeInOut(u);
+        fov = this.fromFov + (lens - this.fromFov) * easeInOut(u);
         if (u >= 1) {
           this.phase = PHASE_RIDING;
         }

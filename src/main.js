@@ -11875,6 +11875,11 @@ export async function boot({ loading, bootStart, mapId }) {
         const counterEvents = score.drainEvents();
         noteCounterEvents(counterEvents);
         ui.scoreEvents(counterEvents);
+        /* Steam edition: career. What the counter paid, for a lesson that
+         * judges close calls or a banked combo. */
+        if (career) {
+          career.counter(counterEvents);
+        }
         /*
          * THE HORN.
          *
@@ -14635,7 +14640,9 @@ export async function boot({ loading, bootStart, mapId }) {
     if (!careerSaved) {
       careerSaved = { map: ui.settings.map, airframe: ui.settings.airframe };
     }
-    const key = careerKeyOf(w.doc);
+    /* A fixed map (the houses, the shop, the town) brings its own
+     * document, so its lessons hand none and are keyed by the map. */
+    const key = careerKeyOf(w.doc || { map: w.map });
     careerFailed = '';
     careerWorld = { map: w.map, doc: w.doc, key };
     careerToTitle();
@@ -15366,7 +15373,21 @@ export async function boot({ loading, bootStart, mapId }) {
      * `achievements` is left out on purpose: the hub shows no button for it. */
     presence: () => {},
     onResult: () => {},
+    /* The career is kept in this browser alone (src/career/progress.js);
+     * the Steam edition's is kept with the account, and says so. */
+    cloudSave: false,
     sound: careerSound,
+    /* Steam edition: career. The lessons flown in the real maps: is a map
+     * in this build, and a map or track from the board by its id (the
+     * Steam edition answers the board's reads from its shelf, see
+     * src/share/board.js), each with a fallback lesson when the answer is
+     * no. */
+    hasMap: (id) => MAPS.some((m) => m.id === id),
+    boardDocument: (kind, id) => (kind === 'track' ? fetchTrackDocument(id) : fetchMapDocument(id))
+      .then((payload) => (payload && payload.document ? payload.document : payload)),
+    /* Steam edition: career. The Paint Shop's pick, on the quad at once;
+     * the renderer reads the same key at boot (src/render/livery.js). */
+    setLivery: (l) => shell.setLivery(l),
   };
   /*
    * The career is fetched when a pilot first opens it, not at boot: it is
@@ -15403,6 +15424,11 @@ export async function boot({ loading, bootStart, mapId }) {
   window.__career = {
     hub: () => loadCareer().then((c) => c.openHub()),
     open: (id) => loadCareer().then((c) => c.openLessonById(id)),
+    /* The skill tree (on a part, by id), the fork and Set my level. */
+    tree: (part) => loadCareer().then((c) => c.openTree(part)),
+    fork: () => loadCareer().then((c) => c.openFork()),
+    level: () => loadCareer().then((c) => c.openLevel()),
+    paint: () => loadCareer().then((c) => c.openPaint()),
     fly: () => career.fly(),
     state: () => (career ? career.state() : null),
     status: () => (career ? career.status() : null),

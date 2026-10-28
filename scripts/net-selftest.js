@@ -47,7 +47,7 @@ import {
   readRoomAddress, roomUrl, takeJoinToken, worldParamsOf, writeJoinToken,
 } from '../src/net/roomlinks.js';
 import {
-  AVATAR_FIELDS, EXPRESSIONS, FIELD_COUNTS, LIVERIES, cleanAvatar, liveryIndex, rollAvatar,
+  AVATAR_FIELDS, EXPRESSIONS, FIELD_COUNTS, LIVERIES, LOOK_FIELDS, cleanAvatar, liveryIndex, rollAvatar,
 } from '../src/net/avatar.js';
 import {
   BoardClock, COUNT_JOIN_MS, RACE_LAPS_MAX, RACE_WAYS, RoomRace,
@@ -451,9 +451,9 @@ console.log('avatars');
       face: 99, hair: -1, eyes: 2.5, acc: '3', skin: NaN, livery: 1e9,
     }].every((x) => inRange(cleanAvatar(x))));
   check('a face in range is kept as it is', JSON.stringify(cleanAvatar({
-    face: 3, hair: 7, eyes: 5, acc: 8, skin: 5, hairColour: 8, eyeColour: 5, livery: 12,
+    face: 3, hair: 7, eyes: 5, acc: 8, skin: 5, hairColour: 8, eyeColour: 5, livery: 12, title: 4,
   })) === JSON.stringify({
-    face: 3, hair: 7, eyes: 5, acc: 8, skin: 5, hairColour: 8, eyeColour: 5, livery: 12,
+    face: 3, hair: 7, eyes: 5, acc: 8, skin: 5, hairColour: 8, eyeColour: 5, livery: 12, title: 4,
   }));
   let allIn = true;
   let bare = 0;
@@ -467,7 +467,9 @@ console.log('avatars');
     for (const k of AVATAR_FIELDS) seen[k].add(a[k]);
   }
   check('5,000 rolled faces are all in range', allIn);
-  check('and between them use every part', AVATAR_FIELDS.every((k) => seen[k].size === FIELD_COUNTS[k] - (k === 'livery' ? 1 : 0)));
+  /* The title is the career's, not the roll's: a rolled face has none. */
+  check('and between them use every part', LOOK_FIELDS.every((k) => seen[k].size === FIELD_COUNTS[k] - (k === 'livery' ? 1 : 0)));
+  check('and no rolled face claims a career title', seen.title.size === 1 && seen.title.has(0));
   check(`one in four wears nothing (${(bare / 50).toFixed(1)}%)`, bare > 1000 && bare < 1500);
   check('a rolled pilot always has a livery of their own', noLivery === 0);
   check('a rand that returns 1 is still in range', inRange(rollAvatar(() => 1)));

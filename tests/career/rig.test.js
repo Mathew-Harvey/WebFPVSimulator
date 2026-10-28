@@ -327,6 +327,26 @@ PLANS['10-1'] = async (L) => {
   return p;
 };
 
+/* The Rookie Licence: the ring road, one circle round the pylon, the pad. */
+PLANS['rk-1'] = async (L) => {
+  const p = await flyLesson(L);
+  p.climb(2);
+  let c = p.craft().p;
+  const rings = p.run.objectives[0].rings;
+  p.acroRoute(splinePath([V(c.x, c.y, c.z), ...ringPoints(rings, 4)], 5));
+  const o = p.run.objectives[1];
+  const r = (o.rMin + o.rMax) / 2;
+  const ctr = V(o.center.x, 4, o.center.z);
+  c = p.craft().p;
+  p.acroRoute(splinePath([V(c.x, c.y, c.z), V(ctr.x + r, 4, ctr.z)], 5));
+  p.acroRoute(circlePath(ctr, V(1, 0, 0), V(0, 0, -1), r, (2 * Math.PI * r) / 8, 0, 1.15));
+  const pad = w(80, 25);
+  c = p.craft().p;
+  p.acroRoute(splinePath([V(c.x, c.y, c.z), V(pad.x, 2, pad.z)], 5));
+  p.landAcro(pad);
+  return p;
+};
+
 PLANS['10-2'] = async (L) => {
   const plan = gapPlan(['WIDE GAP', 'UNDER THE BRIDGE', 'SIX METRE GAP', 'FOUR METRE GAP',
     '@0,3,-56', '@20,3,-48', '@28,3,-20', '@20,2,2', '@22,1.7,10', ['BILLBOARD GAP', 1],
@@ -336,6 +356,34 @@ PLANS['10-2'] = async (L) => {
   p.landAcro(pad, 5);
   return p;
 };
+
+/*
+ * Brake Points (rc-2): the straights fast and the hairpins slow, as four
+ * legs of the rig's own line, each one flown at its own speed and eased in
+ * and out, so the fast rings are crossed at the leg's cruise and the brake
+ * rings after an easing that a pilot's pull back stands for.
+ */
+PLANS['rc-2'] = async (L) => {
+  const p = await flyLesson(L);
+  p.climb(3);
+  const rings = p.run.objectives[0].rings;
+  const at = (i) => V(rings[i].c.x, rings[i].c.y, rings[i].c.z);
+  const leg = (pts, speed) => {
+    const c = p.craft().p;
+    p.acroRoute(splinePath([V(c.x, c.y, c.z), ...pts], speed));
+  };
+  const w3 = (x, y) => w(x, y, 3);
+  leg([at(0), at(1), w3(80, 92)], 16);
+  leg([at(2), at(3), at(4), at(5), w3(108, 94)], 6);
+  leg([at(6), w3(108, 62)], 16);
+  leg([at(7), at(8), at(9), at(10), w3(78, 62)], 6);
+  return p;
+};
+
+/* The Line (rc-3) is not flown here: its rings sit at a five foot gate's
+ * middle, a metre up, and the rig's height loop swings a metre either way
+ * in Acro at that height (tests/career/pilot.js path), so it misses rings a
+ * pilot flies through. Its medals are the track's lap medals instead. */
 
 const rows = [];
 for (const [id, plan] of Object.entries(PLANS)) {

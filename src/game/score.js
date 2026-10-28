@@ -59,7 +59,9 @@
  * THE COUNTER'S EVENTS, from drainEvents() once a frame, for the HUD. The
  * trick scorer's four are unchanged: { kind: 'trick', name, points,
  * execution } (only while the Scoring switch counts tricks), { kind: 'bank',
- * points, mult, names }, { kind: 'bail', points, names } and { kind:
+ * points, mult, names, kinds } (kinds beside names: 'trick' or the
+ * geometry's kind, which the career's combo lessons read), { kind: 'bail',
+ * points, names } and { kind:
  * 'finish', points, bonus, mult, switches }. The geometry's, each with
  * `points` (what it put into the combo, after any repeat) and `atMs` (the
  * sim ms it went in), and `repeat` (how many of the same were there before
@@ -510,7 +512,7 @@ export class FreestyleScore {
       this.bestCombo = value;
     }
     this.events.push({
-      kind: 'bank', points: value, mult, names: this.combo.names.slice(),
+      kind: 'bank', points: value, mult, names: this.combo.names.slice(), kinds: this.combo.kinds.slice(),
     });
     this.combo = null;
     return value;

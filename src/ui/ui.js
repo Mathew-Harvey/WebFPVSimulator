@@ -127,9 +127,11 @@ import { byRating, myStars, ratingShort, ratingWords } from '../share/rating.js'
  * for a pilot who has not started it. Only the storage key and the count are
  * needed here, so the lessons themselves (src/career/curriculum.js, 1.5k lines
  * and the maps they build) stay unfetched until the career is opened. */
-const CAREER_PROGRESS_KEY = 'webfpv.career.v1';
+const CAREER_PROGRESS_KEY = 'webfpv.career.v2';
+/* The save before the skill tree, which the career converts when it opens. */
+const CAREER_PROGRESS_KEY_V1 = 'webfpv.career.v1';
 /* tests/career-words.test.js holds this to the curriculum's own count. */
-const CAREER_LESSONS = 50;
+const CAREER_LESSONS = 73;
 /* The three tune and rating dialogs are fetched when a pilot opens one, not at
  * boot: they are menu only, and a page that never shares a tune should not
  * pay for the code that does. */
@@ -5075,8 +5077,8 @@ const CAREER_CARD = {
   id: 'career',
   label: 'Career',
   art: 'assets/gate/career.jpg',
-  blurb: 'From your first hover to a pro licence. One skill a lesson, with a briefing, a coach in your ear and a medal to chase. Start here if you have never flown.',
-  facts: [`${CAREER_LESSONS} lessons`, 'Angle to Acro', 'Medals'],
+  blurb: 'From your first hover to a pro licence. Learn to fly, earn your Rookie Licence, then race or freestyle up a skill tree. Start here if you have never flown.',
+  facts: [`${CAREER_LESSONS} lessons`, 'Skill tree', 'Race or freestyle'],
   action: 'career',
 };
 
@@ -5084,7 +5086,8 @@ const CAREER_CARD = {
  * career first on the gate. */
 function careerStarted() {
   try {
-    return Boolean(globalThis.localStorage && globalThis.localStorage.getItem(CAREER_PROGRESS_KEY));
+    const store = globalThis.localStorage;
+    return Boolean(store && (store.getItem(CAREER_PROGRESS_KEY) || store.getItem(CAREER_PROGRESS_KEY_V1)));
   } catch (e) {
     return true;
   }
@@ -10547,7 +10550,10 @@ export class Ui {
         { label: 'Resume', action: 'resume', primary: true },
         { label: 'Restart lesson', action: 'restart', note: 'From the pad, with a fresh clock.' },
         { label: 'Briefing', action: 'career-briefing', note: `What ${this.careerLesson.title} asks for, and the sticks it uses.` },
-        { label: 'Back to the career', action: 'career-hub', note: 'The chapters and your medals.' },
+        /* A lesson that races the pilot's ghost (Beat Your Ghost) carries
+         * the Ghost row, so the ghost its briefing names can be found. */
+        ...((this.careerLesson.objectives || []).some((o) => o.beat != null) ? this.ghostItems() : []),
+        { label: 'Back to the career', action: 'career-hub', note: 'The skill tree and your stars.' },
         { label: 'Does it feel wrong?', section: true },
         {
           label: 'Rates',

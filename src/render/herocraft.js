@@ -52,6 +52,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { celMaterial } from './celmat.js';
+import { tintMaterial } from './livery.js';
 import { CRAFT_ARM, CRAFT_PROP_R } from '../game/collide.js';
 import { WORLD_SCALE } from './frame.js';
 import { CAMERA_MOUNT_FORWARD, CAMERA_MOUNT_UP } from './lens.js';
@@ -816,6 +817,10 @@ export function buildHeroCraft(opts = {}) {
   const tpuMat = finish({ rim: 0.40, spec: 0.34, specWidth: 0.016 });
   const vinylMat = finish({ rim: 0.26, spec: 0.28 });
   const propMat = finish({ rim: 0.34, spec: 0.30, specWidth: 0.014 });
+  /* The front pair's own finish, the same in every way, so a livery can
+   * paint the chrome props without the rear ones (paint below). Each prop
+   * is its own mesh already, so this is no draw call and no program. */
+  const frontPropMat = finish({ rim: 0.34, spec: 0.30, specWidth: 0.014 });
   const camMat = finish({ rim: 0.26, spec: 0.35 });
   /* The windings. Returned as `stator`: craftpose.js warms its emissive
    * with throttle in the studio, so it is the copper that glows. */
@@ -1500,6 +1505,7 @@ export function buildHeroCraft(opts = {}) {
    * cap and the blades at ROTOR_Y.
    */
   const discs = [];
+  const frontDiscs = [];
   const blades = [];
   const leds = [];
   for (let m = 0; m < 4; m += 1) {
@@ -1508,7 +1514,7 @@ export function buildHeroCraft(opts = {}) {
     const rotor = new THREE.Group();
     rotor.position.set(mx, ROTOR_Y, mz);
     group.add(rotor);
-    const prop = new THREE.Mesh(rotorGeometry(PROP_SPIN[m], front, lite), propMat);
+    const prop = new THREE.Mesh(rotorGeometry(PROP_SPIN[m], front, lite), front ? frontPropMat : propMat);
     prop.castShadow = shade;
     rotor.add(prop);
     blades.push(rotor);
@@ -1554,6 +1560,9 @@ export function buildHeroCraft(opts = {}) {
     disc.renderOrder = 1;
     group.add(disc);
     discs.push(disc);
+    if (front) {
+      frontDiscs.push(disc);
+    }
 
     const { led, ledMat } = ledMeshes[m];
     group.add(led);
@@ -1568,5 +1577,25 @@ export function buildHeroCraft(opts = {}) {
     cameraMount,
     stator,
     propSpin: PROP_SPIN,
+    /* A career livery (src/render/livery.js): the vinyl and the chrome
+     * finishes retinted through their materials' colours, so a paint job
+     * costs no geometry and no draw call. The front props are chrome too,
+     * blades and blur, and they are the part of the quad a pilot sees in
+     * the FPV picture (src/render/propview.js reads the front blur's colour
+     * when it bakes). The blades take the TPU's ratio, so the house paint
+     * leaves them exactly as they were. The lite craft (the ghost, the
+     * Settings preview) is drawn through the studio lift and keeps the
+     * house paint. */
+    paint(livery) {
+      if (lite || !livery) {
+        return;
+      }
+      tintMaterial(vinylMat, C.livery, livery.vinyl);
+      tintMaterial(tpuMat, C.sakura, livery.chrome);
+      tintMaterial(frontPropMat, C.sakura, livery.chrome);
+      for (const d of frontDiscs) {
+        d.material.color.setHex(livery.chrome);
+      }
+    },
   };
 }

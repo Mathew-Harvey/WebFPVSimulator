@@ -69,6 +69,13 @@ const QUAD = `
   </g>`;
 
 const GLYPHS = {
+  /* A licence: the card, a photo square and a stamp across its corner. */
+  licence: `
+    <rect x="6" y="14" width="46" height="34" rx="3" fill="#f3ead4" stroke="${INK}" stroke-width="3.5"/>
+    <rect x="11" y="20" width="13" height="16" fill="#9db3c8" stroke="${INK}" stroke-width="2.5"/>
+    <path d="M29 22 H46 M29 29 H44 M29 36 H40" stroke="${INK}" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="46" cy="46" r="12" fill="#7dffb4" stroke="${INK}" stroke-width="3.5"/>
+    <path d="M46 38 L48.4 43.4 L54 43.8 L49.7 47.4 L51 53 L46 50 L41 53 L42.3 47.4 L38 43.8 L43.6 43.4 Z" fill="${INK}"/>`,
   takeoff: `
     <rect x="12" y="50" width="40" height="6" rx="2" fill="#ffd45c" stroke="${INK}" stroke-width="3"/>
     <g transform="translate(0,-6) scale(1)">${QUAD}</g>
@@ -116,6 +123,25 @@ const GLYPHS = {
   speed: `
     <path d="M10 46 A24 24 0 0 1 54 46" fill="none" stroke="#9db3c8" stroke-width="4"/>
     <path d="M32 46 L46 24" stroke="#ffd45c" stroke-width="5" stroke-linecap="round"/>`,
+  /* A ghost: the quad, and its last lap a pale step behind it. */
+  ghost: `
+    <g opacity="0.4" transform="translate(-6,24) scale(0.66)">${QUAD}</g>
+    <path d="M24 34 C30 30 34 28 40 26" fill="none" stroke="#9db3c8" stroke-width="4" stroke-dasharray="3 5" stroke-linecap="round"/>
+    <g transform="translate(22,-4) scale(0.66)">${QUAD}</g>`,
+  /* Close: a wall, the quad a hand's width off it, and the rush between. */
+  close: `
+    <rect x="44" y="6" width="14" height="52" fill="#5a6f7f" stroke="${INK}" stroke-width="3"/>
+    <path d="M44 16 H58 M44 28 H58 M44 40 H58" stroke="${INK}" stroke-width="2"/>
+    <path d="M38 14 V26 M38 34 V40 M38 46 V54" stroke="#7dffb4" stroke-width="3.5" stroke-linecap="round"/>
+    <g transform="translate(2,13) scale(0.6)">${QUAD}</g>`,
+  /* A combo: three moves linked, and the multiplier they make. */
+  combo: `
+    <circle cx="13" cy="40" r="7" fill="#e8a8b8" stroke="${INK}" stroke-width="3"/>
+    <circle cx="29" cy="40" r="7" fill="#ffd45c" stroke="${INK}" stroke-width="3"/>
+    <circle cx="45" cy="40" r="7" fill="#7dffb4" stroke="${INK}" stroke-width="3"/>
+    <path d="M20 40 H22 M36 40 H38" stroke="${INK}" stroke-width="4" stroke-linecap="round"/>
+    <path d="M36 10 L50 26 M50 10 L36 26" stroke="#f3ead4" stroke-width="5" stroke-linecap="round"/>
+    <path d="M53 11 H60 L55.5 17 C61.5 17 61.5 26 54.5 25.5 L52.5 24.5" fill="none" stroke="#f3ead4" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>`,
 };
 
 /* The glyph for a lesson: its most telling objective. */
@@ -124,7 +150,7 @@ export function lessonGlyph(lesson) {
     return svg(GLYPHS[lesson.glyph], `cr-glyph cr-glyph-${lesson.glyph}`);
   }
   const kinds = lesson.objectives.map((o) => o.kind);
-  const pick = ['trick', 'segmented', 'attitude', 'gap', 'gates', 'orbit', 'rings', 'face', 'land', 'hold', 'score', 'speed', 'takeoff']
+  const pick = ['combo', 'trick', 'segmented', 'attitude', 'gap', 'close', 'gates', 'orbit', 'rings', 'face', 'land', 'hold', 'score', 'speed', 'takeoff']
     .find((k) => kinds.includes(k)) || 'takeoff';
   if (pick === 'segmented') {
     return svg(GLYPHS.trick, 'cr-glyph cr-glyph-trick');
@@ -134,4 +160,41 @@ export function lessonGlyph(lesson) {
 
 export function glyphOf(kind) {
   return svg(GLYPHS[kind] || GLYPHS.takeoff, `cr-glyph cr-glyph-${kind}`);
+}
+
+/* A star, filled when earned. Three to a lesson: finishing, silver, gold. */
+export function starSvg(on, fill = '#ffd45c') {
+  return `<svg class="cr-icon cr-star${on ? ' is-on' : ''}" viewBox="0 0 64 64" aria-hidden="true">
+    <path d="M32 4 L40.5 22.6 L60.8 24.8 L45.6 38.4 L49.8 58.4 L32 48.2 L14.2 58.4 L18.4 38.4 L3.2 24.8 L23.5 22.6 Z"
+      fill="${on ? fill : '#f7f0dc'}" stroke="${INK}" stroke-width="5" stroke-linejoin="round"/>
+  </svg>`;
+}
+
+/*
+ * THE COACH, drawn for the game: nobody real, so no line the coach says
+ * needs anyone's word but the owner's. Manga line art in the shell's
+ * palette, flat fills and an ink line, goggles pushed up on the forehead
+ * the way a pilot wears them between packs. One small inline drawing, no
+ * picture to fetch.
+ */
+export function coachSvg() {
+  return `<svg class="cr-coach-art" viewBox="0 0 120 140" aria-hidden="true">
+    <path d="M14 140 C16 112 34 100 60 100 C86 100 104 112 106 140 Z" fill="#e8a8b8" stroke="${INK}" stroke-width="4" stroke-linejoin="round"/>
+    <path d="M44 100 L60 120 L76 100" fill="#f7f0dc" stroke="${INK}" stroke-width="3.5" stroke-linejoin="round"/>
+    <path d="M50 88 L50 102 L70 102 L70 88" fill="#f3d6c2" stroke="${INK}" stroke-width="3.5"/>
+    <path d="M30 56 C30 30 44 20 60 20 C76 20 90 30 90 56 C90 80 77 94 60 94 C43 94 30 80 30 56 Z" fill="#f3d6c2" stroke="${INK}" stroke-width="4"/>
+    <path d="M26 54 C22 30 36 10 60 10 C84 10 98 28 94 54 L88 40 L82 50 L76 34 L66 46 L60 30 L52 46 L44 34 L38 50 L32 40 Z" fill="#141c16" stroke="${INK}" stroke-width="3.5" stroke-linejoin="round"/>
+    <rect x="30" y="26" width="60" height="16" rx="8" fill="#9db3c8" stroke="${INK}" stroke-width="3.5"/>
+    <rect x="37" y="29" width="20" height="10" rx="5" fill="#8fe0ff" stroke="${INK}" stroke-width="2.5"/>
+    <rect x="63" y="29" width="20" height="10" rx="5" fill="#8fe0ff" stroke="${INK}" stroke-width="2.5"/>
+    <path d="M42 30 L48 30" stroke="#f7f0dc" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M68 30 L74 30" stroke="#f7f0dc" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M41 58 Q46 54 51 58" fill="none" stroke="${INK}" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M69 58 Q74 54 79 58" fill="none" stroke="${INK}" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M46 72 Q60 84 74 72 Q60 78 46 72 Z" fill="#ffffff" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M36 66 L42 66 M78 66 L84 66" stroke="#e8a8b8" stroke-width="3" stroke-linecap="round"/>
+    <path d="M90 58 C100 58 102 72 92 74" fill="none" stroke="${INK}" stroke-width="3.5"/>
+    <path d="M92 74 C86 84 76 86 70 84" fill="none" stroke="${INK}" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="68" cy="84" r="3.5" fill="${INK}"/>
+  </svg>`;
 }

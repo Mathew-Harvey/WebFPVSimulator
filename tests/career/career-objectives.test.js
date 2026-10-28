@@ -293,3 +293,146 @@ test('medals: time thresholds, bronze for finishing', () => {
   assert.equal(medalFor(lesson, null), null);
   assert.equal(medalFor({ medals: { metric: 'score', gold: 3000, silver: 2000 } }, { complete: true, score: 2500 }), 'silver');
 });
+
+/* ---------------- the newer parts' judges ---------------- */
+
+const speedFrame = (t, doc, prev, speed) => frame(t, doc, { prev, height: 3, vel: v3(0, 0, -speed) });
+
+test('rings: a ring with a speed counts only inside it, and says which way it missed', () => {
+  const lesson = {
+    id: 't-speed',
+    objectives: [{
+      kind: 'rings', text: 'Fast, then brake',
+      rings: [{ at: [80, 50, 3], yaw: Math.PI / 2, r: 2, minSpeed: 13 }, { at: [80, 70, 3], yaw: Math.PI / 2, r: 2, maxSpeed: 9 }],
+    }],
+  };
+  const run = createRun(lesson, { W, D });
+  run.frame(speedFrame(0, [80, 30, 3], [80, 30, 3], 5));
+  run.frame(speedFrame(16, [80, 51, 3], [80, 49, 3], 10));
+  assert.equal(run.status().current.state.index, 0, 'too slow through the fast ring');
+  assert.equal(run.status().current.detail, 'slow');
+  run.frame(speedFrame(32, [80, 51, 3], [80, 49, 3], 14));
+  assert.equal(run.status().current.state.index, 1);
+  run.frame(speedFrame(48, [80, 71, 3], [80, 69, 3], 12));
+  assert.equal(run.status().current.detail, 'fast', 'too fast through the brake ring');
+  assert.equal(run.status().phase, 'flying');
+  run.frame(speedFrame(64, [80, 71, 3], [80, 69, 3], 8));
+  assert.equal(run.status().phase, 'complete');
+});
+
+/* A run on a track, fed gates and laps at a hover. */
+function trackRun(objective, lesson = {}) {
+  const run = createRun({ id: 't-gates', objectives: [objective], ...lesson }, { W, D, gatesPerLap: 6 });
+  let t = 0;
+  const at = [80, 30, 3];
+  const step = (extra = {}) => {
+    t += 16;
+    return run.frame(frame(t, at, { height: 3, ...extra }));
+  };
+  const wait = (ms) => {
+    const end = t + ms;
+    while (t < end) {
+      step();
+    }
+  };
+  step();
+  return { run, step, wait, now: () => t };
+}
+
+test('gates count: the start is done at the third gate, and fails slow past its time', () => {
+  const ok = trackRun({ kind: 'gates', text: 'Start', count: 3, withinMs: 15000 }, { clock: 'start' });
+  for (let g = 0; g < 3; g += 1) {
+    ok.wait(1000);
+    ok.step({ gate: g });
+  }
+  assert.equal(ok.run.status().phase, 'complete');
+  assert.ok(ok.run.status().result.ms < 4000);
+  const late = trackRun({ kind: 'gates', text: 'Start', count: 3, withinMs: 15000 }, { clock: 'start' });
+  late.step({ gate: 0 });
+  late.wait(15100);
+  assert.equal(late.run.status().phase, 'failed');
+  assert.equal(late.run.status().failReason, 'slow');
+});
+
+test('gates beat: a lap that beats every earlier one by enough, inside the laps allowed', () => {
+  const r = trackRun({ kind: 'gates', text: 'Beat', beat: 250, maxLaps: 3 });
+  r.step({ lap: { ms: 20000 } });
+  assert.equal(r.run.status().phase, 'flying', 'the first lap is the ghost');
+  r.step({ lap: { ms: 19900 } });
+  assert.equal(r.run.status().current.detail, 'ghost', 'a tenth faster is not a quarter');
+  assert.equal(r.run.status().current.state.gain, 100);
+  r.step({ lap: { ms: 19600 } });
+  assert.equal(r.run.status().phase, 'complete', '300 ms under the best of the two before');
+  const out = trackRun({ kind: 'gates', text: 'Beat', beat: 250, maxLaps: 3 });
+  out.step({ lap: { ms: 20000 } });
+  out.step({ lap: { ms: 21000 } });
+  out.step({ lap: { ms: 19900 } });
+  assert.equal(out.run.status().phase, 'failed');
+  assert.equal(out.run.status().failReason, 'laps');
+});
+
+test('gates steady: the last laps inside the spread, and a wild one starts it again', () => {
+  const r = trackRun({ kind: 'gates', text: 'Steady', laps: 3, steady: 800, maxLaps: 6 });
+  for (const ms of [10000, 12000, 10200]) {
+    r.step({ lap: { ms } });
+  }
+  assert.equal(r.run.status().phase, 'flying');
+  assert.equal(r.run.status().current.detail, 'spread');
+  r.step({ lap: { ms: 10500 } });
+  assert.equal(r.run.status().phase, 'flying', '12.0, 10.2 and 10.5 are 1.8 apart');
+  r.step({ lap: { ms: 10400 } });
+  assert.equal(r.run.status().phase, 'complete', '10.2, 10.5 and 10.4 are inside 0.8');
+});
+
+test('close: only a paid close call of a kind the lesson names counts, by count or by points', () => {
+  const lesson = lessonById('px-1');
+  const run = createRun(lesson, { W, D });
+  hover(run, 0, 100, [80, 30, 3], { height: 3 });
+  assert.equal(run.counter([{ kind: 'under', name: 'Under', points: 150 }]), false, 'not a skim');
+  assert.equal(run.counter([{ kind: 'skim', name: 'Wall skim', points: 0 }]), false, 'paid nothing');
+  assert.equal(run.counter([{ kind: 'bank', points: 900, names: ['Wall skim'] }]), false);
+  run.counter([{ kind: 'skim', name: 'Wall skim', points: 120 }, { kind: 'skim', name: 'Roof skim', points: 80 }]);
+  hover(run, 200, 50, [80, 30, 3], { height: 3 });
+  assert.equal(run.status().phase, 'flying');
+  run.counter([{ kind: 'skim', name: 'Wall skim', points: 60 }]);
+  hover(run, 300, 50, [80, 30, 3], { height: 3 });
+  assert.equal(run.status().phase, 'complete');
+  const pts = createRun({
+    id: 't-close', objectives: [{ kind: 'close', text: 'Points', kinds: ['skim', 'thread', 'under'], points: 600 }],
+  }, { W, D });
+  hover(pts, 0, 50, [80, 30, 3], { height: 3 });
+  pts.counter([{ kind: 'thread', points: 400 }, { kind: 'lowpass', points: 400 }]);
+  hover(pts, 100, 50, [80, 30, 3], { height: 3 });
+  assert.equal(pts.status().current.progress, 400 / 600, 'a low pass is not one of them');
+  pts.counter([{ kind: 'under', points: 200 }]);
+  hover(pts, 200, 50, [80, 30, 3], { height: 3 });
+  assert.equal(pts.status().phase, 'complete');
+});
+
+test('combo: one banked combo long enough, with every kind it needs', () => {
+  const run = createRun(lessonById('ln-2'), { W, D });
+  hover(run, 0, 100, [80, 30, 3], { height: 3 });
+  run.counter([{ kind: 'bank', points: 500, names: ['Flip', 'Roll'], kinds: ['trick', 'trick'] }]);
+  hover(run, 200, 50, [80, 30, 3], { height: 3 });
+  assert.equal(run.status().current.detail, 'need', 'two tricks are not a gap and a trick');
+  run.counter([{ kind: 'bail', points: 900, names: ['BILLBOARD GAP', 'Flip'] }]);
+  hover(run, 300, 50, [80, 30, 3], { height: 3 });
+  assert.equal(run.status().phase, 'flying', 'a combo lost to a crash is never banked');
+  run.counter([{ kind: 'bank', points: 900, names: ['BILLBOARD GAP', 'Flip'], kinds: ['gap', 'trick'] }]);
+  hover(run, 400, 50, [80, 30, 3], { height: 3 });
+  assert.equal(run.status().phase, 'complete');
+  const three = createRun(lessonById('ln-1'), { W, D });
+  hover(three, 0, 100, [80, 30, 3], { height: 3 });
+  three.counter([{ kind: 'bank', points: 300, names: ['A', 'B'], kinds: ['skim', 'gap'] }]);
+  hover(three, 200, 50, [80, 30, 3], { height: 3 });
+  assert.equal(three.status().current.detail, 'short');
+  assert.equal(three.status().current.state.best, 2);
+});
+
+test('the counter is heard only while flying, and only by a judge that listens', () => {
+  const run = createRun(lessonById('rc-1'), { W, D });
+  assert.equal(run.counter([{ kind: 'skim', points: 100 }]), false, 'not flying yet');
+  const gaps = createRun(lessonById('9-1'), { W, D });
+  hover(gaps, 0, 100, [80, 30, 3], { height: 3 });
+  assert.equal(gaps.counter([{ kind: 'skim', points: 100 }]), false, 'a gap lesson does not count skims');
+});

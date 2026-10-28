@@ -1,18 +1,36 @@
 /*
  * screens.js: the career's screens and its flying display.
  *
- * One layer over the game, #career, with four faces: the hub (chapters and
- * lessons), the briefing (what, why, how, and the sticks), the flying
- * display (objective, clock, coach, height gauge, the marker on the next
- * target) and the results (the medal, the time, what next). The game's own
- * menus sit underneath and are hidden while a career face is up; the game's
- * own display stays on while flying, because the volts, the speed and the
- * mode are the pilot's instruments and the career adds to them.
+ * One layer over the game, #career, drawn as a manga magazine, the way the
+ * front screen is (src/ui/gatepages.js): paper pages, ink panels with a
+ * hard shadow, titles lettered in the game's hand. The faces:
+ *
+ *   COVER      the career's front page: one big Continue panel to the next
+ *              lesson, the pilot's licence card, the tree in brief, and
+ *              Set my level for a pilot who already flies
+ *   TREE       the skill tree (./tree.js): every part as a panel, the links
+ *              they grow along, and the chosen part's lessons beside it
+ *   FORK       once, after the Rookie Licence: race or freestyle first
+ *   LEVEL      Set my level, Open the whole tree, and the save code
+ *   BRIEFING   a lesson's page: its picture, the coach, the job, the sticks
+ *              and the stars to chase
+ *   FLIGHT     the flying display (objective, clock, coach, height gauge,
+ *              the marker on the next target)
+ *   RESULTS    the medal, the stars, what it opened, what next
+ *   PAINT      the Paint Shop: a livery for every part flown whole
+ *   ACHIEVEMENTS  the Steam edition's list
+ *
+ * PICTURES THROUGH THE PAGE. A panel marked .cr-window is a hole in the
+ * paper: the live world behind the career (the lesson's own world, on a
+ * briefing) shows through it, framed in ink. The paper is one layer per
+ * face, clipped round its windows when a face is drawn or the window
+ * changes size. Nothing here runs per frame while a menu is up, and none
+ * of these faces is up while a lesson flies.
  *
  * INPUT. Every face is a short list of things to press, walked with the
  * arrows, the D-pad or a stick, chosen with Enter or A, left with Escape or
  * B. The controller hands keys and pad edges in; nothing here listens to the
- * document, so the game's own keys never fire twice.
+ * document for keys, so the game's own keys never fire twice.
  *
  * This file is part of WebFPV.
  *
@@ -31,17 +49,21 @@
  */
 
 import { INKS, paintCall, paintTitle } from '../ui/lettering.js';
-import { CHAPTERS } from './curriculum.js';
+import { lessonById } from './curriculum.js';
 import {
-  chapterUnlocked, lessonRecord, lessonUnlocked, totals,
+  BRANCHES, LEVEL_QUESTIONS, PARTS, partById, partOf,
+} from './tree.js';
+import {
+  TITLES, branchStats, lessonRecord, lessonUnlocked, levelAnswers, liveriesEarned, partStats, titleOf, totals,
 } from './progress.js';
 import {
-  checkSvg, lessonGlyph, lockSvg, medalSvg,
+  checkSvg, coachSvg, lessonGlyph, lockSvg, medalSvg, starSvg,
 } from './icons.js';
 import { sticksHtml } from './sticks.js';
 import { sticksIn } from './words.js';
 import { injectCareerStyle } from './style.js';
 import { achievementSvg } from '../steam/achievementart.js';
+import { LIVERIES, cssOf, liveryById } from '../render/livery.js';
 
 function el(tag, cls, text) {
   const n = document.createElement(tag);
@@ -80,26 +102,34 @@ function medalValue(lesson, v) {
   return scored(lesson) ? points(v) : clock(v);
 }
 
-/* The pilot's best on a lesson, in its unit, or null. */
+/* The pilot's best on a lesson, in its unit, or null. A lesson flown on its
+ * fallback has the fallback's own best: another map, another time. */
 function bestOf(lesson, rec) {
   if (!rec) {
     return null;
   }
+  const ms = lesson.fallen ? rec.fbMs : rec.bestMs;
+  const score = lesson.fallen ? rec.fbScore : rec.bestScore;
   if (scored(lesson)) {
-    return Number.isFinite(rec.bestScore) ? points(rec.bestScore) : null;
+    return Number.isFinite(score) ? points(score) : null;
   }
-  return Number.isFinite(rec.bestMs) ? clock(rec.bestMs) : null;
+  return Number.isFinite(ms) ? clock(ms) : null;
 }
 
-/* A heading lettered in the game's hand, the words kept for a reader. */
-function lettered(text, px, fill = INKS.cream, cls = 'cr-title') {
+/* A heading lettered in the game's hand, the words kept for a reader.
+ * `maxW` is a share of the window the lettering may take at most. */
+function lettered(text, px, fill = INKS.cream, cls = 'cr-title', maxW = 0.7) {
   const h = el('h2', cls);
   const canvas = el('canvas', 'cr-letters');
   canvas.setAttribute('aria-hidden', 'true');
   const words = el('span', 'cr-title-text', text);
   h.append(canvas, words);
   try {
-    paintTitle(canvas, [{ text, fill }], px, { maxW: Math.max(320, window.innerWidth * 0.7) });
+    /* The outline the game's headings use (ui.js, letterHeading), thinner
+     * as the size grows, and an en space between words: at these sizes the
+     * hand's own space closes up under the outline and the shadow. */
+    const inkW = Math.min(0.2, Math.max(0.1, 7 / px));
+    paintTitle(canvas, [{ text: text.replace(/ /g, '\u2002'), fill }], px, { maxW: Math.max(240, window.innerWidth * maxW), inkW });
   } catch (e) {
     words.style.color = 'inherit';
     words.style.position = 'static';
@@ -114,17 +144,41 @@ function modeTag(mode) {
 
 /* The medals' names as the player reads them: finishing is the bronze. */
 const MEDAL_NAME = { gold: 'Gold', silver: 'Silver', bronze: 'Finish' };
+const STAR_COUNT = { gold: 3, silver: 2, bronze: 1 };
+
+/* "Learn to fly, 3.4": the part a lesson is in and where in it. */
+function lessonPlace(lesson) {
+  const part = partOf(lesson.id);
+  if (!part) {
+    return `Lesson ${lesson.id.replace('-', '.')}`;
+  }
+  const i = part.lessons.indexOf(lesson.id);
+  const branch = BRANCHES[part.branch];
+  if (part.licence) {
+    return part.title === lesson.title ? `${branch.title}, the checkride` : part.title;
+  }
+  return `${branch.title}, ${part.title} ${i + 1} of ${part.lessons.length}`;
+}
+
+/* Three stars, as many lit as the medal is worth. */
+function starRow(medal, cls = 'cr-stars') {
+  const row = el('span', cls);
+  const n = STAR_COUNT[medal] || 0;
+  row.innerHTML = [0, 1, 2].map((i) => starSvg(i < n)).join('');
+  row.setAttribute('aria-label', `${n} of 3 stars`);
+  return row;
+}
 
 /*
  * The keys a face names, in the hands the pilot has. A keycap reads Enter
  * to somebody at a keyboard and A to somebody on a pad; the legend the
  * same. Every cap carries its keyboard name in data-k and is repainted by
  * paintHands when the controller says the hands changed. A key with no
- * button on the pad (R, the keyboard's retry) is put away there: the
- * button it sits on is still a press away on the D-pad.
+ * button on the pad is put away there: the thing it does is a button on
+ * the page, a press away on the D-pad.
  */
 const PAD_CAPS = {
-  Enter: 'A', Esc: 'B', 'Q E': 'LB RB', R: '', Arrows: 'D-pad',
+  Enter: 'A', Esc: 'B', 'Q E': 'LB RB', R: '', T: '', L: '', K: '', P: '', Arrows: 'D-pad',
 };
 
 function keycap(key, cls = 'cr-key') {
@@ -136,7 +190,7 @@ function keycap(key, cls = 'cr-key') {
 function button(label, key, cls = '') {
   const b = el('button', `cr-btn ${cls}`);
   b.type = 'button';
-  b.append(document.createTextNode(label));
+  b.append(el('span', 'cr-btn-label', label));
   if (key) {
     b.append(keycap(key));
   }
@@ -156,11 +210,10 @@ function legendBar(entries) {
 
 /*
  * The medal ladder a lesson sets: gold's mark, silver's, and the finish,
- * each named, with a tick on the rungs the pilot has reached. `reached` is
- * the medal to tick down from (a result's, or the pilot's best), or null.
+ * each with its stars, and a tick on the rungs the pilot has reached.
  */
-function ladder(lesson, reached, { compact = false } = {}) {
-  const box = el('div', `cr-ladder${compact ? ' compact' : ''}`);
+function ladder(lesson, reached) {
+  const box = el('div', 'cr-ladder');
   const rank = { gold: 3, silver: 2, bronze: 1 };
   const have = reached ? rank[reached] || 0 : 0;
   for (const m of ['gold', 'silver', 'bronze']) {
@@ -169,17 +222,77 @@ function ladder(lesson, reached, { compact = false } = {}) {
       continue;
     }
     const got = have >= rank[m];
-    const row = el('div', `cr-rung${got ? ' is-got' : ''}`);
-    const icon = el('span', 'cr-medal-box');
-    icon.innerHTML = medalSvg(m);
-    row.append(icon, el('b', null, MEDAL_NAME[m]));
-    row.append(el('span', 'cr-rung-value', value == null ? (m === 'bronze' ? 'any time' : '') : medalValue(lesson, value)));
+    const row = el('div', `cr-rung cr-rung-${m}${got ? ' is-got' : ''}`);
+    row.append(starRow(m, 'cr-stars small'));
+    row.append(el('b', null, MEDAL_NAME[m]));
+    row.append(el('span', 'cr-rung-value', value == null ? 'any time' : medalValue(lesson, value)));
     const tick = el('span', 'cr-rung-tick');
     tick.innerHTML = got ? checkSvg() : '';
     row.append(tick);
     box.append(row);
   }
   return box;
+}
+
+/* A part a pilot may mark as flown already: any with lessons but the
+ * licences at the top of the tree, which are flown or not at all. The
+ * Rookie Licence may be, because it is the trunk's last part and a pilot
+ * who flies Acro should not be held at the bottom of the tree. */
+function knowable(part) {
+  return !part.soon && (!part.licence || part.id === 'rk');
+}
+
+/* The next lesson as the cover and the results name it. */
+function lessonOf(id) {
+  return id ? lessonById(id) : null;
+}
+
+/*
+ * A five inch from above, nose up, in a livery: the Paint Shop's picture
+ * and the results'. Drawn, not rendered, so a page of them costs markup and
+ * nothing else. The colours go where src/render/herocraft.js puts them:
+ * the vinyl on the pack's label, its straps and the top plate's decals,
+ * the chrome on the camera cage, the antenna mount and the motor caps.
+ */
+function quadSvg(livery) {
+  const v = cssOf(livery.vinyl);
+  const c = cssOf(livery.chrome);
+  const ink = '#0b1116';
+  const carbon = '#2a3038';
+  const ends = [[46, 46], [154, 46], [46, 154], [154, 154]];
+  const arms = ends.map(([x, y]) => `<line x1="100" y1="100" x2="${x}" y2="${y}" stroke="${ink}" stroke-width="22" stroke-linecap="round"/>`
+    + `<line x1="100" y1="100" x2="${x}" y2="${y}" stroke="${carbon}" stroke-width="14" stroke-linecap="round"/>`).join('');
+  const props = ends.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="38" fill="rgba(157,179,200,0.2)" stroke="${ink}" stroke-width="3"/>`
+    + `<circle cx="${x}" cy="${y}" r="13" fill="#5b636e" stroke="${ink}" stroke-width="3"/>`
+    + `<circle cx="${x}" cy="${y}" r="6" fill="${c}" stroke="${ink}" stroke-width="2"/>`).join('');
+  return `<svg class="cr-quad" viewBox="0 0 200 200" aria-hidden="true">${props}${arms}`
+    + `<rect x="72" y="60" width="56" height="84" rx="9" fill="${carbon}" stroke="${ink}" stroke-width="4"/>`
+    + `<rect x="78" y="134" width="44" height="5" fill="${v}"/>`
+    + `<rect x="80" y="72" width="40" height="58" rx="5" fill="#1a1e24" stroke="${ink}" stroke-width="3"/>`
+    + `<rect x="80" y="90" width="40" height="22" fill="${v}" stroke="${ink}" stroke-width="3"/>`
+    + `<rect x="76" y="78" width="48" height="5" fill="${v}" stroke="${ink}" stroke-width="1.5"/>`
+    + `<rect x="76" y="119" width="48" height="5" fill="${v}" stroke="${ink}" stroke-width="1.5"/>`
+    + `<rect x="85" y="40" width="30" height="26" rx="6" fill="${c}" stroke="${ink}" stroke-width="4"/>`
+    + `<rect x="93" y="34" width="14" height="10" rx="3" fill="${ink}"/>`
+    + `<path d="M91 142 L109 142 L105 162 L95 162 Z" fill="${c}" stroke="${ink}" stroke-width="3"/>`
+    + `<line x1="100" y1="160" x2="100" y2="186" stroke="${ink}" stroke-width="4" stroke-linecap="round"/>`
+    + '</svg>';
+}
+
+/* Two chips, vinyl and chrome: a livery at the size of a word. */
+function liveryChips(livery) {
+  const chips = el('span', 'cr-livery-chips');
+  for (const hex of [livery.vinyl, livery.chrome]) {
+    const i = el('i');
+    i.style.background = cssOf(hex);
+    chips.append(i);
+  }
+  return chips;
+}
+
+/* The part whose lessons earn a livery, or null for the house paint. */
+function partOfLivery(id) {
+  return PARTS.find((x) => x.livery === id) || null;
 }
 
 export class CareerScreens {
@@ -190,21 +303,38 @@ export class CareerScreens {
     this.root.id = 'career';
     this.root.hidden = true;
     this.root.append(el('div', 'cr-scrim'));
-    this.hub = el('section', 'cr-screen cr-hub');
-    this.brief = el('section', 'cr-screen cr-brief');
-    this.results = el('section', 'cr-screen cr-results');
+    const face = (cls) => {
+      const s = el('section', `cr-screen has-paper ${cls}`);
+      s.append(el('div', 'cr-paper'));
+      return s;
+    };
+    this.cover = face('cr-cover');
+    this.tree = face('cr-tree');
+    this.fork = face('cr-fork');
+    this.level = face('cr-level');
+    this.brief = face('cr-brief');
+    this.results = face('cr-results');
+    this.paintShop = face('cr-paint');
     this.ach = el('section', 'cr-screen cr-ach');
     this.hud = el('div', 'cr-hud');
-    this.root.append(this.hub, this.brief, this.results, this.ach, this.hud);
+    this.root.append(this.cover, this.tree, this.fork, this.level, this.brief, this.results, this.paintShop, this.ach, this.hud);
     document.body.append(this.root);
     this.focus = [];
     this.focusAt = 0;
-    this.chapter = 0;
+    this.treeAt = 'c1';
+    this.zone = 'parts';
     this.lessonAt = 0;
-    this.zone = 'lessons';
     /* 'keys' or 'pad': what the keycaps and legends name. */
     this.hands = 'keys';
     this.buildHud();
+    /* The paper is cut round the windows again when the window changes
+     * size. A redraw, not a loop: the paper scrolls with its face. */
+    window.addEventListener('resize', () => {
+      this.cutWindows();
+      if (this.screen === 'tree') {
+        this.drawLinks();
+      }
+    });
   }
 
   /* The hands changed: every cap and legend on the page says so. */
@@ -236,7 +366,8 @@ export class CareerScreens {
   set screen(name) {
     this.root.dataset.screen = name || '';
     this.root.hidden = !name;
-    document.body.classList.toggle('career-menu', name === 'hub' || name === 'briefing' || name === 'results' || name === 'achievements');
+    const menu = ['cover', 'tree', 'fork', 'level', 'briefing', 'results', 'paint', 'achievements'].includes(name);
+    document.body.classList.toggle('career-menu', menu);
     document.body.classList.toggle('career-flight', name === 'flight');
     if (name !== 'flight') {
       document.body.classList.remove('career-score');
@@ -247,6 +378,81 @@ export class CareerScreens {
     return this.root.hidden ? '' : this.root.dataset.screen;
   }
 
+  /* The face that is up, as an element. */
+  faceEl() {
+    return {
+      cover: this.cover, tree: this.tree, fork: this.fork, level: this.level, briefing: this.brief, results: this.results,
+      paint: this.paintShop,
+    }[this.screen] || null;
+  }
+
+  /* A fresh face: emptied but for its paper. */
+  clear(face) {
+    const paper = face.querySelector(':scope > .cr-paper');
+    face.textContent = '';
+    paper.style.clipPath = '';
+    face.append(paper);
+    face.scrollTop = 0;
+    return face;
+  }
+
+  /*
+   * THE WINDOWS. Every .cr-window on the face that is up is cut out of its
+   * paper, one even-odd polygon for the page with a hole per window, in the
+   * face's own pixels. Measured, so it follows the layout at any size.
+   */
+  cutWindows() {
+    const face = this.faceEl();
+    if (!face) {
+      return;
+    }
+    const paper = face.querySelector(':scope > .cr-paper');
+    if (!paper) {
+      return;
+    }
+    /* The paper is as tall as everything on the face, not as the window,
+     * or a page that scrolls runs out of paper and shows the world under
+     * its foot. The last height is let go first, because the paper is part
+     * of what scrolls and would otherwise keep a page that got shorter
+     * as tall as it was. */
+    paper.style.height = '';
+    const base = face.getBoundingClientRect();
+    const W = Math.max(1, base.width);
+    const H = Math.max(1, face.scrollHeight, base.height);
+    paper.style.height = `${H}px`;
+    const wins = [...face.querySelectorAll('.cr-window')];
+    if (!wins.length) {
+      paper.style.clipPath = '';
+      return;
+    }
+    const pts = ['0px 0px', `${W}px 0px`, `${W}px ${H}px`, `0px ${H}px`, '0px 0px'];
+    for (const w of wins) {
+      const r = w.getBoundingClientRect();
+      if (r.width < 2 || r.height < 2) {
+        continue;
+      }
+      /* Inside the ink border, so the frame is drawn on paper. */
+      const inset = 3;
+      const x0 = r.left - base.left + inset;
+      const y0 = r.top - base.top + face.scrollTop + inset;
+      const x1 = r.right - base.left - inset;
+      const y1 = r.bottom - base.top + face.scrollTop - inset;
+      pts.push(`${x0}px ${y0}px`, `${x1}px ${y0}px`, `${x1}px ${y1}px`, `${x0}px ${y1}px`, `${x0}px ${y0}px`, '0px 0px');
+    }
+    paper.style.clipPath = `polygon(evenodd, ${pts.join(', ')})`;
+  }
+
+  /* After a face is built: the windows cut once the layout has sizes. */
+  settle() {
+    this.paintHands();
+    requestAnimationFrame(() => {
+      this.cutWindows();
+      if (this.screen === 'tree') {
+        this.drawLinks();
+      }
+    });
+  }
+
   /* ---------------------------------------------------------------- *
    * Focus: the things a key can press on the face that is up.
    * ---------------------------------------------------------------- */
@@ -254,11 +460,18 @@ export class CareerScreens {
   setFocus(list, at = 0) {
     this.focus = list.filter(Boolean);
     this.focusAt = Math.max(0, Math.min(at, this.focus.length - 1));
-    this.paintFocus();
+    this.paintFocus(false);
   }
 
-  paintFocus() {
+  /* Only a key scrolls the page to the cursor. A page that has just opened
+   * starts at its top, so a short window reads the title before the button,
+   * and a mouse never drags the page under itself. */
+  paintFocus(scroll = true) {
     this.focus.forEach((b, i) => b.classList.toggle('is-focus', i === this.focusAt));
+    const on = this.focus[this.focusAt];
+    if (scroll && on && on.scrollIntoView) {
+      on.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
   }
 
   moveFocus(d) {
@@ -276,232 +489,794 @@ export class CareerScreens {
     }
   }
 
+  /* Hovering a button moves the cursor to it, so the keys and the mouse
+   * never disagree about which one is lit. */
+  hoverFocus(list) {
+    list.forEach((b, i) => b && b.addEventListener('mouseenter', () => {
+      const at = this.focus.indexOf(b);
+      if (at >= 0) {
+        this.focusAt = at;
+        this.paintFocus(false);
+      }
+    }));
+    return list;
+  }
+
+  /* Keys on a face that is one list: walk, press, leave. */
+  listKey2(k) {
+    if (k === 'left' || k === 'up') {
+      this.moveFocus(-1);
+    } else if (k === 'right' || k === 'down') {
+      this.moveFocus(1);
+    } else if (k === 'select') {
+      this.pressFocus();
+    }
+  }
+
   /* ---------------------------------------------------------------- *
-   * The hub.
+   * The licence card: who the pilot is in the career, in one panel.
    * ---------------------------------------------------------------- */
 
-  showHub(progress, { chapter, lesson, stickMode = 2, keys = false } = {}) {
-    this.progress = progress;
+  licenceCard(p) {
+    const t = totals(p);
+    const card = el('div', 'cr-licence');
+    const badge = el('div', 'cr-licence-badge');
+    badge.innerHTML = lessonGlyph({ glyph: 'licence', objectives: [] });
+    const words = el('div', 'cr-licence-words');
+    words.append(el('span', 'cr-licence-kick', 'Pilot licence'));
+    words.append(el('b', 'cr-licence-title', TITLES[titleOf(p)]));
+    const line = el('span', 'cr-licence-line');
+    line.innerHTML = `${starSvg(true)}<span>${t.stars} stars, ${t.done} of ${t.total} lessons</span>`;
+    words.append(line);
+    card.append(badge, words);
+    return card;
+  }
+
+  /* ---------------------------------------------------------------- *
+   * The cover.
+   * ---------------------------------------------------------------- */
+
+  showCover(p, {
+    next, stickMode = 2, keys = false, steam = false, achievements = null, livery = LIVERIES[0].id,
+  } = {}) {
+    this.progress = p;
     this.stickMode = stickMode;
     this.keys = keys;
-    if (chapter != null) {
-      this.chapter = chapter;
-    }
-    if (lesson != null) {
-      this.lessonAt = lesson;
-    }
-    this.zone = 'lessons';
-    this.screen = 'hub';
-    this.renderHub();
-  }
+    this.screen = 'cover';
+    const c = this.clear(this.cover);
 
-  renderHub() {
-    const p = this.progress;
-    const hub = this.hub;
-    hub.textContent = '';
-    const t = totals(p);
+    const head = el('header', 'cr-cover-head');
+    const name = el('div', 'cr-cover-name');
+    name.append(el('span', 'cr-kick', 'Career'), lettered('Pilot’s Path', 92, INKS.cream, 'cr-title cr-cover-title', 0.5));
+    head.append(name, this.licenceCard(p));
+    c.append(head);
 
-    const head = el('div', 'cr-hub-head');
-    const left = el('div');
-    left.append(el('div', 'cr-kicker', 'WebFPV'), lettered('Career', 76, INKS.cream));
-    left.append(el('p', 'cr-sub', 'From your first hover to a pro licence. Every lesson is one skill, with a briefing, a coach in your ear and a medal to chase.'));
-    const tally = el('div', 'cr-tally');
-    for (const m of ['gold', 'silver', 'bronze']) {
-      const it = el('div', 'cr-tally-item');
-      const box = el('div', 'cr-medal-box');
-      box.innerHTML = medalSvg(m);
-      it.append(box, document.createTextNode(String(t[m])));
-      tally.append(it);
+    const grid = el('div', 'cr-cover-grid');
+    const hero = el('div', 'cr-continue cr-window');
+    const lesson = next && next.lesson ? lessonOf(next.lesson) : null;
+    let kick = 'Up next';
+    let title = 'Pick a way';
+    let line = 'Your Rookie Licence opened both ways. Race or freestyle first?';
+    let go = 'Pick a way';
+    if (lesson) {
+      kick = next.polish ? 'Go for a better medal' : 'Up next';
+      title = lesson.title;
+      line = sticksIn(lesson.briefing.goal, stickMode, { keys });
+      go = next.polish ? 'Fly it again' : (p.runs ? 'Continue' : 'Start');
+    } else if (!next) {
+      kick = 'Every lesson, gold';
+      title = 'WebFPV Pro';
+      line = 'There is nothing left to win. Fly any lesson again from the tree.';
+      go = 'Open the tree';
     }
-    tally.append(el('span', 'cr-tally-done', `${t.done} of ${t.total} lessons`));
-    if (p.finishedAt) {
-      tally.append(el('span', 'cr-tag acro', 'Pro licence'));
+    const cap = el('div', 'cr-continue-words');
+    cap.append(el('span', 'cr-kick', kick));
+    if (lesson) {
+      cap.append(el('span', 'cr-continue-place', lessonPlace(lesson)));
     }
-    head.append(left, tally);
-    hub.append(head);
-
-    const chips = el('div', 'cr-chapters');
-    this.chipEls = CHAPTERS.map((c, i) => {
-      const open = chapterUnlocked(p, i);
-      const chip = el('div', `cr-chip${open ? '' : ' is-locked'}${i === this.chapter ? ' is-on' : ''}`);
-      chip.setAttribute('role', 'tab');
-      chip.append(el('span', 'cr-num', String(i + 1).padStart(2, '0')));
-      const words = el('div');
-      words.append(el('div', 'cr-chip-name', c.title));
-      const bar = el('div', 'cr-chip-bar');
-      const fill = el('i');
-      const done = c.lessons.filter((l) => lessonRecord(p, l.id)?.medal).length;
-      fill.style.width = `${(100 * done) / c.lessons.length}%`;
-      bar.append(fill);
-      words.append(bar);
-      chip.append(words);
-      if (!open) {
-        const lk = el('span', 'cr-chip-lock');
-        lk.innerHTML = lockSvg();
-        chip.append(lk);
+    cap.append(lettered(title, 84, INKS.cream, 'cr-title cr-continue-title', 0.5));
+    cap.append(el('p', 'cr-caption', line));
+    this.goBtn = button(go, 'Enter', 'primary big');
+    this.goBtn.addEventListener('click', () => {
+      if (lesson) {
+        this.h.open(lesson.id, 'cover');
+      } else if (next && next.fork) {
+        this.h.toFork();
+      } else {
+        this.h.toTree();
       }
-      chip.addEventListener('click', () => {
-        this.chapter = i;
-        this.lessonAt = 0;
-        this.zone = 'lessons';
-        this.renderHub();
-      });
-      chips.append(chip);
-      return chip;
     });
-    /* Ten chapters never fit across one row, and a strip that simply clips
-     * reads as eight chapters. The wrap fades the edge that has more behind
-     * it, so the cut looks like a cut and the legend's Q E means something.
-     * Read on scroll and once after layout, because the first paint has no
-     * widths yet. */
-    const wrap = el('div', 'cr-chapters-wrap');
-    wrap.append(chips);
-    const edges = () => {
-      const more = chips.scrollWidth - chips.clientWidth;
-      wrap.classList.toggle('more-l', chips.scrollLeft > 4);
-      wrap.classList.toggle('more-r', more > 4 && chips.scrollLeft < more - 4);
-    };
-    chips.addEventListener('scroll', edges, { passive: true });
-    this.chipsEdges = edges;
-    requestAnimationFrame(edges);
-    hub.append(wrap);
-
-    const ch = CHAPTERS[this.chapter];
-    const open = chapterUnlocked(p, this.chapter);
-    const chHead = el('div', 'cr-chapter-head');
-    chHead.append(lettered(`${this.chapter + 1}. ${ch.title}`, 40, INKS.sakura), modeTag(ch.mode));
-    chHead.append(el('p', 'cr-blurb', open
-      ? ch.blurb
-      : `Locked. Finish every lesson in ${CHAPTERS[this.chapter - 1].title} to open it, or open every chapter below.`));
-    hub.append(chHead);
-
-    const grid = el('div', 'cr-lessons');
-    this.lessonAt = Math.min(this.lessonAt, ch.lessons.length - 1);
-    this.cardEls = ch.lessons.map((l, i) => {
-      const unlocked = lessonUnlocked(p, l.id);
-      const rec = lessonRecord(p, l.id);
-      const card = el('div', `cr-card${unlocked ? '' : ' is-locked'}${i === this.lessonAt ? ' is-on' : ''}`);
-      card.setAttribute('role', 'button');
-      const top = el('div', 'cr-card-top');
-      top.append(el('span', 'cr-card-num', l.id.replace('-', '.')), modeTag(l.mode));
-      const glyph = el('div', 'cr-card-glyph');
-      glyph.innerHTML = lessonGlyph(l);
-      const name = el('div', 'cr-card-name', l.title);
-      const body = el('div', 'cr-card-body');
-      body.append(glyph, name);
-      const foot = el('div', 'cr-card-foot');
-      const best = bestOf(l, rec);
-      foot.append(el('span', 'cr-card-best', best ? `Best ${best}` : (unlocked ? 'Not flown yet' : 'Locked')));
-      const medal = el('div', 'cr-card-medal');
-      medal.innerHTML = medalSvg(rec && rec.medal);
-      foot.append(medal);
-      card.append(top, body, foot);
-      if (!unlocked) {
-        const lk = el('div', 'cr-card-lockmark');
-        lk.innerHTML = lockSvg();
-        body.append(lk);
-      }
-      card.addEventListener('mouseenter', () => {
-        this.lessonAt = i;
-        this.zone = 'lessons';
-        this.markHub();
-      });
-      card.addEventListener('click', () => {
-        this.lessonAt = i;
-        this.openSelected();
-      });
-      grid.append(card);
-      return card;
-    });
-    hub.append(grid);
-
-    const detail = el('div', 'cr-detail');
-    this.detailEl = detail;
-    hub.append(detail);
-    this.paintDetail();
-
-    hub.append(legendBar([['Arrows', 'Choose'], ['Q E', 'Chapter'], ['Enter', 'Briefing'], ['Esc', 'Back']]));
-    this.paintHands();
-    this.markHub();
-  }
-
-  paintDetail() {
-    const ch = CHAPTERS[this.chapter];
-    const l = ch.lessons[this.lessonAt];
-    const p = this.progress;
-    const d = this.detailEl;
-    d.textContent = '';
-    const words = el('div');
-    words.append(el('div', 'cr-kicker', `Lesson ${l.id.replace('-', '.')}  ${l.title}`));
-    words.append(el('p', 'cr-goal', sticksIn(l.briefing.goal, this.stickMode, { keys: this.keys })));
-    const targets = el('div', 'cr-targets');
-    for (const m of ['gold', 'silver']) {
-      if (l.medals && l.medals[m] != null) {
-        const tg = el('span', 'cr-target');
-        const box = el('span', 'cr-medal-box');
-        box.innerHTML = medalSvg(m);
-        tg.append(box, document.createTextNode(`${m === 'gold' ? 'Gold' : 'Silver'} `), el('b', null, medalValue(l, l.medals[m])));
-        targets.append(tg);
-      }
+    cap.append(this.goBtn);
+    hero.append(cap);
+    if (lesson) {
+      const balloon = el('div', 'cr-cover-balloon', next.polish ? 'One more star!' : (p.runs ? 'You’re on it!' : 'Let’s fly!'));
+      hero.append(balloon);
     }
-    const best = bestOf(l, lessonRecord(p, l.id));
-    if (best) {
-      const tg = el('span', 'cr-target');
-      tg.append(document.createTextNode('Your best '), el('b', null, best));
-      targets.append(tg);
+    grid.append(hero);
+
+    const side = el('div', 'cr-cover-side');
+    const treeCard = el('div', 'cr-panel cr-treecard');
+    treeCard.append(el('span', 'cr-kick', 'Your skill tree'));
+    const ways = el('div', 'cr-ways');
+    for (const b of ['race', 'freestyle']) {
+      const s = branchStats(p, b);
+      const box = el('div', `cr-way cr-way-${b}${s.open ? '' : ' is-locked'}`);
+      box.append(el('b', 'cr-way-name', BRANCHES[b].title));
+      box.append(el('span', 'cr-way-line', b === 'race' ? 'Gates, racing, the official tracks' : 'Gaps, flips, tricks and lines'));
+      const stat = el('span', 'cr-way-stat');
+      stat.innerHTML = s.open
+        ? `${starSvg(true)}<span>${s.stars} of ${s.maxStars}</span>`
+        : `${lockSvg()}<span>Opens at your Rookie Licence</span>`;
+      box.append(stat);
+      ways.append(box);
     }
-    words.append(targets);
-    const actions = el('div', 'cr-actions');
-    const unlocked = lessonUnlocked(p, l.id);
-    this.openBtn = button(unlocked ? 'Briefing' : 'Locked', 'Enter', 'primary');
-    this.openBtn.disabled = !unlocked;
-    this.openBtn.addEventListener('click', () => this.openSelected());
-    this.openAllBtn = null;
-    if (!p.openAll && !CHAPTERS.every((c, i) => chapterUnlocked(p, i))) {
-      this.openAllBtn = button('I already fly: open every chapter', null);
-      this.openAllBtn.addEventListener('click', () => this.h.openAll());
-    }
-    this.backBtn = button('Back', 'Esc');
-    this.backBtn.addEventListener('click', () => this.h.leave());
-    /* Every achievement, earned or not, with how far along the counted
-     * ones are: the career is where a pilot looks for what to do next. */
+    treeCard.append(ways);
+    this.treeBtn = button('Open the tree', 'T');
+    this.treeBtn.addEventListener('click', () => this.h.toTree());
+    treeCard.append(this.treeBtn);
+    side.append(treeCard);
+
+    /* Already fly? and the quad, side by side under the tree. */
+    const pair = el('div', 'cr-cover-pair');
+    const levelCard = el('div', 'cr-panel cr-levelcard');
+    levelCard.append(el('span', 'cr-kick', 'Already fly?'));
+    levelCard.append(el('p', 'cr-panel-line', 'Fill in the tree up to what you can do, then pick your own way.'));
+    this.levelBtn = button('Set my level', 'L');
+    this.levelBtn.addEventListener('click', () => this.h.toLevel());
+    levelCard.append(this.levelBtn);
+
+    const paintCard = el('div', 'cr-panel cr-paintcard');
+    const on = liveryById(livery);
+    paintCard.append(el('span', 'cr-kick', 'Your quad'));
+    const pw = el('div', 'cr-paintcard-row');
+    const pic = el('div', 'cr-paintcard-pic');
+    pic.innerHTML = quadSvg(on);
+    const earned = 1 + liveriesEarned(p).length;
+    pw.append(pic, el('p', 'cr-panel-line', `${on.name} paint. ${earned} of ${LIVERIES.length} earned.`));
+    paintCard.append(pw);
+    this.paintBtn = button('Paint Shop', 'P');
+    this.paintBtn.addEventListener('click', () => this.h.toPaint());
+    paintCard.append(this.paintBtn);
+    pair.append(levelCard, paintCard);
+    side.append(pair);
+    grid.append(side);
+    c.append(grid);
+
+    const foot = el('footer', 'cr-cover-foot');
     this.achBtn = null;
-    const count = this.h.achievementCount ? this.h.achievementCount() : null;
-    if (count) {
-      this.achBtn = button(`Achievements ${count.earned}/${count.total}`, null);
+    if (achievements) {
+      this.achBtn = button(`Achievements ${achievements.earned}/${achievements.total}`, null);
       this.achBtn.addEventListener('click', () => this.h.achievements());
+      foot.append(this.achBtn);
     }
-    actions.append(...this.hubActions());
-    d.append(words, actions);
+    this.coverBack = button('Back', 'Esc');
+    this.coverBack.addEventListener('click', () => this.h.leave());
+    foot.append(this.coverBack);
+    foot.append(el('span', 'cr-save-note', steam
+      ? 'Saved on this computer, and Steam Cloud keeps it with your account.'
+      : 'Saved in this browser. Set my level has a save code to take it elsewhere.'));
+    c.append(foot);
+    c.append(legendBar([['Arrows', 'Move'], ['Enter', 'Choose'], ['T', 'Tree'], ['L', 'Set my level'], ['P', 'Paint Shop'], ['Esc', 'Back']]));
+    const list = [this.goBtn, this.treeBtn, this.levelBtn, this.paintBtn, this.achBtn, this.coverBack];
+    this.hoverFocus(list);
+    this.setFocus(list, 0);
+    this.settle();
   }
 
-  hubActions() {
-    return [this.openAllBtn, this.achBtn, this.backBtn, this.openBtn].filter(Boolean);
+  coverKey(k) {
+    if (k === 'back') {
+      this.h.leave();
+    } else if (k === 'tree') {
+      this.h.toTree();
+    } else if (k === 'level') {
+      this.h.toLevel();
+    } else if (k === 'paint') {
+      this.h.toPaint();
+    } else {
+      this.listKey2(k);
+    }
   }
 
-  markHub() {
-    if (this.chipEls) {
-      this.chipEls.forEach((c, i) => {
-        c.classList.toggle('is-on', i === this.chapter);
-        c.classList.toggle('is-focus', this.zone === 'chapters' && i === this.chapter);
+  /* ---------------------------------------------------------------- *
+   * The tree.
+   * ---------------------------------------------------------------- */
+
+  showTree(p, { part, current, stickMode = 2, keys = false } = {}) {
+    this.progress = p;
+    this.stickMode = stickMode;
+    this.keys = keys;
+    this.current = current || null;
+    const was = this.treeAt;
+    if (part && partById(part)) {
+      this.treeAt = part;
+    }
+    /* Back to the part a lesson was opened from, the cursor is on that
+     * lesson again; on any other part it starts on the part. */
+    if (this.zone !== 'lessons' || this.treeAt !== was) {
+      this.zone = 'parts';
+      this.lessonAt = 0;
+    }
+    this.screen = 'tree';
+    this.renderTree();
+  }
+
+  renderTree() {
+    const p = this.progress;
+    const t = this.clear(this.tree);
+    const grid = el('div', 'cr-tree-grid');
+    this.treeGrid = grid;
+    this.links = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    this.links.setAttribute('class', 'cr-links');
+    this.links.setAttribute('aria-hidden', 'true');
+    grid.append(this.links);
+    this.partEls = new Map();
+    /* The order the parts are listed in on a narrow window, where the tree
+     * is a list: up the trunk, then each branch, then the crown. */
+    const listOrder = ['trunk', 'race', 'freestyle', 'crown'].flatMap((b) => PARTS
+      .filter((x) => x.branch === b)
+      .sort((a, z) => (z.row - a.row) || (a.col - z.col))
+      .map((x) => x.id));
+    for (const part of PARTS) {
+      const s = partStats(p, part);
+      const node = el('button', `cr-part cr-part-${part.branch} is-${s.state}${part.licence ? ' is-licence' : ''}${this.current === part.id ? ' is-current' : ''}`);
+      node.type = 'button';
+      node.dataset.col = String(part.col);
+      node.dataset.row = String(part.row);
+      node.style.order = String(listOrder.indexOf(part.id) * 2);
+      if (part.span) {
+        node.dataset.span = String(part.span);
+      }
+      node.append(el('span', 'cr-part-kick', part.licence ? 'Licence' : BRANCHES[part.branch].title));
+      node.append(el('span', 'cr-part-name', part.title));
+      const foot = el('span', 'cr-part-foot');
+      if (part.soon) {
+        foot.append(el('span', 'cr-part-short', part.short));
+        node.append(el('span', 'cr-stamp soon', 'Next issue'));
+      } else {
+        const pips = el('span', 'cr-pips');
+        for (const m of s.medals) {
+          pips.append(el('i', m ? `is-${m}` : ''));
+        }
+        foot.append(pips);
+        const stat = el('span', 'cr-part-stat');
+        if (s.state === 'locked') {
+          stat.innerHTML = `${lockSvg()}`;
+        } else {
+          stat.innerHTML = `${starSvg(s.stars > 0)}<span>${s.stars}/${s.maxStars}</span>`;
+        }
+        foot.append(stat);
+        if (s.state === 'known') {
+          node.append(el('span', 'cr-stamp known', 'Known'));
+        } else if (this.current === part.id) {
+          node.append(el('span', 'cr-stamp here', 'You are here'));
+        }
+      }
+      node.append(foot);
+      node.addEventListener('mouseenter', () => {
+        if (this.treeAt !== part.id) {
+          this.treeAt = part.id;
+          this.zone = 'parts';
+          this.lessonAt = 0;
+          this.markTree();
+        }
       });
-      const chip = this.chipEls[this.chapter];
-      if (chip && chip.scrollIntoView) {
-        chip.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      node.addEventListener('click', () => {
+        this.treeAt = part.id;
+        this.zone = part.soon ? 'parts' : 'lessons';
+        this.lessonAt = this.firstLessonAt(part);
+        this.markTree();
+      });
+      grid.append(node);
+      this.partEls.set(part.id, node);
+    }
+
+    /* The empty corner under the race branch holds the page's title and
+     * the key to the tree; the one under freestyle, the chosen part. */
+    const key = el('div', 'cr-tree-key');
+    key.style.order = '-1';
+    key.append(el('span', 'cr-kick', 'Career'), lettered('The Skill Tree', 64, INKS.cream, 'cr-title', 0.36));
+    key.append(el('p', 'cr-panel-line', 'Learn to fly up the middle. Your Rookie Licence opens both ways at once. In a branch, three lessons of a part open the next, and a licence takes every part of its branch.'));
+    const legend = el('div', 'cr-tree-legend');
+    /* Next issue only while some part is still to come. */
+    const keyItems = [['done', 'Flown'], ['current', 'You are here'], ['open', 'Open'], ['known', 'Known'], ['locked', 'Not yet']];
+    if (PARTS.some((x) => x.soon)) {
+      keyItems.push(['soon', 'Next issue']);
+    }
+    for (const [cls, words] of keyItems) {
+      const item = el('span');
+      item.append(el('i', `cr-swatch ${cls}`), document.createTextNode(words));
+      legend.append(item);
+    }
+    key.append(legend);
+    const keyBtns = el('div', 'cr-row');
+    this.treeLevelBtn = button('Set my level', 'L', 'small');
+    this.treeLevelBtn.addEventListener('click', () => this.h.toLevel());
+    this.treeBackBtn = button('Back', 'Esc', 'small');
+    this.treeBackBtn.addEventListener('click', () => this.h.toCover());
+    keyBtns.append(this.treeLevelBtn, this.treeBackBtn);
+    key.append(keyBtns);
+    grid.append(key);
+
+    this.sheet = el('div', 'cr-sheet');
+    grid.append(this.sheet);
+    t.append(grid);
+    t.append(legendBar([['Arrows', 'Move'], ['Enter', 'Choose'], ['K', 'I can fly this'], ['L', 'Set my level'], ['Esc', 'Back']]));
+    this.markTree();
+    this.settle();
+  }
+
+  /* The lesson a part's sheet starts on: the first open one without a
+   * medal, else the first. */
+  firstLessonAt(part) {
+    const p = this.progress;
+    const i = part.lessons.findIndex((id) => lessonUnlocked(p, id) && !(lessonRecord(p, id) || {}).medal);
+    return i >= 0 ? i : 0;
+  }
+
+  markTree() {
+    for (const [id, node] of this.partEls) {
+      node.classList.toggle('is-on', id === this.treeAt);
+    }
+    const chosen = this.partEls.get(this.treeAt);
+    if (chosen && this.sheet) {
+      this.sheet.style.order = String(Number(chosen.style.order) + 1);
+    }
+    this.paintSheet();
+    /* In the list a small window gets, the part goes to the top so its
+     * lessons, which follow it, are on the page too. The grid never scrolls. */
+    const on = this.partEls.get(this.treeAt);
+    if (on && on.scrollIntoView && this.zone === 'parts') {
+      on.scrollIntoView({ block: 'start', inline: 'nearest' });
+    }
+    this.cutWindows();
+  }
+
+  paintSheet() {
+    const p = this.progress;
+    const part = partById(this.treeAt);
+    const d = this.sheet;
+    if (!d || !part) {
+      return;
+    }
+    d.textContent = '';
+    const s = partStats(p, part);
+    const branch = BRANCHES[part.branch];
+    d.className = `cr-sheet cr-sheet-${part.branch}`;
+    d.append(el('span', 'cr-kick', part.licence ? 'Licence' : branch.title));
+    d.append(el('b', 'cr-sheet-title', part.title));
+    this.sheetLessons = [];
+    this.knownBtn = null;
+    if (part.soon) {
+      d.append(el('p', 'cr-panel-line', `${part.short}. In the next issue: this part is being written, and opens here when it is.`));
+      return;
+    }
+    d.append(el('p', 'cr-panel-line', s.state === 'locked' ? this.lockedLine(part) : (part.blurb || part.short)));
+    const row = el('div', 'cr-sheet-lessons');
+    part.lessons.forEach((id, i) => {
+      const l = lessonById(id);
+      const rec = lessonRecord(p, id);
+      const open = lessonUnlocked(p, id);
+      const tile = el('button', `cr-tile${open ? '' : ' is-locked'}${rec && rec.medal ? ` is-${rec.medal}` : ''}`);
+      tile.type = 'button';
+      const glyph = el('span', 'cr-tile-glyph');
+      glyph.innerHTML = open ? lessonGlyph(l) : lockSvg();
+      tile.append(glyph);
+      tile.append(el('span', 'cr-tile-name', l.title));
+      const foot = el('span', 'cr-tile-foot');
+      foot.append(starRow(rec && rec.medal, 'cr-stars tiny'));
+      const best = bestOf(l, rec);
+      if (best) {
+        foot.append(el('span', 'cr-tile-best', best));
+      }
+      tile.append(foot);
+      tile.addEventListener('mouseenter', () => {
+        this.zone = 'lessons';
+        this.lessonAt = i;
+        this.paintZone();
+      });
+      tile.addEventListener('click', () => {
+        if (open) {
+          this.h.open(id, 'tree');
+        }
+      });
+      row.append(tile);
+      this.sheetLessons.push(tile);
+    });
+    d.append(row);
+    if (knowable(part) && s.state !== 'done') {
+      const known = s.known;
+      this.knownBtn = button(known ? 'Unmark: I have not flown this' : 'I can fly this already', 'K', 'small');
+      this.knownBtn.addEventListener('click', () => this.h.markKnown(part.id, !known));
+      d.append(this.knownBtn);
+    }
+    this.paintZone();
+  }
+
+  lockedLine(part) {
+    if (part.after === 'branch') {
+      return `Opens when every part of ${BRANCHES[part.branch].title} is finished.`;
+    }
+    const names = part.after.map((id) => partById(id)).filter(Boolean).map((x) => x.title);
+    const trunk = part.branch === 'trunk' || part.branch === 'crown';
+    const how = trunk ? 'Finish' : 'Fly three lessons of';
+    if (part.id === 'pro') {
+      return 'Opens when you hold both licences, race and freestyle.';
+    }
+    return `${how} ${names.join(' and ')} to open it, or mark what you can already fly in Set my level.`;
+  }
+
+  paintZone() {
+    const tiles = this.sheetLessons || [];
+    const items = [...tiles, this.knownBtn].filter(Boolean);
+    if (this.lessonAt >= items.length) {
+      this.lessonAt = 0;
+    }
+    items.forEach((b, i) => b.classList.toggle('is-focus', this.zone === 'lessons' && i === this.lessonAt));
+    const on = items[this.lessonAt];
+    if (this.zone === 'lessons' && on && on.scrollIntoView) {
+      on.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+    if (this.partEls) {
+      for (const [id, node] of this.partEls) {
+        node.classList.toggle('is-focus', this.zone === 'parts' && id === this.treeAt);
       }
     }
-    if (this.cardEls) {
-      this.cardEls.forEach((c, i) => c.classList.toggle('is-on', i === this.lessonAt && this.zone === 'lessons'));
-      const on = this.cardEls[this.lessonAt];
-      if (on && on.scrollIntoView) {
-        on.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+
+  /* The part nearest in a direction, by the panels' places on screen. */
+  partToward(dir) {
+    const from = this.partEls.get(this.treeAt);
+    if (!from) {
+      return null;
+    }
+    const a = from.getBoundingClientRect();
+    const ax = a.left + a.width / 2;
+    const ay = a.top + a.height / 2;
+    let best = null;
+    let bestScore = Infinity;
+    for (const [id, node] of this.partEls) {
+      if (id === this.treeAt) {
+        continue;
+      }
+      const b = node.getBoundingClientRect();
+      const dx = b.left + b.width / 2 - ax;
+      const dy = b.top + b.height / 2 - ay;
+      const along = { left: -dx, right: dx, up: -dy, down: dy }[dir];
+      const across = dir === 'left' || dir === 'right' ? Math.abs(dy) : Math.abs(dx);
+      if (along <= 4) {
+        continue;
+      }
+      const score = along + across * 2.2;
+      if (score < bestScore) {
+        bestScore = score;
+        best = id;
       }
     }
-    if (this.detailEl) {
-      this.paintDetail();
+    return best;
+  }
+
+  treeKey(k) {
+    const part = partById(this.treeAt);
+    if (k === 'level') {
+      this.h.toLevel();
+      return;
     }
-    const btns = this.hubActions();
-    btns.forEach((b, i) => b.classList.toggle('is-focus', this.zone === 'actions' && i === this.actionAt));
+    if (k === 'known' && part && knowable(part)) {
+      this.h.markKnown(part.id, !partStats(this.progress, part).known);
+      return;
+    }
+    if (this.zone === 'lessons') {
+      const items = [...(this.sheetLessons || []), this.knownBtn].filter(Boolean);
+      if (k === 'back' || k === 'up' || !items.length) {
+        this.zone = 'parts';
+        this.paintZone();
+        return;
+      }
+      if (k === 'left' || k === 'right') {
+        this.lessonAt = (this.lessonAt + (k === 'right' ? 1 : -1) + items.length) % items.length;
+        this.paintZone();
+      } else if (k === 'down') {
+        this.lessonAt = items.length - 1;
+        this.paintZone();
+      } else if (k === 'select') {
+        const b = items[this.lessonAt];
+        if (b && !b.classList.contains('is-locked')) {
+          b.click();
+        }
+      }
+      return;
+    }
+    if (k === 'back') {
+      this.h.toCover();
+      return;
+    }
+    if (k === 'select') {
+      if (part && !part.soon) {
+        this.zone = 'lessons';
+        this.lessonAt = this.firstLessonAt(part);
+        this.paintZone();
+      }
+      return;
+    }
+    if (k === 'prevChapter' || k === 'nextChapter') {
+      const order = PARTS.map((x) => x.id);
+      const i = order.indexOf(this.treeAt);
+      this.treeAt = order[(i + (k === 'nextChapter' ? 1 : -1) + order.length) % order.length];
+      this.lessonAt = 0;
+      this.markTree();
+      return;
+    }
+    if (k === 'left' || k === 'right' || k === 'up' || k === 'down') {
+      const to = this.partToward(k);
+      if (to) {
+        this.treeAt = to;
+        this.lessonAt = 0;
+        this.markTree();
+      } else if (k === 'down') {
+        /* Off the bottom of the tree: the part's lessons. */
+        this.zone = 'lessons';
+        this.lessonAt = this.firstLessonAt(part);
+        this.paintZone();
+      }
+    }
+  }
+
+  /*
+   * THE LINKS, drawn in one SVG over the grid from the panels' own boxes,
+   * when the tree is drawn and when the window changes size. Square elbows
+   * through the gutters, the way a page's panel borders run: straight up
+   * from a part to the one above it, along a row to a neighbour, and round
+   * through the gutter when there is a panel in the way.
+   */
+  drawLinks() {
+    const svg = this.links;
+    const grid = this.treeGrid;
+    if (!svg || !grid || !grid.isConnected) {
+      return;
+    }
+    const g = grid.getBoundingClientRect();
+    svg.setAttribute('viewBox', `0 0 ${Math.max(1, g.width)} ${Math.max(1, g.height)}`);
+    svg.setAttribute('width', String(g.width));
+    svg.setAttribute('height', String(g.height));
+    const box = (id) => {
+      const n = this.partEls.get(id);
+      if (!n || n.offsetParent === null) {
+        return null;
+      }
+      const r = n.getBoundingClientRect();
+      return {
+        l: r.left - g.left, r: r.right - g.left, t: r.top - g.top, b: r.bottom - g.top, cx: r.left - g.left + r.width / 2, cy: r.top - g.top + r.height / 2,
+      };
+    };
+    const p = this.progress;
+    let out = '';
+    const line = (d, lit, soon) => {
+      const mods = `${lit ? ' is-lit' : ''}${soon ? ' is-soon' : ''}`;
+      out += `<path class="cr-link-ink${mods}" d="${d}"/><path class="cr-link${mods}" d="${d}"/>`;
+    };
+    for (const part of PARTS) {
+      const parents = part.after === 'branch'
+        ? PARTS.filter((x) => x.branch === part.branch && x.row === part.row + 1 && x.col >= part.col && x.col < part.col + (part.span || 1))
+        : part.after.map((id) => partById(id)).filter(Boolean);
+      const to = box(part.id);
+      if (!to) {
+        continue;
+      }
+      const lit = !part.soon && partStats(p, part).open;
+      for (const from of parents) {
+        const a = box(from.id);
+        if (!a) {
+          continue;
+        }
+        const soon = part.soon || from.soon;
+        let d;
+        const sameCol = to.l < a.cx && a.cx < to.r;
+        if (sameCol && a.t > to.b) {
+          d = `M${a.cx} ${a.t} V${to.b}`;
+        } else if (Math.abs(a.cy - to.cy) < 4) {
+          const between = PARTS.some((x) => x !== part && x !== from && x.row === from.row
+            && ((x.col > Math.min(from.col, part.col) && x.col < Math.max(from.col, part.col))));
+          if (!between) {
+            d = a.cx < to.cx ? `M${a.r} ${a.cy} H${to.l}` : `M${a.l} ${a.cy} H${to.r}`;
+          } else {
+            const y = a.b + 12;
+            const x0 = a.cx < to.cx ? a.r - 18 : a.l + 18;
+            d = `M${x0} ${a.b} V${y} H${to.cx} V${to.b}`;
+          }
+        } else {
+          const right = to.cx > a.cx;
+          const gx = right ? a.r + 14 : a.l - 14;
+          d = `M${right ? a.r : a.l} ${a.cy} H${gx} V${to.cy} H${right ? to.l : to.r}`;
+        }
+        line(d, lit, soon);
+      }
+    }
+    svg.innerHTML = out;
+  }
+
+  /* ---------------------------------------------------------------- *
+   * The fork: race or freestyle first.
+   * ---------------------------------------------------------------- */
+
+  showFork(p) {
+    this.progress = p;
+    this.screen = 'fork';
+    const f = this.clear(this.fork);
+    const side = (b, words, lines) => {
+      const a = el('button', `cr-fork-side cr-fork-${b}`);
+      a.type = 'button';
+      a.append(el('span', 'cr-kick', words));
+      /* A short window stacks the two ways, so the word is lettered to fit
+       * the panel's height rather than half the page's width. */
+      const px = Math.max(56, Math.min(120, Math.round(window.innerHeight * 0.13)));
+      a.append(lettered(BRANCHES[b].title, px, INKS.cream, 'cr-title cr-fork-title', 0.3));
+      const list = el('ul', 'cr-fork-list');
+      for (const l of lines) {
+        list.append(el('li', null, l));
+      }
+      a.append(list);
+      a.append(el('span', 'cr-btn primary big', b === 'race' ? 'Start racing' : 'Start freestyle'));
+      a.addEventListener('click', () => this.h.chooseBranch(b));
+      return a;
+    };
+    this.forkRace = side('race', 'Way one', ['Gates, then laps on the official tracks.', 'Starts, race lines and a ghost to beat.', 'Your Pro Race Licence at the end.']);
+    this.forkFree = side('freestyle', 'Way two', ['Gaps through containers and a building.', 'Flips and rolls, then the hard ones in halves.', 'Powerloops, Split-S and Matty Flips.']);
+    const mid = el('div', 'cr-fork-mid');
+    const stamp = el('div', 'cr-fork-stamp');
+    stamp.append(el('span', null, 'Licensed'), el('b', null, 'Rookie'), el('span', null, 'WebFPV pilot'));
+    const back = button('Back to the tree', 'Esc', 'small');
+    back.addEventListener('click', () => this.h.toTree('rk'));
+    mid.append(stamp, el('div', 'cr-fork-balloon', 'Which way first?'), el('p', 'cr-fork-note', 'Both are open now. This is only where you start.'), back);
+    f.append(this.forkRace, mid, this.forkFree);
+    f.append(legendBar([['Arrows', 'Choose'], ['Enter', 'Start'], ['Esc', 'Back to the tree']]));
+    this.hoverFocus([this.forkRace, this.forkFree]);
+    this.setFocus([this.forkRace, this.forkFree], p.first === 'freestyle' ? 1 : 0);
+    this.settle();
+  }
+
+  forkKey(k) {
+    if (k === 'back') {
+      this.h.toTree('rk');
+    } else {
+      this.listKey2(k);
+    }
+  }
+
+  /* ---------------------------------------------------------------- *
+   * Set my level, the whole tree, and the save code.
+   * ---------------------------------------------------------------- */
+
+  showLevel(p, { steam = false, message = '', fresh = false } = {}) {
+    this.progress = p;
+    this.screen = 'level';
+    const v = this.clear(this.level);
+    /* The answers start from the tree as it stands each time the page is
+     * opened, and after Clear what I marked; a Yes picked and not marked
+     * is not carried to the next visit. Between presses they are kept. */
+    if (fresh || !this.answers) {
+      this.answers = levelAnswers(p);
+    }
+    const main = el('div', 'cr-level-main');
+    main.append(el('span', 'cr-kick', 'Already fly?'), lettered('Set My Level', 80, INKS.cream, 'cr-title', 0.45));
+    main.append(el('p', 'cr-panel-line wide', 'Tell us what you can already do. Those parts are marked as known and everything after them opens. Stars are still flown for, one run at a time.'));
+    const qs = el('div', 'cr-panel cr-questions');
+    const focus = [];
+    for (const q of LEVEL_QUESTIONS) {
+      const row = el('div', 'cr-q');
+      row.append(el('span', 'cr-q-text', q.text));
+      for (const [label, val] of [['Yes', true], ['Not yet', false]]) {
+        const b = el('button', `cr-choice${this.answers[q.id] === val ? ' is-picked' : ''}`, label);
+        b.type = 'button';
+        b.setAttribute('aria-pressed', String(this.answers[q.id] === val));
+        b.addEventListener('click', () => {
+          this.answers[q.id] = val;
+          const at = this.focusAt;
+          const y = this.level.scrollTop;
+          this.showLevel(this.progress, { steam });
+          this.level.scrollTop = y;
+          this.setFocus(this.focus, at);
+        });
+        row.append(b);
+        focus.push(b);
+      }
+      qs.append(row);
+    }
+    main.append(qs);
+    const acts = el('div', 'cr-row');
+    const mark = button('Mark these as known', 'Enter', 'primary');
+    mark.addEventListener('click', () => this.h.setLevel({ ...this.answers }));
+    const all = button(p.openAll ? 'Close the whole tree again' : 'Open the whole tree', null);
+    all.addEventListener('click', () => this.h.openAll(!p.openAll));
+    acts.append(mark, all);
+    let clearBtn = null;
+    if (p.known.length) {
+      clearBtn = button('Clear what I marked', null, 'small');
+      clearBtn.addEventListener('click', () => this.h.clearKnown());
+      acts.append(clearBtn);
+    }
+    main.append(acts);
+    if (message) {
+      main.append(el('p', 'cr-level-message', message));
+    }
+    focus.push(mark, all, clearBtn);
+
+    const side = el('div', 'cr-level-side');
+    const save = el('div', 'cr-panel cr-savecard');
+    save.append(el('span', 'cr-kick', 'Keep your career'));
+    save.append(el('p', 'cr-panel-line', steam
+      ? 'Steam Cloud keeps your career with your account. A save code still takes it to the browser game and back.'
+      : 'Your career lives in this browser. A save code takes it to another computer or browser: copy it here, paste it there.'));
+    const copy = button('Copy save code', null);
+    const paste = button('Load a code', null);
+    const field = el('textarea', 'cr-code');
+    field.rows = 3;
+    field.spellcheck = false;
+    field.setAttribute('aria-label', 'Save code');
+    field.placeholder = 'WFPV2-...';
+    field.hidden = true;
+    const load = button('Load this code', null, 'primary small');
+    load.hidden = true;
+    const said = el('p', 'cr-code-said');
+    copy.addEventListener('click', () => {
+      field.hidden = false;
+      field.readOnly = true;
+      load.hidden = true;
+      field.value = this.h.saveCode();
+      field.select();
+      this.cutWindows();
+      const done = () => { said.textContent = 'Copied. Paste it into Load a code on the other computer.'; this.cutWindows(); };
+      const fail = () => { said.textContent = 'Selected: copy it with Ctrl and C.'; this.cutWindows(); };
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(field.value).then(done, fail);
+        } else {
+          fail();
+        }
+      } catch (e) {
+        fail();
+      }
+    });
+    paste.addEventListener('click', () => {
+      field.hidden = false;
+      field.readOnly = false;
+      field.value = '';
+      load.hidden = false;
+      said.textContent = 'Paste a code, then Load this code. It adds to your career, and never takes a medal away.';
+      this.cutWindows();
+      field.focus();
+    });
+    load.addEventListener('click', () => {
+      said.textContent = this.h.loadCode(field.value);
+      this.cutWindows();
+    });
+    field.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !field.readOnly) {
+        e.preventDefault();
+        said.textContent = this.h.loadCode(field.value);
+        this.cutWindows();
+      }
+    });
+    const codeRow = el('div', 'cr-row');
+    codeRow.append(copy, paste);
+    save.append(codeRow, field, load, said);
+    side.append(save);
+    const back = button('Back', 'Esc');
+    back.addEventListener('click', () => this.h.levelBack());
+    side.append(back);
+    focus.push(copy, paste, back);
+    v.append(main, side);
+    v.append(legendBar([['Arrows', 'Move'], ['Enter', 'Choose'], ['Esc', 'Back']]));
+    this.hoverFocus(focus);
+    this.setFocus(focus, 0);
+    this.settle();
+  }
+
+  levelKey(k) {
+    if (k === 'back') {
+      this.h.levelBack();
+    } else {
+      this.listKey2(k);
+    }
   }
 
   /* ---------------------------------------------------------------- *
@@ -518,7 +1293,7 @@ export class CareerScreens {
     const head = el('div', 'cr-ach-head');
     const left = el('div');
     left.append(el('div', 'cr-kicker', 'WebFPV'), lettered('Achievements', 64, INKS.cream));
-    left.append(el('p', 'cr-sub', 'Kept on this computer, and on Steam whenever Steam is running. Shift and Tab opens the Steam overlay\u2019s list too.'));
+    left.append(el('p', 'cr-sub', 'Kept on this computer, and on Steam whenever Steam is running. Shift and Tab opens the Steam overlay’s list too.'));
     const count = el('div', 'cr-ach-count', String(earned));
     count.append(el('small', null, `of ${list.length}`));
     head.append(left, count);
@@ -577,130 +1352,58 @@ export class CareerScreens {
     }
   }
 
-  openSelected() {
-    const l = CHAPTERS[this.chapter].lessons[this.lessonAt];
-    if (lessonUnlocked(this.progress, l.id)) {
-      this.h.open(l.id);
-    }
-  }
-
-  /*
-   * The hub's keys. Three zones, top to bottom: the chapter strip, the
-   * lessons, the buttons. Up and down move between them, left and right
-   * walk along the one the cursor is in, and Q and E (the shoulders on a
-   * pad) change chapter from anywhere. Walking off the end of a chapter's
-   * lessons steps into the next chapter, so the whole career is one row
-   * to a pilot who only presses right.
-   */
-  hubKey(k) {
-    const ch = CHAPTERS[this.chapter];
-    const actions = this.hubActions();
-    if (k === 'back') {
-      this.h.leave();
-      return;
-    }
-    if (k === 'prevChapter' || k === 'nextChapter') {
-      this.chapter = (this.chapter + (k === 'nextChapter' ? 1 : -1) + CHAPTERS.length) % CHAPTERS.length;
-      this.lessonAt = 0;
-      this.renderHub();
-      return;
-    }
-    if (this.zone === 'chapters') {
-      if (k === 'left' || k === 'right') {
-        this.chapter = (this.chapter + (k === 'right' ? 1 : -1) + CHAPTERS.length) % CHAPTERS.length;
-        this.lessonAt = 0;
-        this.renderHub();
-        this.zone = 'chapters';
-        this.markHub();
-      } else if (k === 'down' || k === 'select') {
-        this.zone = 'lessons';
-        this.markHub();
-      }
-      return;
-    }
-    if (this.zone === 'actions') {
-      if (k === 'left' || k === 'right') {
-        this.actionAt = (this.actionAt + (k === 'right' ? 1 : -1) + actions.length) % actions.length;
-      } else if (k === 'up') {
-        this.zone = 'lessons';
-      } else if (k === 'select') {
-        const b = actions[this.actionAt];
-        if (b && !b.disabled) {
-          b.click();
-        }
-        return;
-      }
-      this.markHub();
-      return;
-    }
-    if (k === 'left') {
-      if (this.lessonAt > 0) {
-        this.lessonAt -= 1;
-      } else {
-        this.chapter = (this.chapter - 1 + CHAPTERS.length) % CHAPTERS.length;
-        this.lessonAt = CHAPTERS[this.chapter].lessons.length - 1;
-        this.renderHub();
-        return;
-      }
-    } else if (k === 'right') {
-      if (this.lessonAt < ch.lessons.length - 1) {
-        this.lessonAt += 1;
-      } else {
-        this.chapter = (this.chapter + 1) % CHAPTERS.length;
-        this.lessonAt = 0;
-        this.renderHub();
-        return;
-      }
-    } else if (k === 'down') {
-      this.zone = 'actions';
-      this.actionAt = actions.indexOf(this.openBtn);
-    } else if (k === 'up') {
-      this.zone = 'chapters';
-    } else if (k === 'select') {
-      this.openSelected();
-      return;
-    }
-    this.markHub();
-  }
-
   /* ---------------------------------------------------------------- *
-   * The briefing.
+   * The briefing: the lesson's page.
    * ---------------------------------------------------------------- */
 
   showBriefing(lesson, {
-    record, stickMode = 2, ready = false, keys = false,
+    record, stickMode = 2, ready = false, keys = false, from = 'tree',
   } = {}) {
     this.screen = 'briefing';
     this.stickMode = stickMode;
-    const b = this.brief;
-    b.textContent = '';
-    const card = el('div', 'cr-brief-card');
-    const main = el('div');
-    const kick = el('div', 'cr-kicker');
-    kick.append(document.createTextNode(`Lesson ${lesson.id.replace('-', '.')}  `));
-    main.append(kick, lettered(lesson.title, 64, INKS.cream));
-    const tags = el('div');
-    tags.style.display = 'flex';
-    tags.style.gap = '8px';
-    tags.style.marginTop = '10px';
+    const b = this.clear(this.brief);
+    const page = el('div', 'cr-brief-page');
+
+    const hero = el('div', 'cr-brief-hero cr-window');
+    const heroWords = el('div', 'cr-brief-hero-words');
+    heroWords.append(el('span', 'cr-kick', lessonPlace(lesson)));
+    heroWords.append(lettered(lesson.title, 96, INKS.cream, 'cr-title cr-brief-title', 0.5));
+    const tags = el('div', 'cr-tags');
     tags.append(modeTag(lesson.mode));
     if (lesson.camera === 'chase') {
       tags.append(el('span', 'cr-tag', 'Chase camera'));
     }
-    main.append(tags);
-    main.append(el('p', 'cr-goal', sticksIn(lesson.briefing.goal, stickMode, { keys })));
-    main.append(el('p', 'cr-why', sticksIn(lesson.briefing.why, stickMode, { keys })));
+    if (lesson.failOn && lesson.failOn.crash) {
+      tags.append(el('span', 'cr-tag warn', 'No crashes'));
+    }
+    heroWords.append(tags);
+    hero.append(heroWords);
+    this.loadEl = el('div', `cr-load${ready ? ' ready' : ''}`, ready ? 'Ready.' : 'Getting the field ready...');
+    hero.append(this.loadEl);
+    page.append(hero);
+
+    const coach = el('div', 'cr-brief-coach');
+    const balloon = el('div', 'cr-balloon', sticksIn(lesson.briefing.why, stickMode, { keys }));
+    const art = el('div', 'cr-coach-face');
+    art.innerHTML = coachSvg();
+    coach.append(balloon, art);
+    page.append(coach);
+
+    const job = el('div', 'cr-panel cr-brief-job');
+    job.append(el('span', 'cr-kick', 'The job'));
+    job.append(el('p', 'cr-goal', sticksIn(lesson.briefing.goal, stickMode, { keys })));
     const steps = el('ol', 'cr-steps');
     for (const s of lesson.briefing.steps) {
       steps.append(el('li', null, sticksIn(s, stickMode, { keys })));
     }
-    main.append(steps);
+    job.append(steps);
     if (lesson.briefing.note) {
-      main.append(el('div', 'cr-note', sticksIn(lesson.briefing.note, stickMode, { keys })));
+      job.append(el('p', 'cr-note', sticksIn(lesson.briefing.note, stickMode, { keys })));
     }
-    const side = el('div', 'cr-brief-side');
-    const sticks = el('div', 'cr-panel');
-    sticks.append(el('h4', null, 'The sticks'));
+    page.append(job);
+
+    const sticks = el('div', 'cr-panel cr-brief-sticks');
+    sticks.append(el('span', 'cr-kick', 'The sticks'));
     const sw = el('div');
     sw.innerHTML = sticksHtml(lesson.briefing.sticks || [], stickMode);
     sticks.append(sw);
@@ -709,30 +1412,29 @@ export class CareerScreens {
        * in for, so say which keys. The same map How to fly shows. */
       sticks.append(el('p', 'cr-keys-note', 'On the keyboard: W and S are the throttle, A and D yaw, and the arrows tilt the quad. A tap is a nudge, a hold is a push.'));
     }
-    side.append(sticks);
-    const medals = el('div', 'cr-panel');
-    medals.append(el('h4', null, 'Medals'));
-    medals.append(ladder(lesson, record ? record.medal : null, { compact: true }));
+    page.append(sticks);
+
+    const go = el('div', 'cr-brief-go');
+    const medals = el('div', 'cr-panel cr-brief-medals');
+    medals.append(el('span', 'cr-kick', 'Stars'));
+    medals.append(ladder(lesson, record ? record.medal : null));
     const best = bestOf(lesson, record);
-    if (best) {
-      medals.append(el('p', 'cr-res-line', `Your best: ${best}`));
-    }
-    side.append(medals);
-    this.loadEl = el('div', `cr-load${ready ? ' ready' : ''}`, ready ? 'Ready.' : 'Getting the field ready...');
-    side.append(this.loadEl);
-    const actions = el('div', 'cr-brief-actions');
-    this.flyBtn = button('Fly', 'Enter', 'primary');
+    medals.append(el('p', 'cr-best', best ? `Your best: ${best}` : 'Your best: not flown yet'));
+    go.append(medals);
+    const actions = el('div', 'cr-row');
+    this.flyBtn = button('Fly', 'Enter', 'primary big');
     this.flyBtn.disabled = !ready;
     this.flyBtn.addEventListener('click', () => this.h.fly());
-    const back = button('Back', 'Esc');
-    back.addEventListener('click', () => this.h.backToHub());
+    const back = button(from === 'cover' ? 'Back' : 'Back to the tree', 'Esc');
+    back.addEventListener('click', () => this.h.backFromBriefing());
     actions.append(this.flyBtn, back);
-    side.append(actions);
-    card.append(main, side);
-    b.append(card);
-    b.append(legendBar([['Enter', 'Fly'], ['Esc', 'Back to the career'], ['R', 'In flight: restart'], ['Esc', 'In flight: pause']]));
-    this.paintHands();
+    go.append(actions);
+    page.append(go);
+    b.append(page);
+    b.append(legendBar([['Enter', 'Fly'], ['Esc', 'Back'], ['R', 'In flight: restart'], ['Esc', 'In flight: pause']]));
+    this.hoverFocus([this.flyBtn, back]);
     this.setFocus([this.flyBtn, back], 0);
+    this.settle();
   }
 
   setReady(ready, text) {
@@ -778,15 +1480,17 @@ export class CareerScreens {
 
   showFlight(lesson) {
     this.screen = 'flight';
-    document.body.classList.toggle('career-score', lesson.objectives.some((o) => o.kind === 'score'));
-    this.objKicker.textContent = `Lesson ${lesson.id.replace('-', '.')}  ${lesson.title}`;
+    /* The counter's total and combo are shown for a lesson that is scored
+     * by them: a score run, a combo, or close calls. */
+    document.body.classList.toggle('career-score', lesson.objectives.some((o) => o.kind === 'score' || o.kind === 'combo' || o.kind === 'close'));
+    this.objKicker.textContent = `${lessonPlace(lesson)}  ${lesson.title}`;
     this.listKey = '';
     this.coach(null);
     this.altEl.classList.remove('show');
     this.marker.classList.remove('show');
     /* The lesson's name, lettered, for a beat: the run has a title card
      * the way a chapter of a comic does. */
-    this.card(lesson.title, { line: `Lesson ${lesson.id.replace('-', '.')}` });
+    this.card(lesson.title, { line: lessonPlace(lesson) });
   }
 
   paintStatus(status, stickMode = 2, keys = false) {
@@ -879,7 +1583,7 @@ export class CareerScreens {
   }
 
   /* A title card in the manga hand: the word, and a smaller line under
-   * it (the lesson's number at the start of a run). Lettered the way a
+   * it (where the lesson is, at the start of a run). Lettered the way a
    * callout is, without the balloon, and kept to the upper third. */
   card(word, { fill = INKS.cream, line = '', lineFill = INKS.amber, px = 60, ms = 3000 } = {}) {
     const c = el('canvas');
@@ -898,104 +1602,308 @@ export class CareerScreens {
    * The results.
    * ---------------------------------------------------------------- */
 
-  showResults(lesson, status, outcome, { next, stickMode = 2, keys = false } = {}) {
+  showResults(lesson, status, outcome, {
+    next, progress, stickMode = 2, keys = false,
+  } = {}) {
     this.screen = 'results';
-    const r = this.results;
-    r.textContent = '';
+    const r = this.clear(this.results);
     const failed = status.phase === 'failed';
-    const card = el('div', `cr-res-card${failed ? ' failed' : ''}`);
-    card.append(el('div', 'cr-kicker', `Lesson ${lesson.id.replace('-', '.')}  ${lesson.title}`));
+    r.classList.toggle('is-failed', failed);
+    r.classList.toggle('is-gold', !failed && status.medal === 'gold');
+    const page = el('div', 'cr-res-page');
+    const main = el('div', 'cr-res-main');
+    main.append(el('span', 'cr-kick', `${lessonPlace(lesson)}: ${lesson.title}`));
+    const extra = [];
+    let paintBtn = null;
     if (failed) {
       const why = {
-        crash: 'Crashed', time: 'Out of time', area: 'Out of bounds', score: 'Not enough',
-      }[status.failReason] || 'Try again';
-      card.append(lettered(why, 64, INKS.sakura));
-      const tip = status.failReason === 'score'
-        ? `${points(status.current && status.current.state ? status.current.state.best || 0 : 0)} banked. ${lesson.scoreTip || 'Link your lines: a combo pays more than the same moves one at a time.'}`
-        : (lesson.crashTip || 'Take a breath and try it again.');
-      card.append(el('p', 'cr-res-tip', sticksIn(tip, stickMode, { keys })));
+        crash: 'Crashed!', time: 'Out of time!', area: 'Out of bounds!', score: 'Not enough!', slow: 'Too slow!', laps: 'Out of laps!',
+      }[status.failReason] || 'Try again!';
+      main.append(lettered(why, 120, INKS.sakura, 'cr-title cr-res-word', 0.5));
+      /* The lesson's own word for each way a run ends early, then the crash
+       * tip, which is what most of them have. */
+      const tips = {
+        score: `${points(status.current && status.current.state ? status.current.state.best || 0 : 0)} banked. ${lesson.scoreTip || 'Link your lines: a combo pays more than the same moves one at a time.'}`,
+        slow: lesson.slowTip,
+        laps: lesson.lapsTip,
+      };
+      const tip = tips[status.failReason] || lesson.crashTip || 'Take a breath and try it again.';
+      const coach = el('div', 'cr-res-coach');
+      const art = el('div', 'cr-coach-face small');
+      art.innerHTML = coachSvg();
+      coach.append(art, el('div', 'cr-balloon left', sticksIn(tip, stickMode, { keys })));
+      main.append(coach);
+      /* What is still there to win, and the best the pilot already has. */
+      const rec = progress ? lessonRecord(progress, lesson.id) : null;
+      const stars = el('div', 'cr-panel cr-res-chase');
+      stars.append(el('span', 'cr-kick', 'Stars to win'), ladder(lesson, rec ? rec.medal : null));
+      const best = bestOf(lesson, rec);
+      const on = lesson.fallen ? ' on the stand in' : '';
+      stars.append(el('p', 'cr-best', best ? `Your best${on}: ${best}` : `Your best${on}: not finished yet`));
+      main.append(stars);
     } else {
-      /* The last lesson of the career, finished for the first time: the
-       * licence is the word, not the lesson. */
-      const licensed = Boolean(outcome && outcome.careerFinished);
-      card.append(lettered(licensed ? 'Licensed' : 'Complete', Math.min(64, Math.round(window.innerHeight * 0.065)), licensed ? INKS.sakura : INKS.mint));
-      const medal = el('div', 'cr-res-medal');
-      medal.innerHTML = medalSvg(status.medal);
-      card.append(medal);
-      /* The medal's name, shouted: a burst balloon in the manga hand, the
-       * way a callout lands a trick. Gold in gold, silver in silver, and a
-       * finish in cream. */
-      const shout = el('div', 'cr-res-shout');
-      const word = el('canvas');
-      try {
-        const fill = { gold: INKS.amber, silver: '#d6dee6', bronze: INKS.cream }[status.medal] || INKS.cream;
-        paintCall(word, {
-          word: MEDAL_NAME[status.medal] || 'Finish', fill, size: Math.max(30, Math.min(52, window.innerHeight * 0.05)),
-          balloon: true, seed: `medal-${status.medal}`, reach: 0.7, maxW: Math.min(420, window.innerWidth * 0.4),
-        });
-        shout.append(word);
-      } catch (e) {
-        shout.append(el('b', null, MEDAL_NAME[status.medal] || 'Finish'));
-      }
-      card.append(shout);
-      card.append(el('div', 'cr-res-time', scored(lesson) ? points(status.result.score) : clock(status.result.ms)));
-      if (scored(lesson)) {
-        card.append(el('p', 'cr-res-line', `In ${clock(status.result.ms)}`));
-      }
-      const badges = el('div', 'cr-res-badges');
-      if (licensed) {
-        badges.append(el('span', 'cr-badge sakura', 'Pro licence: every lesson flown'));
-      }
+      const word = { gold: 'Gold!', silver: 'Silver!', bronze: 'Finished!' }[status.medal] || 'Finished!';
+      const fill = { gold: INKS.amber, silver: '#d6dee6', bronze: INKS.cream }[status.medal] || INKS.cream;
+      main.append(lettered(word, 150, fill, 'cr-title cr-res-word', 0.5));
+      main.append(starRow(status.medal, 'cr-stars big'));
+      const time = el('div', 'cr-panel cr-res-time');
+      time.append(el('b', null, scored(lesson) ? points(status.result.score) : clock(status.result.ms)));
+      const said = [];
       if (outcome && outcome.firstFinish) {
-        badges.append(el('span', 'cr-badge', 'First finish'));
+        said.push('First finish.');
       }
       if (outcome && outcome.betterMedal) {
-        badges.append(el('span', 'cr-badge amber', 'Better medal'));
+        said.push('Better medal.');
       }
       if (outcome && outcome.betterTime && !scored(lesson)) {
-        badges.append(el('span', 'cr-badge amber', 'New best time'));
+        said.push('New best time.');
       }
       if (outcome && outcome.betterScore) {
-        badges.append(el('span', 'cr-badge amber', 'New best score'));
+        said.push('New best score.');
       }
-      if (outcome && outcome.opened) {
-        const c = CHAPTERS.find((x) => x.id === outcome.opened);
-        badges.append(el('span', 'cr-badge sakura', `Opened: ${c ? c.title : 'the next chapter'}`));
+      if (scored(lesson)) {
+        said.push(`In ${clock(status.result.ms)}.`);
       }
-      card.append(badges);
-      card.append(ladder(lesson, status.medal));
+      /* A stand in's best is its own (progress.js, fbMs), so the page says
+       * which map the time belongs to. */
+      if (lesson.fallen) {
+        said.push('On the stand in, so it is kept apart from the real map.');
+      }
       const line = [];
       if (status.crashes) {
         line.push(`${status.crashes} crash${status.crashes === 1 ? '' : 'es'}`);
       }
       line.push(`top speed ${Math.round(status.maxSpeed * 3.6)} km/h`);
-      card.append(el('p', 'cr-res-line', line.join(', ')));
+      said.push(`${line.join(', ')}.`.replace(/^./, (c) => c.toUpperCase()));
+      time.append(el('span', null, said.join(' ')));
+      main.append(time);
+      main.append(ladder(lesson, status.medal));
+
+      /* What the run earned, as panels down the right of the page. */
+      if (outcome && outcome.licence) {
+        const lic = el('div', 'cr-panel cr-res-licence');
+        const stamp = el('div', 'cr-fork-stamp small');
+        stamp.append(el('span', null, 'Licensed'), el('b', null, TITLES[titleOf(progress)] || 'Pilot'));
+        lic.append(stamp, el('p', 'cr-panel-line', `${partById(outcome.licence).title}: yours. It is on your licence card from now on.`));
+        extra.push(lic);
+      }
+      if (outcome && outcome.opened && outcome.opened.length) {
+        const op = el('div', 'cr-panel cr-res-opened');
+        op.append(el('span', 'cr-kick sakura', 'Opened'));
+        /* A licence opens three parts at once: the names run on in a row. */
+        const names = el('div', 'cr-res-opened-list');
+        for (const id of outcome.opened) {
+          const part = partById(id);
+          if (part) {
+            names.append(el('b', 'cr-res-opened-name', part.title));
+          }
+        }
+        op.append(names);
+        extra.push(op);
+      }
+      if (outcome && outcome.livery) {
+        const l = liveryById(outcome.livery);
+        const from = partOfLivery(l.id);
+        const lv = el('div', 'cr-panel cr-res-livery');
+        const pic = el('div', 'cr-res-livery-pic');
+        pic.innerHTML = quadSvg(l);
+        const words = el('div', 'cr-res-livery-words');
+        words.append(el('span', 'cr-kick sakura', 'New livery'), el('b', 'cr-res-opened-name', l.name));
+        const flown = from && from.lessons.length > 1 ? `Every lesson of ${from.title} flown.` : `${from ? from.title : 'It'}: flown.`;
+        words.append(el('p', 'cr-panel-line', `${flown} Its colours are yours.`));
+        paintBtn = button('Paint it on', 'P', 'small');
+        paintBtn.addEventListener('click', () => {
+          this.h.paint(l.id);
+          paintBtn.querySelector('.cr-btn-label').textContent = 'On your quad';
+          paintBtn.disabled = true;
+        });
+        words.append(paintBtn);
+        lv.append(pic, words);
+        extra.push(lv);
+      }
+      if (outcome && outcome.stars > 0) {
+        const t = totals(progress);
+        extra.push(el('div', 'cr-res-starsum', `+${outcome.stars} star${outcome.stars === 1 ? '' : 's'}, ${t.stars} in all`));
+      }
     }
+    /* Where the lesson's part stands now, pass or fail. A part of one
+     * lesson (the Rookie Licence, the Championship, the crown) is the
+     * stars and the ladder already on the page, so it is left out. */
+    const part = partOf(lesson.id);
+    if (part && progress && part.lessons.length > 1) {
+      const s = partStats(progress, part);
+      const prog = el('div', 'cr-panel cr-res-part');
+      prog.append(el('span', 'cr-kick', part.title));
+      const bar = el('div', 'cr-meter');
+      const fillEl = el('i');
+      fillEl.style.width = `${Math.round((100 * s.done) / Math.max(1, s.total))}%`;
+      bar.append(fillEl);
+      prog.append(bar, el('span', 'cr-panel-line', s.done === s.total ? `Every lesson flown. ${s.stars} of ${s.maxStars} stars.` : `${s.done} of ${s.total} lessons. ${s.stars} of ${s.maxStars} stars.`));
+      extra.push(prog);
+    }
+    page.append(main);
+    if (extra.length) {
+      const side = el('div', `cr-res-side${extra.length >= 4 ? ' is-full' : ''}`);
+      side.append(...extra);
+      page.append(side);
+    }
+    r.append(page);
+
     const actions = el('div', 'cr-res-actions');
-    const retry = button('Retry', 'R', failed ? 'primary' : '');
+    const retry = button('Fly again', 'R', failed ? 'primary big' : '');
     retry.addEventListener('click', () => this.h.retry());
+    const treeBtn = button('The tree', 'T');
+    treeBtn.addEventListener('click', () => this.h.toTree(partOf(lesson.id) ? partOf(lesson.id).id : null));
     const hubBtn = button('Career', 'Esc');
-    hubBtn.addEventListener('click', () => this.h.backToHub());
+    hubBtn.addEventListener('click', () => this.h.toCover());
     let nextBtn = null;
     if (!failed && next) {
-      nextBtn = button(`Next: ${next.title}`, 'Enter', 'primary');
-      nextBtn.addEventListener('click', () => this.h.next());
+      const label = next.fork ? 'Next: pick a way' : (next.lesson ? `Next: ${lessonById(next.lesson).title}` : null);
+      if (label) {
+        nextBtn = button(label, 'Enter', 'primary big');
+        nextBtn.addEventListener('click', () => this.h.next());
+      }
     }
-    actions.append(...[nextBtn, retry, hubBtn].filter(Boolean));
-    card.append(actions);
-    r.append(card);
-    this.paintHands();
-    this.setFocus([nextBtn, retry, hubBtn], 0);
+    actions.append(...[nextBtn, retry, treeBtn, hubBtn].filter(Boolean));
+    r.append(actions);
+    r.append(legendBar([['Enter', 'Choose'], ['R', 'Fly again'], ['T', 'Tree'], ...(paintBtn ? [['P', 'Paint it on']] : []), ['Esc', 'Career']]));
+    this.resPaint = paintBtn;
+    const list = [nextBtn, retry, treeBtn, hubBtn, paintBtn];
+    this.hoverFocus(list);
+    this.setFocus(list, 0);
+    this.settle();
   }
 
-  /* Keys on the briefing and the results: walk, press, leave. */
-  listKey2(k) {
-    if (k === 'left' || k === 'up') {
-      this.moveFocus(-1);
-    } else if (k === 'right' || k === 'down') {
-      this.moveFocus(1);
-    } else if (k === 'select') {
-      this.pressFocus();
+  resultsKey(k) {
+    if (k === 'tree') {
+      const at = this.focus.find((b) => b && b.textContent.startsWith('The tree'));
+      if (at) {
+        at.click();
+      }
+    } else if (k === 'paint') {
+      if (this.resPaint && !this.resPaint.disabled) {
+        this.resPaint.click();
+      }
+    } else {
+      this.listKey2(k);
+    }
+  }
+
+  /* ---------------------------------------------------------------- *
+   * The Paint Shop: every livery, the earned ones to pick from and the
+   * rest with the part that earns them, and the quad drawn in whichever
+   * the cursor is on. Picking one paints the quad in the world behind the
+   * page at once (src/render/livery.js), and it stays on in every mode.
+   * ---------------------------------------------------------------- */
+
+  showPaint(p, { current = LIVERIES[0].id, said = '' } = {}) {
+    this.progress = p;
+    /* Painting redraws the page: it stays where it was scrolled to. */
+    const y = this.screen === 'paint' ? this.paintShop.scrollTop : 0;
+    this.screen = 'paint';
+    const v = this.clear(this.paintShop);
+    const earned = new Set([LIVERIES[0].id, ...liveriesEarned(p)]);
+    const main = el('div', 'cr-paint-main');
+    main.append(el('span', 'cr-kick', 'Your quad'), lettered('Paint Shop', 80, INKS.cream, 'cr-title', 0.45));
+    main.append(el('p', 'cr-panel-line wide', 'Fly every lesson of a part and its colours are yours. The paint you pick is on your quad on every map and in every mode.'));
+    const grid = el('div', 'cr-livery-grid');
+    const tiles = [];
+    for (const l of LIVERIES) {
+      const part = partOfLivery(l.id);
+      const has = earned.has(l.id);
+      const on = l.id === current;
+      const tile = el('button', `cr-livery${has ? '' : ' is-locked'}${on ? ' is-on' : ''}`);
+      tile.type = 'button';
+      tile.dataset.livery = l.id;
+      tile.setAttribute('aria-pressed', String(on));
+      tile.append(liveryChips(l), el('b', 'cr-livery-name', l.name));
+      const line = el('span', 'cr-livery-line');
+      if (on) {
+        line.textContent = 'On your quad';
+      } else if (has) {
+        line.textContent = part ? part.title : 'The house paint';
+      } else {
+        line.innerHTML = `${lockSvg()}<span>Finish ${part.title}</span>`;
+      }
+      tile.append(line);
+      tile.addEventListener('click', () => {
+        if (has) {
+          this.h.paint(l.id);
+        } else {
+          this.paintSaid.textContent = `Fly every lesson of ${part.title} to earn ${l.name}.`;
+          this.previewLivery(l.id);
+        }
+      });
+      tile.addEventListener('mouseenter', () => this.previewLivery(l.id));
+      grid.append(tile);
+      tiles.push(tile);
+    }
+    main.append(grid);
+    this.paintTiles = tiles;
+
+    const side = el('div', 'cr-paint-side');
+    const show = el('div', 'cr-panel cr-paint-show');
+    this.paintPic = el('div', 'cr-paint-pic');
+    this.paintName = el('b', 'cr-paint-name');
+    this.paintFrom = el('span', 'cr-paint-from');
+    show.append(this.paintPic, this.paintName, this.paintFrom);
+    side.append(show);
+    this.paintSaid = el('p', 'cr-paint-said', said);
+    side.append(this.paintSaid);
+    const back = button('Back', 'Esc');
+    back.addEventListener('click', () => this.h.paintBack());
+    side.append(back);
+    v.append(main, side);
+    v.append(legendBar([['Arrows', 'Move'], ['Enter', 'Paint it on'], ['Esc', 'Back']]));
+    const focus = [...tiles, back];
+    this.hoverFocus(focus);
+    const at = Math.max(0, tiles.findIndex((t) => t.dataset.livery === current));
+    this.setFocus(focus, at);
+    this.previewLivery(current);
+    v.scrollTop = y;
+    this.settle();
+  }
+
+  /* The quad on the right, in the livery the cursor is on. */
+  previewLivery(id) {
+    if (!this.paintPic) {
+      return;
+    }
+    const l = liveryById(id);
+    const part = partOfLivery(l.id);
+    this.paintPic.innerHTML = quadSvg(l);
+    this.paintName.textContent = l.name;
+    this.paintFrom.textContent = part ? `For flying every lesson of ${part.title}` : 'The house paint, yours from the start';
+  }
+
+  /* The swatches are a grid: up and down move a row, and down off the last
+   * row is Back. */
+  paintKey(k) {
+    if (k === 'back') {
+      this.h.paintBack();
+      return;
+    }
+    const tiles = this.paintTiles || [];
+    const n = tiles.length;
+    if ((k === 'up' || k === 'down') && n) {
+      const top = tiles[0].offsetTop;
+      let cols = tiles.findIndex((t) => t.offsetTop !== top);
+      if (cols <= 0) {
+        cols = n;
+      }
+      const i = this.focusAt;
+      if (k === 'down') {
+        this.focusAt = i >= n ? i : Math.min(n, i + cols);
+      } else {
+        this.focusAt = i >= n ? n - 1 : (i - cols >= 0 ? i - cols : i);
+      }
+      this.paintFocus();
+    } else {
+      this.listKey2(k);
+    }
+    const b = this.focus[this.focusAt];
+    if (b && b.dataset.livery) {
+      this.previewLivery(b.dataset.livery);
     }
   }
 }

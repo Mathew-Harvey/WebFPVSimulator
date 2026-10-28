@@ -22,15 +22,26 @@
  *   shell.presence(values)                     Steam's rich presence
  *   shell.onResult(info)                       achievements and stats
  *   shell.sound(name)                          a cue
+ *   shell.hasMap(id)                           is that map in this build
+ *   shell.boardDocument(kind, id)              a map or track from the
+ *                                              board, kind 'map' or 'track':
+ *                                              its document, or a rejection
+ *   shell.setLivery(livery)                    paint the pilot's quad
  *
  * WHAT THE GAME TELLS IT, by the hooks in main.js: frame(record) every
  * rendered frame while a lesson flies, tick() every frame, trick(t),
  * gaps(events), crash(), reset(), and the keys and pad while its screens
  * are up. Nothing here writes to the physics.
  *
- * STATES. idle (not in the career), hub, briefing, launching (Fly pressed,
- * the game is starting the run), flight, results. The game's own screens
- * are hidden under hub, briefing and results (./style.js, body.career-menu).
+ * STATES. idle (not in the career); the menus: cover (the career's front
+ * page), tree, fork (race or freestyle, once), level (Set my level and the
+ * save code), paint (the Paint Shop) and achievements; then briefing,
+ * launching (Fly pressed, the
+ * game is starting the run), flight and results. The game's own screens are
+ * hidden under every menu (./style.js, body.career-menu).
+ *
+ *   shell.cloudSave                            true where the save is kept
+ *                                              with an account (Steam Cloud)
  *
  * This file is part of WebFPV.
  *
@@ -49,15 +60,19 @@
  */
 
 import * as THREE from 'three';
-import { CHAPTERS, chapterOf, lessonById, nextLesson } from './curriculum.js';
+import { chapterOf, lessonById } from './curriculum.js';
 import { createRun } from './objectives.js';
 import {
-  loadProgress, recordRun, saveProgress, lessonRecord,
+  clearKnown, decodeSave, encodeSave, lessonRecord, loadProgress, markKnown, mergeProgress,
+  nextUp, recordRun, saveProgress, setLevel, titleOf,
 } from './progress.js';
+import { saveTitle } from './titles.js';
+import { partOf } from './tree.js';
 import { CareerScreens } from './screens.js';
 import { createVisuals } from './visuals.js';
 import { sticksIn } from './words.js';
 import { INKS } from '../ui/lettering.js';
+import { liveryById, saveLivery, savedLivery } from '../render/livery.js';
 
 const KEYS = {
   ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down',
@@ -65,7 +80,7 @@ const KEYS = {
   Enter: 'select', Space: 'select', NumpadEnter: 'select',
   Escape: 'back', Backspace: 'back',
   KeyQ: 'prevChapter', PageUp: 'prevChapter', KeyE: 'nextChapter', PageDown: 'nextChapter',
-  KeyR: 'retry',
+  KeyR: 'retry', KeyT: 'tree', KeyL: 'level', KeyK: 'known', KeyP: 'paint',
 };
 
 /* How long a coach line stays up at least, how long before the same line
@@ -101,33 +116,84 @@ export function createCareer(shell) {
   const coach = { text: '', since: 0, last: {} };
   let detailSince = { key: '', at: 0 };
 
+  /* Where the briefing and Set my level were opened from, for Back. */
+  let briefFrom = 'tree';
+  let levelFrom = 'cover';
+
   const screens = new CareerScreens({
-    open: (id) => openLesson(id),
+    open: (id, from) => openLesson(id, from),
     fly: () => startFlight(),
-    backToHub: () => backToHub(),
+    backFromBriefing: () => (briefFrom === 'cover' ? toCover() : backToHub()),
     leave: () => leave(),
     retry: () => retry(),
     next: () => {
-      const n = lesson && nextLesson(lesson.id);
-      if (n) {
-        openLesson(n.id);
+      const n = nextUp(progress);
+      if (n && n.fork) {
+        toFork();
+      } else if (n && n.lesson) {
+        openLesson(n.lesson, 'cover');
       } else {
-        backToHub();
+        toCover();
       }
     },
-    openAll: () => {
-      progress.openAll = true;
+    toCover: () => toCover(),
+    toTree: (part) => toTree(part),
+    toFork: () => toFork(),
+    toLevel: () => toLevel(),
+    levelBack: () => (levelFrom === 'tree' ? toTree() : toCover()),
+    chooseBranch: (b) => {
+      progress.first = b === 'freestyle' ? 'freestyle' : 'race';
       saveProgress(progress);
-      screens.showHub(progress, { stickMode: shell.stickMode(), keys: flyingOnKeys() });
+      const n = nextUp(progress);
+      if (n && n.lesson) {
+        openLesson(n.lesson, 'cover');
+      } else {
+        toTree();
+      }
+    },
+    markKnown: (partId, on) => {
+      if (markKnown(progress, partId, on)) {
+        saveProgress(progress);
+      }
+      toTree(partId);
+    },
+    setLevel: (answers) => {
+      setLevel(progress, answers);
+      if (!progress.first && (answers.race || answers.flips)) {
+        progress.first = answers.race ? 'race' : 'freestyle';
+      }
+      saveProgress(progress);
+      const n = nextUp(progress);
+      toTree(n && n.lesson ? partOf(n.lesson)?.id : null);
+    },
+    openAll: (on) => {
+      progress.openAll = Boolean(on);
+      saveProgress(progress);
+      showLevel(on ? 'Every part of the tree is open. Stars are still yours to fly for.' : 'The tree opens one part at a time again. Your medals are all still there.');
+    },
+    clearKnown: () => {
+      if (clearKnown(progress)) {
+        saveProgress(progress);
+      }
+      showLevel('Nothing is marked as known now. What you have flown stays flown.', true);
+    },
+    saveCode: () => encodeSave(progress),
+    loadCode: (text) => {
+      const got = decodeSave(text);
+      if (!got) {
+        return 'That code did not read. Check it was copied whole, from WFPV2 to the end.';
+      }
+      progress = mergeProgress(progress, got);
+      saveProgress(progress);
+      return 'Loaded. Your career now has the best of both: every medal, every best time.';
     },
     /* The achievements are the platform's (shell.achievements); the
      * career only shows them. */
     achievements: () => openAchievements(),
     closeAchievements: () => closeAchievements(),
-    achievementCount: () => {
-      const list = shell.achievements ? shell.achievements() : null;
-      return list && list.length ? { earned: list.filter((a) => a.unlocked).length, total: list.length } : null;
-    },
+    toPaint: () => toPaint(),
+    paintBack: () => toCover(),
+    paint: (id) => choosePaint(id),
   });
 
   /* Whether the quad flies on the keyboard: no radio or pad is chosen. */
@@ -135,8 +201,34 @@ export function createCareer(shell) {
     return typeof shell.flyingOnKeys === 'function' ? Boolean(shell.flyingOnKeys()) : false;
   }
 
+  function achievementCount() {
+    const list = shell.achievements ? shell.achievements() : null;
+    return list && list.length ? { earned: list.filter((a) => a.unlocked).length, total: list.length } : null;
+  }
+
+  /* The Paint Shop, from the cover. A livery is the browser's own key, not
+   * the career's save, so main.js paints the quad at boot without loading
+   * the career; see src/render/livery.js. */
+  function toPaint() {
+    settleMenu();
+    state = 'paint';
+    screens.showPaint(progress, { current: savedLivery().id });
+    padCalm();
+  }
+
+  function choosePaint(id) {
+    const l = liveryById(id);
+    saveLivery(l.id);
+    if (shell.setLivery) {
+      shell.setLivery(l);
+    }
+    if (state === 'paint') {
+      screens.showPaint(progress, { current: l.id, said: `${l.name}: on your quad.` });
+    }
+  }
+
   function openAchievements() {
-    if (state !== 'hub' || !shell.achievements) {
+    if (state !== 'cover' || !shell.achievements) {
       return;
     }
     state = 'achievements';
@@ -148,9 +240,7 @@ export function createCareer(shell) {
     if (state !== 'achievements') {
       return;
     }
-    state = 'hub';
-    screens.showHub(progress, { stickMode: shell.stickMode(), keys: flyingOnKeys() });
-    padCalm();
+    toCover();
   }
 
   /* The markers live in the world's scene, which a world swap replaces. */
@@ -171,39 +261,92 @@ export function createCareer(shell) {
     }
   }
 
-  /* ---------------- the hub ---------------- */
+  /* ---------------- the menus ---------------- */
 
-  /* The chapter and lesson the hub opens on: the next lesson after the last
-   * one flown, if that one is finished, otherwise the last one flown. */
-  function hubPlace() {
-    const last = progress.last ? lessonById(progress.last) : null;
-    if (!last) {
-      return { chapter: 0, lesson: 0 };
+  /* Off the lesson's run and back to a menu: the title camera over
+   * whatever world is up, and nothing flying. */
+  function settleMenu() {
+    loadToken += 1;
+    const was = state;
+    run = null;
+    lastStatus = null;
+    visuals.clear();
+    shell.setCamera(null);
+    shell.setFlightMode(null);
+    if (was === 'flight' || was === 'results' || was === 'launching' || was === 'briefing') {
+      shell.idle();
     }
-    let target = last;
-    const n = nextLesson(last.id);
-    if (lessonRecord(progress, last.id)?.medal && n) {
-      target = n;
-    }
-    const chapter = Math.max(0, CHAPTERS.findIndex((c) => c.id === target.chapter));
-    const at = Math.max(0, CHAPTERS[chapter].lessons.findIndex((l) => l.id === target.id));
-    return { chapter, lesson: at };
   }
 
-  function openHub(place) {
-    progress = loadProgress();
-    state = 'hub';
-    const where = place || hubPlace();
-    screens.showHub(progress, { ...where, stickMode: shell.stickMode(), keys: flyingOnKeys() });
+  function toCover() {
+    settleMenu();
+    state = 'cover';
+    screens.showCover(progress, {
+      next: nextUp(progress),
+      stickMode: shell.stickMode(),
+      keys: flyingOnKeys(),
+      steam: Boolean(shell.cloudSave),
+      achievements: achievementCount(),
+      livery: savedLivery().id,
+    });
     padCalm();
     shell.presence({ steam_display: '#Career', lesson: '' });
   }
 
-  async function openLesson(id) {
+  /* The tree, on `part` if one is named, else on the part of the lesson
+   * that is up or was last flown, else where the pilot is now. */
+  function toTree(part) {
+    settleMenu();
+    state = 'tree';
+    const n = nextUp(progress);
+    const here = n && n.lesson ? partOf(n.lesson) : null;
+    const at = part || (lesson && partOf(lesson.id) ? partOf(lesson.id).id : null)
+      || (progress.last && partOf(progress.last) ? partOf(progress.last).id : null)
+      || (here ? here.id : 'c1');
+    screens.showTree(progress, {
+      part: at, current: here ? here.id : null, stickMode: shell.stickMode(), keys: flyingOnKeys(),
+    });
+    padCalm();
+    shell.presence({ steam_display: '#Career', lesson: '' });
+  }
+
+  function toFork() {
+    settleMenu();
+    state = 'fork';
+    screens.showFork(progress);
+    padCalm();
+  }
+
+  function toLevel() {
+    if (state === 'cover' || state === 'tree') {
+      levelFrom = state;
+    }
+    settleMenu();
+    showLevel('', true);
+  }
+
+  function showLevel(message, fresh = false) {
+    state = 'level';
+    screens.showLevel(progress, { steam: Boolean(shell.cloudSave), message, fresh });
+    padCalm();
+  }
+
+  /* Into the career: the save read fresh (another tab, or Steam Cloud,
+   * may have written it), and the cover. */
+  function openHub() {
+    progress = loadProgress();
+    /* A career saved before titles were kept for rooms gets its key now. */
+    saveTitle(titleOf(progress));
+    lesson = null;
+    toCover();
+  }
+
+  async function openLesson(id, from = 'tree') {
     const l = lessonById(id);
     if (!l) {
       return;
     }
+    briefFrom = from === 'cover' ? 'cover' : 'tree';
     lesson = l;
     state = 'briefing';
     worldReady = false;
@@ -213,14 +356,37 @@ export function createCareer(shell) {
     shell.setCamera(null);
     shell.setFlightMode(null);
     screens.showBriefing(lesson, {
-      record: lessonRecord(progress, id), stickMode: shell.stickMode(), ready: false, keys: flyingOnKeys(),
+      record: lessonRecord(progress, id), stickMode: shell.stickMode(), ready: false, keys: flyingOnKeys(), from: briefFrom,
     });
     padCalm();
     const token = ++loadToken;
+    /* What the briefing says when it is ready, if the lesson flies its
+     * fallback because its own map could not be had. */
+    let standIn = '';
     try {
+      let world = await worldOf(lesson);
+      if (token !== loadToken || state !== 'briefing') {
+        return;
+      }
+      if (!world && lesson.fallback) {
+        /* The board could not be reached, or this build has no such map:
+         * the lesson's stand in, said so on its briefing. */
+        standIn = lesson.world && lesson.world.board
+          ? 'Ready. The board did not answer, so this is the lesson\'s stand in. Open it again later for the board\'s map.'
+          : 'Ready. This game does not carry the lesson\'s map, so this is its stand in.';
+        lesson = { ...lesson, ...lesson.fallback, fallen: true };
+        world = lesson.world;
+        screens.showBriefing(lesson, {
+          record: lessonRecord(progress, id), stickMode: shell.stickMode(), ready: false, keys: flyingOnKeys(), from: briefFrom,
+        });
+      }
+      if (!world) {
+        throw new Error('This lesson\'s map is not in this game.');
+      }
+      lesson = { ...lesson, world };
       await shell.enterWorld({
-        map: lesson.world.map,
-        doc: lesson.world.doc,
+        map: world.map,
+        doc: world.doc || null,
         airframe: lesson.airframe || '5inch',
       });
     } catch (e) {
@@ -235,16 +401,52 @@ export function createCareer(shell) {
     }
     worldReady = true;
     mountVisuals();
-    screens.setReady(true);
+    screens.setReady(true, standIn || undefined);
+  }
+
+  /*
+   * THE WORLD A LESSON IS FLOWN IN, as this game can give it: the lesson's
+   * own, a map or track from the board fetched by its id (shell
+   * boardDocument, which the Steam edition answers from its shelf), or null
+   * when the board did not answer or this build has no such map, and the
+   * lesson's fallback is flown instead. A board document is fetched once a
+   * session: they are half a megabyte and a retry should not pay again.
+   */
+  const boardDocs = new Map();
+  async function worldOf(l) {
+    const w = l.world;
+    if (!w || (shell.hasMap && !shell.hasMap(w.map))) {
+      return null;
+    }
+    if (!w.board) {
+      return w;
+    }
+    if (!shell.boardDocument) {
+      return null;
+    }
+    const key = `${w.board.kind}:${w.board.id}`;
+    if (!boardDocs.has(key)) {
+      const asked = Promise.resolve(shell.boardDocument(w.board.kind, w.board.id)).catch(() => null);
+      boardDocs.set(key, asked);
+    }
+    const doc = await boardDocs.get(key);
+    if (!doc || !doc.field) {
+      boardDocs.delete(key);
+      return null;
+    }
+    return { ...w, doc };
   }
 
   /* ---------------- flying ---------------- */
 
   function newRun() {
-    const doc = lesson.world.doc;
+    /* A fixed map's lessons (the houses, the shop, the town) ask only for
+     * its named gaps and the counter, so they need no field to place
+     * anything on. */
+    const field = lesson.world.doc ? lesson.world.doc.field : null;
     run = createRun(lesson, {
-      W: doc.field.width,
-      D: doc.field.depth,
+      W: field ? field.width : 160,
+      D: field ? field.depth : 160,
       gatesPerLap: shell.gatesPerLap(),
     });
     objectiveAt = -1;
@@ -288,21 +490,10 @@ export function createCareer(shell) {
     startFlight();
   }
 
+  /* The pause menu's Back to the career, and Back on a briefing opened
+   * from the tree: the tree, on the lesson's part. */
   function backToHub() {
-    loadToken += 1;
-    const was = state;
-    state = 'hub';
-    run = null;
-    lastStatus = null;
-    visuals.clear();
-    shell.setCamera(null);
-    shell.setFlightMode(null);
-    if (was === 'flight' || was === 'results' || was === 'launching' || was === 'briefing') {
-      shell.idle();
-    }
-    const chapter = lesson ? Math.max(0, CHAPTERS.findIndex((c) => c.id === lesson.chapter)) : 0;
-    const at = lesson ? Math.max(0, CHAPTERS[chapter].lessons.findIndex((l) => l.id === lesson.id)) : 0;
-    openHub(lesson && was !== 'results' ? { chapter, lesson: at } : null);
+    toTree(lesson && partOf(lesson.id) ? partOf(lesson.id).id : null);
   }
 
   async function leave() {
@@ -344,12 +535,15 @@ export function createCareer(shell) {
       ms: complete ? status.result.ms : null,
       medal: status.medal,
       score: complete ? status.result.score : null,
+      fallen: Boolean(lesson.fallen),
     });
     saveProgress(progress);
     if (complete) {
       shell.sound('record');
     }
-    screens.showResults(lesson, status, outcome, { next: nextLesson(lesson.id), stickMode: shell.stickMode(), keys: flyingOnKeys() });
+    screens.showResults(lesson, status, outcome, {
+      next: nextUp(progress), progress, stickMode: shell.stickMode(), keys: flyingOnKeys(),
+    });
     padCalm();
     shell.presence({ steam_display: '#Career', lesson: '' });
     shell.onResult({
@@ -384,8 +578,29 @@ export function createCareer(shell) {
         return line;
       }
     }
+    const rule = speedRule(cur, o);
+    if (rule) {
+      return rule;
+    }
     if (t - objectiveSince < HINT_MS && cur.hint) {
       return { text: cur.hint, tone: 'info' };
+    }
+    return null;
+  }
+
+  /* A ring with a speed on it (Brake Points) says what it wants for as
+   * long as it is the next one: the rings look alike, and the speed is the
+   * lesson. */
+  function speedRule(cur, o) {
+    if (cur.kind !== 'rings' || o.ordered === false || !o.rings) {
+      return null;
+    }
+    const r = o.rings[cur.state.index];
+    if (r && r.maxSpeed != null) {
+      return { text: `Brake ring: through it under ${Math.round(r.maxSpeed * 3.6)} km/h.`, tone: 'info' };
+    }
+    if (r && r.minSpeed != null) {
+      return { text: `Fast ring: through it over ${Math.round(r.minSpeed * 3.6)} km/h.`, tone: 'info' };
     }
     return null;
   }
@@ -485,6 +700,34 @@ export function createCareer(shell) {
       case 'gap':
         if (d === 'order') {
           return { text: `Wrong gap. Next is ${cur.state.target}.`, tone: 'warn' };
+        }
+        return null;
+      case 'rings':
+        if (d === 'fast') {
+          return { text: `Too fast through that one: ${Math.round(cur.state.missSpeed * 3.6)} km/h. Brake earlier, come round and take it again.`, tone: 'warn' };
+        }
+        if (d === 'slow') {
+          return { text: `Too slow through that one: ${Math.round(cur.state.missSpeed * 3.6)} km/h. Carry more speed and take it again.`, tone: 'warn' };
+        }
+        return null;
+      case 'gates':
+        if (d === 'ghost' && cur.state.gain != null) {
+          const by = (cur.state.gain / 1000).toFixed(1);
+          return {
+            text: cur.state.gain > 0 ? `${by} s quicker. Find ${((o.beat - cur.state.gain) / 1000).toFixed(1)} s more.` : `${(-cur.state.gain / 1000).toFixed(1)} s behind your ghost. Smoother, not harder.`,
+            tone: 'info',
+          };
+        }
+        if (d === 'spread' && cur.state.spread != null) {
+          return { text: `Your laps are ${(cur.state.spread / 1000).toFixed(1)} s apart. Fly the same line every lap.`, tone: 'info' };
+        }
+        return null;
+      case 'combo':
+        if (d === 'short') {
+          return { text: `That combo banked ${cur.state.best} long. Keep the next thing coming before it banks.`, tone: 'info' };
+        }
+        if (d === 'need') {
+          return { text: 'Long enough, but it was missing one. Read the objective again.', tone: 'info' };
         }
         return null;
       default:
@@ -672,6 +915,21 @@ export function createCareer(shell) {
     }
   }
 
+  /* What the freestyle counter paid this frame (src/game/score.js events):
+   * close calls and banked combos, for the Proximity and Lines lessons. */
+  function counter(events) {
+    if (state !== 'flight' || !run || !events || !events.length) {
+      return;
+    }
+    const before = run.status();
+    if (run.counter(events) && before.current && before.current.kind === 'close') {
+      const st = run.status().current;
+      const n = st && st.state ? st.state.n : 0;
+      const of = before.current.objective.count;
+      screens.stamp(of ? `${n} OF ${of}` : 'CLOSE', INKS.sakura, 52);
+    }
+  }
+
   function crash() {
     if (state !== 'flight' || !run) {
       return;
@@ -705,8 +963,24 @@ export function createCareer(shell) {
   /* ---------------- input ---------------- */
 
   function command(k) {
-    if (state === 'hub') {
-      screens.hubKey(k);
+    if (state === 'cover') {
+      screens.coverKey(k);
+      return true;
+    }
+    if (state === 'tree') {
+      screens.treeKey(k);
+      return true;
+    }
+    if (state === 'fork') {
+      screens.forkKey(k);
+      return true;
+    }
+    if (state === 'level') {
+      screens.levelKey(k);
+      return true;
+    }
+    if (state === 'paint') {
+      screens.paintKey(k);
       return true;
     }
     if (state === 'achievements') {
@@ -719,7 +993,7 @@ export function createCareer(shell) {
     }
     if (state === 'briefing') {
       if (k === 'back') {
-        backToHub();
+        screens.h.backFromBriefing();
       } else {
         screens.listKey2(k);
       }
@@ -727,9 +1001,13 @@ export function createCareer(shell) {
     }
     if (state === 'results') {
       if (k === 'back') {
-        backToHub();
+        toCover();
       } else if (k === 'retry') {
         retry();
+      } else if (k === 'tree') {
+        backToHub();
+      } else if (k === 'paint') {
+        screens.resultsKey(k);
       } else {
         screens.listKey2(k);
       }
@@ -826,6 +1104,7 @@ export function createCareer(shell) {
     tick,
     trick,
     gaps,
+    counter,
     crash,
     reset,
     handleKey,
@@ -846,7 +1125,7 @@ export function createCareer(shell) {
         shell.freeze();
         visuals.clear();
         screens.showBriefing(lesson, {
-          record: lessonRecord(progress, lesson.id), stickMode: shell.stickMode(), ready: worldReady, keys: flyingOnKeys(),
+          record: lessonRecord(progress, lesson.id), stickMode: shell.stickMode(), ready: worldReady, keys: flyingOnKeys(), from: briefFrom,
         });
         padCalm();
       }
@@ -855,6 +1134,10 @@ export function createCareer(shell) {
     leave,
     /* For the harness. */
     openLessonById: (id) => openLesson(id),
+    openTree: (part) => toTree(part),
+    openFork: () => toFork(),
+    openLevel: () => toLevel(),
+    openPaint: () => toPaint(),
     fly: () => startFlight(),
     hands: (h) => screens.setHands(h),
   };

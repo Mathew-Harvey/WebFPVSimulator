@@ -229,6 +229,84 @@ export function makeGrid(parts, toPlan, S, bounds, blocks = []) {
   };
 }
 
+/*
+ * THE WAY HOME, for whoever herds without eyes (src/game/goatround.js's
+ * bots): how many cells every free cell is from the garage, walking, made
+ * once a map by a breadth first walk out from GARAGE_IN, so a bot knows
+ * which side of a goat to come from and a goat round a corner is pushed
+ * round the corner. -1 is a cell that cannot get home. `way(x, y, out)`
+ * puts the way home from (x, y) into out as a unit [x, y], or [0, 0] where
+ * there is none, by the lowest of eight cells WAY_R round it.
+ */
+const WAY_R = 1.5;
+const WAY_C = new Float64Array([1, 0.7071, 0, -0.7071, -1, -0.7071, 0, 0.7071]);
+const WAY_S = new Float64Array([0, 0.7071, 1, 0.7071, 0, -0.7071, -1, -0.7071]);
+
+export function homeField(grid) {
+  const { W, H, cells, bounds } = grid;
+  const dist = new Int32Array(W * H).fill(-1);
+  const queue = new Int32Array(W * H);
+  let tail = 0;
+  for (let j = 0; j < H; j += 1) {
+    const y = bounds.y0 + (j + 0.5) * CELL;
+    for (let i = 0; i < W; i += 1) {
+      const x = bounds.x0 + (i + 0.5) * CELL;
+      if (x > GARAGE_IN.x0 && x < GARAGE_IN.x1 && y > GARAGE_IN.y0 && y < GARAGE_IN.y1 && !cells[j * W + i]) {
+        dist[j * W + i] = 0;
+        queue[tail] = j * W + i;
+        tail += 1;
+      }
+    }
+  }
+  /* Eight ways, corners included: a goat's step is a quarter of a cell,
+   * and it slips between two cells that only touch at a corner. */
+  for (let head = 0; head < tail; head += 1) {
+    const c = queue[head];
+    const i = c % W;
+    const j = (c - i) / W;
+    const d = dist[c] + 1;
+    for (let dj = -1; dj <= 1; dj += 1) {
+      for (let di = -1; di <= 1; di += 1) {
+        const ni = i + di;
+        const nj = j + dj;
+        if ((di || dj) && ni >= 0 && nj >= 0 && ni < W && nj < H) {
+          const o = nj * W + ni;
+          if (!cells[o] && dist[o] < 0) {
+            dist[o] = d;
+            queue[tail] = o;
+            tail += 1;
+          }
+        }
+      }
+    }
+  }
+  const at = (x, y) => {
+    const i = Math.floor((x - bounds.x0) / CELL);
+    const j = Math.floor((y - bounds.y0) / CELL);
+    return i < 0 || j < 0 || i >= W || j >= H ? -1 : dist[j * W + i];
+  };
+  return {
+    dist,
+    at,
+    way(x, y, out) {
+      let best = at(x, y);
+      out[0] = 0;
+      out[1] = 0;
+      if (best < 0) {
+        best = Infinity;
+      }
+      for (let k = 0; k < 8; k += 1) {
+        const d = at(x + WAY_C[k] * WAY_R, y + WAY_S[k] * WAY_R);
+        if (d >= 0 && d < best) {
+          best = d;
+          out[0] = WAY_C[k];
+          out[1] = WAY_S[k];
+        }
+      }
+    },
+  };
+}
+
 /* ------------------------------------------------------------------ */
 /* The herd                                                            */
 /* ------------------------------------------------------------------ */
@@ -262,6 +340,9 @@ export function makeHerd(names, grid, { seed = 0x60a7, parks = [] } = {}) {
   const B = grid.bounds;
   const N = names.length;
   const free = (x, y) => !grid.blocked(x, y);
+  /* The way home, so no goat starts in a yard it cannot walk out of: one
+   * in twenty five did, and a round to get every goat home never ended. */
+  const field = homeField(grid);
   const gx = (GARAGE_IN.x0 + GARAGE_IN.x1) / 2;
   const gy = (GARAGE_IN.y0 + GARAGE_IN.y1) / 2;
   /* A free spot with room round it, START_FAR from the garage. */
@@ -280,7 +361,7 @@ export function makeHerd(names, grid, { seed = 0x60a7, parks = [] } = {}) {
       if (len(x - gx, y - gy) < START_FAR) {
         continue;
       }
-      if (free(x, y) && free(x + 0.6, y) && free(x - 0.6, y) && free(x, y + 0.6) && free(x, y - 0.6)) {
+      if (free(x, y) && free(x + 0.6, y) && free(x - 0.6, y) && free(x, y + 0.6) && free(x, y - 0.6) && field.at(x, y) >= 0) {
         return [x, y];
       }
     }
@@ -306,6 +387,11 @@ export function makeHerd(names, grid, { seed = 0x60a7, parks = [] } = {}) {
   const LVY = new Float64Array(N);
   const HOME_AT = new Float64Array(N).fill(-1);
   const MODE = new Uint8Array(N);
+  /* Who moved each goat last: -1 nobody, 0 the craft, k the others' k - 1
+   * (step's `others`), which is whose goat it is when it gets home. A
+   * goat that goes with a bolting one is the same pilot's. Written and
+   * never read here, so a herd with no others runs as it always has. */
+  const BY = new Int8Array(N).fill(-1);
   /* Each goat's own stream, its state kept here. */
   const RND = new Uint32Array(N);
   const rnd = (i) => {
@@ -443,6 +529,54 @@ export function makeHerd(names, grid, { seed = 0x60a7, parks = [] } = {}) {
       WANT[1] = dy / d;
       WANT[2] = HOME_V;
     }
+  }
+
+  /* The others the step was given (step's `others`), for the goats. */
+  let OTH = null;
+  let NOTH = 0;
+
+  /* The craft or one of the others, whichever is nearest goat i and low
+   * enough to matter, spooks it, and the goat is that one's. One threat a
+   * goat, the nearest, as one craft was: two quads either side of a goat
+   * are not twice a quad. */
+  function thinkPushers(i, has, cx, cy, ch) {
+    let who = -1;
+    let bx = cx;
+    let by = cy;
+    let bh = ch;
+    if (has) {
+      who = 0;
+    }
+    if (NOTH) {
+      let best = Infinity;
+      if (has && ch < SPOOK_H) {
+        best = len(len(X[i] - cx, Y[i] - cy), Math.max(0, ch - 0.6) * 0.6);
+      }
+      for (let k = 0; k < NOTH; k += 1) {
+        const h = OTH[k * 3 + 2];
+        if (!(h < SPOOK_H)) {
+          continue;
+        }
+        const ox = OTH[k * 3];
+        const oy = OTH[k * 3 + 1];
+        const dd = len(len(X[i] - ox, Y[i] - oy), Math.max(0, h - 0.6) * 0.6);
+        if (dd < best) {
+          best = dd;
+          who = k + 1;
+          bx = ox;
+          by = oy;
+          bh = h;
+        }
+      }
+    }
+    if (who < 0) {
+      return 0;
+    }
+    const threat = thinkCraft(i, bx, by, bh);
+    if (threat) {
+      BY[i] = who;
+    }
+    return threat;
   }
 
   /* The craft, if it is low and near enough to matter: the threat, 0 to
@@ -635,6 +769,7 @@ export function makeHerd(names, grid, { seed = 0x60a7, parks = [] } = {}) {
     let sy = 0;
     let n = 0;
     let pace = 0;
+    let lead = -1;
     const x = X[i];
     const y = Y[i];
     const ci = bi(x);
@@ -650,12 +785,18 @@ export function makeHerd(names, grid, { seed = 0x60a7, parks = [] } = {}) {
             sy += VY[k];
             pace += SPEED[k];
             n += 1;
+            if (lead < 0 || FEAR[k] > FEAR[lead]) {
+              lead = k;
+            }
           }
         }
       }
     }
     if (!n) {
       return;
+    }
+    if (BY[lead] >= 0) {
+      BY[i] = BY[lead];
     }
     const l = len(sx, sy);
     if (l > 1e-3) {
@@ -758,7 +899,7 @@ export function makeHerd(names, grid, { seed = 0x60a7, parks = [] } = {}) {
       thinkHome(i, dt);
     } else {
       const fromCar = nCars ? thinkCars(i, cars, nCars) : 0;
-      const threat = !fromCar && hasCraft ? thinkCraft(i, cx, cy, ch) : 0;
+      const threat = !fromCar && (hasCraft || NOTH) ? thinkPushers(i, hasCraft, cx, cy, ch) : 0;
       if (!threat && !fromCar) {
         if (MODE[i] === FLEE) {
           thinkCalm(i, dt);
@@ -802,7 +943,9 @@ export function makeHerd(names, grid, { seed = 0x60a7, parks = [] } = {}) {
       FEAR[i] = 0;
       T[i] = 0;
       homeCount += 1;
-      events.push({ kind: 'home', goat: i, count: homeCount, at: clock - Math.max(0, firstRun) });
+      events.push({
+        kind: 'home', goat: i, count: homeCount, at: clock - Math.max(0, firstRun), by: BY[i],
+      });
     }
     /* A bounce in the step, quicker and higher at a run. */
     let ph = PHASE[i] + sp * dt * 1.6;
@@ -812,10 +955,15 @@ export function makeHerd(names, grid, { seed = 0x60a7, parks = [] } = {}) {
     HOP[i] = sp > 0.15 ? f * Math.min(0.22, 0.03 + sp * 0.04) : 0;
   }
 
-  function step(dt, craft, cars = null, nCars = 0) {
+  /* `others`, when given, is `nOthers` more craft as plan x, y and h in
+   * threes: a game's bots, or a room's other pilots, who herd as the
+   * craft does. */
+  function step(dt, craft, cars = null, nCars = 0, others = null, nOthers = 0) {
     if (!(dt > 0)) {
       return;
     }
+    OTH = others;
+    NOTH = others ? nOthers : 0;
     clock += dt;
     head.fill(-1);
     for (let i = 0; i < N; i += 1) {
@@ -838,31 +986,62 @@ export function makeHerd(names, grid, { seed = 0x60a7, parks = [] } = {}) {
 
   /* Everything a goat is, by name, for state() and adopt(). */
   const ARRAYS = {
-    X, Y, VX, VY, FX, FY, SPEED, FEAR, T, TX, TY, PHASE, HOP, LEAP, LVX, LVY, HOME_AT, MODE, RND,
+    X, Y, VX, VY, FX, FY, SPEED, FEAR, T, TX, TY, PHASE, HOP, LEAP, LVX, LVY, HOME_AT, MODE, RND, BY,
   };
   let round = 0;
 
   return {
     names,
     count: N,
-    X, Y, FX, FY, HOP, PHASE, SPEED, MODE, FEAR, HOME_AT,
+    X, Y, VX, VY, FX, FY, HOP, PHASE, SPEED, MODE, FEAR, HOME_AT, BY,
+    grid,
+    field,
     step,
     events,
     /*
      * Let the goats out: every goat back on the street, somewhere new each
      * time, standing, none home and the clock not started. The herd's own
-     * clock goes on, forward only, as it always does.
+     * clock goes on, forward only, as it always does. `at`, when given, is
+     * the let out's number, so every page in a room that is told the same
+     * one scatters the goats to the same places (src/game/goatroom.js).
      */
-    reset() {
-      round += 1;
+    reset(at) {
+      round = Number.isInteger(at) ? at : round + 1;
       for (const a of [VX, VY, SPEED, FEAR, HOP, LEAP, LVX, LVY, MODE]) {
         a.fill(0);
       }
       HOME_AT.fill(-1);
+      BY.fill(-1);
       scatter((seed + Math.imul(round, 0x9e3779b1)) >>> 0);
       firstRun = -1;
       homeCount = 0;
       events.length = 0;
+    },
+    /*
+     * Goat i where another page's herd says it is (a room's host, in
+     * src/game/goatroom.js): plan metres, metres a second, its mode and its
+     * fear. Getting home or leaving it is counted as a step would; no
+     * event is made, because the page that saw it happen made it.
+     */
+    put(i, x, y, vx, vy, mode, fear) {
+      X[i] = x;
+      Y[i] = y;
+      VX[i] = vx;
+      VY[i] = vy;
+      FEAR[i] = fear;
+      if (mode === HOME && MODE[i] !== HOME) {
+        HOME_AT[i] = clock;
+        T[i] = 0;
+        homeCount += 1;
+      } else if (mode !== HOME && MODE[i] === HOME) {
+        HOME_AT[i] = -1;
+        homeCount -= 1;
+      }
+      if (mode !== MODE[i]) {
+        TX[i] = x;
+        TY[i] = y;
+      }
+      MODE[i] = mode;
     },
     /* The whole herd, to be taken by another of the same goats. */
     state: () => ({ arrays: ARRAYS, clock, firstRun, homeCount, round }),
@@ -874,7 +1053,9 @@ export function makeHerd(names, grid, { seed = 0x60a7, parks = [] } = {}) {
         return false;
       }
       for (const k of Object.keys(ARRAYS)) {
-        ARRAYS[k].set(st.arrays[k]);
+        if (st.arrays[k]) {
+          ARRAYS[k].set(st.arrays[k]);
+        }
       }
       clock = st.clock;
       firstRun = st.firstRun;

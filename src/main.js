@@ -1891,11 +1891,13 @@ export async function boot({ loading, bootStart, mapId }) {
     const game = view && view.filmGame;
     /* A dogfight or ribbon cutting on the map is the game being played:
      * the take's HUD sat over the fight's, two games on one screen. */
-    ui.filmHud.setVisible(Boolean(game) && !fightGame && !replayMode && (ui.screen === 'flight' || ui.screen === 'paused'));
+    /* A Drift Matsuri round is this game with bots: its viewfinder stays. */
+    const filming = !fightGame || fightKind === 'drift';
+    ui.filmHud.setVisible(Boolean(game) && filming && !replayMode && (ui.screen === 'flight' || ui.screen === 'paused'));
     if (!game) {
       return;
     }
-    if (fightGame) {
+    if (!filming) {
       game.film.drainEvents();
       return;
     }
@@ -2309,7 +2311,9 @@ export async function boot({ loading, bootStart, mapId }) {
    * the dogfight's, and ribbon cutting's (src/game/ribbons.js), which is the
    * dogfight with ribbons for guns and runs through everything below. */
   let fightMods = null;
-  const fightLib = { dogfight: null, ribbon: null };
+  const fightLib = {
+    dogfight: null, ribbon: null, goats: null, drift: null,
+  };
   let fightKind = 'dogfight';
   /* The room game being played, 'ribbon' (RibbonRoom) or 'dogfight'
    * (DogfightRoom), which the room plays rather than the pilot's own
@@ -2317,13 +2321,17 @@ export async function boot({ loading, bootStart, mapId }) {
   let fightInRoom = '';
   const ROOM_RIBBON_RULES = Object.freeze({ game: 'ribbon', room: true });
   const ROOM_DOGFIGHT_RULES = Object.freeze({ game: 'dogfight', room: true });
+  const ROOM_GOATS_RULES = Object.freeze({ game: 'goats', room: true });
+  const ROOM_DRIFT_RULES = Object.freeze({ game: 'drift', room: true });
   /* What the room pump last gave a DogfightRoom of the bot seats. */
   let fightSeats = null;
   let fightBots = null;
   const fightBotPose = (id, x, y, z, fx, fy, fz, ux, uy, uz) => {
     fightBots.pose(id, x, y, z, fx, fy, fz, ux, uy, uz);
   };
-  const fightHuds = { dogfight: null, ribbon: null };
+  const fightHuds = {
+    dogfight: null, ribbon: null, goats: null, drift: null,
+  };
   let fightLoading = false;
   let fightGame = null;
   let fightView = null;
@@ -2354,6 +2362,9 @@ export async function boot({ loading, bootStart, mapId }) {
   };
 
   function fightBestKey() {
+    if (fightKind === 'goats' || fightKind === 'drift') {
+      return `webfpv.${fightKind}.best.${fightKey}`;
+    }
     return fightKind === 'ribbon' ? `webfpv.ribbons.best.${fightKey}` : `webfpv.dogfight.best.${fightKey}`;
   }
 
@@ -2546,6 +2557,13 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   function fightOff() {
+    if (fightGame && fightGame.detach) {
+      fightGame.detach();
+    }
+    if (together) {
+      together.goatsHerdSize(0);
+      together.driftReady(false);
+    }
     if (fightView) {
       fightView.dispose();
     }
@@ -2574,17 +2592,23 @@ export async function boot({ loading, bootStart, mapId }) {
      * whatever the pilot was doing; any other room plays no game of this
      * kind. */
     const inGame = together && ui.roomInfo ? together.gameRoom() : '';
-    const roomGame = inGame === 'ribbon' || inGame === 'dogfight' ? inGame : '';
+    const roomGame = inGame === 'ribbon' || inGame === 'dogfight' || inGame === 'goats' || inGame === 'drift' ? inGame : '';
     const roomRibbon = roomGame === 'ribbon';
-    const rules = roomGame ? (roomRibbon ? ROOM_RIBBON_RULES : ROOM_DOGFIGHT_RULES) : ui.dogfight;
-    const want = Boolean(view) && Boolean(rules) && mapReady && !replayMode && (Boolean(roomGame) || !ui.roomInfo);
+    const rules = roomGame
+      ? ({ ribbon: ROOM_RIBBON_RULES, dogfight: ROOM_DOGFIGHT_RULES, goats: ROOM_GOATS_RULES, drift: ROOM_DRIFT_RULES })[roomGame]
+      : ui.dogfight;
+    /* Goat herding's round is the goat map's, and nowhere else. */
+    const herdable = !rules || rules.game !== 'goats' || Boolean(view && view.goatGame);
+    /* Drift Matsuri's is the drift map's, its judge and its cars. */
+    const filmable = !rules || rules.game !== 'drift' || Boolean(view && view.filmGame);
+    const want = Boolean(view) && Boolean(rules) && herdable && filmable && mapReady && !replayMode && (Boolean(roomGame) || !ui.roomInfo);
     if (!want) {
       if (fightGame) {
         fightOff();
       }
       return;
     }
-    const kind = rules.game === 'ribbon' ? 'ribbon' : 'dogfight';
+    const kind = rules.game === 'ribbon' || rules.game === 'goats' || rules.game === 'drift' ? rules.game : 'dogfight';
     /* The rules as text only when the object is a new one: a string a
      * frame for as long as a fight lasts is garbage, and a collection is a
      * hitch. */
@@ -2617,7 +2641,17 @@ export async function boot({ loading, bootStart, mapId }) {
     if (!fightLib[kind]) {
       if (!fightLoading) {
         fightLoading = true;
-        const want = kind === 'ribbon'
+        const want = kind === 'drift'
+          ? Promise.all([import('./game/driftround.js'), import('./ui/drifthud.js'), import('./game/dogfight.js'), import('./render/dogfight.js'), import('./game/driftroom.js')])
+            .then(([game, hud, base, render, room]) => ({
+              ...base, ...game, Game: game.DriftRound, View: render.DogfightView, feedFraction: render.feedFraction, Hud: hud.DriftHud, kicker: 'Drift Matsuri', DriftRoom: room.DriftRoom,
+            }))
+          : kind === 'goats'
+          ? Promise.all([import('./game/goatround.js'), import('./ui/herdhud.js'), import('./game/dogfight.js'), import('./render/dogfight.js'), import('./game/goatroom.js')])
+            .then(([game, hud, base, render, room]) => ({
+              ...base, ...game, Game: game.GoatRound, View: render.DogfightView, feedFraction: render.feedFraction, Hud: hud.HerdHud, kicker: 'Goat herding', GoatRoom: room.GoatRoom,
+            }))
+          : kind === 'ribbon'
           ? Promise.all([import('./game/ribbons.js'), import('./render/ribbons.js'), import('./ui/ribbonhud.js'), import('./game/dogfight.js'), import('./render/dogfight.js')])
             .then(([game, render, hud, base, baseRender]) => ({
               ...base, ...game, Game: game.RibbonCut, View: render.RibbonView, feedFraction: baseRender.feedFraction, Hud: hud.RibbonHud, kicker: 'Ribbon cutting',
@@ -2661,6 +2695,14 @@ export async function boot({ loading, bootStart, mapId }) {
       fightGame = new fightMods.RibbonRoom(world);
     } else if (roomGame === 'dogfight') {
       fightGame = new fightMods.DogfightRoom(world, { seed });
+    } else if (roomGame === 'goats') {
+      fightGame = new fightMods.GoatRoom(world, { seed, pen: view.goatGame });
+    } else if (roomGame === 'drift') {
+      fightGame = new fightMods.DriftRoom(world, { seed, pen: { film: view.filmGame.film, poses: () => carCurr } });
+    } else if (kind === 'goats') {
+      fightGame = new Game(world, rules, seed, view.goatGame);
+    } else if (kind === 'drift') {
+      fightGame = new Game(world, rules, seed, { film: view.filmGame.film, poses: () => carCurr });
     } else {
       fightGame = new Game(world, rules, seed);
     }
@@ -2683,6 +2725,10 @@ export async function boot({ loading, bootStart, mapId }) {
           if (fightGame && fightGame.room) {
             if (fightKind === 'ribbon') {
               together.ribbonStart();
+            } else if (fightKind === 'goats') {
+              together.goatsStart();
+            } else if (fightKind === 'drift') {
+              together.driftStart();
             } else {
               together.dogfightStart();
             }
@@ -2716,11 +2762,23 @@ export async function boot({ loading, bootStart, mapId }) {
       if (last) {
         fightGame.heard(last, together.boardToLocal);
       }
+    } else if (roomGame === 'goats') {
+      fightRoomSync();
+      const last = together.goatsLast();
+      if (last) {
+        fightGame.heard(last, together.boardToLocal);
+      }
+    } else if (roomGame === 'drift') {
+      fightRoomSync();
+      const last = together.driftLast();
+      if (last) {
+        fightGame.heard(last, together.boardToLocal);
+      }
     }
     fightNewRound();
-    /* Ribbons fire nothing: the gun and missile buttons stay what they
-     * were. */
-    input.weaponsLive = kind !== 'ribbon';
+    /* Ribbons and goats fire nothing: the gun and missile buttons stay
+     * what they were. */
+    input.weaponsLive = kind === 'dogfight';
   }
 
   /* Once a frame in a ribbon cutting room: who this page is, the board's
@@ -2731,6 +2789,14 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     if (fightKind === 'dogfight') {
       dogfightRoomSync();
+      return;
+    }
+    if (fightKind === 'goats') {
+      goatsRoomSync();
+      return;
+    }
+    if (fightKind === 'drift') {
+      driftRoomSync();
       return;
     }
     const who = together.ribbonWho();
@@ -2813,6 +2879,91 @@ export async function boot({ loading, bootStart, mapId }) {
     if (out) {
       for (const m of out) {
         together.sendDogfight(m);
+      }
+    }
+  }
+
+  /* The same, in a goat herding room (src/game/goatroom.js): who this
+   * page is, the bot seats and their places, the board's round and the
+   * goats it counted, the host's herd on everybody else's page, and on the
+   * host's page its herd and its goats home out to the room. */
+  function goatsRoomSync() {
+    const g = fightGame;
+    const who = together.ribbonWho();
+    if (who) {
+      g.setYou(who.you, who.host);
+    }
+    const bots = together.roomBots();
+    if (bots) {
+      const seats = bots.seats();
+      if (seats !== fightSeats) {
+        fightSeats = seats;
+        g.setBots(seats);
+      }
+      if (bots.mine()) {
+        fightBots = bots;
+        g.eachFlown(fightBotPose);
+      }
+    }
+    together.goatsHerdSize(g.herd ? g.herd.count : 0);
+    const st = together.takeGoats();
+    if (st) {
+      g.heard(st, together.boardToLocal);
+    }
+    const ins = together.takeGoatsIn();
+    if (ins) {
+      for (const m of ins) {
+        if (m.t === 'gtHome') {
+          g.heardHome(m);
+        } else if (m.t === 'gtHerd') {
+          g.heardHerd(m);
+        }
+      }
+    }
+    const out = g.takeOutbox();
+    if (out) {
+      for (const m of out) {
+        together.sendGoats(m);
+      }
+    }
+  }
+
+  /* The same, in a Drift Matsuri room (src/game/driftroom.js): who this
+   * page is, the bot seats and their places, the board's round and the
+   * takes' scores it passed on, and the takes this page judged out. */
+  function driftRoomSync() {
+    const g = fightGame;
+    const who = together.ribbonWho();
+    if (who) {
+      g.setYou(who.you, who.host);
+    }
+    const bots = together.roomBots();
+    if (bots) {
+      const seats = bots.seats();
+      if (seats !== fightSeats) {
+        fightSeats = seats;
+        g.setBots(seats);
+      }
+      if (bots.mine()) {
+        fightBots = bots;
+        g.eachFlown(fightBotPose);
+      }
+    }
+    together.driftReady(Boolean(g.film));
+    const st = together.takeDrift();
+    if (st) {
+      g.heard(st, together.boardToLocal);
+    }
+    const ins = together.takeDriftIn();
+    if (ins) {
+      for (const m of ins) {
+        g.heardReel(m);
+      }
+    }
+    const out = g.takeOutbox();
+    if (out) {
+      for (const m of out) {
+        together.sendDrift(m);
       }
     }
   }

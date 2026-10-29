@@ -397,6 +397,18 @@ export class RoomLink {
          * a launch passed on for drawing. */
         this.onEvent(m.t, m);
         break;
+      case 'drift':
+      case 'drReel':
+        /* A Drift Matsuri room's round, and a take's score passed on. */
+        this.onEvent(m.t, m);
+        break;
+      case 'goats':
+      case 'gtHome':
+      case 'gtHerd':
+        /* A goat herding room's round, a goat the board counted, and the
+         * host's herd passed on. */
+        this.onEvent(m.t, m);
+        break;
       case 'refused':
         /* A resume the board cannot honour is the end of this room for
          * this pilot, which the shell says differently from a refusal at

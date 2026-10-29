@@ -67,7 +67,8 @@ import { stfKey } from '../built/egg.js';
 import { hoodLayout, BOUNDS, PARK } from './hood.js';
 import { goatsDocument } from './yard.js';
 import { makeGrid, makeHerd, HOME } from './herd.js';
-import { makeGoatDraw, logoPose } from './goatdraw.js';
+import { makeGoatDraw, logoPose, patronPicture } from './goatdraw.js';
+import { tidy as tidyPatrons } from './patrons.js';
 import { cellShadows } from './shadows.js';
 import { goatTraffic } from './traffic.js';
 import { makeCarDraw } from './cardraw.js';
@@ -105,6 +106,37 @@ const BIT_BIG = 0.3 * S;
 
 /* What the callout calls a goat seen. */
 const FOUND_WORD = 'Goat!';
+
+/* The longest wait for a patron's logo, ms. A logo that is late is the
+ * patron's name instead: the map does not wait on a slow link. */
+const LOGO_WAIT = 4000;
+
+/* A patron's logo as a decoded picture, or null when it is missing, broken
+ * or late (the name is drawn instead, patronPicture in ./goatdraw.js). */
+function loadLogo(path) {
+  if (!path) {
+    return Promise.resolve(null);
+  }
+  return new Promise((resolve) => {
+    let img = null;
+    const done = (v) => {
+      clearTimeout(timer);
+      resolve(v);
+    };
+    const timer = setTimeout(() => done(null), LOGO_WAIT);
+    try {
+      img = new Image();
+      img.onload = () => done(img.naturalWidth > 0 ? img : null);
+      img.onerror = () => {
+        console.warn(`goats: patron logo ${path} did not load; the name is drawn instead`);
+        done(null);
+      };
+      img.src = new URL(`../../../${path}`, import.meta.url).href;
+    } catch (err) {
+      done(null);
+    }
+  });
+}
 
 /* The last herd this module built. A rebuild of the same map, which a
  * change of graphics is (`keepGame` from the shell's syncWorld), takes its
@@ -180,12 +212,17 @@ export async function buildMap(shell, onProgress, options) {
         shade.aim();
       };
       const grid = makeGrid([...layout.parts, ...hood.parts], toPlan, S, BOUNDS, [...hood.blocks, ROOMS]);
-      const herd = makeHerd(crops.map((c) => c.name), grid, { parks: [PARK] });
+      /* The patrons' goats, after the 90%ers' (./patrons.js): the same herd
+       * and the same drawing, one more cell of the logo picture each. */
+      const patrons = tidyPatrons();
+      const logos = await Promise.all(patrons.map((p) => loadLogo(p.logo)));
+      const pics = patrons.map((p, i) => patronPicture(p, logos[i]));
+      const herd = makeHerd([...crops.map((c) => c.name), ...patrons.map((p) => p.name)], grid, { parks: [PARK] });
       if (options && options.keepGame && carried) {
         herd.adopt(carried.state());
       }
       carried = herd;
-      const draw = makeGoatDraw(herd, crops, sheets, worldAt, S, !dressed);
+      const draw = makeGoatDraw(herd, crops, sheets, worldAt, S, !dressed, pics);
       map.scene.add(draw.group);
       /*
        * THE TRAFFIC (./traffic.js, the owner's ask of 28 October: "Let's
@@ -222,6 +259,16 @@ export async function buildMap(shell, onProgress, options) {
         w: 1,
         h: 1,
       }));
+      /* A patron's goat is not a find to be seen: it has a picture for its
+       * callout when it is home, and no place in map.stickers. */
+      const patronPics = patrons.map((p, i) => ({
+        id: `patron-${i}`,
+        key: `${key}#patron:${i}:${p.name}`,
+        name: p.name,
+        crop: { x: 0, y: 0, w: 1, h: 1 },
+        sheet: { image: pics[i] },
+      }));
+      const homeStickers = [...goatStickers, ...patronPics];
       map.stickers = [...map.stickers.filter((s) => !String(s.id).startsWith('ninety-')), ...goatStickers];
       /* Each goat is called out the first time it is seen, kept like a
        * sticker find, and not again: ninety eight goats called out every
@@ -272,7 +319,7 @@ export async function buildMap(shell, onProgress, options) {
               continue;
             }
             out.push({
-              name: herd.names[e.goat], count: e.count, total: herd.count, atS: e.at, sticker: goatStickers[e.goat],
+              name: herd.names[e.goat], count: e.count, total: herd.count, atS: e.at, sticker: homeStickers[e.goat],
             });
             cue('home');
           }
@@ -322,7 +369,7 @@ export async function buildMap(shell, onProgress, options) {
       update(0);
       return {
         update,
-        stats: () => ({ goats: { count: herd.count, home: herd.homeCount(), hood: hood.stats, shade: shade.stats, cars: cars.stats() } }),
+        stats: () => ({ goats: { count: herd.count, patrons: patrons.length, home: herd.homeCount(), hood: hood.stats, shade: shade.stats, cars: cars.stats() } }),
       };
     },
   };

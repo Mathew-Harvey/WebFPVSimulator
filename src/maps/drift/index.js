@@ -52,7 +52,7 @@ import { buildMap as buildBuilt } from '../built/index.js';
 import { warmPrograms } from '../../render/warm.js';
 import { Film } from '../../game/film.js';
 import {
-  circuitLayout, w, PITS, FAIR, TOWER,
+  circuitLayout, w, PITS, FAIR, TOWER, DRIFT_PAD_BASE,
 } from './circuit.js';
 import { driftDocument, groupIds, GROUPS } from './yard.js';
 
@@ -518,6 +518,8 @@ export async function buildMap(shell, onProgress, options) {
   const extra = {
     el: { id: 'drift', type: 'drift' },
     parts: L.parts,
+    /* The pilot starts on the judges' tower roof (./yard.js). */
+    padBase: DRIFT_PAD_BASE,
     draw: (kit) => {
       drawAprons(kit);
       drawWalls(kit, L.walls);

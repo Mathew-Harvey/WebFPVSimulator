@@ -408,6 +408,13 @@ async function sceneLoadKeys() {
     await page.tap('Enter');
     await sleep(300);
     await page.tap('Enter');
+    /* And once the town is built but the screen is still up for its first
+     * frame, which is shader compiles: seconds here, and the swap is over
+     * by then, so a guard on the swap alone let this one through. */
+    const lateWindow = await until("const m = window.__map(); return Boolean(m && m.ready && m.id === 'city' && window.__loading.visible);", 150000);
+    if (lateWindow) {
+      await page.tap('Enter');
+    }
     check('the round starts once the town is built', await until("return window.__ui.screen === 'flight' && Boolean(window.__dogfight())", 150000),
       await ev('return window.__ui.screen'));
     await sleep(1500);

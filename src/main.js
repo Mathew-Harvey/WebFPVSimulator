@@ -9948,11 +9948,13 @@ export async function boot({ loading, bootStart, mapId }) {
      * pressed twice, a pad's A) used to choose the hidden row, which on a
      * phone sized window is Fly together, and a solo round opened under the
      * room's pages (2026-10-29, scripts/minigames-check.js --only=load).
-     * swapInFlight rather than the loading screen's own state: it ends as
-     * the world is adopted, so a check that waits for the map to be ready
-     * and then presses a key is not racing the screen's last frame.
+     * And the loading screen's own state as well as swapInFlight: the swap
+     * ends when the world is adopted, but the screen stays up through the
+     * world's first frame, which is shader compiles, seconds on a slow
+     * machine (7 s here) with the title under it and its keys live. A
+     * failed load keeps its keys: its help is the page then.
      */
-    if (swapInFlight) {
+    if (swapInFlight || (loading.visible && !loading.failed)) {
       return;
     }
     if (ui.handleKey(code, repeat)) {
@@ -10894,7 +10896,7 @@ export async function boot({ loading, bootStart, mapId }) {
       together.pollPad(padNav(), nowWall);
     } else if (career && career.wantsPad()) {
       career.pollPad(padNav(), nowWall);
-    } else if (swapInFlight) {
+    } else if (swapInFlight || (loading.visible && !loading.failed)) {
       /* Nothing under a loading screen, as for keys (input.onKey), and
        * the first poll after it learns where the pad is, acting on nothing,
        * so a button held through the load is not a press when it ends. */

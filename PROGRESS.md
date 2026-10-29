@@ -73033,3 +73033,12 @@ The bug hunt thread saw together-shots' ribbon check "a bot cuts somebody's ribb
 - Checks run: `check:moto` 17 of 17, `lint:preload`, `check:drift` 29 of 29, headless shots of the pack, a whip, a jump and the overview. Not run: `npm run verify`, a low end machine, `check:minigames` again (no page or routing change in this pass).
 - What went wrong: aiming the shot camera at a moving bike needed a helper that reads the bike's matrix after the clock moves, so most of the first shots missed the bikes. The tyre walls were drawn before their cost was measured.
 - Not flown.
+
+## 2026-10-29 | maps | Ridgeline MX: set dressing to the other maps' level
+
+- The owner, 23:08Z: "Keep going, borderlands fidelity of the game set is the goal, maintain our art style". Read as: bring Ridgeline MX up to the dressing density of Drift Matsuri and Sunnyfield, in the same Gem look (no new shader, no new ink, no new material), not a new style. Drift Matsuri draws 192 calls and 1.15M triangles and Sunnyfield 102 and 0.81M at the pad, headless; Ridgeline MX was well under both.
+- Added in `src/maps/moto/`: a chequered finish arch over the start line (legs and beam solid, the beam 5.6 m up so a quad can fly under), bunting on poles down both sides of the start straight, five marshals' huts with flags by the big jumps, ninety dirt clods along the track edges. All from materials the map already used (metal, white, mxOrange, mxBlue, mxRed, mxHay, drTyre, mxDirtDark), so no new draw call per material.
+- Latency: measured with the camera parked at one point and three samples each, the figures held: draw calls 271 before and 271 after, triangles 660,566 before and 673,070 after (+1.9 percent). An unparked pad view reads 170 to 202 calls from run to run in this container depending on what the frame holds, so those numbers are not used. Not measured on a low end machine.
+- Checks run: `check:moto` 17 of 17, `lint:preload` up to date, headless shots of the arch, the bunting, the huts and the overview.
+- What went wrong: the first draw call comparison was taken at the pad without a parked camera, so the number moved by 30 from run to run; the pass 2 note above reads "181 to 170" from that kind of sample and its triangle figures are the sturdier half. Bunting first used six flag colours; three is enough.
+- Not flown.

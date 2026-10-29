@@ -308,6 +308,53 @@ function drawDecor(kit, decor) {
         });
         break;
       }
+      case 'arch': {
+        turned(kit, d.x, d.y, heading(d.tx, d.ty), () => {
+          for (const side of [-1, 1]) {
+            kit.cyl('metal', [0, 0, side * d.off], [0, d.h, side * d.off], 0.18, 6);
+          }
+          kit.box('metal', -0.3, d.h - 0.6, -d.off, 0.3, d.h, d.off);
+          kit.box('mxOrange', -0.34, d.h - 1.5, -d.off + 0.4, -0.3, d.h - 0.6, d.off - 0.4);
+          kit.box('mxOrange', 0.3, d.h - 1.5, -d.off + 0.4, 0.34, d.h - 0.6, d.off - 0.4);
+          for (let i = 0; i < 24; i += 1) {
+            const z0 = -d.off + 0.4 + i * ((2 * d.off - 0.8) / 24);
+            const z1 = z0 + (2 * d.off - 0.8) / 24;
+            kit.box(i % 2 ? 'white' : 'drTyre', -0.35, d.h - 1.1, z0, -0.31, d.h - 0.8, z1);
+            kit.box(i % 2 ? 'drTyre' : 'white', -0.35, d.h - 0.8, z0, -0.31, d.h - 0.6, z1);
+          }
+        });
+        break;
+      }
+      case 'bunting': {
+        const a = w(d.ax, d.ay, d.h);
+        const b = w(d.bx, d.by, d.h);
+        kit.cyl('metal', a, b, 0.015, 3);
+        const n = 12;
+        const FLAGS = ['mxOrange', 'white', 'mxBlue'];
+        for (let i = 1; i < n; i += 1) {
+          const t = i / n;
+          const sag = Math.sin(t * Math.PI) * -0.18;
+          const x = a[0] + (b[0] - a[0]) * t;
+          const z = a[2] + (b[2] - a[2]) * t;
+          kit.box(FLAGS[i % FLAGS.length], x - 0.12, a[1] + sag - 0.34, z - 0.12, x + 0.12, a[1] + sag, z + 0.12);
+        }
+        break;
+      }
+      case 'hut': {
+        turned(kit, d.x, d.y, heading(d.tx, d.ty), () => {
+          kit.box('white', -1, 0, -1, 1, 2.2, 1);
+          kit.box('mxRed', -1.2, 2.2, -1.2, 1.2, 2.4, 1.2);
+          kit.box('drTyre', 0.99, 0.9, -0.5, 1.02, 1.6, 0.5);
+          kit.cyl('metal', [1.1, 0, 1.1], [1.1, 3.4, 1.1], 0.03, 4);
+          kit.box('mxHay', 1.1, 2.7, 1.1, 1.1 + 0.04, 3.4, 1.9);
+        });
+        break;
+      }
+      case 'clod': {
+        const p = w(d.x, d.y);
+        kit.blob('mxDirtDark', [p[0], 0.08, p[2]], 0.14 + (d.k % 4) * 0.05, 0.1 + (d.k % 3) * 0.03, [0, d.k, 0]);
+        break;
+      }
       case 'bump': {
         turned(kit, d.x, d.y, heading(d.tx, d.ty), () => {
           kit.box('mxDirtDark', -0.15, 0, -TRACK_WIDTH / 2 + 0.8 + (d.k % 2) * 0.4, 0.15, 0.045 + (d.k % 3) * 0.01, TRACK_WIDTH / 2 - 0.8 - ((d.k + 1) % 2) * 0.4);

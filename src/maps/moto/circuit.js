@@ -272,6 +272,57 @@ function bumps(line, decor) {
   }
 }
 
+/* The finish arch over the start line, bunting down both sides of the start
+ * straight, marshals' huts by the big jumps and clods of dirt along the
+ * edges. The arch's legs and the bunting's poles are solid (a quad can hit
+ * them), its beam too, high enough to fly under; the rest is drawn only. */
+function dressing(line, P, decor, keep) {
+  const sa = 10;
+  const pa = pointAt(line, sa);
+  const legOff = TRACK_WIDTH / 2 + 2.2;
+  for (const side of [-1, 1]) {
+    const q = beside(line, sa, side * legOff);
+    ppost(P, 'metal', q.x, q.y, 0, 6.2, 0.2, { kind: 'pole', name: 'arch leg' });
+  }
+  pbox(P, 'metal', pa.x - 0.3, pa.y - legOff, 5.6, pa.x + 0.3, pa.y + legOff, 6.2, { draw: false, name: 'arch beam' });
+  decor.push({
+    t: 'arch', x: pa.x, y: pa.y, tx: pa.tx, ty: pa.ty, off: legOff, h: 6.2,
+  });
+  /* Bunting. */
+  for (const side of [-1, 1]) {
+    let prev = null;
+    for (let s = 24; s <= 152; s += 12.8) {
+      const q = beside(line, s, side * (TRACK_WIDTH / 2 + 4.2));
+      ppost(P, 'metal', q.x, q.y, 0, 3.4, 0.07, { kind: 'pole', name: 'bunting pole' });
+      if (prev) {
+        decor.push({
+          t: 'bunting', ax: prev.x, ay: prev.y, bx: q.x, by: q.y, h: 3.3,
+        });
+      }
+      prev = q;
+    }
+  }
+  /* Marshals' huts, and their flags, by the big jumps. */
+  for (const [s, side] of [[52, -1], [104, 1], [424, -1], [622, 1], [750, -1]]) {
+    const q = beside(line, s, side * (TRACK_WIDTH / 2 + 7));
+    decor.push({
+      t: 'hut', x: q.x, y: q.y, tx: q.tx, ty: q.ty,
+    });
+    pbox(P, 'white', q.x - 1, q.y - 1, 0, q.x + 1, q.y + 1, 2.4, { draw: false, name: 'marshal hut' });
+    keep.push({ x: q.x, y: q.y, r: 3 });
+  }
+  /* Clods, thrown off the line along the edges. */
+  const L = line.length;
+  for (let i = 0; i < 90; i += 1) {
+    const s = ((i * 97) % 1000) / 1000 * L;
+    const side = i % 2 ? 1 : -1;
+    const q = beside(line, s, side * (TRACK_WIDTH / 2 + 0.3 + ((i * 53) % 100) / 100 * 1.4));
+    decor.push({
+      t: 'clod', x: q.x, y: q.y, k: i,
+    });
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* The layout                                                          */
 /* ------------------------------------------------------------------ */
@@ -403,6 +454,7 @@ export function circuitLayout() {
   hay(line, P, decor, last - 12, last + 12, TRACK_WIDTH / 2 + 5.5);
   stakes(line, decor);
   bumps(line, decor);
+  dressing(line, P, decor, keep);
   zoneAt('Start gate', pointAt(line, 16).x, pointAt(line, 16).y, 14, 'gate');
 
   MEMO = {

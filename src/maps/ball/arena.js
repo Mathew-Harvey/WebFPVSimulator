@@ -471,6 +471,78 @@ export function drawArena(kit) {
       }
     }
   }
+  /* The canopy over the back rows of the side stands: a slab on columns,
+   * lit underneath, trimmed in the team's colours, and flags along its edge. */
+  const roofY = sd.base + (sd.rows - 1) * sd.rise + 5;
+  const zr0 = A.hz + T + (sd.rows - 4) * sd.depth - 0.4;
+  const zr1 = zBack + 1.6;
+  for (const s of [-1, 1]) {
+    const za = s > 0 ? zr0 : -zr1;
+    const zb = s > 0 ? zr1 : -zr0;
+    kit.box('concreteDark', -xs, roofY, za, xs, roofY + 0.6, zb);
+    const zf = s > 0 ? zr0 : -zr0;
+    const lo = Math.min(zf, zf + (s > 0 ? -0.25 : 0.25));
+    const hi = Math.max(zf, zf + (s > 0 ? -0.25 : 0.25));
+    kit.glow(PINK, -xs, roofY - 0.1, lo, 0, roofY + 0.7, hi);
+    kit.glow(MINT, 0, roofY - 0.1, lo, xs, roofY + 0.7, hi);
+    const zl = s * (zr0 + 2.2);
+    kit.glow(0xfff0c8, -xs, roofY - 0.04, zl - 0.2, xs, roofY, zl + 0.2);
+    for (let x = -xs + 6; x < xs - 3; x += 12) {
+      kit.box('concreteDark', x - 0.35, roofY - 5, s * (zBack - 0.8) - 0.35, x + 0.35, roofY, s * (zBack - 0.8) + 0.35);
+    }
+    for (let x = -xs + 4; x < xs - 2; x += 9) {
+      const fz = s * (zr0 + 0.3);
+      kit.glow(0xd6d9ee, x - 0.05, roofY + 0.6, fz - 0.05, x + 0.05, roofY + 4.2, fz + 0.05);
+      kit.glow(x < 0 ? PINK : MINT, x + 0.05, roofY + 2.8, fz - 0.03, x + 2.3, roofY + 4.1, fz + 0.03);
+    }
+  }
+  /* The plaza round the stands: tiles in two tones. */
+  for (const s of [-1, 1]) {
+    for (let r = 0; r < 3; r += 1) {
+      for (let c = 0; c < 53; c += 1) {
+        const x = -74.2 + c * 2.8;
+        const z0 = zBack + 0.3 + r * 2.8;
+        const tone = (r + c) % 2 ? 0xd6cfe8 : 0xeee6d2;
+        kit.glow(tone, x, 0.03, s > 0 ? z0 : -z0 - 2.7, x + 2.7, 0.045, s > 0 ? z0 + 2.7 : -z0);
+      }
+    }
+  }
+  /* Trees along the plaza, built of boxes like the screens' pixels. */
+  for (const s of [-1, 1]) {
+    for (let x = -70; x <= 70; x += 7) {
+      const z = s * (zBack + 4.6 + noise(x, s, 2) * 1.2);
+      const h = 0.8 + noise(x, s, 4) * 0.5;
+      kit.glow(0x6b4a3a, x - 0.25, 0.045, z - 0.25, x + 0.25, 1.7 * h, z + 0.25);
+      kit.glow(0x4aa86a, x - 1.8 * h, 1.4 * h, z - 1.8 * h, x + 1.8 * h, 2.9 * h, z + 1.8 * h);
+      kit.glow(0x5fbf7f, x - 1.35 * h, 2.9 * h, z - 1.35 * h, x + 1.35 * h, 4.2 * h, z + 1.35 * h);
+      kit.glow(0x82dc9c, x - 0.8 * h, 4.2 * h, z - 0.8 * h, x + 0.8 * h, 5.2 * h, z + 0.8 * h);
+    }
+  }
+  /* The city beyond: boxes of haze in pastel, unlit, so the fog takes them. */
+  const city = [0xb8c4e8, 0xd7c6ea, 0xf0d8e0, 0xc4e4de, 0xe6e0f0, 0xa9b8e0];
+  for (let gx = -330; gx <= 330; gx += 24) {
+    for (let gz = -330; gz <= 330; gz += 24) {
+      if (Math.abs(gx) < 140 && Math.abs(gz) < 100) {
+        continue;
+      }
+      if (noise(gx, gz, 31) < 0.45) {
+        continue;
+      }
+      const w = 10 + noise(gx, gz, 33) * 12;
+      const d = 10 + noise(gx, gz, 35) * 12;
+      const far = Math.hypot(gx, gz);
+      const h = 18 + noise(gx, gz, 37) ** 2 * 90 + far * 0.05;
+      const x = gx + (noise(gx, gz, 39) - 0.5) * 8;
+      const z = gz + (noise(gx, gz, 41) - 0.5) * 8;
+      const col = city[Math.floor(noise(gx, gz, 43) * city.length)];
+      kit.glow(col, x - w / 2, 0, z - d / 2, x + w / 2, h, z + d / 2);
+      kit.glow(shade(col, 0.88), x - w / 2 + 1, h, z - d / 2 + 1, x + w / 2 - 1, h + 2.5, z + d / 2 - 1);
+      if (noise(gx, gz, 45) < 0.5) {
+        kit.glow(0xfff0c8, x - w / 2 - 0.05, h * 0.35, z - d / 2 - 0.05, x + w / 2 + 0.05, h * 0.35 + 1.2, z + d / 2 + 0.05);
+        kit.glow(0xfff0c8, x - w / 2 - 0.05, h * 0.65, z - d / 2 - 0.05, x + w / 2 + 0.05, h * 0.65 + 1.2, z + d / 2 + 0.05);
+      }
+    }
+  }
   /* The towers: four tapering legs, braces, and a bank of lamps. */
   for (const sx of [-1, 1]) {
     for (const sz of [-1, 1]) {

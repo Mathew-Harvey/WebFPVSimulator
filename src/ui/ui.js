@@ -234,7 +234,7 @@ import {
 } from './mangapage.js';
 import { paintTitle } from './lettering.js';
 import {
-  GATE_HEADS, GATE_ROOMS, GATE_SIDES, SOLO_PANELS, paintGatePilot, sceneFor,
+  GATE_GAMES, GATE_HEADS, GATE_ROOMS, GATE_SIDES, SOLO_PANELS, paintGatePilot, sceneFor,
 } from './gatepages.js';
 import { formatScore } from '../game/score.js';
 import { PRACTICE_LAPS } from '../game/race.js';
@@ -5644,6 +5644,12 @@ export class Ui {
     this.gatePage = null;
     this.gateTurn = '';
     this.gateSide = '';
+    /* The mini games page: with friends or not, the panel last played, and
+     * whether the picker open now was opened from it, so Back from the
+     * picker turns to it rather than to the cover. */
+    this.gameFriends = false;
+    this.gameLast = '';
+    this.gameReturn = false;
     /*
      * HOSTING, BETWEEN "HOST A ROOM" AND THE ROOM. A room is hosted on a
      * map, so Host a room opens the map picker, and while it does the
@@ -9505,6 +9511,30 @@ export class Ui {
             ...tail,
           ];
         }
+        /* The mini games: the switch, then a panel a game, each panel's
+         * action the way alone or the way with friends as the switch says
+         * (gatepages.js GATE_GAMES). */
+        if (page === 'games') {
+          const friends = Boolean(this.gameFriends);
+          return [
+            {
+              label: friends ? 'With friends' : 'Just me',
+              card: 'mg-switch',
+              caption: friends ? 'Playing with friends. Switch to just me.' : 'Playing just me. Switch to with friends.',
+              action: 'mg-friends',
+            },
+            ...GATE_GAMES.map((c) => ({
+              label: c.label,
+              card: c.id,
+              art: c.art,
+              kicker: c.kicker,
+              caption: c.caption,
+              chips: c.chips,
+              action: friends ? c.room : c.action,
+            })),
+            ...tail,
+          ];
+        }
         const panel = (id) => SOLO_PANELS[id] || {};
         return [
           /* Career. First, see CAREER_CARD. */
@@ -13127,7 +13157,7 @@ export class Ui {
     }
     const items = this.items().filter((it) => it.card);
     const page = this.onGate() ? this.gatePageNow() : 'solo';
-    const key = `${page}:${items.map((it) => it.card).join('|')}`;
+    const key = `${page}:${items.map((it) => `${it.card}=${it.action}`).join('|')}`;
     if (!this.titleCards || this.titleCardKey !== key) {
       this.titleCardKey = key;
       host.textContent = '';
@@ -13135,6 +13165,9 @@ export class Ui {
       host.append(this.gateHead(page));
       const grid = el('div', 'gate-grid');
       this.titleCards = items.map((it, i) => {
+        if (it.card === 'mg-switch') {
+          return this.gameSwitch(grid, i);
+        }
         const card = el('div', `gate-card gate-card-${it.card}`);
         card.setAttribute('role', 'button');
         card.setAttribute('aria-label', it.caption ? `${it.label}. ${it.caption}` : it.label);
@@ -13202,6 +13235,13 @@ export class Ui {
         if (it.caption) {
           nm.append(el('p', 'gate-card-blurb', it.caption));
         }
+        if (it.chips) {
+          const chips = el('div', 'gate-card-chips');
+          for (const c of it.chips) {
+            chips.append(el('span', `gate-chip${c === 'Bots' ? ' is-bots' : c === 'Friends' ? ' is-friends' : ''}`, c));
+          }
+          nm.append(chips);
+        }
         art.append(nm);
         const inner = el('div', 'gate-card-in');
         inner.append(art);
@@ -13236,6 +13276,91 @@ export class Ui {
     }
     this.markCards();
     this.letterGateNames();
+  }
+
+  /*
+   * THE MINI GAMES PAGE'S SWITCH, Just me or With friends, a stop like the
+   * panels so a radio or a pad reaches it with the cursor (they have no
+   * Tab), across the top of the page where the mockup put it. Choosing it
+   * flips it; Tab flips it from anywhere on the page (handleKey).
+   */
+  gameSwitch(grid, i) {
+    const friends = Boolean(this.gameFriends);
+    const card = el('div', 'gate-card gate-card-mg-switch');
+    card.setAttribute('role', 'switch');
+    card.setAttribute('aria-checked', friends ? 'true' : 'false');
+    card.setAttribute('aria-label', 'With friends');
+    const me = el('span', `mg-side${friends ? '' : ' is-on'}`, 'Just me');
+    const them = el('span', `mg-side${friends ? ' is-on' : ''}`, 'With friends');
+    const line = el('span', 'mg-line', friends
+      ? 'The game you pick opens a room. Friends come in by the code or the link, and bots can fill the empty seats.'
+      : 'Just you, and as many bots as you like.');
+    card.append(me, them, line);
+    card.addEventListener('mousemove', (e) => this.hoverCursor(e, i));
+    card.addEventListener('click', () => {
+      this.cursor = i;
+      this.select();
+    });
+    grid.append(card);
+    return { card };
+  }
+
+  /* 'games' when the picker being left was opened from the mini games
+   * page, once: the next picker opened from anywhere else forgets it. */
+  backToGames() {
+    const back = this.gameReturn && this.roomsOn ? 'games' : '';
+    this.gameReturn = false;
+    return back;
+  }
+
+  /*
+   * GOAT HERDING AND DRIFT MATSURI from the mini games page: each is one
+   * map, so the panel flies it, or hosts a room on it, as its card in the
+   * map picker would. The picker is opened on the Maps shelf first because
+   * that card is where the map's quad picker and its room are asked from,
+   * and Back from there is the world cards with the map under the cursor.
+   */
+  playMapGame(id, room) {
+    this.endFightPick();
+    this.endHostPick();
+    if (this.onGate()) {
+      this.craftGate = false;
+      this.settings.airframeAsked = true;
+    }
+    this.pickerShelfChosen('maps');
+    const entry = this.pickerEntries().find((e) => e.item && e.item.action === `map:${id}`);
+    if (!entry) {
+      return;
+    }
+    const at = this.items().indexOf(entry.item);
+    if (at >= 0) {
+      this.setCursor(at);
+    }
+    if (room && this.roomsOn && this.onFlyTogether) {
+      const world = this.roomWorldOf(entry);
+      if (world) {
+        if (this.onUiSound) {
+          this.onUiSound('select');
+        }
+        this.onFlyTogether(world);
+        return;
+      }
+    }
+    this.pickerAction('fly', entry);
+  }
+
+  /* Flip the mini games page between alone and with friends, the cursor
+   * staying on the panel it was on. */
+  flipGameFriends() {
+    const at = this.items()[this.cursor];
+    const want = at && at.card;
+    this.gameFriends = !this.gameFriends;
+    if (this.onUiSound) {
+      this.onUiSound('adjust');
+    }
+    this.renderMenu();
+    const i = this.items().findIndex((it) => it.card === want);
+    this.setCursor(i >= 0 ? i : this.titleStop());
   }
 
   /*
@@ -13275,12 +13400,12 @@ export class Ui {
   /* Turn to a page of the gate: the cursor lands where that page starts,
    * and the page swings in from the side it is on. */
   turnGate(page) {
-    const order = { cover: 0, solo: 1, together: 2 };
+    const order = { cover: 0, solo: 1, together: 2, games: 3 };
     const was = this.gatePageNow();
     if (page === was) {
       return;
     }
-    if (page === 'solo' || page === 'together') {
+    if (page === 'solo' || page === 'together' || page === 'games') {
       this.gateSide = page;
     }
     this.gateTurn = order[page] > order[was] ? 'fwd' : 'back';
@@ -16590,7 +16715,8 @@ export class Ui {
     /* The cover lands on the side this visit last took, solo the first
      * time; the multiplayer page on Host a room, its first door. */
     if (this.onGate() && this.gatePageNow() !== 'solo') {
-      const want = this.gatePageNow() === 'cover' ? (this.gateSide || 'solo') : 'mp-host';
+      const page = this.gatePageNow();
+      const want = page === 'cover' ? (this.gateSide || 'solo') : page === 'games' ? (this.gameLast || 'mg-dogfight') : 'mp-host';
       const at = items.findIndex((it) => it.card === want);
       return at >= 0 ? at : this.firstStop(items);
     }
@@ -19787,6 +19913,9 @@ export class Ui {
     if (this.screen !== 'title') {
       out.push({ keys: [pad ? 'B' : 'Esc'], text: 'Back', action: 'back' });
     } else if (this.onGate()) {
+      if (this.gatePageNow() === 'games' && !pad) {
+        out.push({ keys: ['Tab'], text: this.gameFriends ? 'Just me' : 'With friends', action: 'mg-friends' });
+      }
       if (this.gatePageNow() !== this.gateRoot()) {
         out.push({ keys: [pad ? 'B' : 'Esc'], text: 'Back', action: 'back' });
       } else {
@@ -20447,7 +20576,7 @@ export class Ui {
       if (fromGate) {
         this.mode = null;
         this.craftGate = true;
-        this.gatePage = this.roomsOn ? 'cover' : 'solo';
+        this.gatePage = this.backToGames() || (this.roomsOn ? 'cover' : 'solo');
         this.gateTurn = 'back';
         this.show('title');
         this.setCursor(this.titleStop());
@@ -20471,7 +20600,7 @@ export class Ui {
       if (fromGate && this.roomsOn) {
         this.mode = null;
         this.craftGate = true;
-        this.gatePage = 'together';
+        this.gatePage = this.backToGames() || 'together';
         this.gateTurn = 'back';
         this.show('title');
         this.setCursor(this.titleStop());
@@ -20737,6 +20866,31 @@ export class Ui {
      * otherwise the default board. */
     /* The gate's cover, and the multiplayer page's four doors, which are
      * together.js's (main.js routes them). */
+    /* The mini games page (gatepages.js GATE_GAMES): the switch, and the
+     * way back to it from a game's picker is remembered here. */
+    if (action === 'gate-games') {
+      this.turnGate('games');
+      return;
+    }
+    if (action === 'mg-friends') {
+      this.flipGameFriends();
+      return;
+    }
+    if (this.onGate()) {
+      this.gameReturn = this.gatePageNow() === 'games';
+      if (this.gameReturn) {
+        const at = this.items()[this.cursor];
+        this.gameLast = at && at.card ? at.card : '';
+      }
+    }
+    if (action === 'gate-dogfight-room') {
+      this.pickDogfightRoom();
+      return;
+    }
+    if (action === 'gate-goats' || action === 'gate-goats-room' || action === 'gate-drift' || action === 'gate-drift-room') {
+      this.playMapGame(action.includes('goats') ? 'goats' : 'drift', action.endsWith('-room'));
+      return;
+    }
     if (action === 'gate-dogfight') {
       this.pickDogfight();
       return;
@@ -21743,6 +21897,11 @@ export class Ui {
         this.back();
         return true;
       }
+    }
+    /* The mini games page's switch, from anywhere on the page. */
+    if (code === 'Tab' && this.screen === 'title' && this.onGate() && this.gatePageNow() === 'games') {
+      this.flipGameFriends();
+      return true;
     }
     this.lastInput = 'key';
     if (PICKER_KEYS[code] && this.pickerNav(PICKER_KEYS[code])) {

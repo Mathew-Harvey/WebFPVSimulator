@@ -87,14 +87,71 @@ export const GATE_SIDES = [
     sticker: 'NEW!',
     action: 'gate-together',
   },
-  /* The owner's ask of 2026-10-29: guns, missiles and bots on any map. */
+  /*
+   * The mini games, the owner's ask of 2026-10-29: "the dog fight category
+   * to belong to a mini games mode, so we can also aggregate other mini
+   * games there". The panel the dogfight had, with its picture, now opens
+   * a page of its own (GATE_GAMES).
+   */
   {
-    id: 'dogfight',
-    label: 'Dogfight',
-    kicker: 'New mode',
+    id: 'games',
+    label: 'Mini games',
+    kicker: 'Play',
     art: 'assets/gate/dogfight.jpg',
-    caption: 'Guns, missiles and bots, on any map you like.',
+    caption: 'Dogfights, ribbon cutting, goat herding and drift filming.',
+    action: 'gate-games',
+  },
+];
+
+/*
+ * THE MINI GAMES PAGE, one panel a game. The owner, 2026-10-29 04:51Z:
+ * "Every map should be available with friends so multiplayer or single
+ * player, bots should be able to be added to either". So every panel
+ * plays alone or with friends, and the page's switch (ui.js, gameFriends)
+ * says which: `action` is the panel's way alone, `room` its way with
+ * friends. `chips` are the three words under the line, as the mockup set
+ * them. A new mini game is one more entry here and its two actions.
+ */
+export const GATE_GAMES = [
+  {
+    id: 'mg-dogfight',
+    label: 'Dogfight',
+    kicker: 'Guns and missiles',
+    art: 'assets/gate/dogfight.jpg',
+    caption: 'Pop the other quads before they pop you. Any map you like.',
+    chips: ['Bots', 'Friends', 'Any map'],
     action: 'gate-dogfight',
+    room: 'gate-dogfight-room',
+  },
+  {
+    id: 'mg-ribbon',
+    label: 'Ribbon cutting',
+    kicker: 'New!',
+    art: 'assets/gate/ribbons.jpg',
+    caption: 'Snip their ribbons, keep yours. Last ribbon flying wins.',
+    chips: ['Bots', 'Friends', 'Any map'],
+    action: 'gate-ribbon',
+    room: 'gate-ribbon-room',
+  },
+  {
+    id: 'mg-goats',
+    label: 'Goat herding',
+    kicker: '90%er',
+    art: 'assets/gate/goats.jpg',
+    caption: "Herd more goats into Heads' garage than anyone else.",
+    chips: ['Bots', 'Friends', "Heads' street"],
+    action: 'gate-goats',
+    room: 'gate-goats-room',
+  },
+  {
+    id: 'mg-drift',
+    label: 'Drift Matsuri',
+    kicker: 'Be the camera',
+    art: 'assets/gate/drift.jpg',
+    caption: 'Chase the drift cars and film the best shots. Best reel wins.',
+    chips: ['Bots', 'Friends', 'Drift Matsuri'],
+    action: 'gate-drift',
+    room: 'gate-drift-room',
   },
 ];
 
@@ -154,6 +211,7 @@ export const GATE_HEADS = {
   cover: { kicker: 'This week', title: 'How do you want to fly?', folio: '01' },
   solo: { kicker: 'Chapter 1', title: 'Fly solo', folio: '02' },
   together: { kicker: 'Chapter 2', title: 'Multiplayer', folio: '03' },
+  games: { kicker: 'Chapter 3', title: 'Mini games', folio: '04' },
 };
 
 /* ------------------------------------------------------------------ *
@@ -407,6 +465,16 @@ function svg(vb, body, cls) {
  * piece (index.html, `.gp-*`), at a share of the panel, so a piece keeps
  * its corner on a tall panel and on a wide one.
  */
+/* Two ribbons streaming off two quads, the blue one snipped in two. */
+function ribbons() {
+  const band = (d, fill, dash = '') => `<path d="${d}" fill="none" stroke="${INK}" stroke-width="15" stroke-linecap="round"/>`
+    + `<path d="${d}" fill="none" stroke="${fill}" stroke-width="9" stroke-linecap="round"${dash ? ` stroke-dasharray="${dash}"` : ''}/>`;
+  return band('M60 120 C 110 70, 150 160, 200 110 S 270 60, 292 96', BAIL)
+    + band('M150 30 C 175 22, 190 44, 214 40', SKY, '30 10')
+    + quad(48, 124, 0.5, -60, BAIL) + quad(140, 34, 0.5, -110, SKY)
+    + burst(244, 62, 22, 38, 11, AMBER, 'CUT!', -12, 5);
+}
+
 const SCENES = {
   solo: () => [
     { cls: 'gp-solo-quad', svg: svg('0 0 220 150', streaks(140, 62, -28, 120, 9, 26, 11) + quad(140, 62, 1.25, 62, SAKURA)) },
@@ -423,6 +491,15 @@ const SCENES = {
     { cls: 'gp-sticker', svg: svg('0 0 120 120', burst(60, 60, 34, 54, 13, AMBER, 'NEW!', -12)) },
   ],
   /* Two quads at it, the tracer between them, and the noise it makes. */
+  'mg-dogfight': () => SCENES.dogfight().filter((p) => p.cls !== 'gp-dog-sticker'),
+  games: () => [
+    ...SCENES.dogfight().filter((p) => p.cls !== 'gp-dog-sticker'),
+    { cls: 'gp-dog-sticker', svg: svg('0 0 120 120', burst(60, 60, 34, 54, 13, MINT, 'NEW!', 10)) },
+  ],
+  /* Two quads, each trailing its ribbon, one of them snipped. */
+  'mg-ribbon': () => [
+    { cls: 'gp-ribbon', svg: svg('0 0 300 170', ribbons()) },
+  ],
   dogfight: () => [
     {
       cls: 'gp-dog',

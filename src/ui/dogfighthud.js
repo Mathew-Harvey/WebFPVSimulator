@@ -101,6 +101,9 @@ const CSS = `
 @media (max-width: 700px) { .df-me-panel { transform: scale(.8); transform-origin: left bottom; left: 10px; bottom: auto; top: 54px; } .df-feed { top: 60px; transform: scale(.85); transform-origin: right top; } }
 `;
 
+/* Squares a frame may mark before it falls back to clearing everything. */
+const DIRTY_MAX = 64;
+
 function el(tag, cls, text) {
   const n = document.createElement(tag);
   if (cls) {
@@ -210,6 +213,23 @@ export class DogfightHud {
     this.h = 0;
     this.dpr = 1;
     this.lockSeen = -1;
+    /* What was drawn last frame, as squares, so a frame clears those and
+     * not the whole window: a full screen clear was most of the HUD's
+     * cost on a software rasteriser, 0.6 ms a frame. */
+    this.dirty = new Float32Array(DIRTY_MAX * 3);
+    this.dirtyN = 0;
+  }
+
+  /* A square round (x, y) of half side r was drawn into. */
+  mark(x, y, r) {
+    if (this.dirtyN >= DIRTY_MAX) {
+      return;
+    }
+    const j = this.dirtyN * 3;
+    this.dirty[j] = x;
+    this.dirty[j + 1] = y;
+    this.dirty[j + 2] = r;
+    this.dirtyN += 1;
   }
 
   /* Touch: two buttons that hold and press, through the input manager so
@@ -269,9 +289,14 @@ export class DogfightHud {
   }
 
   resize() {
-    const w = this.root.clientWidth || window.innerWidth;
-    const h = this.root.clientHeight || window.innerHeight;
-    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    /* The window's size, which costs nothing to read. The layer's own
+     * clientWidth forced the page's layout every frame, and that was most
+     * of what the HUD cost: 0.5 ms of a frame. */
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    /* Lines and numbers read at one pixel a pixel; a 4K panel at 2x
+     * would be four times the canvas to clear and compose. */
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.25);
     if (w === this.w && h === this.h && dpr === this.dpr) {
       return;
     }
@@ -280,6 +305,8 @@ export class DogfightHud {
     this.dpr = dpr;
     this.canvas.width = Math.round(w * dpr);
     this.canvas.height = Math.round(h * dpr);
+    /* Setting the size cleared it. */
+    this.dirtyN = 0;
   }
 
   /* World to screen, CSS pixels. z > 1 is behind the eye. */
@@ -366,7 +393,16 @@ export class DogfightHud {
     const ctx = this.ctx;
     const k = g.k;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    ctx.clearRect(0, 0, this.w, this.h);
+    if (this.dirtyN >= DIRTY_MAX) {
+      ctx.clearRect(0, 0, this.w, this.h);
+    } else {
+      for (let n = 0; n < this.dirtyN; n += 1) {
+        const j = n * 3;
+        const r = this.dirty[j + 2];
+        ctx.clearRect(this.dirty[j] - r, this.dirty[j + 1] - r, r * 2, r * 2);
+      }
+    }
+    this.dirtyN = 0;
     const alive = g.alive[ME] === 1;
 
     /* The reticle: where the gun points. The camera looks along it. */
@@ -374,6 +410,7 @@ export class DogfightHud {
     const cy = this.h / 2;
     const rr = Math.max(34, Math.min(this.w, this.h) * 0.075);
     if (alive) {
+      this.mark(cx, cy, rr + 6);
       ctx.lineWidth = 2.5;
       ctx.strokeStyle = 'rgba(243,234,212,0.9)';
       ctx.setLineDash([14, 10]);
@@ -431,6 +468,7 @@ export class DogfightHud {
       const s = Math.max(12, Math.min(46, (40 * k * 6) / Math.max(d, 0.1)));
       const grow = locking ? s + (1 - lockU) * 26 : s;
       const shielded = !g.hittable(i);
+      this.mark(p.x, p.y, grow + 40);
       ctx.strokeStyle = locking ? (lockU >= 1 ? '#ff3b5c' : BAIL) : (shielded ? 'rgba(157,179,200,0.8)' : AMBER);
       ctx.lineWidth = locking ? 4 : 3;
       const c = Math.max(6, grow * 0.35);
@@ -473,6 +511,7 @@ export class DogfightHud {
           const lz = z + (g.vz[i] - g.vz[ME]) * tof;
           const q = this.project(lx, ly, lz, camera);
           if (!q.behind) {
+            this.mark(q.x, q.y, 12);
             ctx.fillStyle = MINT;
             ctx.strokeStyle = INK;
             ctx.lineWidth = 2;
@@ -502,7 +541,7 @@ export class DogfightHud {
       const at = this.edgeArrow(ctx, p, BAIL, null, true);
       warnSide = at.x < this.w / 2 ? -1 : 1;
       this.warnCall.classList.remove('is-off');
-      this.warnCall.style.left = `${Math.round(warnSide < 0 ? 52 : this.w - 52 - (this.warnCall.clientWidth || 140))}px`;
+      this.warnCall.style.left = `${Math.round(warnSide < 0 ? 52 : this.w - 52 - (this.warnCall.width || 140))}px`;
       this.warnCall.style.top = `${Math.round(Math.max(60, Math.min(this.h - 120, at.y - 24)))}px`;
     } else {
       this.warnCall.classList.add('is-off');
@@ -531,6 +570,7 @@ export class DogfightHud {
       ctx.globalAlpha = age > 600 ? 1 - (age - 600) / 300 : 1;
       const yy = p.y - 18 - age * 0.04;
       const xx = p.x + 18 + ((n * 7) % 13);
+      this.mark(xx, yy - size * 0.4, size * 1.6);
       ctx.lineWidth = 4;
       ctx.strokeStyle = INK;
       ctx.strokeText(d.big ? `${d.n}!` : String(d.n), xx, yy);
@@ -662,6 +702,7 @@ export class DogfightHud {
     const ux = dx / len;
     const uy = dy / len;
     const r = big ? 22 : 15;
+    this.mark(x, y, r + 4);
     ctx.fillStyle = colour;
     ctx.strokeStyle = INK;
     ctx.lineWidth = 3;
@@ -674,6 +715,7 @@ export class DogfightHud {
     ctx.fill();
     ctx.stroke();
     if (label) {
+      this.mark(x - ux * 34, y - uy * 30, 44);
       ctx.font = '900 12px system-ui, sans-serif';
       ctx.textAlign = 'center';
       ctx.lineWidth = 3;

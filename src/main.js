@@ -13385,6 +13385,7 @@ export async function boot({ loading, bootStart, mapId }) {
   /* Dogfight, for its checks: the game, or null while there is none. */
   window.__dogfight = () => fightGame;
   window.__dogfightView = () => fightView;
+  window.__dogfightHud = () => fightHud;
   window.__balloonCraft = () => ({ ...balloonCraft });
   /*
    * THE COUNTER, for the checks and the flown rigs: the live view (the

@@ -794,6 +794,8 @@ export class RibbonRoom {
     this.endLocal = 0;
     this.heardOverAt = 0;
     this.dismissed = false;
+    /* The room's pilot by id, set by the shell: see nameOf. */
+    this.who = null;
     this.outbox = [];
     this.clockMs = 0;
     this.havePrevMe = false;
@@ -869,8 +871,18 @@ export class RibbonRoom {
   setRules() {
   }
 
+  /* The room's own list first (main.js sets `who`, the link's pilots by
+   * id): the board gives a pilot who joins the lowest id free, so a slot
+   * kept for a pilot who left is the next one's, and the name learned from
+   * the last one's poses stayed on it until the new one flew. A pilot who
+   * joined and sat in the menus finished the round under the name of the
+   * one who had gone. */
   nameOf(i) {
-    return i === ME ? 'YOU' : (this.names[i] || 'PILOT');
+    if (i === ME) {
+      return 'YOU';
+    }
+    const p = this.who && i > 0 && this.idOf[i] >= 0 ? this.who(this.idOf[i]) : null;
+    return (p && p.handle) || this.names[i] || 'PILOT';
   }
 
   /* A slot for room pilot `id`, made the first time it is asked for. A

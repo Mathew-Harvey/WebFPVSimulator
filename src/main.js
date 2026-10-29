@@ -1889,8 +1889,14 @@ export async function boot({ loading, bootStart, mapId }) {
   let filmBest = -1;
   function filmFrame() {
     const game = view && view.filmGame;
-    ui.filmHud.setVisible(Boolean(game) && !replayMode && (ui.screen === 'flight' || ui.screen === 'paused'));
+    /* A dogfight or ribbon cutting on the map is the game being played:
+     * the take's HUD sat over the fight's, two games on one screen. */
+    ui.filmHud.setVisible(Boolean(game) && !fightGame && !replayMode && (ui.screen === 'flight' || ui.screen === 'paused'));
     if (!game) {
+      return;
+    }
+    if (fightGame) {
+      game.film.drainEvents();
       return;
     }
     if (filmBest < 0) {
@@ -2324,6 +2330,7 @@ export async function boot({ loading, bootStart, mapId }) {
   let fightHud = null;
   let fightFor = null;
   let fightRulesKey = '';
+  let fightScaleKey = '';
   let fightKey = '';
   let fightRound = 0;
   let fightBest = 0;
@@ -2576,7 +2583,14 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     const kind = rules.game === 'ribbon' ? 'ribbon' : 'dogfight';
     const rulesKey = JSON.stringify(rules);
-    if (fightFor === view && fightGame && fightKind === kind && fightInRoom === roomGame) {
+    /* The fight is read in the aircraft's own metres, through the world
+     * scale it was built at (fightWorld's k). A quad of another size on the
+     * same map moves that scale without a new view: the host of a room
+     * swapping everybody's quad, or the quad picker on a map already
+     * loaded. The fight was left at the old size, bots, pellets and hit
+     * reach three and a half times off, until it is built again here. */
+    const scaleKey = `${simLenToWorld(1)}:${runAirframe}`;
+    if (fightFor === view && fightGame && fightKind === kind && fightInRoom === roomGame && fightScaleKey === scaleKey) {
       if (roomGame) {
         return;
       }
@@ -2623,6 +2637,7 @@ export async function boot({ loading, bootStart, mapId }) {
       Game, hashKey, View, Hud,
     } = fightMods;
     fightWhoop = runAirframe === 'whoop65';
+    fightScaleKey = scaleKey;
     fightKey = `${view.id}:${(view.egg && view.egg.key) || view.name || ''}:${fightWhoop ? 'whoop' : 'five'}`;
     fightRulesKey = rulesKey;
     fightInRoom = roomGame;
@@ -2639,6 +2654,9 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     /* For the checks: what reading the map cost, once. */
     fightGame.buildMs = performance.now() - builtAt;
+    if (roomGame) {
+      fightGame.who = (id) => together.pilotOf(id);
+    }
     fightView = new View({ whoop: fightWhoop, slots: roomRibbon ? fightMods.ROOM_SLOTS : 0 });
     fightView.attach(view.scene, shell.renderer, shell.camera, view.post && view.post.rtScene);
     for (const other of Object.keys(fightHuds)) {
@@ -2870,8 +2888,9 @@ export async function boot({ loading, bootStart, mapId }) {
         writeFightBest(mine);
       }
     }
-    /* A room's next round is its host's to start. */
-    if (g.over && g.sinceOverMs() >= RESULT_MS && !(g.room && fightKind === 'dogfight')) {
+    /* After the table's time a solo fight starts its next round, and a
+     * room's table is put away: its next round is the host's to start. */
+    if (g.over && !g.dismissed && g.sinceOverMs() >= RESULT_MS) {
       fightNewRound();
     }
     const t = feedFraction(ahead);
@@ -6748,11 +6767,16 @@ export async function boot({ loading, bootStart, mapId }) {
   function goatFrame() {
     const game = view && view.goatGame;
     ui.goatsOn = Boolean(game);
-    ui.goatHud.setVisible(Boolean(game) && !replayMode && (ui.screen === 'flight' || ui.screen === 'paused'));
+    /* As the take's, above: the herd still runs, its HUD and its HOME!
+     * callouts wait for the fight to end. */
+    ui.goatHud.setVisible(Boolean(game) && !fightGame && !replayMode && (ui.screen === 'flight' || ui.screen === 'paused'));
     if (!game) {
       return;
     }
     const home = game.drain();
+    if (fightGame) {
+      return;
+    }
     const hud = game.hud();
     if (home.length) {
       const last = home[home.length - 1];

@@ -99,6 +99,9 @@ export class RibbonHud extends DogfightHud {
     }
     this.visible = on;
     this.root.classList.toggle('is-off', !on);
+    if (this.root.parentNode) {
+      this.root.parentNode.classList.toggle('df-on', on);
+    }
     if (on) {
       this.paintOnce();
     }
@@ -180,7 +183,7 @@ export class RibbonHud extends DogfightHud {
     const mx = g.x[ME];
     const my = g.y[ME];
     const mz = g.z[ME];
-    const offscreen = [];
+    this.offBegin(g.cap || MAX_PILOTS);
     /* A mark over every quad still in, above the name tag the craft
      * already wear: a chevron, and how much ribbon it has as pips. */
     const slots = g.cap || MAX_PILOTS;
@@ -195,10 +198,10 @@ export class RibbonHud extends DogfightHud {
       const dy = y - my;
       const dz = z - mz;
       const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
-      const p = this.project(x, y, z, camera);
+      const p = this.project(x, y, z, camera, this.onP);
       const on = !p.behind && p.x > 8 && p.x < this.w - 8 && p.y > 8 && p.y < this.h - 8;
       if (!on) {
-        offscreen.push({ i, d, p });
+        this.offAdd(i, d, p);
         continue;
       }
       const s = Math.max(10, Math.min(30, (30 * k * 6) / Math.max(d, 0.1)));
@@ -221,11 +224,7 @@ export class RibbonHud extends DogfightHud {
         ctx.fillRect(p.x - 22 + n * 9, top - 16, 7, 4);
       }
     }
-    offscreen.sort((a, b) => a.d - b.d);
-    for (let n = 0; n < Math.min(3, offscreen.length); n += 1) {
-      const o = offscreen[n];
-      this.edgeArrow(ctx, o.p, AMBER, nameIn(g, o.i));
-    }
+    this.offDraw(ctx, g);
 
     /* SNIP! and CUT!, for a moment. */
     if (this.callEl && nowMs - this.callAt > CALL_MS) {

@@ -285,6 +285,33 @@ check(Math.abs(B.x[b1B] - wasX) > 0.5, 'and flies them', `${(B.x[b1B] - wasX).to
 /* Results from the board end the round on every page. */
 B.heard(board.state('results'), toLocal);
 check(B.over && !B.running, 'results from the board end the round');
+/* The table is put away (Fly on, or its time is up) while the round stays
+ * over: a dogfight room's table offered solo buttons and never went. */
+check(!B.dismissed, 'the table is up when the results come');
+B.reset(2);
+check(B.dismissed && B.over && !B.running, 'Fly on puts the table away and the round stays the board\'s');
+B.heard(board.state('results'), toLocal);
+check(B.dismissed, 'the same results heard again keep it away');
+board.start();
+B.heard(board.state('count'), toLocal);
+check(!B.dismissed && !B.over, 'the host\'s next round brings the fight back');
+B.heard(board.state('results'), toLocal);
+check(B.over && !B.dismissed, 'and its results put the table up again');
+
+/* A pilot who leaves and the next one to join: the board gives the new
+ * one the same id, and the name is the room's, not the last poses'. */
+{
+  const R = new DogfightRoom(world(), { now, seed: 9 });
+  R.setYou(1, false);
+  R.remote(7, posed(5, 6, 5, 1, 0, 0, 0, 1, 0), { handle: 'Kite Runner' });
+  const s7 = R.slotOf(7);
+  check(R.nameOf(s7) === 'Kite Runner', 'a pilot is named from their poses with no list to ask');
+  const room = new Map([[7, { id: 7, handle: 'Moss Comet' }]]);
+  R.who = (id) => room.get(id) || null;
+  check(R.nameOf(s7) === 'Moss Comet', 'the room\'s list names the pilot who has the id now');
+  room.clear();
+  check(R.nameOf(s7) === 'Kite Runner', 'and the last name heard stands when the list has nobody');
+}
 
 /* Cost: the host with two bots and a room of eight others. */
 {

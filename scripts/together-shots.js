@@ -4190,6 +4190,10 @@ async function sceneRibbon() {
     const botCut = await until(() => moss.heard.some((h) => h.name === 'rbCut' && h.data.by > 200), 90000, 200);
     check('a bot cuts somebody\'s ribbon, and the room hears it', botCut);
     await shot('bots-live');
+    /* Moss joined after Kite left and the board gave Moss Kite's id: the
+     * slot is named for who has the id now, though Moss never flew. */
+    const mossName = await page.evaluate(`(() => { const g = window.__dogfight(); return g.nameOf(g.slotOf(${moss.s.you})); })()`);
+    check('a pilot who takes a leaver\'s id is named as themselves', mossName === 'Moss Comet', mossName);
     moss.s.leave();
     /* The picker asks for Drift Matsuri's picture, which main does not
      * have yet (PROGRESS.md, the swap scene's entry). */
@@ -4266,6 +4270,13 @@ async function sceneDogfight() {
     kite.s.leave();
     check('the page is host once the host goes', await page.until(`${T} && window.__together().host === window.__together().you`, 10000).then(() => true, () => false));
     check('and the round ends with one pilot left', await page.until(`${G} && window.__dogfight().state.phase === 'results'`, 10000).then(() => true, () => false));
+    /* The room's table: the host's Again and Fly on, never the solo fight's
+     * Change the fight and Leave, and Fly on puts it away. */
+    const table = await page.until("!document.querySelector('.df-result').classList.contains('is-off')", 5000).then(() => true, () => false);
+    const tableButtons = await page.evaluate("[...document.querySelectorAll('.df-result .df-btn')].map((b) => b.textContent)");
+    check('the host\'s results table offers Again and Fly on', table && tableButtons.join(',') === 'Again,Fly on', tableButtons.join(', '));
+    await page.evaluate("(() => { [...document.querySelectorAll('.df-result .df-btn')].find((b) => b.textContent === 'Fly on').click(); return 1; })()");
+    check('Fly on puts the table away', await page.until("document.querySelector('.df-result').classList.contains('is-off')", 3000).then(() => true, () => false));
     const hostRows = await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); return window.__ui.items().filter(Boolean).map((x) => x.label); })()");
     check('the host\'s pause menu has Start a dogfight round, Bots, Hits and Round', ['Start a dogfight round', 'Bots', 'Hits', 'Round'].every((x) => hostRows.includes(x)), hostRows.join(', '));
     await page.evaluate("(() => { window.__ui.act('room-df-bots'); return 1; })()");
@@ -4294,6 +4305,10 @@ async function sceneDogfight() {
     const botHit = await until(() => moss.heard.some((h) => h.name === 'dfHit' && h.data.by > 200), 90000, 200);
     check('a bot hits somebody, and the room hears it', botHit);
     await shot('bots-live');
+    /* Moss joined after Kite left and the board gave Moss Kite's id: the
+     * slot is named for who has the id now, though Moss never flew. */
+    const mossName = await page.evaluate(`(() => { const g = window.__dogfight(); return g.nameOf(g.slotOf(${moss.s.you})); })()`);
+    check('a pilot who takes a leaver\'s id is named as themselves', mossName === 'Moss Comet', mossName);
     moss.s.leave();
     endChecks(page, /thumbs\/drift\.jpg/);
   } catch (e) {

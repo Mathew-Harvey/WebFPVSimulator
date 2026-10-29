@@ -92,6 +92,9 @@ export class DogfightRoom extends Dogfight {
       phase: 'pit', hits: 'arcade', round: '3m', n: 0, goAt: 0, endAt: 0, winner: null, rows: [],
     };
     this.ended = false;
+    this.dismissed = false;
+    /* The room's pilot by id, set by the shell: see nameOf. */
+    this.who = null;
     /* now(), read once a feed: here() is asked a great many times. */
     this.tNow = now();
     this.inFight[ME] = 0;
@@ -102,7 +105,14 @@ export class DogfightRoom extends Dogfight {
   reset(round) {
     if (!this.idOf) {
       super.reset(round);
+      return;
     }
+    /* After the table's time, or Fly on: the table is put away and the
+     * round stays the board's. */
+    if (this.over) {
+      this.dismissed = true;
+    }
+    this.havePrevMe = false;
   }
 
   /* The round is the board's, not this page's. */
@@ -118,8 +128,18 @@ export class DogfightRoom extends Dogfight {
     return this.skills[i];
   }
 
+  /* The room's own list first (main.js sets `who`, the link's pilots by
+   * id): the board gives a pilot who joins the lowest id free, so a slot
+   * kept for a pilot who left is the next one's, and the name learned from
+   * the last one's poses stayed on it until the new one flew. A pilot who
+   * joined and sat in the menus finished the round under the name of the
+   * one who had gone. */
   nameOf(i) {
-    return i === ME ? 'YOU' : (this.names[i] || 'PILOT');
+    if (i === ME) {
+      return 'YOU';
+    }
+    const p = this.who && i > 0 && this.idOf[i] >= 0 ? this.who(this.idOf[i]) : null;
+    return (p && p.handle) || this.names[i] || 'PILOT';
   }
 
   /* The room's id for slot i. */
@@ -375,6 +395,7 @@ export class DogfightRoom extends Dogfight {
       this.roundMs = endLocal > goLocal ? Math.round(endLocal - goLocal) : 0;
       this.over = false;
       this.ended = false;
+      this.dismissed = false;
       if (fresh) {
         for (let i = 0; i < ROOM_SLOTS; i += 1) {
           this.shieldUntil[i] = i === ME ? Infinity : this.startedMs + SHIELD_MS;
@@ -386,6 +407,7 @@ export class DogfightRoom extends Dogfight {
       if (!this.ended) {
         this.ended = true;
         this.over = true;
+        this.dismissed = false;
         this.overAtMs = this.clockMs;
         this.pAlive.fill(0);
         for (let s = 0; s < this.mAlive.length; s += 1) {
@@ -399,6 +421,7 @@ export class DogfightRoom extends Dogfight {
       this.startedMs = -1;
       this.over = false;
       this.ended = false;
+      this.dismissed = false;
     }
   }
 

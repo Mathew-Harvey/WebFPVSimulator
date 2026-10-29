@@ -2,7 +2,7 @@
  * dogfighthud.js: the dogfight's HUD, as drawn in the owner's mockup of
  * 2026-10-29 (/mnt/project-files/dogfight/shots/hud.png in the project's
  * files): the reticle, brackets on the bots with their health, the lead
- * diamond, LOCK, the damage each hit did, the missile warning on the edge
+ * diamond, LOCK, the damage each hit did, the missile warning on the ring
  * it is coming from, arrows to the bots off screen, the round's clock and
  * score, who popped whom, and the pilot's own health, gun heat and missile
  * rack. Then POP and the count back when the pilot is popped, and the
@@ -66,6 +66,10 @@ const CSS = `
 .df-rack svg { width: 14px; height: 28px; }
 .df-rack span { font-size: 11px; font-weight: 800; letter-spacing: .1em; color: ${CREAM}; text-shadow: 0 2px 0 ${INK}; margin-left: 6px; }
 .df-call { position: absolute; }
+/* The shell's own banner (the first flights' tips) under the score, not
+ * through it. */
+.df-on .banner { top: calc(22% + 56px); }
+.df-on.touch-fly-on .banner, .df-on.touch-fly-on .osd.is-free ~ .banner { top: 140px; }
 .df-banner { position: absolute; left: 50%; bottom: 150px; transform: translateX(-50%); text-align: center; color: ${CREAM}; text-shadow: 0 2px 0 ${INK}, 0 0 8px rgba(0,0,0,.6); font-size: 20px; font-weight: 800; max-width: 80%; }
 .df-pop { position: absolute; inset: 0; display: grid; place-items: center; align-content: center; gap: 14px; background: rgba(11,17,22,.35); }
 .df-pop .df-say { background: #fff; border: 3px solid ${INK}; border-radius: 22px; padding: 10px 20px; font: 700 20px/1.2 "Comic Neue", "Comic Sans MS", system-ui, sans-serif; color: ${INK}; }
@@ -139,7 +143,9 @@ export class DogfightHud {
    * root: the HUD layer. input: the InputManager, for the touch buttons.
    * onAgain, onChange, onLeave: the results' three buttons.
    */
-  constructor(root, { input = null, onAgain = null, onChange = null, onLeave = null } = {}) {
+  constructor(root, {
+    input = null, onAgain = null, onChange = null, onLeave = null, onFlyOn = null,
+  } = {}) {
     if (!document.getElementById('df-hud-css')) {
       const st = document.createElement('style');
       st.id = 'df-hud-css';
@@ -198,6 +204,8 @@ export class DogfightHud {
     this.onAgain = onAgain;
     this.onChange = onChange;
     this.onLeave = onLeave;
+    /* A room's results: put the table away and fly on. */
+    this.onFlyOn = onFlyOn;
 
     this.touch = el('div', 'df-touch is-off');
     this.gunBtn = el('div', 'df-fire is-gun', 'GUN');
@@ -217,6 +225,13 @@ export class DogfightHud {
     this.h = 0;
     this.dpr = 1;
     this.lockSeen = -1;
+    this.edgeAt = {
+      x: 0, y: 0, ux: 0, uy: 0,
+    };
+    this.labelAt = new Float32Array(6);
+    this.onP = { x: 0, y: 0, behind: false };
+    this.offPool = null;
+    this.offN = 0;
     /* What was drawn last frame, as squares, so a frame clears those and
      * not the whole window: a full screen clear was most of the HUD's
      * cost on a software rasteriser, 0.6 ms a frame. */
@@ -285,6 +300,9 @@ export class DogfightHud {
     }
     this.visible = on;
     this.root.classList.toggle('is-off', !on);
+    if (this.root.parentNode) {
+      this.root.parentNode.classList.toggle('df-on', on);
+    }
     if (on) {
       this.paintOnce();
     } else if (this.input) {
@@ -313,14 +331,16 @@ export class DogfightHud {
     this.dirtyN = 0;
   }
 
-  /* World to screen, CSS pixels. z > 1 is behind the eye. */
-  project(x, y, z, camera) {
+  /* World to screen, CSS pixels. z > 1 is behind the eye. Into `out`
+   * when given, so a frame of a room's sixty four pilots makes no garbage:
+   * the HUD made two objects a pilot a frame, and a collection is a hitch. */
+  project(x, y, z, camera, out = null) {
     this.v.set(x, y, z).project(camera);
-    return {
-      x: (this.v.x * 0.5 + 0.5) * this.w,
-      y: (-this.v.y * 0.5 + 0.5) * this.h,
-      behind: this.v.z > 1 || this.v.z < -1,
-    };
+    const o = out || {};
+    o.x = (this.v.x * 0.5 + 0.5) * this.w;
+    o.y = (-this.v.y * 0.5 + 0.5) * this.h;
+    o.behind = this.v.z > 1 || this.v.z < -1;
+    return o;
   }
 
   /* A slip in the feed: who popped whom, with what. */
@@ -452,7 +472,7 @@ export class DogfightHud {
     const my = g.y[ME];
     const mz = g.z[ME];
     let leadDone = false;
-    const offscreen = [];
+    this.offBegin(g.cap);
     for (let i = 0; i < g.cap; i += 1) {
       if (i === ME || !g.inFight[i] || !g.alive[i]) {
         continue;
@@ -464,10 +484,10 @@ export class DogfightHud {
       const dy = y - my;
       const dz = z - mz;
       const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
-      const p = this.project(x, y, z, camera);
+      const p = this.project(x, y, z, camera, this.onP);
       const on = !p.behind && p.x > 8 && p.x < this.w - 8 && p.y > 8 && p.y < this.h - 8;
       if (!on) {
-        offscreen.push({ i, d, p });
+        this.offAdd(i, d, p);
         continue;
       }
       const locking = i === lockOn && alive;
@@ -532,12 +552,8 @@ export class DogfightHud {
       }
     }
     this.lockCall.classList.toggle('is-off', !lockShown);
-    /* The nearest three off screen, as arrows on the edge. */
-    offscreen.sort((a, b) => a.d - b.d);
-    for (let n = 0; n < Math.min(3, offscreen.length); n += 1) {
-      const o = offscreen[n];
-      this.edgeArrow(ctx, o.p, AMBER, nameOf(o.i, this.g));
-    }
+    /* The nearest three off screen, as arrows on the ring round the reticle. */
+    this.offDraw(ctx, g);
 
     /* A missile coming: the edge it is on, and MISSILE! */
     const inc = alive ? g.incoming(ME) : -1;
@@ -673,22 +689,88 @@ export class DogfightHud {
     }
 
     /* The results. */
-    if (L.over !== g.over) {
-      L.over = g.over;
-      this.result.classList.toggle('is-off', !g.over);
-      if (g.over) {
+    /* A room's table is put away by Fly on (dismissed) while the round
+     * stays over: the next one is the host's to start. */
+    const showing = g.over && !g.dismissed;
+    if (L.over !== showing) {
+      L.over = showing;
+      this.result.classList.toggle('is-off', !showing);
+      if (showing) {
         this.showResult(g, extra);
       }
     }
-    const nextRound = g.over ? Math.max(1, Math.ceil((extra.nextMs || 0) / 1000)) : 0;
-    if (g.over && this.resultKeys && L.nextRound !== nextRound) {
+    const nextRound = showing ? Math.max(1, Math.ceil((extra.nextMs || 0) / 1000)) : 0;
+    if (showing && this.resultKeys && L.nextRound !== nextRound) {
       L.nextRound = nextRound;
-      this.resultKeys.textContent = `Next round in ${nextRound} s`;
+      this.resultKeys.textContent = g.room
+        ? (g.host ? 'Press G for another round' : 'The host starts the next round')
+        : `Next round in ${nextRound} s`;
     }
   }
 
-  /* An arrow on the screen's edge toward something off it. Returns where
-   * on the edge it was drawn. */
+  /* THE PILOTS OFF SCREEN, a frame's worth, pooled: see project. offBegin
+   * once a frame, offAdd for each, offDraw the nearest three. */
+  offBegin(cap) {
+    if (!this.offPool || this.offPool.length < cap) {
+      this.offPool = [];
+      for (let n = 0; n < cap; n += 1) {
+        this.offPool.push({ i: 0, d: 0, p: { x: 0, y: 0, behind: false } });
+      }
+    }
+    this.offN = 0;
+  }
+
+  offAdd(i, d, p) {
+    const o = this.offPool[this.offN];
+    this.offN += 1;
+    o.i = i;
+    o.d = d;
+    o.p.x = p.x;
+    o.p.y = p.y;
+    o.p.behind = p.behind;
+  }
+
+  /* Picked by a pass each rather than a sort, which allocated. Two pilots
+   * off the same edge close together drew their names over each other
+   * (GIZMO and MOCHI read GIZMOCHI): a name goes only where no name is
+   * yet, and the arrow alone says the other is there. */
+  offDraw(ctx, g) {
+    const pool = this.offPool;
+    const n3 = Math.min(3, this.offN);
+    let labelled = 0;
+    for (let n = 0; n < n3; n += 1) {
+      let best = n;
+      for (let q = n + 1; q < this.offN; q += 1) {
+        if (pool[q].d < pool[best].d) {
+          best = q;
+        }
+      }
+      if (best !== n) {
+        const tmp = pool[n];
+        pool[n] = pool[best];
+        pool[best] = tmp;
+      }
+      const o = pool[n];
+      const at = this.edgeArrow(ctx, o.p, AMBER, null);
+      let crowded = false;
+      for (let q = 0; q < labelled; q += 1) {
+        const ax = this.labelAt[q * 2] - at.x;
+        const ay = this.labelAt[q * 2 + 1] - at.y;
+        if (ax * ax + ay * ay < 64 * 64) {
+          crowded = true;
+        }
+      }
+      if (!crowded) {
+        this.edgeLabel(ctx, at, nameOf(o.i, g));
+        this.labelAt[labelled * 2] = at.x;
+        this.labelAt[labelled * 2 + 1] = at.y;
+        labelled += 1;
+      }
+    }
+  }
+
+  /* An arrow toward something off the screen. Returns where it was drawn,
+   * in an object it keeps. */
   edgeArrow(ctx, p, colour, label, big = false) {
     const cx = this.w / 2;
     const cy = this.h / 2;
@@ -701,10 +783,15 @@ export class DogfightHud {
         dy = 1;
       }
     }
-    const m = 34;
-    const sx = (cx - m) / Math.max(Math.abs(dx), 1e-6);
-    const sy = (cy - m) / Math.max(Math.abs(dy), 1e-6);
-    const s = Math.min(sx, sy);
+    /* On a ring round the reticle, not the screen's edge: the corners are
+     * where the score, the music, the room's card and the pilot's own
+     * panel are, and an arrow on the edge was drawn over them (a name
+     * across the missile rack, another over the music). The ring stands
+     * inside them and is where the eye already is. */
+    const rx = cx * 0.8;
+    const ry = Math.max(40, cy * 0.6);
+    const e = Math.sqrt((dx * dx) / (rx * rx) + (dy * dy) / (ry * ry));
+    const s = 1 / Math.max(e, 1e-6);
     const x = cx + dx * s;
     const y = cy + dy * s;
     const len = Math.sqrt(dx * dx + dy * dy) || 1;
@@ -723,16 +810,29 @@ export class DogfightHud {
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
+    const at = this.edgeAt;
+    at.x = x;
+    at.y = y;
+    at.ux = ux;
+    at.uy = uy;
     if (label) {
-      this.mark(x - ux * 34, y - uy * 30, 44);
-      ctx.font = '900 12px system-ui, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.lineWidth = 3;
-      ctx.strokeText(label, x - ux * 34, y - uy * 30 + 4);
-      ctx.fillStyle = CREAM;
-      ctx.fillText(label, x - ux * 34, y - uy * 30 + 4);
+      this.edgeLabel(ctx, at, label);
     }
-    return { x, y };
+    return at;
+  }
+
+  /* A name beside an edge arrow, on the screen's side of it. */
+  edgeLabel(ctx, at, label) {
+    const lx = at.x - at.ux * 34;
+    const ly = at.y - at.uy * 30;
+    this.mark(lx, ly, 44);
+    ctx.font = '900 12px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = INK;
+    ctx.strokeText(label, lx, ly + 4);
+    ctx.fillStyle = CREAM;
+    ctx.fillText(label, lx, ly + 4);
   }
 
   showResult(g, extra) {
@@ -771,7 +871,7 @@ export class DogfightHud {
       }
       medal('Best streak', `${meRow.bestStreak} ${meRow.bestStreak === 1 ? 'pop' : 'pops'} without being popped`);
       medal('Dodged', `${meRow.dodged} ${meRow.dodged === 1 ? 'missile' : 'missiles'} turned away`);
-      if (extra.best != null) {
+      if (extra.best != null && !g.room) {
         medal('Your best here', extra.newBest ? `${extra.best} pops, a new best` : `${extra.best} pops`);
       }
     }
@@ -791,7 +891,18 @@ export class DogfightHud {
      * reach the buttons is never stuck here. */
     const keys = el('span', 'df-keys', '');
     this.resultKeys = keys;
-    row.append(again, change, leave, keys);
+    if (g.room) {
+      /* A room's round is the host's to start again, and Change the fight
+       * and Leave are the solo fight's: a room's rules are on the host's
+       * pause menu and leaving it is leaving the room. The table offered
+       * all three to everybody, and Leave did nothing in a room. */
+      const fly = el('button', 'df-btn', 'Fly on');
+      fly.type = 'button';
+      fly.addEventListener('click', () => this.onFlyOn && this.onFlyOn());
+      row.append(...(g.host ? [again, fly] : [fly]), keys);
+    } else {
+      row.append(again, change, leave, keys);
+    }
     this.result.replaceChildren(h, cols, row);
   }
 

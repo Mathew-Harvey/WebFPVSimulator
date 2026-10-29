@@ -5975,6 +5975,11 @@ export function createTogether(shell) {
     ribbonLast() {
       return ribbonNow;
     },
+    /* A room pilot by id, { handle, avatar, ... }, or null: for a game's
+     * names, from the list the board keeps current. */
+    pilotOf(id) {
+      return session ? session.link.pilots.get(id) || null : null;
+    },
     takeRibbonCuts() {
       if (!ribbonCuts.length) {
         return null;

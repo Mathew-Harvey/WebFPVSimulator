@@ -506,6 +506,10 @@ function crossing(at, { cutter = ME, owner = 1, started = true } = {}) {
     ...g.state, phase: 'results', winner: 9, rows: end,
   }, 0, 0);
   check(g.over && g.winner === g.slotFor(9) && g.nameOf(g.winner) === 'Nori', 'the board\'s winner, by name');
+  /* Id 9 left and somebody else joined as 9: the room's list names them. */
+  g.who = (id) => (id === 9 ? { id, handle: 'Moss Comet' } : null);
+  check(g.nameOf(g.slotFor(9)) === 'Moss Comet', 'a pilot is named from the room\'s list, not the last poses for the id');
+  g.who = null;
   wall += 9500;
   check(g.sinceOverMs() >= 9000, 'the results time out on this page');
   feed(still(-20, 10, -20));

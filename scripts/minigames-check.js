@@ -1,0 +1,212 @@
+/*
+ * minigames-check.js: the mini games flown solo in the real page, in
+ * headless Chromium. The game modules have their own Node checks
+ * (scripts/dogfight-selftest.js, scripts/ribbons-selftest.js) and the room
+ * versions are in scripts/together-shots.js; this one is the seams between
+ * a game and the shell that neither can see: a pop putting the pilot back,
+ * a round ending and the next one starting, leaving, a restart, a quad of
+ * another size, and the results table's buttons.
+ *
+ *   node scripts/minigames-check.js [--only=dogfight,ribbon,scale]
+ *
+ * Minutes of wall clock on a software rasteriser. Written for the bug hunt
+ * of 2026-10-29 ("Across all games before we push to main, please do a bug
+ * hunt and polish run").
+ *
+ * This file is part of WebFPVSimulator.
+ *
+ * WebFPVSimulator is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or (at
+ * your option) any later version.
+ *
+ * WebFPVSimulator is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY, without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { answerQuadPicker, openPage } from '../tests/lib/page.js';
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const only = new Set((process.argv.find((a) => a.startsWith('--only=')) || '--only=').slice(7).split(',').filter(Boolean));
+const wanted = (name) => !only.size || only.has(name);
+
+const sleep = (ms) => new Promise((r) => {
+  setTimeout(r, ms);
+});
+
+let failures = 0;
+function check(name, cond, detail = '') {
+  if (cond) {
+    console.log(`  PASS  ${name}${detail ? `: ${detail}` : ''}`);
+  } else {
+    failures += 1;
+    console.log(`  FAIL  ${name}${detail ? `: ${detail}` : ''}`);
+  }
+}
+
+/* A page on `map`, flying, past the quad picker. */
+async function flying(map, craft = '5inch') {
+  const page = await openPage({ root: ROOT, width: 800, height: 450, url: `/index.html?map=${map}&craft=${craft}&fly=1` });
+  const ev = async (body) => {
+    const r = await page.cdp.send('Runtime.evaluate', {
+      expression: `(async()=>{${body}})()`, awaitPromise: true, returnByValue: true,
+    }, page.sessionId);
+    if (r.exceptionDetails) {
+      throw new Error(JSON.stringify(r.exceptionDetails).slice(0, 900));
+    }
+    return r.result.value;
+  };
+  const until = async (body, ms = 20000) => {
+    const end = Date.now() + ms;
+    while (Date.now() < end) {
+      if (await ev(body)) {
+        return true;
+      }
+      await sleep(200);
+    }
+    return false;
+  };
+  if (!(await until('return !!window.__shellReady', 120000))) {
+    throw new Error('the shell never came up');
+  }
+  if (!(await until(`const m = window.__map ? window.__map() : null; return Boolean(m && m.ready && m.id === '${map}');`, 150000))) {
+    throw new Error(`${map} never became ready`);
+  }
+  await answerQuadPicker(page, 60000).catch(() => {});
+  await until("return window.__ui.screen === 'flight'", 20000);
+  return { page, ev, until };
+}
+
+/* Errors the page logged that are not the board being away. */
+function pageErrors(page) {
+  return page.errors.filter((e) => !/api\/|ERR_CONNECTION_REFUSED|Failed to load resource/.test(e));
+}
+
+const G = 'const g = window.__dogfight();';
+
+async function sceneDogfight() {
+  console.log('dogfight: solo on the town');
+  const { page, ev, until } = await flying('city');
+  try {
+    await ev("window.__ui.dogfight = { bots: 2, skill: 'rookie', round: '3m', hits: 'arcade' }; return 1;");
+    check('the fight is built once its modules land', await until('return Boolean(window.__dogfight())', 20000));
+    check('the gun is live while it flies', await ev('return window.__input.weaponsLive === true'));
+    await ev('window.__stick(0, 0, 0, 0.7); return 1;');
+    check('taking off starts the round', await until(`${G} return g.startedMs >= 0;`, 20000));
+    const finite = await ev(`${G} for (let i = 0; i < g.cap; i += 1) { if (!Number.isFinite(g.x[i] + g.y[i] + g.z[i])) return false; } return true;`);
+    check('every slot is somewhere real', finite);
+
+    /* A pop of the pilot: back at the spawn, out for the wait, then whole. */
+    await ev(`${G} g.shieldUntil[0] = 0; g.damage(0, 1, 500, 'gun', g.x[0], g.y[0], g.z[0]); return 1;`);
+    check('a pop takes the pilot out', await until(`${G} return g.alive[0] === 0;`, 3000));
+    check('and the HUD says so', await until("return !document.querySelector('.df-pop').classList.contains('is-off')", 3000));
+    check('and back in once the wait is over', await until(`${G} return g.alive[0] === 1 && g.hp[0] === g.hpMax;`, 30000));
+
+    /* The round ends: the table, then a new round on its own. */
+    const round = await ev(`${G} return g.round;`);
+    await ev(`${G} g.roundMs = g.clockMs - g.startedMs + 30; return 1;`);
+    check('the clock running out ends the round', await until(`${G} return g.over;`, 10000));
+    check('and the table is up', await until("return !document.querySelector('.df-result').classList.contains('is-off')", 3000));
+    const buttons = await ev("return [...document.querySelectorAll('.df-result .df-btn')].map((b) => b.textContent)");
+    check('a solo table has Again, Change the fight and Leave', ['Again', 'Change the fight', 'Leave'].every((b) => buttons.includes(b)), buttons.join(', '));
+    await ev("[...document.querySelectorAll('.df-result .df-btn')].find((b) => b.textContent === 'Again').click(); return 1;");
+    check('Again starts the next round', await until(`${G} return !g.over && g.round === ${round + 1};`, 5000));
+    check('and puts the table away', await until("return document.querySelector('.df-result').classList.contains('is-off')", 3000));
+
+    /* A restart is a fresh round. */
+    const r2 = await ev(`${G} return g.round;`);
+    await ev("window.__ui.act('restart'); return 1;");
+    check('a restart starts a fresh round', await until(`${G} return g.round === ${r2 + 1};`, 10000));
+
+    /* Leaving: nothing of the fight is left behind. */
+    await ev("window.__ui.act('pause'); window.__ui.act('fight-leave'); return 1;");
+    check('leaving ends the fight', await until('return window.__dogfight() === null', 5000));
+    check('the gun is not live once it has gone', await ev('return window.__input.weaponsLive === false'));
+    check('and its HUD is hidden', await ev("return document.querySelector('.df-hud').classList.contains('is-off')"));
+    const errs = pageErrors(page);
+    check('no errors on the page', errs.length === 0, errs.slice(0, 3).join(' | '));
+  } finally {
+    await page.close();
+  }
+}
+
+async function sceneRibbon() {
+  console.log('ribbon: solo on the town');
+  const { page, ev, until } = await flying('city');
+  try {
+    await ev("window.__ui.dogfight = { game: 'ribbon', bots: 2, skill: 'rookie', length: 'normal', round: '2m' }; return 1;");
+    check('ribbon cutting is built', await until(`${G} return Boolean(g && g.rCount);`, 20000));
+    check('nothing is fired in ribbon cutting', await ev('return window.__input.weaponsLive === false'));
+    await ev('window.__stick(0, 0, 0, 0.7); return 1;');
+    check('taking off starts the round', await until(`${G} return g.startedMs >= 0;`, 20000));
+    await ev("window.__ui.act('pause'); window.__ui.act('fight-leave'); return 1;");
+    check('leaving ends it', await until('return window.__dogfight() === null', 5000));
+    const errs = pageErrors(page);
+    check('no errors on the page', errs.length === 0, errs.slice(0, 3).join(' | '));
+  } finally {
+    await page.close();
+  }
+}
+
+/* The fight is read in the aircraft's own metres through the world scale.
+ * A quad of another size on the same map (the room host's swap, the quad
+ * picker on a map already loaded) moves the scale under it. */
+async function sceneScale() {
+  console.log('scale: the fight follows the world scale');
+  const { page, ev, until } = await flying('house');
+  try {
+    await ev("window.__ui.dogfight = { bots: 2, skill: 'pilot', round: '3m', hits: 'arcade' }; return 1;");
+    await until('return Boolean(window.__dogfight())', 20000);
+    const before = await ev(`${G} return g.world.k;`);
+    await ev('window.__forceWorldScale(1 / 3.5); return 1;');
+    const after = await until(`${G} return Boolean(g) && Math.abs(g.world.k - 3.5 * ${before}) < 1e-6;`, 8000);
+    check('a new scale builds the fight again at it', after, `k ${await ev(`${G} return g ? g.world.k : null;`)}, want ${3.5 * before}`);
+    await ev('window.__forceWorldScale(null); return 1;');
+    check('and back', await until(`${G} return Boolean(g) && Math.abs(g.world.k - ${before}) < 1e-6;`, 8000));
+  } finally {
+    await page.close();
+  }
+}
+
+/* A fight on a map that has its own game: the goat map's herd, and Drift
+ * Matsuri's take. The fight is the game being played, so the map's HUD
+ * steps aside while it lasts and comes back when it ends. */
+async function sceneMapGame(map, hud) {
+  console.log(`${map}: a fight on a map with its own game`);
+  const { page, ev, until } = await flying(map);
+  try {
+    check(`the map's own HUD is up before the fight (${hud})`, await until(`return !document.querySelector('.${hud}').classList.contains('is-off')`, 10000));
+    await ev("window.__ui.dogfight = { bots: 1, skill: 'rookie', round: '3m', hits: 'arcade' }; return 1;");
+    await until('return Boolean(window.__dogfight())', 20000);
+    check('and steps aside while the fight is on', await until(`return document.querySelector('.${hud}').classList.contains('is-off')`, 5000));
+    check('the fight marks the layer, so the first flights\' tips sit under its score', await ev("return document.querySelector('.df-hud').parentNode.classList.contains('df-on')"));
+    await ev("window.__ui.act('pause'); window.__ui.act('fight-leave'); return 1;");
+    await until('return window.__dogfight() === null', 5000);
+    check('and comes back when the fight ends', await until(`return !document.querySelector('.${hud}').classList.contains('is-off')`, 5000));
+    check('the layer is unmarked', await ev("return !document.querySelector('.df-hud').parentNode.classList.contains('df-on')"));
+    const errs = pageErrors(page);
+    check('no errors on the page', errs.length === 0, errs.slice(0, 3).join(' | '));
+  } finally {
+    await page.close();
+  }
+}
+
+try {
+  if (wanted('goats')) await sceneMapGame('goats', 'goat-hud');
+  if (wanted('drift')) await sceneMapGame('drift', 'film-hud');
+  if (wanted('dogfight')) await sceneDogfight();
+  if (wanted('ribbon')) await sceneRibbon();
+  if (wanted('scale')) await sceneScale();
+} catch (e) {
+  failures += 1;
+  console.log(`  FAIL  ${e.message}`);
+}
+console.log(failures ? `\n${failures} failed` : '\nall passed');
+process.exit(failures ? 1 : 0);

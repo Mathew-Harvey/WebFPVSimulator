@@ -4585,6 +4585,39 @@ function dogfightRoomItems(info) {
 }
 
 /*
+ * A Drift Matsuri room's pause rows: the host starts a round and seats
+ * bots. Every take is one minute, so there is no length to set.
+ */
+function driftRoomItems(info) {
+  const dr = info.drift;
+  if (!dr) {
+    return [];
+  }
+  const between = dr.phase === 'pit' || dr.phase === 'results';
+  if (!info.host) {
+    return [{
+      label: 'Drift Matsuri',
+      value: between ? 'Waiting' : 'Take on',
+      action: 'noop',
+      note: 'The host starts each round. Everybody films one minute of the battles, and the best reel wins.',
+    }];
+  }
+  return [
+    {
+      label: between ? 'Start a drift round' : 'Take on',
+      action: between ? 'room-dr-start' : 'noop',
+      note: between ? 'Everybody films one minute of the battles, the bots too. Or press G while flying.' : 'The next one can start when every take is cut.',
+    },
+    {
+      label: 'Fill the roster',
+      value: `${dr.bots || 0} bots`,
+      action: 'room-roster',
+      note: 'Your friends and the empty seats, and bots to fill them. Bots fly from your computer and give a seat to a friend who joins.',
+    },
+  ];
+}
+
+/*
  * A goat herding room's pause rows, as the dogfight's: the host starts a
  * round, seats bots and sets how long a round runs between rounds.
  */
@@ -11062,6 +11095,7 @@ export class Ui {
         ...ribbonRoomItems(r),
         ...dogfightRoomItems(r),
         ...goatsRoomItems(r),
+        ...driftRoomItems(r),
         {
           label: 'Room',
           value: `${r.code} · ${r.n} ${r.n === 1 ? 'pilot' : 'pilots'}`,
@@ -13458,8 +13492,9 @@ export class Ui {
           this.onUiSound('select');
         }
         /* A goat room is goat herding from the moment it opens: rounds,
-         * bots and most goats wins (src/game/goatroom.js). */
-        this.onFlyTogether(id === 'goats' ? { ...world, game: 'goats' } : world);
+         * bots and most goats wins (src/game/goatroom.js). A drift room
+         * is Drift Matsuri's, best reel wins (src/game/driftroom.js). */
+        this.onFlyTogether(id === 'goats' || id === 'drift' ? { ...world, game: id } : world);
         return;
       }
     }

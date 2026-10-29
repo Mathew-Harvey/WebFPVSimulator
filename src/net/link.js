@@ -397,6 +397,11 @@ export class RoomLink {
          * a launch passed on for drawing. */
         this.onEvent(m.t, m);
         break;
+      case 'drift':
+      case 'drReel':
+        /* A Drift Matsuri room's round, and a take's score passed on. */
+        this.onEvent(m.t, m);
+        break;
       case 'goats':
       case 'gtHome':
       case 'gtHerd':

@@ -140,6 +140,7 @@
     'src/game/dogbrain.js',
     'src/game/dogfight.js',
     'src/game/dogroom.js',
+    'src/game/driftroom.js',
     'src/game/driftround.js',
     'src/game/egg.js',
     'src/game/film.js',

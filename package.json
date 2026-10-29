@@ -57,6 +57,7 @@
     "check:heads": "node scripts/heads-check.js",
     "check:warehouse": "node scripts/warehouse-check.js",
     "check:goats": "node scripts/goats-check.js",
+    "check:driftroom": "node scripts/driftroom-check.js",
     "check:dan": "node scripts/dan-check.js",
     "check:clips": "node scripts/clips-check.js",
     "check:career": "node --test tests/career/career-laps.test.js tests/career/career-maps.test.js tests/career/career-objectives.test.js tests/career/career-words.test.js tests/career/career-progress.test.js tests/career/career-wiring.test.js",

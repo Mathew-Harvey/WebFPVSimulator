@@ -1130,6 +1130,10 @@ export function createTogether(shell) {
         round: goatsNow ? goatsNow.state.round : '3m',
         bots: session.link.bots.size,
       } : null,
+      drift: r.game === 'drift' ? {
+        phase: driftNow ? driftNow.state.phase : 'pit',
+        bots: session.link.bots.size,
+      } : null,
     });
   }
 
@@ -1372,7 +1376,7 @@ export function createTogether(shell) {
       mapName: String(entry.name || 'A map').slice(0, 48),
       scale: entry.whoop ? 100 : 50,
       /* A mini game the room plays, fixed when it opens: 'ribbon',
-       * 'dogfight', 'goats', or none. The board refuses a name it does
+       * 'dogfight', 'goats', 'drift', or none. The board refuses a name it does
        * not know. */
       game: entry.game || undefined,
     });
@@ -1758,6 +1762,15 @@ export function createTogether(shell) {
       case 'gtHome':
         goatsIn.push(data);
         break;
+      case 'drift':
+        driftHeard(data.drift);
+        break;
+      case 'drReel':
+        driftIn.push(data);
+        if (driftIn.length > 256) {
+          driftIn.shift();
+        }
+        break;
       case 'gtHerd':
         /* Only the newest herd matters, but a whole one and the deltas
          * after it are all needed: a page that has not drawn a frame for a
@@ -1907,6 +1920,49 @@ export function createTogether(shell) {
     session.link.raceSend({ t: 'gtSet', round: order[(at + 1) % order.length] });
   }
 
+  /*
+   * DRIFT MATSURI (src/game/driftroom.js DriftRoom). As the goats': the
+   * board's round and the takes' scores it passed on, kept for the shell
+   * to take once a frame. Every page judges its own take.
+   */
+  let driftNow = null;
+  let driftIn = [];
+  let driftCan = false;
+  function driftHeard(dr) {
+    if (!dr || !race) {
+      driftNow = null;
+      return;
+    }
+    driftNow = { state: dr, taken: false };
+    infoForShell();
+  }
+
+  function driftRoom() {
+    const r = room();
+    return Boolean(r && r.game === 'drift');
+  }
+
+  /* The host's start: everybody here and every bot films one take. */
+  function driftStart() {
+    if (!driftRoom() || !isHost()) {
+      return false;
+    }
+    const ph = driftNow ? driftNow.state.phase : 'pit';
+    if (ph !== 'pit' && ph !== 'results') {
+      return false;
+    }
+    if (!driftCan) {
+      toast('Drift Matsuri needs the drift map. Move the room there first.', 'warn');
+      return true;
+    }
+    if (session.link.pilots.size + session.link.bots.size < 2) {
+      toast('Drift Matsuri needs two. Add a bot or send the link.', 'warn');
+      return true;
+    }
+    session.link.raceSend({ t: 'drStart' });
+    return true;
+  }
+
   /* The host's rules between rounds, one press a step round each list. */
   const DF_LISTS = { hits: ['arcade', 'hard'], round: ['3m', '5m', 'first10', 'none'] };
   function dogfightSet(field) {
@@ -2024,6 +2080,8 @@ export function createTogether(shell) {
     dogfightHeard(data.dogfight);
     goatsIn = [];
     goatsHeard(data.goats);
+    driftIn = [];
+    driftHeard(data.drift);
     if (bots) bots.heard(data.bots);
     lastLink = 'good';
     paintChip();
@@ -5745,6 +5803,11 @@ export function createTogether(shell) {
         return true;
       }
     }
+    if (code === 'KeyG' && driftRoom() && isHost() && (shell.flying() || shell.paused())) {
+      if (driftStart()) {
+        return true;
+      }
+    }
     /* G answers the race's panel, which also sits beside the results. */
     if (code === 'KeyG' && race && race.race && panelScreen()) {
       const rc = race.race;
@@ -6028,6 +6091,10 @@ export function createTogether(shell) {
       }
     } else if (action === 'room-gt-round') {
       goatsRound();
+    } else if (action === 'room-dr-start') {
+      if (driftStart()) {
+        shell.resume();
+      }
     } else if (action === 'room-df-hits') {
       dogfightSet('hits');
     } else if (action === 'room-df-round') {
@@ -6204,6 +6271,36 @@ export function createTogether(shell) {
       goatsHerd = n;
     },
     goatsStart,
+    /* A Drift Matsuri room's, as the goats'. */
+    takeDrift() {
+      const d = driftNow;
+      if (!d || d.taken) {
+        return null;
+      }
+      d.taken = true;
+      return d.state;
+    },
+    driftLast() {
+      return driftNow ? driftNow.state : null;
+    },
+    takeDriftIn() {
+      if (!driftIn.length) {
+        return null;
+      }
+      const out = driftIn;
+      driftIn = [];
+      return out;
+    },
+    sendDrift(msg) {
+      if (session && session.inRoom && driftRoom()) {
+        session.link.raceSend(msg);
+      }
+    },
+    /* Whether this page has the drift map's judge, so a round can start. */
+    driftReady(on) {
+      driftCan = Boolean(on);
+    },
+    driftStart,
     /* The room's bot seats and their poses, for the games and the roster
      * page; null out of a room. */
     roomBots() {

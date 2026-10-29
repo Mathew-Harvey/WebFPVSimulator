@@ -1187,6 +1187,12 @@ export const SIGN_SPOTS = [
   { slug: 'mantisfpv', at: [27.4, DEP, 4.2], n: [0, -1], w: 1.3 },
   { slug: 'wcmrc', at: [PX, 12.0, 3.6], n: [-1, 0], w: 1.3 },
   { slug: 'webleedfpv', at: [3.0, 0, 3.8], n: [0, 1], w: 1.3 },
+  /* Konex Drone's, the one hidden sign (the owner's promise of a logo hidden
+   * in every map): low on the spray room's east wall, off the line of the
+   * paint shop's door, which looks straight along y 2.6 to 4.0 and so
+   * shows a pilot in the doorway bare wall. Small, 0.9 against the others'
+   * 1.3. Nothing stands against the wall at that spot. */
+  { slug: 'konexdrone', at: [LEN, 7.0, 1.5], n: [-1, 0], w: 0.9 },
 ];
 
 /* The sign spots in the world frame: `p` on the face, `n` out of it. A plan

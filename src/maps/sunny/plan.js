@@ -156,7 +156,22 @@ export function sunnyMarkSpots() {
     const [x, y, z] = worldAt(px, py, BOARD.lift + BOARD.h / 2);
     const w = Math.min(BOARD.w - 0.6, 2.8 * signAspect(brand));
     return { slug: brand.slug, p: [x, y, z], n: [out[0], 0, -out[1]], up: [0, 1, 0], w, chunk: chunkOf(x, z) };
-  });
+  }).concat(hiddenMarkSpots());
+}
+
+/* The one hidden Konex Drone sign (the owner's promise of a logo hidden in
+ * every map), a second to its billboard's: the north flank of the last
+ * garage on the far west lots, in the world, 1.6 m up, on a bare wall with
+ * nothing within 2.5 m of it (measured against every part of the town,
+ * 2026-10-29). It has its own key because the billboard holds the brand's. */
+const HIDDEN_KONEX = { p: [-166.7, 1.6, 120.7], n: [0, 0, -1], w: 1.2 };
+function hiddenMarkSpots() {
+  const brand = BRANDS.find((b) => b.slug === 'konexdrone');
+  if (!brand) {
+    return [];
+  }
+  const { p, n, w } = HIDDEN_KONEX;
+  return [{ slug: brand.slug, key: 'sunny#konexdrone~hidden', p: [...p], n: [...n], up: [0, 1, 0], w, chunk: chunkOf(p[0], p[2]) }];
 }
 
 /* The ground the plant is given where no top is under the craft, world

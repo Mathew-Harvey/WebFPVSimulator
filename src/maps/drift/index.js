@@ -527,7 +527,15 @@ export async function buildMap(shell, onProgress, options) {
       drawDecor(kit, L.decor);
     },
   };
-  const map = await buildBuilt(shell, onProgress, { ...(options || {}), document: doc, extra });
+  /* The one hidden Konex Drone sign (the owner's promise of a logo hidden in
+   * every map). The chooser puts the brand's seen sign on the paving here,
+   * because the circuit's walls are not paintable, and finds no wall for a
+   * hidden one, so it is hung by hand: on the back of the pits' cream wall,
+   * outside the course, 14 m from the edge of the field. */
+  const markSpots = [{
+    slug: 'konexdrone', key: 'drift#konexdrone~hidden', p: [-55, 1.8, 101.0], n: [0, 0, 1], up: [0, 1, 0], w: 1.2, chunk: 'extra',
+  }];
+  const map = await buildBuilt(shell, onProgress, { ...(options || {}), document: doc, extra, markSpots });
   /* Its own world: the shell keys the world, the results and the board's
    * refusal by this id (src/main.js, src/ui/ui.js). */
   map.id = 'drift';

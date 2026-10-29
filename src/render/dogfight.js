@@ -161,6 +161,20 @@ export class DogfightView {
     this.scene = null;
   }
 
+  /* Who slot i is for the craft's name tag and livery: a solo bot by its
+   * slot, a room's seat by the name the room gave it. */
+  pilotOf(g, i) {
+    let p = this.pilots[i];
+    if (!p) {
+      p = { id: i, handle: 'BOT', avatar: { livery: (BOT_LIVERY[i % BOT_LIVERY.length] || 0) + 1 }, away: false };
+      this.pilots[i] = p;
+    }
+    if (g.nameOf) {
+      p.handle = g.nameOf(i);
+    }
+    return p;
+  }
+
   attach(scene, renderer, camera, target) {
     this.detach();
     this.scene = scene;
@@ -303,15 +317,17 @@ export class DogfightView {
     const u = 1 - t;
     /* The bots. */
     this.craft.begin();
-    for (let i = 1; i < MAX_PILOTS; i += 1) {
-      if (!g.isBot[i] || !g.alive[i]) {
+    /* The bots flown on this page: in a room, a bot the host flies is
+     * drawn on the others' pages by the room, as a pilot is. */
+    for (let i = 1; i < g.cap; i += 1) {
+      if (!g.isBot[i] || g.puppet[i] || !g.alive[i]) {
         continue;
       }
       const pose = this.poseOf(g, i, t);
       const dx = pose.px - camPos.x;
       const dy = pose.py - camPos.y;
       const dz = pose.pz - camPos.z;
-      this.craft.add(i, pose, this.pilots[i], dx * dx + dy * dy + dz * dz, false);
+      this.craft.add(i, pose, this.pilotOf(g, i), dx * dx + dy * dy + dz * dz, false);
     }
     this.craft.end();
 

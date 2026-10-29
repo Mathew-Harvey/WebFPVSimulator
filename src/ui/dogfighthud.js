@@ -34,7 +34,7 @@
 import * as THREE from 'three';
 import { paintCall, INKS } from './lettering.js';
 import {
-  MAX_PILOTS, ME, MISSILE, GUN, BOT_NAMES, LOCK_COS,
+  ME, MISSILE, GUN, BOT_NAMES, LOCK_COS,
 } from '../game/dogfight.js';
 
 const INK = '#0b1116';
@@ -125,8 +125,12 @@ function clockText(ms) {
 const ROCKET = (fill) => `<svg viewBox="0 0 16 32"><path d="M8 1 C12 6 12 12 12 22 L4 22 C4 12 4 6 8 1 Z" fill="${fill}" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/><path d="M4 18 L1 26 L4 24 Z M12 18 L15 26 L12 24 Z" fill="#e8a8b8" stroke="${INK}" stroke-width="1.6" stroke-linejoin="round"/></svg>`;
 const ROCKET_EMPTY = `<svg viewBox="0 0 16 32"><path d="M8 1 C12 6 12 12 12 22 L4 22 C4 12 4 6 8 1 Z" fill="none" stroke="#9db3c8" stroke-width="2" stroke-dasharray="3 2"/></svg>`;
 
-/* The name a slot goes by on the HUD. */
-export function nameOf(slot) {
+/* The name a slot goes by on the HUD: the game's own when it has names
+ * (a room's pilots and seats), else the solo bots'. */
+export function nameOf(slot, g = null) {
+  if (g && g.nameOf) {
+    return g.nameOf(slot);
+  }
   return slot === ME ? 'YOU' : (BOT_NAMES[slot - 1] || 'BOT');
 }
 
@@ -323,7 +327,7 @@ export class DogfightHud {
   slip(by, to, weapon) {
     const s = el('div', 'df-slip');
     const who = (i) => {
-      const b = el('b', i === ME ? 'df-you' : null, nameOf(i));
+      const b = el('b', i === ME ? 'df-you' : null, nameOf(i, this.g));
       return b;
     };
     s.append(who(by), document.createTextNode(' popped '), who(to));
@@ -345,6 +349,7 @@ export class DogfightHud {
   /* One of the game's events, as the HUD shows it. Returns a sound to play,
    * or null. */
   event(e, g, nowMs) {
+    this.g = g;
     if (e.type === 'hit') {
       if (e.by === ME) {
         this.numbers.push({
@@ -368,7 +373,7 @@ export class DogfightHud {
     if (e.type === 'pop') {
       this.slip(e.by, e.to, e.weapon);
       if (e.to === ME) {
-        const who = e.by >= 0 && e.by !== ME ? nameOf(e.by) : 'Somebody';
+        const who = e.by >= 0 && e.by !== ME ? nameOf(e.by, this.g) : 'Somebody';
         this.popSay.textContent = `${who} got you with ${e.weapon === 'missile' ? 'a missile' : 'the gun'}!`;
         return 'crash';
       }
@@ -385,6 +390,7 @@ export class DogfightHud {
    * camera: the FPV camera. nowMs: wall time. extra: { best, rules }.
    */
   frame(g, t, camera, nowMs, extra = {}) {
+    this.g = g;
     if (!this.visible) {
       return;
     }
@@ -447,7 +453,7 @@ export class DogfightHud {
     const mz = g.z[ME];
     let leadDone = false;
     const offscreen = [];
-    for (let i = 0; i < MAX_PILOTS; i += 1) {
+    for (let i = 0; i < g.cap; i += 1) {
       if (i === ME || !g.inFight[i] || !g.alive[i]) {
         continue;
       }
@@ -530,7 +536,7 @@ export class DogfightHud {
     offscreen.sort((a, b) => a.d - b.d);
     for (let n = 0; n < Math.min(3, offscreen.length); n += 1) {
       const o = offscreen[n];
-      this.edgeArrow(ctx, o.p, AMBER, nameOf(o.i));
+      this.edgeArrow(ctx, o.p, AMBER, nameOf(o.i, this.g));
     }
 
     /* A missile coming: the edge it is on, and MISSILE! */
@@ -582,7 +588,7 @@ export class DogfightHud {
     /* The score and the clock. */
     const meScore = g.pops[ME];
     let bestBot = -1;
-    for (let i = 1; i < MAX_PILOTS; i += 1) {
+    for (let i = 1; i < g.cap; i += 1) {
       if (g.inFight[i] && (bestBot < 0 || g.pops[i] > g.pops[bestBot])) {
         bestBot = i;
       }
@@ -597,7 +603,7 @@ export class DogfightHud {
       L.clock = clock;
       this.scoreClock.textContent = clock;
     }
-    const best = bestBot >= 0 ? `${nameOf(bestBot)} ${g.pops[bestBot]}` : '';
+    const best = bestBot >= 0 ? `${nameOf(bestBot, this.g)} ${g.pops[bestBot]}` : '';
     if (L.best !== best) {
       L.best = best;
       this.scoreBest.textContent = best;
@@ -730,12 +736,13 @@ export class DogfightHud {
   }
 
   showResult(g, extra) {
+    this.g = g;
     const rows = g.standings();
     const top = rows[0];
     const meRow = rows.find((r) => r.slot === ME);
     const won = top && top.slot === ME && (rows.length === 1 || rows[1].pops < top.pops);
     const tie = top && rows.length > 1 && rows[1].pops === top.pops && (top.slot === ME || rows[1].slot === ME);
-    const title = won ? 'YOU WIN!' : (tie ? 'A DRAW!' : `${nameOf(top.slot)} WINS`);
+    const title = won ? 'YOU WIN!' : (tie ? 'A DRAW!' : `${nameOf(top.slot, this.g)} WINS`);
     const h = el('h2');
     h.append(el('small', null, extra.kicker || 'Dogfight'), document.createTextNode(title));
     const table = el('table');
@@ -744,7 +751,7 @@ export class DogfightHud {
     table.append(head);
     for (const r of rows) {
       const tr = el('tr', r.slot === ME ? 'is-me' : null);
-      const name = el('td', null, nameOf(r.slot));
+      const name = el('td', null, nameOf(r.slot, this.g));
       if (r.bot) {
         name.append(el('span', 'df-bot', 'BOT'));
       }

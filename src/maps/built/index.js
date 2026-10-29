@@ -113,7 +113,7 @@ import {
 import { starterMap } from './starter.js';
 import { lookOf, kitLook, paintLights, paintSky, paintPost, skyLook } from './looks.js';
 import { STF_PAINTED } from '../../game/egg.js';
-import { chooseStfSpot, choosePartnerSpots, choosePatronSpots, partnerKey, stfKey } from './egg.js';
+import { chooseStfSpot, choosePartnerSpots, choosePatronSpots, chooseHiddenSpot, HIDDEN_PATRON, partnerKey, stfKey } from './egg.js';
 import { choosePatrons } from '../../partners/patrons.js';
 import { trafficOf, uploadTraffic, roadKeepOut } from './traffic.js';
 import { buildRoadMesh, roadCover } from './roadmesh.js';
@@ -1308,6 +1308,17 @@ export async function buildMap(shell, onProgress, options) {
         patronSpots = choosePatronSpots(placed, doc, chosen.source, stfSpot, partnerSpots,
           chosenPatrons.map((p) => ({ slug: p.slug, aspect: signAspect(p) })));
       }
+      /* And the one hidden patron sign (./egg.js, HIDDEN_PATRON), on every
+       * map the chooser serves, after all the others so it takes no wall
+       * they want. */
+      const hiddenPatron = PATRON_MAP_BRANDS.find((p) => p.slug === HIDDEN_PATRON && shownOn(p, mapKey.replace(/^built:(?=starter$)/, '')));
+      if (hiddenPatron) {
+        const hidden = chooseHiddenSpot(placed, doc, chosen.source, stfSpot, [...partnerSpots, ...patronSpots],
+          { slug: hiddenPatron.slug, aspect: signAspect(hiddenPatron) });
+        if (hidden) {
+          patronSpots.push(hidden);
+        }
+      }
     } catch (e) {
       console.error('patrons: no spots for the marks on this map', e);
     }
@@ -1315,7 +1326,8 @@ export async function buildMap(shell, onProgress, options) {
   /* THE MARKS BY HAND, from a map that brings a structure the chooser
    * cannot see (src/maps/house/supporters.js): each { slug, p, n, up, w,
    * chunk } on a face of that structure, in the world, `p` on the face. Each
-   * gets the key a chosen spot would and the height its sign's artwork
+   * gets the key a chosen spot would (or its own `key`, for a second sign
+   * of a brand the map already hangs once) and the height its sign's artwork
    * gives (signAspect), and goes to the partners' list or the patrons' by
    * which roster names it, so it is painted, found or not, exactly as a
    * chosen one is. A slug no roster names is left out. */
@@ -1326,7 +1338,7 @@ export async function buildMap(shell, onProgress, options) {
       continue;
     }
     const spot = {
-      key: partnerKey(doc, chosen.source, m.slug), slug: m.slug, p: [...m.p], n: [...m.n], up: [...m.up], w: m.w, h: m.w / signAspect(brand), chunk: m.chunk,
+      key: m.key ?? partnerKey(doc, chosen.source, m.slug), slug: m.slug, p: [...m.p], n: [...m.n], up: [...m.up], w: m.w, h: m.w / signAspect(brand), chunk: m.chunk,
     };
     (partner ? partnerSpots : patronSpots).push(spot);
   }

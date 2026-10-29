@@ -969,8 +969,9 @@ function makeFace(S, i, f, pads, size = STF_SIZE, loose = false) {
      * stands to them, over its distance. Near enough an angle, in radians. */
     looks: (w * toward) / (dist * dist),
     /* And how easily it is seen: that, weighed by the turn (rule 6). The
-     * partners' loose pass takes the nearest wall first instead. */
-    score: loose ? -at.ground : ((w * toward) / (dist * dist)) * (TURN + at.cos),
+     * partners' loose pass takes the nearest wall first instead, and the
+     * hidden pass the far one, the more so the more it turns from the pads. */
+    score: loose === HIDDEN ? at.ground * (1 - toward / dist) : (loose ? -at.ground : ((w * toward) / (dist * dist)) * (TURN + at.cos)),
     cr: c[ra],
     cu: c[1],
     Ru: R,
@@ -1324,7 +1325,25 @@ export function chooseStfSpot(placed, doc, source) {
 export const PARTNER_W = 6;
 export const PARTNER_MIN_SCALE = 0.5;
 export const PARTNER_SEP = 10;
-export const PARTNER_STEP = Object.freeze({ SEEN: 'seen', WALL: 'wall', GROUND: 'ground' });
+export const PARTNER_STEP = Object.freeze({ SEEN: 'seen', WALL: 'wall', GROUND: 'ground', HIDDEN: 'hidden' });
+
+/*
+ * THE HIDDEN PATRON MARK. The owner promised Konex Drone (Albert, Spain) a
+ * small logo hidden in every map, for their community's find-the-logos
+ * challenge. The sign every map already carries is hung to be seen (rule
+ * 10), so this is a second one, tucked away: HIDDEN_PATRON's slug, on the
+ * wall that is FARTHEST from the pads and most turned away from them, none
+ * of rules 4, 5 or 6 held and no sight line to it asked for (partnerWall's
+ * loose pass, scored the other way round by makeFace), HIDDEN_W across at
+ * most, so it is a find for a pilot who goes looking and never a sign
+ * in a map's first frame. Still the patron's own artwork, still never
+ * found: no stamp, no achievement, no found panel. A map with no wall it
+ * fits is left without one: there is no ground step, because paint on the
+ * paving is the opposite of hidden.
+ */
+export const HIDDEN_PATRON = 'konexdrone';
+export const HIDDEN_W = 1.2;
+const HIDDEN = 'hidden';
 
 /* The ground step's places, as [along the pads' heading, across it] in
  * metres: beside the pads to either hand and behind them, then further out
@@ -1532,4 +1551,44 @@ export function choosePatronSpots(placed, doc, source, stf, partnerSpots, patron
     spots.push(spot);
   }
   return spots;
+}
+
+/*
+ * The hidden patron's spot (see HIDDEN_PATRON), or null when no wall keeps
+ * the rules it still keeps (open air in front, a clear panel, PARTNER_SEP
+ * from every mark in `taken`, and not on an element that carries one).
+ * `taken` is every mark already chosen, partners' and patrons', which this
+ * one is never put on or beside; `patron` is { slug, aspect } as
+ * choosePatronSpots takes them. Same walls, same arithmetic and no random
+ * stream, so the same map gives the same spot in every engine.
+ */
+export function chooseHiddenSpot(placed, doc, source, stf, taken, patron) {
+  const S = readSolids(placed);
+  const G = buildGrid(S, placed.W, placed.D);
+  const pads = padsOf(placed);
+  const stats = { faces: 0, tried: 0, lines: 0 };
+  const used = new Set();
+  const marks = [];
+  for (const m of [stf, ...(taken || [])]) {
+    if (!m) {
+      continue;
+    }
+    marks.push(m);
+    if (m.elementId) {
+      const k = placed.items.findIndex((it) => it.el && it.el.id === m.elementId);
+      if (k >= 0) {
+        used.add(k);
+      }
+    }
+  }
+  const a = patron.aspect > 0 ? patron.aspect : MARK_W / MARK_H;
+  const size = { w: HIDDEN_W, h: HIDDEN_W / a, min: PARTNER_MIN_SCALE };
+  const hit = partnerWall(S, G, placed, pads, size, HIDDEN, used, marks, stats);
+  if (!hit) {
+    return null;
+  }
+  const spot = faceSpot(`${partnerKey(doc, source, patron.slug)}~hidden`, hit.face, hit.p, placed);
+  spot.step = PARTNER_STEP.HIDDEN;
+  spot.slug = patron.slug;
+  return spot;
 }

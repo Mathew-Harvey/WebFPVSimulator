@@ -4584,6 +4584,28 @@ async function patronMarks(egg, sDoc, sPlaced, eDoc, ePlaced) {
     patronSpots.length === chosen5.length && patronSpots.every(s => chosen5.find(p => p.slug === s.slug)),
     `${patronSpots.length} patron spots for ${chosen5.length} patrons: ${patronSpots.map(s => s.slug).join(', ')}`);
   
+  /* Test 7c: the one hidden patron sign (the owner's promise of a logo hidden
+   * in every map): a spot on a wall of its own, small, apart from every mark,
+   * out of the pads' sight, and the same spot every time. */
+  const konex = roster.PATRON_MAP_BRANDS.find((p) => p.slug === egg.HIDDEN_PATRON);
+  const hiddenArgs = [sPlaced, sDoc, 'starter', stf, [...partnerSpots, ...patronSpots], { slug: konex.slug, aspect: art.signAspect(konex) }];
+  const hidden = egg.chooseHiddenSpot(...hiddenArgs);
+  const hiddenAgain = egg.chooseHiddenSpot(...hiddenArgs);
+  check('the hidden patron sign gets a spot on the starter, the same one twice', Boolean(hidden) && JSON.stringify(hidden) === JSON.stringify(hiddenAgain),
+    hidden ? `${hidden.slug} ${hidden.step} at ${hidden.p.map(r3).join(', ')}` : 'no spot');
+  if (hidden) {
+    const others = [stf, ...partnerSpots, ...patronSpots];
+    check('the hidden patron sign is at most HIDDEN_W across, on a wall of its own', hidden.w <= egg.HIDDEN_W + 1e-9
+      && !others.some((o) => o.elementId && o.elementId === hidden.elementId),
+      `${r3(hidden.w)} m on ${hidden.type}`);
+    const near = others.filter((o) => Math.hypot(o.p[0] - hidden.p[0], o.p[1] - hidden.p[1], o.p[2] - hidden.p[2]) < PARTNER_SEP - 1e-9);
+    check('the hidden patron sign is PARTNER_SEP or more from every other mark', near.length === 0,
+      near.map((o) => o.slug ?? 'STF').join(', ') || 'all apart');
+    const spawn = sPlaced.spawn;
+    check('the hidden patron sign is not in reach of the pads', Math.hypot(hidden.p[0] - spawn.x, hidden.p[2] - spawn.z) >= egg.NEAR_MIN,
+      `${r3(Math.hypot(hidden.p[0] - spawn.x, hidden.p[2] - spawn.z))} m from the pads`);
+  }
+
   /* Test 7b: shouldFindMark correctly filters based on findable flag */
   const testMarks = [
     { slug: 'partner-findable-true', findable: true },

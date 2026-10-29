@@ -402,6 +402,13 @@ export class RoomLink {
         /* A Drift Matsuri room's round, and a take's score passed on. */
         this.onEvent(m.t, m);
         break;
+      case 'ball':
+      case 'blGoal':
+      case 'blBall':
+        /* A Quad Ball room's round, a goal the board counted, and the
+         * host's ball passed on. */
+        this.onEvent(m.t, m);
+        break;
       case 'goats':
       case 'gtHome':
       case 'gtHerd':

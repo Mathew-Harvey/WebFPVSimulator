@@ -4661,6 +4661,46 @@ function goatsRoomItems(info) {
   ];
 }
 
+/*
+ * A Quad Ball room's pause rows: the host starts a match, seats bots and
+ * sets how long a match runs between matches.
+ */
+const BALL_ROUND_NAMES = { '3m': '3 minutes', '5m': '5 minutes', first5: 'First to 5' };
+function ballRoomItems(info) {
+  const bl = info.ball;
+  if (!bl) {
+    return [];
+  }
+  const between = bl.phase === 'pit' || bl.phase === 'results';
+  if (!info.host) {
+    return [{
+      label: 'Quad Ball',
+      value: between ? 'Waiting' : 'Match on',
+      action: 'noop',
+      note: 'The host starts each match. Pink against mint: push the ball into their goal.',
+    }];
+  }
+  return [
+    {
+      label: between ? 'Start a match' : 'Match on',
+      action: between ? 'room-bl-start' : 'noop',
+      note: between ? 'Everybody here and every bot is dealt into pink and mint. Or press G while flying.' : 'The next one can start when this one ends.',
+    },
+    {
+      label: 'Fill the roster',
+      value: `${bl.bots || 0} bots`,
+      action: 'room-roster',
+      note: 'Your friends and the empty seats, and bots to fill them. Bots fly from your computer and give a seat to a friend who joins.',
+    },
+    {
+      label: 'Match',
+      value: BALL_ROUND_NAMES[bl.round] || '3 minutes',
+      action: between ? 'room-bl-round' : 'noop',
+      note: 'How long a match runs, or first to five goals. Changes between matches.',
+    },
+  ];
+}
+
 function roomCraftItem(s, info) {
   const af = airframeById(s.airframe);
   if (info.host && info.freestyle) {
@@ -11100,6 +11140,7 @@ export class Ui {
         ...dogfightRoomItems(r),
         ...goatsRoomItems(r),
         ...driftRoomItems(r),
+        ...ballRoomItems(r),
         {
           label: 'Room',
           value: `${r.code} · ${r.n} ${r.n === 1 ? 'pilot' : 'pilots'}`,

@@ -24,6 +24,7 @@ import {
 } from '../src/game/quadball.js';
 import { ME } from '../src/game/dogfight.js';
 import { ARENA } from '../src/maps/ball/arena.js';
+import { BallRoom } from '../src/game/ballroom.js';
 
 let failed = 0;
 let passed = 0;
@@ -182,6 +183,116 @@ function match(seed, size, skill) {
   check(c.bad === 0 && c.g.over, '1v1 plays through', `${c.g.teamScore[0]}-${c.g.teamScore[1]}`);
   const d = match(9, 3, 'rookie');
   check(d.bad === 0 && d.g.over, '3v3 rookies play through', `${d.g.teamScore[0]}-${d.g.teamScore[1]}`);
+}
+
+console.log('room');
+{
+  /* A host's page and a guest's, joined by a board that keeps only what
+   * src/rooms.js ballMessage keeps: the score, the rows, the next kickoff,
+   * and passing the host's ball on. */
+  let T = 5000;
+  const now = () => T;
+  const toLocal = (ms) => ms;
+  const mk = (you, host) => {
+    const g = new BallRoom(world(1), { now, seed: 3, pen: { arena: ARENA } });
+    g.setYou(you, host);
+    return g;
+  };
+  const host = mk(1, true);
+  const guest = mk(2, false);
+  const seats = [100, 101, 102, 103].map((id) => ({ id, name: `BOT${id}`, skill: 'ace' }));
+  host.setBots(seats);
+  guest.setBots(seats);
+  const board = {
+    phase: 'live',
+    round: '5m',
+    n: 1,
+    goAt: T,
+    endAt: T + 300000,
+    kickAt: T + KICK_MS,
+    score: [0, 0],
+    overtime: false,
+    winner: null,
+    rows: [
+      { id: 1, goals: 0, team: 0 }, { id: 100, goals: 0, team: 0 }, { id: 101, goals: 0, team: 0 },
+      { id: 2, goals: 0, team: 1 }, { id: 102, goals: 0, team: 1 }, { id: 103, goals: 0, team: 1 },
+    ],
+  };
+  const say = () => {
+    host.heard({ ...board, score: [...board.score], rows: board.rows.map((r) => ({ ...r })) }, toLocal);
+    guest.heard({ ...board, score: [...board.score], rows: board.rows.map((r) => ({ ...r })) }, toLocal);
+  };
+  say();
+  check(host.team[ME] === 0 && guest.team[ME] === 1, 'the board deals each page its team');
+  check(host.team[host.slotOf(102)] === 1 && guest.team[guest.slotOf(100)] === 0, 'and the bots theirs');
+  const meHost = {
+    x: -30, y: 3, z: 0, fx: 1, fy: 0, fz: 0, ux: 0, uy: 1, uz: 0, gun: false, missile: false, flying: true,
+  };
+  const meGuest = { ...meHost, x: 30, z: 18 };
+  let goals = 0;
+  let lastGoalAt = -1e9;
+  let worst = 0;
+  let sum = 0;
+  let samples = 0;
+  let early = 0;
+  let guestSent = 0;
+  let steps = 0;
+  while (goals < 2 && steps < 20000) {
+    T += 10;
+    if (steps % 5 === 0) {
+      /* The room draws each pilot to the other's page. */
+      host.remote(2, { px: meGuest.x, py: meGuest.y, pz: meGuest.z, qx: 0, qy: 0, qz: 0, qw: 1 }, { handle: 'GUEST' });
+      guest.remote(1, { px: meHost.x, py: meHost.y, pz: meHost.z, qx: 0, qy: 0, qz: 0, qw: 1 }, { handle: 'HOST' });
+    }
+    host.step(meHost, steps === 0);
+    guest.step(meGuest, steps === 0);
+    steps += 1;
+    for (const m of host.takeOutbox() || []) {
+      if (m.t === 'blBall') {
+        guest.heardBall(m);
+      } else if (m.t === 'blGoal') {
+        if (T < board.kickAt) {
+          early += 1;
+        } else if (T - lastGoalAt >= 1500) {
+          lastGoalAt = T;
+          board.score[m.team] += 1;
+          const row = board.rows.find((r) => r.id === m.by);
+          if (row) {
+            row.goals += 1;
+          }
+          board.kickAt = T + GOAL_MS + KICK_MS;
+          goals += 1;
+          const msg = {
+            t: 'blGoal', n: 1, team: m.team, by: row ? m.by : -1, own: m.own === true, score: [...board.score], goals: row ? row.goals : 0, kickAt: board.kickAt,
+          };
+          host.heardGoal(msg, toLocal);
+          guest.heardGoal(msg, toLocal);
+          say();
+        }
+      }
+    }
+    guestSent += (guest.takeOutbox() || []).length;
+    if (host.inPlay && guest.inPlay) {
+      const d = Math.hypot(host.ball.x - guest.ball.x, host.ball.y - guest.ball.y, host.ball.z - guest.ball.z);
+      worst = Math.max(worst, d);
+      sum += d;
+      samples += 1;
+    }
+  }
+  const touches = host.touches.reduce((a, v) => a + v, 0);
+  check(touches > 5, 'the host\'s bots play the ball', `${touches}`);
+  check(goals >= 1, 'and score, which the host says', `${goals} goals in ${steps} steps`);
+  check(early === 0, 'the host never calls a goal before the kickoff', `${early}`);
+  check(guestSent === 0, 'a guest sends nothing', `${guestSent}`);
+  check(host.teamScore[0] === board.score[0] && guest.teamScore[1] === board.score[1], 'both pages hold the board\'s score');
+  check(host.holdUntil === guest.holdUntil, 'and hold for the same kickoff', `${host.holdUntil} ${guest.holdUntil}`);
+  check(samples > 100 && sum / samples < 2.5, 'the guest\'s ball stays near the host\'s', `mean ${(sum / Math.max(1, samples)).toFixed(2)} m worst ${worst.toFixed(1)} m over ${samples}`);
+  const rowsOk = host.standings().length === 6;
+  check(rowsOk, 'the table has every seat', `${host.standings().length}`);
+  board.phase = 'results';
+  board.winner = board.score[0] > board.score[1] ? 0 : 1;
+  say();
+  check(host.over && guest.over && host.winnerTeam === board.winner, 'the board ends the match on both pages');
 }
 
 console.log(`${passed} passed, ${failed} failed`);

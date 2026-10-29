@@ -131,6 +131,7 @@
     'src/fc/keynotes.js',
     'src/fc/ratescurve.js',
     'src/game/balloons.js',
+    'src/game/ballroom.js',
     'src/game/botflyer.js',
     'src/game/chase.js',
     'src/game/circuit.js',

@@ -98,6 +98,10 @@ async function main() {
     /* A camera over the arena's corner, for the pictures. */
     await ev('window.__setCam(-62, 30, -52, 0, 4, 0); return 1;');
     await sleep(8000);
+    /* Draw calls and triangles of the frame, for the PR's latency line:
+     * a proxy, the headless page has no GPU. */
+    const rs = await ev('return window.__renderStats();');
+    console.log(`  info  overview frame: ${rs.calls} draw calls, ${rs.triangles} triangles`);
     await shot('overview');
     if (SHOTS) {
       /* The gate card's picture: the same view with the page's own

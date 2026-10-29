@@ -190,6 +190,7 @@ export const MATERIALS = {
   /* Quad Ball (src/maps/ball/): the pitch, its lines and the two teams'
    * walls, sakura pink and mint, the backs of the goals lit. */
   qbPitch: { c: 0x7fa07c, tint: 0x4c6a6a },
+  qbPitchB: { c: 0x8db78a, tint: 0x56787a },
   qbLine: { c: 0xf3ead4, tint: 0xd8cfc0, noCast: true },
   qbBand: { c: 0x3a3f58, tint: 0x2a2e45, noCast: true },
   qbSakura: { c: 0xf2a6bd, tint: 0x9a6a8a },

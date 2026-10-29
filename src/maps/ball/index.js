@@ -27,7 +27,7 @@
 import { buildMap as buildBuilt } from '../built/index.js';
 import { warmPrograms } from '../../render/warm.js';
 import {
-  ARENA, ballLayout, drawArena, ballDocument,
+  ARENA, ballLayout, drawArena, ballDocument, standBackX,
 } from './arena.js';
 
 export async function buildMap(shell, onProgress, options) {
@@ -40,11 +40,10 @@ export async function buildMap(shell, onProgress, options) {
   };
   /* The one hidden Konex Drone sign (the owner's promise of a logo hidden
    * in every map), by hand because this map's walls are its own: low on
-   * the OUTSIDE of the north side wall, a third of the way in from the west
-   * end, where only a pilot who flies out over the roof line and looks back
-   * down finds it. */
+   * the back of the east end stand, on the outside of the whole arena,
+   * where only a pilot who flies out over the stands and round finds it. */
   const markSpots = [{
-    slug: 'konexdrone', key: 'ball#konexdrone~hidden', p: [-ARENA.hx * 0.35, 1.6, ARENA.hz + 0.9], n: [0, 0, 1], up: [0, 1, 0], w: 1.2, chunk: 'extra',
+    slug: 'konexdrone', key: 'ball#konexdrone~hidden', p: [standBackX(), 1.6, 8], n: [1, 0, 0], up: [0, 1, 0], w: 1.2, chunk: 'extra',
   }];
   const map = await buildBuilt(shell, onProgress, {
     ...(options || {}), document: ballDocument(), extra, sponsorMarks: false, markSpots,

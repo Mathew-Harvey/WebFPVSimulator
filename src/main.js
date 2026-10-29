@@ -7004,7 +7004,8 @@ export async function boot({ loading, bootStart, mapId }) {
    * place. */
   function yardFrame(nowWall) {
     const hud = ui.yardHud;
-    const on = Boolean(yard) && yard.near && !replayMode && airtimeMs > 0
+    /* Not under a mini game (fightGame), as the goat and film HUDs. */
+    const on = Boolean(yard) && yard.near && !replayMode && !fightGame && airtimeMs > 0
       && (mode === 'flight' || mode === 'paused') && (ui.screen === 'flight' || ui.screen === 'paused');
     if (hud.asking && (!landed || mode !== 'flight' || ui.screen !== 'flight')) {
       hud.setAsking(false);

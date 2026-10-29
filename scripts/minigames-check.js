@@ -7,7 +7,7 @@
  * a round ending and the next one starting, leaving, a restart, a quad of
  * another size, and the results table's buttons.
  *
- *   node scripts/minigames-check.js [--only=menu,load,goats,drift,dogfight,ribbon,scale]
+ *   node scripts/minigames-check.js [--only=menu,load,yard,goats,drift,dogfight,ribbon,scale]
  *
  * Minutes of wall clock on a software rasteriser. Written for the bug hunt
  * of 2026-10-29 ("Across all games before we push to main, please do a bug
@@ -278,6 +278,33 @@ async function sceneMenu() {
 }
 
 /*
+ * The yard track's HUD (src/ui/yardhud.js), on the maps that have one, up
+ * by the spawn once the quad is in the air: "Whoop only: land in the white
+ * box" sat over a ribbon round's results on Bardwell's house in the room
+ * check's pictures of 2026-10-29, the way the goat and film HUDs did
+ * before the bug hunt put them aside. A fight is the game being played.
+ */
+async function sceneYard() {
+  console.log('yard: the yard track\'s HUD steps aside for a fight');
+  const { page, ev, until } = await flying('bardwell');
+  try {
+    await ev('window.__stick(0, 0, 0, 0.62); return 1;');
+    check('the yard HUD is up once the quad is in the air', await until("return !document.querySelector('.yard-hud').classList.contains('is-off')", 15000));
+    await ev("window.__ui.dogfight = { game: 'ribbon', bots: 1, skill: 'rookie', length: 'normal', round: '2m' }; return 1;");
+    await until('return Boolean(window.__dogfight())', 20000);
+    check('and steps aside while the fight is on', await until("return document.querySelector('.yard-hud').classList.contains('is-off')", 5000));
+    await ev("window.__ui.act('pause'); window.__ui.act('fight-leave'); return 1;");
+    await until('return window.__dogfight() === null', 5000);
+    await ev("window.__ui.act('resume'); window.__stick(0, 0, 0, 0.62); return 1;");
+    check('and comes back when the fight ends', await until("return !document.querySelector('.yard-hud').classList.contains('is-off')", 15000));
+    const errs = pageErrors(page);
+    check('no errors on the page', errs.length === 0, errs.slice(0, 3).join(' | '));
+  } finally {
+    await page.close();
+  }
+}
+
+/*
  * A key pressed while the world is building. The quad picker's Fly starts
  * the map's load, and the loading screen covers the title, but the title
  * was still taking keys behind it: a second Enter (a pad's A pressed twice,
@@ -339,6 +366,7 @@ async function sceneLoadKeys() {
 try {
   if (wanted('menu')) await sceneMenu();
   if (wanted('load')) await sceneLoadKeys();
+  if (wanted('yard')) await sceneYard();
   if (wanted('goats')) await sceneMapGame('goats', 'goat-hud');
   if (wanted('drift')) await sceneMapGame('drift', 'film-hud');
   if (wanted('dogfight')) await sceneDogfight();

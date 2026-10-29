@@ -2931,7 +2931,8 @@ async function sceneGate() {
   try {
     await page.until("window.__ui.screen === 'title' && window.__ui.onGate()", 20000);
     await wait(800);
-    check('with rooms on, the front screen asks solo or multiplayer first', (await page.evaluate(cards)) === 'Fly solo,Multiplayer', await page.evaluate(cards));
+    /* Three panels since the Mini games page (2026-10-29). */
+    check('with rooms on, the front screen asks solo, multiplayer or mini games first', (await page.evaluate(cards)) === 'Fly solo,Multiplayer,Mini games', await page.evaluate(cards));
     check('and the multiplayer panel wears its NEW sticker', await page.evaluate("Boolean(document.querySelector('.gate-card-together .gp-sticker svg'))"));
     await shot('cover');
     await page.tap('ArrowRight');
@@ -2943,7 +2944,7 @@ async function sceneGate() {
     await wait(500);
     await shot('multiplayer');
     await page.tap('Escape');
-    await onPage(2);
+    await onPage(3);
     check('Escape turns back to the cover', true);
     await page.evaluate("(() => { window.__ui.act('gate-solo'); return 1; })()");
     await onPage(5);
@@ -2951,7 +2952,7 @@ async function sceneGate() {
     await wait(500);
     await shot('solo');
     await page.tap('Escape');
-    await onPage(2);
+    await onPage(3);
     await page.evaluate("(() => { window.__ui.act('gate-together'); return 1; })()");
     await onPage(4);
 

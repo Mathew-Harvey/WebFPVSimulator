@@ -119,6 +119,61 @@ function drawTrack(kit, line) {
     return g;
   };
   kit.add('mxTrack', up(ribbon(-half, half, 0.03, 2)));
+  /* Wear in the bends: the inside line is scoured darker and a loose,
+   * lighter shoulder is thrown to the outside, in the colours the track
+   * and the ruts already have. */
+  {
+    const pts = line.points;
+    const n = pts.length;
+    const turn = new Int8Array(n);
+    for (let i = 0; i < n; i += 1) {
+      const a0 = line.tangents[(i + n - 3) % n];
+      const b0 = line.tangents[(i + 3) % n];
+      const c = a0.x * b0.y - a0.y * b0.x;
+      turn[i] = c > 0.04 ? 1 : (c < -0.04 ? -1 : 0);
+    }
+    const strip = (offOf, width, y, mat) => {
+      let i = 0;
+      while (i < n) {
+        if (turn[i] === 0) {
+          i += 1;
+          continue;
+        }
+        const side = turn[i];
+        let j = i;
+        while (j + 1 < n && turn[j + 1] === side) {
+          j += 1;
+        }
+        const pos = [];
+        const index = [];
+        let k = 0;
+        for (let m = i; m <= j; m += 2) {
+          const p = pts[m];
+          const t = line.tangents[m];
+          const off = offOf(side);
+          for (const o of [off - width / 2, off + width / 2]) {
+            const q = w(p.x - t.y * o, p.y + t.x * o, y);
+            pos.push(q[0], q[1], q[2]);
+          }
+          if (k > 0) {
+            const a1 = (k - 1) * 2;
+            index.push(a1, a1 + 2, a1 + 1, a1 + 1, a1 + 2, a1 + 3);
+          }
+          k += 1;
+        }
+        if (k > 1) {
+          const g = new THREE.BufferGeometry();
+          g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+          g.setIndex(index);
+          g.computeVertexNormals();
+          kit.add(mat, up(g));
+        }
+        i = j + 1;
+      }
+    };
+    /* A line to the left of the line is positive; a left bend's inside is left. */
+    strip((side) => side * (half - 1.9), 0.9, 0.05, 'mxDirt');
+  }
   for (const d of LANE_OFFSETS) {
     for (const side of [-0.38, 0.38]) {
       kit.add('mxDirt', up(ribbon(d + side - 0.12, d + side + 0.12, 0.04, 3)));
@@ -138,12 +193,16 @@ function drawMounds(kit, mounds) {
       profile.push([s - base, h]);
     }
     profile.push([end - base, 0]);
-    kit.extrude('mxDirt', profile, -MOUND_HALF, MOUND_HALF);
+    kit.extrude('mxDirtDark', profile, -MOUND_HALF, MOUND_HALF);
+    /* The groomed line over it, in the track's own dirt, a few centimetres
+     * proud and narrower, so the shoulders stay dark and the way over
+     * reads from the air. */
+    kit.extrude('mxTrack', profile.map(([x, y]) => [x, y > 0.001 ? y + 0.03 : 0]), -TRACK_WIDTH / 2 + 0.3, TRACK_WIDTH / 2 - 0.3);
     /* A darker band down the lip, so the take off reads from the air. */
     if (m.kind !== 'whoops') {
       for (const [s, h] of m.pts) {
         if (h > 0.5) {
-          kit.box('mxDirtDark', s - base - 0.15, h - 0.06, -MOUND_HALF + 0.9, s - base + 0.15, h + 0.02, MOUND_HALF - 0.9);
+          kit.box('mxDirtDark', s - base - 0.2, h - 0.02, -TRACK_WIDTH / 2 + 0.3, s - base + 0.2, h + 0.07, TRACK_WIDTH / 2 - 0.3);
         }
       }
     }
@@ -246,6 +305,12 @@ function drawDecor(kit, decor) {
           if (d.rows > 1) {
             kit.box('mxHay', -0.8, 0.5, -0.42, 0.8, 1.0, 0.42);
           }
+        });
+        break;
+      }
+      case 'bump': {
+        turned(kit, d.x, d.y, heading(d.tx, d.ty), () => {
+          kit.box('mxDirtDark', -0.15, 0, -TRACK_WIDTH / 2 + 0.8 + (d.k % 2) * 0.4, 0.15, 0.045 + (d.k % 3) * 0.01, TRACK_WIDTH / 2 - 0.8 - ((d.k + 1) % 2) * 0.4);
         });
         break;
       }

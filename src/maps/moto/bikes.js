@@ -58,13 +58,13 @@ const REAR_X = -0.72;
 const TYRE_W = 0.1;
 
 const COL = {
-  tyre: 0x24232a, rim: 0xc9ccd4, hub: 0x8a8d96, frame: 0x3a3c46, metal: 0xaab0ba, seat: 0x1f1f26, skin: 0xebc6a2, visor: 0x1b2230, boot: 0x2a2a30, glove: 0x2a2a30,
+  tyre: 0x24232a, rim: 0xc9ccd4, hub: 0x8a8d96, frame: 0x3a3c46, gold: 0xd9a441, metal: 0xaab0ba, seat: 0x1f1f26, skin: 0xebc6a2, visor: 0x1b2230, boot: 0x2a2a30, glove: 0x2a2a30,
 };
 
 /* The roost: every ROOST_EVERY steps of the lap clock. */
-const ROOST_EVERY = 96;
-const ROOST_FILL = 0xc99a6a;
-const ROOST_SHADE = 0x8a6444;
+const ROOST_EVERY = 64;
+const ROOST_FILL = 0xd6b48c;
+const ROOST_SHADE = 0xa88562;
 
 const colourOf = (key) => (MATERIALS[key] ? MATERIALS[key].c : 0xffffff);
 
@@ -131,13 +131,21 @@ function bikeGeometry(livery) {
   const {
     out, box, tube, ball,
   } = pieces();
+  const dim = (hex, k) => new THREE.Color(hex).multiplyScalar(k).getHex();
+  const pants = dim(kit, 0.32) === 0 ? 0x22242c : dim(kit, 0.3);
   /* The engine and frame, the swingarm and the pipe. */
   box(COL.frame, -0.28, 0.28, -0.1, 0.3, 0.7, 0.1);
   box(COL.metal, -0.1, 0.3, -0.12, 0.2, 0.52, 0.12);
+  box(COL.hub, 0.0, 0.34, -0.13, 0.16, 0.46, 0.13);
   tube(COL.frame, [0.3, 0.62, 0], [0.42, 1.0, 0], 0.06);
   tube(COL.frame, [-0.72, WHEEL_R, 0.07], [-0.2, 0.36, 0.07], 0.035);
   tube(COL.frame, [-0.72, WHEEL_R, -0.07], [-0.2, 0.36, -0.07], 0.035);
+  /* The pipe and the silencer, the shock and its spring, the chain. */
   tube(COL.metal, [0.12, 0.42, 0.14], [-0.5, 0.58, 0.15], 0.05, 6, 0.065);
+  tube(COL.metal, [-0.46, 0.6, 0.15], [-0.86, 0.7, 0.15], 0.075, 7, 0.06);
+  box(COL.frame, -0.9, 0.64, 0.1, -0.85, 0.76, 0.2);
+  tube(COL.gold, [-0.2, 0.74, 0], [-0.42, 0.4, 0], 0.045, 6);
+  box(COL.frame, -0.72, 0.28, -0.115, -0.1, 0.33, -0.105);
   box(COL.metal, -0.74, 0.5, 0.11, -0.46, 0.64, 0.19);
   /* The plastics in the bike's colour: the tank shrouds, the rear fender,
    * the front fender and the number plate. */
@@ -145,28 +153,53 @@ function bikeGeometry(livery) {
   box(plastic, -0.8, 0.66, -0.12, -0.05, 0.86, 0.12);
   box(COL.seat, -0.52, 0.86, -0.1, -0.02, 0.92, 0.1);
   box(plastic, 0.54, 0.66, -0.07, 0.96, 0.72, 0.07);
+  box(plastic, 0.64, 0.7, -0.08, 0.98, 0.76, 0.08);
   box(0xf4f1ea, 0.5, 0.74, -0.15, 0.55, 1.0, 0.15);
   ball(COL.tyre, [0.531, 0.88, 0], 0.03, 0.07, 0.06);
-  /* The forks and the bars. */
-  tube(COL.metal, [FRONT_X, WHEEL_R, 0.08], [0.4, 1.0, 0.08], 0.03);
-  tube(COL.metal, [FRONT_X, WHEEL_R, -0.08], [0.4, 1.0, -0.08], 0.03);
-  tube(COL.frame, [0.38, 1.04, -0.42], [0.38, 1.04, 0.42], 0.025);
+  /* The side number boards on the tail, white with a dark numeral block. */
+  for (const side of [-1, 1]) {
+    box(0xf4f1ea, -0.78, 0.7, side * 0.12, -0.42, 0.84, side * 0.135);
+    box(COL.seat, -0.7, 0.73, side * 0.135, -0.5, 0.81, side * 0.145);
+  }
+  /* The forks (gold lowers, silver uppers), the disc and the bars. */
+  for (const side of [-1, 1]) {
+    const z = side * 0.08;
+    tube(COL.gold, [FRONT_X, WHEEL_R, z], [0.62, 0.66, z], 0.032);
+    tube(COL.metal, [0.62, 0.66, z], [0.4, 1.02, z], 0.036);
+  }
+  tube(COL.metal, [FRONT_X, WHEEL_R, 0.065], [FRONT_X, WHEEL_R, 0.062], 0.13, 10);
+  tube(COL.frame, [0.38, 1.04, -0.44], [0.38, 1.04, 0.44], 0.025);
   box(plastic, 0.3, 1.03, -0.08, 0.4, 1.12, 0.08);
-  /* The rider, crouched. The boots on the pegs, the legs to the knees on
-   * the shrouds, the body forward over the tank, the arms to the bars. */
+  for (const side of [-1, 1]) {
+    box(plastic, 0.36, 1.0, side * 0.46, 0.48, 1.1, side * 0.5);
+  }
+  /* The rider, crouched, elbows up. The boots on the pegs, the knees
+   * gripping the shrouds, the body forward over the tank, the arms to
+   * the bars. Jersey in the kit's colour, pants dark, helmet in the
+   * jersey's colour with the goggles on. */
   for (const side of [-1, 1]) {
     const z = side * 0.17;
-    box(COL.boot, -0.02, 0.3, z - 0.07, 0.3, 0.42, z + 0.07);
-    tube(kit, [0.1, 0.4, z], [0.3, 0.78, z * 1.1], 0.075);
-    tube(kit, [0.3, 0.78, z * 1.1], [-0.12, 0.98, z * 0.8], 0.085);
-    tube(kit, [0.22, 1.44, side * 0.2], [0.38, 1.1, side * 0.4], 0.055);
-    box(COL.glove, 0.33, 1.02, side * 0.4 - 0.05, 0.43, 1.1, side * 0.4 + 0.05);
+    box(COL.boot, -0.04, 0.3, z - 0.07, 0.32, 0.5, z + 0.07);
+    box(0xf1eee6, 0.2, 0.32, z - 0.065, 0.34, 0.4, z + 0.065);
+    tube(pants, [0.12, 0.5, z], [0.3, 0.8, z * 1.1], 0.075);
+    tube(pants, [0.3, 0.8, z * 1.1], [-0.12, 1.0, z * 0.8], 0.09);
+    box(COL.boot, 0.27, 0.74, z * 1.1 - 0.05, 0.38, 0.88, z * 1.1 + 0.05);
+    ball(kit, [0.2, 1.46, side * 0.21], 0.1, 0.09, 0.09);
+    tube(kit, [0.2, 1.46, side * 0.22], [0.3, 1.27, side * 0.46], 0.058);
+    tube(kit, [0.3, 1.27, side * 0.46], [0.4, 1.09, side * 0.42], 0.05);
+    box(COL.glove, 0.34, 1.02, side * 0.42 - 0.05, 0.46, 1.12, side * 0.42 + 0.05);
   }
-  box(kit, -0.28, 0.92, -0.17, 0.0, 1.14, 0.17);
-  tube(kit, [-0.15, 1.0, 0], [0.22, 1.5, 0], 0.18, 8, 0.2);
-  ball(plastic, [0.3, 1.66, 0], 0.16, 0.15, 0.15);
-  box(COL.visor, 0.38, 1.62, -0.11, 0.5, 1.7, 0.11);
-  box(plastic, 0.3, 1.74, -0.04, 0.5, 1.78, 0.04);
+  box(pants, -0.3, 0.9, -0.17, 0.0, 1.1, 0.17);
+  tube(kit, [-0.14, 1.0, 0], [0.2, 1.5, 0], 0.18, 8, 0.21);
+  box(dim(kit, 0.8), -0.3, 1.1, -0.04, -0.02, 1.38, 0.04);
+  tube(kit, [0.22, 1.5, 0], [0.28, 1.58, 0], 0.07);
+  const helmet = dim(kit, 1.0);
+  ball(helmet, [0.31, 1.7, 0], 0.17, 0.16, 0.155);
+  box(0xf1eee6, 0.3, 1.78, -0.03, 0.46, 1.8, 0.03);
+  box(COL.visor, 0.38, 1.62, -0.12, 0.5, 1.72, 0.12);
+  box(0xf1eee6, 0.22, 1.66, -0.16, 0.4, 1.7, 0.16);
+  box(helmet, 0.4, 1.55, -0.06, 0.52, 1.62, 0.06);
+  box(helmet, 0.3, 1.77, -0.08, 0.56, 1.8, 0.08);
   const geo = bake(out);
   out.forEach((p) => p.geometry.dispose());
   geo.computeBoundingSphere();
@@ -239,7 +272,7 @@ export function buildBikes(look, moto, rider) {
   group.add(wheels);
 
   const roost = new Smoke(THREE, look, {
-    max: 220, life: 1.1, fill: ROOST_FILL, shade: ROOST_SHADE, name: 'roost',
+    max: 260, life: 0.85, fill: ROOST_FILL, shade: ROOST_SHADE, name: 'roost',
   });
   group.add(roost.mesh);
 
@@ -368,9 +401,9 @@ export function buildBikes(look, moto, rider) {
       const h3 = hash01(step + 13, bike.slot, 17);
       const back = 0.72;
       roost.put(step, pose.x - pose.hx * back, pose.y + ride.dy + 0.25, pose.z - pose.hz * back,
-        -pose.vx * 0.35, -pose.vz * 0.35, 0.22 + 0.28 * (dig > 1 ? 1 : dig), h1, h2, h3);
+        -pose.vx * 0.35, -pose.vz * 0.35, 0.1 + 0.16 * (dig > 1 ? 1 : dig), h1, h2, h3);
       if (landed) {
-        roost.put(step, pose.x - pose.hx * back, pose.y + 0.3, pose.z - pose.hz * back, -pose.vx * 0.5, -pose.vz * 0.5, 0.5, h2, h3, h1);
+        roost.put(step, pose.x - pose.hx * back, pose.y + 0.3, pose.z - pose.hz * back, -pose.vx * 0.5, -pose.vz * 0.5, 0.3, h2, h3, h1);
       }
     }
     void landing;

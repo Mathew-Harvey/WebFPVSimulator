@@ -249,6 +249,29 @@ function stakes(line, decor) {
   }
 }
 
+/* Braking bumps: a run of low ridges across the track in front of every
+ * bend that follows a straight, where riders brake and the dirt ripples.
+ * Drawn only, a decimetre high. Not on a mound's ground. */
+function bumps(line, decor) {
+  const L = line.length;
+  let last = -99;
+  for (let s = 6; s < L - 12; s += 1) {
+    if (bendAt(line, s, 4, 4e-3) !== 0 || bendAt(line, s + 10, 4, 4e-3) === 0) {
+      continue;
+    }
+    if (s - last < 40 || FEATURES.some((f) => s > f.s0 - 14 && s < f.s1 + 6)) {
+      continue;
+    }
+    last = s;
+    for (let i = 0; i < 6; i += 1) {
+      const q = pointAt(line, s - i * 1.3);
+      decor.push({
+        t: 'bump', x: q.x, y: q.y, tx: q.tx, ty: q.ty, k: i,
+      });
+    }
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* The layout                                                          */
 /* ------------------------------------------------------------------ */
@@ -379,6 +402,7 @@ export function circuitLayout() {
   const last = nearestOn(line, 28, 62).s;
   hay(line, P, decor, last - 12, last + 12, TRACK_WIDTH / 2 + 5.5);
   stakes(line, decor);
+  bumps(line, decor);
   zoneAt('Start gate', pointAt(line, 16).x, pointAt(line, 16).y, 14, 'gate');
 
   MEMO = {

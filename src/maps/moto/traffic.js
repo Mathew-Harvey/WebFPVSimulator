@@ -77,8 +77,8 @@ export const GROUPS = [
 
 /* Each bike's paint: [bike, rider's kit], keys of src/props/homes.js. */
 export const LIVERIES = [
-  ['mxOrange', 'white'], ['mxBlue', 'mxBlue'], ['mxGreen', 'white'], ['mxRed', 'white'], ['white', 'mxRed'],
-  ['mxBlue', 'white'], ['mxOrange', 'mxRed'], ['mxGreen', 'mxGreen'], ['mxRed', 'mxBlue'], ['white', 'mxOrange'],
+  ['mxOrange', 'mxBlue'], ['mxBlue', 'mxOrange'], ['mxGreen', 'mxHay'], ['mxRed', 'mxBlue'], ['white', 'mxRed'],
+  ['mxBlue', 'mxHay'], ['mxOrange', 'mxGreen'], ['mxGreen', 'mxRed'], ['mxRed', 'mxGreen'], ['white', 'mxOrange'],
 ];
 
 /*

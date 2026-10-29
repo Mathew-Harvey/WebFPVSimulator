@@ -72945,6 +72945,19 @@ The bug hunt thread saw together-shots' ribbon check "a bot cuts somebody's ribb
 - What went wrong: my first repro clicked a shelf tab because the strip was still scrolling, and blamed the picker; reading the target of the click put it right.
 - Checks, this turn: new `node scripts/together-shots.js --only=gamehost` (a real double click on the room picker for a dogfight and for ribbons): 6 failures before the fix, all passed after. `--only=host,dogfight,ribbon` all passed. `node scripts/minigames-check.js --only=menu,load` all passed. `npm run lint:preload` up to date. Not run: `npm run verify` (no physics, plant, ABI or build change). Not flown.
 
+## 2026-10-29 | sweep | Second pass over live main: two phone fixes and a steadied room check
+
+- The owner, 13:10:52Z: "Keep going, on all fronts, fix all the thing please", and 13:44:54Z: "go another round bug sweep".
+- Board: `npm test` all passed after a5e20c4 (a room game's own message budget). Sim: the whole of `together-shots.js`, every scene, 587 of 588.
+- That one, tabs' "the welcome is wide enough to read", failed the same way on the tree of 2026-10-28: the 800 by 520 width was read 4.3 s after flight, after the overlap walk at 1024 by 600, and the welcome lasts 4.2 s, so it read 0 px. It is read straight after each resize now (426 px at 800 by 520), and 0 px passes only once the welcome's time is up. A squeezed welcome still fails. Not a threshold: the 300 px floor is as it was.
+- Fixed, each with a check that failed first:
+  - On a phone the map picker's band (dogfight, ribbons, hosting, moving a room) said "Double click a map", which a phone has not got. It says "Tap a map, then press ..." on touch. `minigames-check --only=load`.
+  - In a dogfight on the glass, GUN and MISSILE were at a fixed `right: 200px`, on top of the right thumb plate (234 px held sideways, 300 px on a tablet), so a thumb landing on the plate's left half fired instead of steering. They sit beside the plate now, placed from its own size, as the mockup drew them, and above it upright. `minigames-check --only=touch` at 844 by 390, 390 by 844 and 1024 by 768.
+- Seen and left: the health panel draws over the left plate's corner held sideways (it takes no touches), and upright it sits over the score box at the top; upright is the "turn your phone sideways" layout. Before take off the first flights' tip runs under GUN for a moment.
+- Latency: no change in flight. CSS positions only, and one string chosen when a picker band is painted.
+- After merging main (1fa88fc, 43ce75d): `check:minigames` all passed, `check:drift`, `check:fresh`, `lint:preload`, `check:seat`, `dogfight:selftest`, `ribbons:selftest`, `together-shots --only=gate,dogfight,ribbon,tabs` all passed.
+- Not flown.
+
 ## 2026-10-29 | game | Goat herding in a room: one herd, most goats wins
 
 - The owner's asks of 04:51Z (every map with friends, bots in either) and 13:10Z ("Keep going, on all fronts, fix all the thing please").

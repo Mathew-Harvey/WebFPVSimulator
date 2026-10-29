@@ -99,8 +99,15 @@ const CSS = `
 .df-result .df-keys { margin-left: auto; font-size: 12px; color: #5d6b78; font-weight: 700; }
 .df-touch { position: absolute; right: 0; bottom: 0; width: 1px; height: 1px; }
 .df-fire { position: absolute; border: 4px solid ${INK}; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 900; letter-spacing: .1em; box-shadow: 3px 4px 0 ${INK}; pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none; color: ${INK}; }
-.df-fire.is-gun { right: 200px; bottom: 130px; width: 80px; height: 80px; background: ${AMBER}; }
-.df-fire.is-missile { right: 206px; bottom: 36px; width: 66px; height: 66px; background: ${BAIL}; font-size: 10px; }
+/* Beside the right thumb plate, never on it: --df-plate is the plate's
+ * own size from index.html (.touch-plate, landscape and portrait), and the
+ * plate stands max(16px, safe area) in from the edge. They were at a fixed
+ * right: 200px, which is on top of a 234 px plate, so a thumb landing on
+ * the plate's left half fired instead of steering (2026-10-29). */
+.df-touch { --df-plate: clamp(200px, 60vmin, 300px); --df-in: calc(max(16px, env(safe-area-inset-right)) + var(--df-plate) + 14px); }
+.df-fire.is-gun { right: var(--df-in); bottom: 130px; width: 80px; height: 80px; background: ${AMBER}; }
+.df-fire.is-missile { right: calc(var(--df-in) + 7px); bottom: 36px; width: 66px; height: 66px; background: ${BAIL}; font-size: 10px; }
+@media (orientation: portrait) { .df-touch { --df-plate: clamp(112px, 30vmin, 168px); } .df-fire.is-gun { bottom: calc(clamp(112px, 30vmin, 168px) + 40px); right: max(16px, env(safe-area-inset-right)); } .df-fire.is-missile { bottom: calc(clamp(112px, 30vmin, 168px) + 40px); right: calc(max(16px, env(safe-area-inset-right)) + 96px); } }
 .df-fire.is-down { transform: translate(2px, 3px); box-shadow: 1px 1px 0 ${INK}; }
 @media (max-width: 700px) { .df-me-panel { transform: scale(.8); transform-origin: left bottom; left: 10px; bottom: auto; top: 54px; } .df-feed { top: 60px; transform: scale(.85); transform-origin: right top; } }
 `;

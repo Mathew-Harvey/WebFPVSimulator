@@ -1733,16 +1733,25 @@ async function sceneTabs() {
     await pressKey(page, 'join');
     await page.until(`${T} && window.__together().inRoom`, 15000);
     await page.until("window.__mode === 'flight'", 30000);
+    /* When the page was first flying: the welcome (BANNER_MS, 4200 ms in
+     * src/net/together.js) went up before this, so by 4200 ms after it the
+     * welcome has gone on its own, which is not the squeeze this checks. */
+    const flyingAt = Date.now();
     for (const [w, hgt] of [[1024, 600], [800, 520], [1600, 900]]) {
       await size(w, hgt);
       await wait(700);
+      const bw = await page.evaluate("(() => { const b = document.querySelector('#tg .tg-banner'); return b ? Math.round(b.getBoundingClientRect().width) : 0; })()");
+      const over = Date.now() - flyingAt > 4200;
       const on = await overlaps(page, '#tg .roomchip, #tg .roster, #tg .tg-banner');
       check(`at ${w} by ${hgt}, nothing of the room's covers the shell's instruments`, !on, on);
-      /* The welcome is up for the first two sizes and may have gone by the
-       * last: wide enough to read, not a word a line. It was 104 px wide at
-       * 800 by 520, squeezed between two copies of the right hand column. */
-      const bw = await page.evaluate("(() => { const b = document.querySelector('#tg .tg-banner'); return b ? Math.round(b.getBoundingClientRect().width) : 0; })()");
-      check(`and the welcome is wide enough to read (${bw} px)`, bw >= 300 || (bw === 0 && w === 1600), String(bw));
+      /* The welcome, while it is up, is wide enough to read, not a word a
+       * line. It was 104 px wide at 800 by 520, squeezed between two copies
+       * of the right hand column. Read before the overlap walk above it
+       * took its time: on a slow machine the walk at 1024 by 600 alone took
+       * the welcome past its 4.2 s, and 0 px read as a failure (2026-10-29,
+       * the same on the tree of 2026-10-28). Gone is a pass only once its
+       * time is up. */
+      check(`and the welcome is wide enough to read (${bw} px)`, bw >= 300 || (bw === 0 && (over || w === 1600)), `${bw}${over ? ', its time was up' : ''}`);
       const bannerOn = await overlaps(page, '#tg .tg-banner', BANNER_CLEAR_OF);
       check('and keeps off the room\'s own panels', !bannerOn, bannerOn);
       await shot(`flight-${w}x${hgt}`);

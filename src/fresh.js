@@ -139,6 +139,7 @@
     'src/game/counterbest.js',
     'src/game/dogbrain.js',
     'src/game/dogfight.js',
+    'src/game/dogroom.js',
     'src/game/egg.js',
     'src/game/film.js',
     'src/game/gaps.js',

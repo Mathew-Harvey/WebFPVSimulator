@@ -652,7 +652,10 @@ export class DogfightHud {
     if (!g.over && alive) {
       if (g.startedMs < 0) {
         const n = g.rules.bots;
-        banner = n ? `Take off to start. ${n === 1 ? 'One bot is' : `${n} bots are`} waiting.` : 'Take off to start the round.';
+        /* The shell's own take off words (extra.start), so the banner up
+         * top is not needed and does not sit under the score. */
+        const go = extra.start || 'Take off to start';
+        banner = n ? `${go}. ${n === 1 ? 'One bot is' : `${n} bots are`} waiting.` : `${go}. The round starts when you do.`;
       } else if (g.shieldUntil[ME] === Infinity) {
         banner = 'Take off. You have a shield until you fire.';
       }

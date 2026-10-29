@@ -432,9 +432,11 @@ export class BotBrain {
      * the rest now and then; a pilot it could not see anyway is never
      * asked, which is most of the saving. */
     let ask = -1;
-    const from = Math.floor(now / this.c.EVERY) % n;
+    const tick = Math.floor(now / this.c.EVERY);
+    /* Every other feed, half the bots on each. */
+    const from = (tick + i) % 2 === 0 ? (tick >> 1) % n : n;
     const far = SIGHT * k;
-    for (let s = 0; s < n; s += 1) {
+    for (let s = 0; from < n && s < n; s += 1) {
       const j = (from + s) % n;
       const q = i * n + j;
       if (j === i || !g.live(j) || now < this.losAt[q]) {
@@ -509,6 +511,28 @@ export class BotBrain {
     }
   }
 
+  /* A missile coming for bot i: noticed after the skill's moment, or, for
+   * some, never; when noticed, evade at once. */
+  warn(i, now, sk) {
+    const g = this.g;
+    const inc = g.incoming(i);
+    if (inc < 0) {
+      return;
+    }
+    if (this.evadeId[i] !== g.mId[inc]) {
+      this.evadeId[i] = g.mId[inc];
+      this.noticeMs[i] = now + sk.notice * (0.6 + g.rand() * 0.8);
+      if (g.rand() > sk.dodge) {
+        this.noticeMs[i] = Infinity;
+      }
+      this.breakAt[i] = sk.breakTti * (0.75 + g.rand() * 0.5);
+      this.side[i] = g.rand() < 0.5 ? -1 : 1;
+    }
+    if (now >= this.noticeMs[i] && this.mode[i] !== EVADE) {
+      this.set(i, EVADE, now);
+    }
+  }
+
   /* Is bot i seeing pilot j right now, rather than remembering it. */
   sees(i, j, now) {
     return this.known[i * this.n + j] === 1 && now - this.seenAt[i * this.n + j] < 120;
@@ -532,6 +556,9 @@ export class BotBrain {
     /* Drag that makes full thrust, level, top out at vmax. */
     const cd = Math.sqrt(Tmax * Tmax - gk * gk) / (vmax * vmax);
     this.perceive(i, now, sk);
+    /* A missile is felt every feed, not when it next thinks: the warning
+     * tone in its goggles, after its skill's moment. */
+    this.warn(i, now, sk);
     if (now >= this.thinkAt[i]) {
       this.think(i, now, sk, armed);
       this.thinkAt[i] = now + sk.think + Math.floor(g.rand() * sk.think);
@@ -848,23 +875,11 @@ export class BotBrain {
     const k = g.world.k;
     const p = this.p[i];
     const was = this.mode[i];
-    /* A missile coming, noticed after the skill's moment. */
+    /* Evading a missile it has noticed: nothing else matters. */
     const inc = g.incoming(i);
-    if (inc >= 0) {
-      if (this.evadeId[i] !== g.mId[inc]) {
-        this.evadeId[i] = g.mId[inc];
-        this.noticeMs[i] = now + sk.notice * (0.6 + g.rand() * 0.8);
-        /* Some never see it coming. */
-        if (g.rand() > sk.dodge) {
-          this.noticeMs[i] = Infinity;
-        }
-        this.breakAt[i] = sk.breakTti * (0.75 + g.rand() * 0.5);
-        this.side[i] = g.rand() < 0.5 ? -1 : 1;
-      }
-      if (now >= this.noticeMs[i]) {
-        this.set(i, EVADE, now);
-        return;
-      }
+    if (inc >= 0 && this.evadeId[i] === g.mId[inc] && now >= this.noticeMs[i]) {
+      this.set(i, EVADE, now);
+      return;
     }
     /* On my tail: somebody with me in their gun's line, near enough,
      * firing or about to, or who just hit me. */
@@ -1474,14 +1489,13 @@ export class BotBrain {
         this.toward(i, this.goalX[i], this.goalY[i], this.goalZ[i], vmax, want);
       }
     } else {
-      /* The break: hard across its path, the other way, and over or
-       * under. */
-      want.vx = -sx * vmax;
-      want.vy = (alt < 6 * k ? 0.7 : -0.7) * vmax;
-      want.vz = -sz * vmax;
-      this.jx[i] = -sx * sk.thrust * G * k * 0.8;
-      this.jy[i] = (alt < 6 * k ? 1 : -1) * sk.thrust * G * k * 0.5;
-      this.jz[i] = -sz * sk.thrust * G * k * 0.8;
+      /* The break: still side on at full speed, which is what makes it
+       * swing its nose fastest, and hard over or under, which its lead
+       * did not allow for. */
+      const up = alt < 6 * k ? 1 : -1;
+      want.vx = sx * vmax;
+      want.vy = up * vmax * 0.8;
+      want.vz = sz * vmax;
     }
     want.wander = 0.05;
   }
@@ -1506,15 +1520,9 @@ export class BotBrain {
       return;
     }
     const holding = now < this.avoidUntil[i];
-    const hold = () => {
-      const s = Math.max(dm * this.avoidSlow[i], vmax * 0.15);
-      want.vx = this.avoidX[i] * s;
-      want.vy = this.avoidY[i] * s;
-      want.vz = this.avoidZ[i] * s;
-    };
     if (now < this.lookAt[i]) {
       if (holding) {
-        hold();
+        this.hold(i, dm, vmax, want);
       }
       return;
     }
@@ -1538,7 +1546,7 @@ export class BotBrain {
         const hy = this.avoidY[i];
         const hz = this.avoidZ[i];
         if (w.blocked(x, y, z, x + hx * reach, y + hy * reach, z + hz * reach) < 0) {
-          hold();
+          this.hold(i, dm, vmax, want);
           return;
         }
       } else if (ahead < 0) {
@@ -1563,14 +1571,16 @@ export class BotBrain {
     const start = Math.floor(g.rand() * 8);
     const updown = low ? 1 : (high ? -1 : 0);
     for (let r = 0; r < RINGS.length; r += 1) {
-      const [cr, sr] = RINGS[r];
+      const cr = RINGS[r][0];
+      const sr = RINGS[r][1];
       /* Best first: the two level ones and the one away from the floor or
        * the top, then the rest, starting somewhere new each time so it is
        * not always the left. */
       let found = -1;
       let foundScore = -Infinity;
       for (let m = 0; m < 8; m += 1) {
-        const [ca, sa] = ROUND8[(start + m) % 8];
+        const ca = ROUND8[(start + m) % 8][0];
+        const sa = ROUND8[(start + m) % 8][1];
         const cx = dx * cr + (sx * ca + ux * sa) * sr;
         const cy = dy * cr + (0 * ca + uy * sa) * sr;
         const cz = dz * cr + (sz * ca + uz * sa) * sr;
@@ -1613,6 +1623,14 @@ export class BotBrain {
     want.vx = this.avoidX[i] * vmax * 0.3;
     want.vy = this.avoidY[i] * vmax * 0.3;
     want.vz = this.avoidZ[i] * vmax * 0.3;
+  }
+
+  /* Keep dodging the way it chose. */
+  hold(i, dm, vmax, want) {
+    const s = Math.max(dm * this.avoidSlow[i], vmax * 0.15);
+    want.vx = this.avoidX[i] * s;
+    want.vy = this.avoidY[i] * s;
+    want.vz = this.avoidZ[i] * s;
   }
 
   /* Whiskers: a quarter of a second ahead where it is going, and a

@@ -28,8 +28,9 @@
  */
 
 import {
-  Dogfight, GUN, MISSILE, HITS, ME, MAX_PILOTS, DOGFIGHT_EVERY,
+  Dogfight, GUN, MISSILE, HITS, ME, MAX_PILOTS, DOGFIGHT_EVERY, SKILLS,
 } from '../src/game/dogfight.js';
+import { ATTACK, EXTEND, PATROL } from '../src/game/dogbrain.js';
 
 let failed = 0;
 let passed = 0;
@@ -359,6 +360,154 @@ function missileAt(lockFirst) {
     }
   }
   check(finite, 'bots that start on the same spot stay finite');
+}
+
+/*
+ * THE BOTS' BRAINS (src/game/dogbrain.js). What makes them fight like
+ * pilots rather than like cursors, each asked of the open field so the
+ * map is not what is measured.
+ */
+function openField() {
+  const w = world(1, false);
+  w.radius = 150;
+  return w;
+}
+/* A pilot flying a circle of 30 m at 19 m/s, 6 m up, turned without trig;
+ * `jink` throws it 3 m in and out every 400 ms. Returns the hits it took. */
+function circling(skill, seed, jink, bots = 3) {
+  const g = new Dogfight(openField(), { bots, skill, round: 'none' }, seed);
+  const me = {
+    x: 30, y: 6, z: 0, fx: 0, fy: 0, fz: 1, ux: 0, uy: 1, uz: 0, flying: true, gun: false, missile: false,
+  };
+  let cx = 1;
+  let cz = 0;
+  let taken = 0;
+  for (let n = 0; n < 6000; n += 1) {
+    const st = (19 * 0.01) / 30;
+    const nx = cx - cz * st;
+    const nz = cz + cx * st;
+    const m = Math.sqrt(nx * nx + nz * nz);
+    cx = nx / m;
+    cz = nz / m;
+    const off = jink ? [0, 3, -3, 1][Math.floor(n / 40) % 4] : 0;
+    me.x = cx * (30 + off);
+    me.z = cz * (30 + off);
+    me.fx = -cz;
+    me.fz = cx;
+    g.step(me, n === 0);
+    for (let e = 0; e < g.eventCount; e += 1) {
+      if (g.events[e].type === 'hit' && g.events[e].to === ME) taken += 1;
+    }
+    g.eventCount = 0;
+  }
+  return { g, taken };
+}
+{
+  const steady = circling('pilot', 1, false).taken + circling('pilot', 2, false).taken;
+  const jinky = circling('pilot', 1, true).taken + circling('pilot', 2, true).taken;
+  check(steady > 20, 'bots lead a pilot flying a steady circle and hit it', `${steady} hits in two minutes`);
+  check(jinky < steady, 'and a pilot who jinks is hit less, because what a bot sees lags what is', `${jinky} < ${steady}`);
+  const rookie = circling('rookie', 1, false).taken + circling('rookie', 2, false).taken;
+  const ace = circling('ace', 1, false).taken + circling('ace', 2, false).taken;
+  check(rookie < steady && steady < ace, 'a rookie hits less than a pilot and a pilot less than an ace', `${rookie} < ${steady} < ${ace}`);
+}
+
+/* Missiles: fired locked from far at one bot, forty times. A rookie never
+ * gets away; an ace often does, by flying side on and breaking late. */
+function dodgeRate(skill) {
+  let fired = 0;
+  let hit = 0;
+  for (let seed = 1; seed <= 40; seed += 1) {
+    const w = openField();
+    w.spawns = [{ x: 160, y: 10, z: 0 }];
+    const g = new Dogfight(w, { bots: 1, skill, round: 'none' }, seed);
+    const me = {
+      x: 0, y: 10, z: 0, fx: 1, fy: 0, fz: 0, ux: 0, uy: 1, uz: 0, flying: true, gun: false, missile: false,
+    };
+    let shot = false;
+    let done = false;
+    for (let n = 0; n < 1500 && !done; n += 1) {
+      const dx = g.x[1] - me.x;
+      const dy = g.y[1] - me.y;
+      const dz = g.z[1] - me.z;
+      const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      me.fx = dx / d;
+      me.fy = dy / d;
+      me.fz = dz / d;
+      me.missile = !shot && n > 100 && d > 70 && g.locked(ME);
+      shot = shot || me.missile;
+      /* Its spawn shield off, so the lock comes while it is far, and the
+       * pilot's on, so it cannot shoot back. */
+      g.shieldUntil[1] = 0;
+      g.shieldUntil[ME] = Infinity;
+      g.step(me, n === 0);
+      for (let e = 0; e < g.eventCount; e += 1) {
+        const ev = g.events[e];
+        if (ev.type === 'boom' && ev.by === ME) done = true;
+        if (ev.type === 'hit' && ev.weapon === 'missile' && ev.to === 1) hit += 1;
+      }
+      g.eventCount = 0;
+    }
+    if (shot) fired += 1;
+  }
+  return fired ? (fired - hit) / fired : 0;
+}
+{
+  const rookie = dodgeRate('rookie');
+  const ace = dodgeRate('ace');
+  check(rookie <= 0.1, 'a rookie almost never gets away from a locked missile', `${(rookie * 100).toFixed(0)}%`);
+  check(ace >= 0.3, 'an ace often does', `${(ace * 100).toFixed(0)}%`);
+}
+
+/* The pilot is never mobbed: no more bots on it at once than the skill's
+ * tokens and one more caught deciding in the same moment. */
+{
+  let worst = 0;
+  for (const skill of ['rookie', 'pilot', 'ace']) {
+    const g = new Dogfight(openField(), { bots: 7, skill, round: 'none' }, 5);
+    const me = {
+      x: 0, y: 6, z: 0, fx: 1, fy: 0, fz: 0, ux: 0, uy: 1, uz: 0, flying: true, gun: false, missile: false,
+    };
+    for (let n = 0; n < 6000; n += 1) {
+      g.step(me, n === 0);
+      g.eventCount = 0;
+      let on = 0;
+      for (let i = 1; i < MAX_PILOTS; i += 1) {
+        if (g.alive[i] && g.target[i] === ME && g.brain.mode[i] === ATTACK) on += 1;
+      }
+      worst = Math.max(worst, on - SKILLS[skill].tokens);
+    }
+  }
+  check(worst <= 1, 'no more bots on the pilot at once than the skill allows', `${worst} over`);
+}
+
+/* Personalities: GIZMO dives and runs out to come round again, NORI waits
+ * low, PIP fights close. */
+{
+  const g = new Dogfight(openField(), { bots: 7, skill: 'pilot', round: 'none' }, 8);
+  const me = {
+    x: 0, y: 6, z: 0, fx: 1, fy: 0, fz: 0, ux: 0, uy: 1, uz: 0, flying: true, gun: false, missile: false,
+  };
+  const extend = new Float64Array(MAX_PILOTS);
+  const lowPatrol = new Float64Array(MAX_PILOTS);
+  const patrol = new Float64Array(MAX_PILOTS);
+  for (let n = 0; n < 12000; n += 1) {
+    g.step(me, n === 0);
+    g.eventCount = 0;
+    for (let i = 1; i < MAX_PILOTS; i += 1) {
+      if (!g.alive[i]) continue;
+      if (g.brain.mode[i] === EXTEND) extend[i] += 1;
+      if (g.brain.mode[i] === PATROL) {
+        patrol[i] += 1;
+        lowPatrol[i] += g.y[i];
+      }
+    }
+  }
+  const others = Math.max(extend[1], extend[3], extend[5]);
+  check(extend[2] > others, 'the boom and zoom bot runs out to come round more than the others', `${extend[2]} > ${others}`);
+  const lowest = patrol[7] ? lowPatrol[7] / patrol[7] : Infinity;
+  const gizmo = patrol[2] ? lowPatrol[2] / patrol[2] : 0;
+  check(lowest < gizmo, 'the ambusher patrols lower than the diver', `${lowest.toFixed(1)} m < ${gizmo.toFixed(1)} m`);
 }
 
 /* Cost: seven bots and the gun held, per feed. */

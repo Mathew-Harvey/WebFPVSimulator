@@ -93,13 +93,18 @@ export const GUN = {
 };
 
 /* THE MISSILE. One a press. Locks after LOCK_MS with a target held in the
- * circle; without a lock it flies straight. It turns at TURN rad/s, which
- * is less than a quad can, so a hard turn at the right moment beats it. */
+ * circle; without a lock it flies straight. It turns at TURN rad/s and
+ * leads only part of its target's motion, so a quad flying fast and side
+ * on to it close in swings out of its reach, and once the target is off
+ * its nose by more than the seeker sees it is lost and flies on: a hard
+ * turn at the right moment beats it. It was 3.5 rad/s with the whole lead
+ * at first, and nothing in the arena (scripts/dogfight-arena.js) ever got
+ * away from one in open air, bot or scripted pilot. */
 export const MISSILE = {
   speed0: 45,
   speedMax: 70,
   accel: 25,
-  turn: 3.5,
+  turn: 2.0,
   lifeMs: 10000,
   rack: 4,
   reloadMs: 8000,
@@ -111,6 +116,12 @@ export const MISSILE = {
   blastFar: 10,
   lockMs: 800,
   lockRange: 350,
+  /* How much of the target's motion it leads: less than all of it, so a
+   * quad flying side on to it close in swings its line of sight faster
+   * than it can turn, and a break at the right moment beats it. */
+  lead: 0.35,
+  /* cos 65 degrees: how far off its nose the seeker still sees. */
+  seekCos: 0.42262,
 };
 /* cos 12 degrees: the lock circle. */
 export const LOCK_COS = 0.97815;
@@ -1040,12 +1051,22 @@ export class Dogfight {
         const ty = this.y[t] - this.my[s];
         const tz = this.z[t] - this.mz[s];
         const d = Math.sqrt(tx * tx + ty * ty + tz * tz);
-        let go = d / this.mSpeed[s];
-        if (go > 2) go = 2;
-        const ax = tx + this.vx[t] * go;
-        const ay = ty + this.vy[t] * go;
-        const az = tz + this.vz[t] * go;
-        turnToward(this, 'md', s, ax, ay, az, MISSILE.turn * DT);
+        /* A target that has got outside the seeker's view, a break timed
+         * so the missile flies past, is lost for good: it flies on. */
+        if (d > 1e-6 && (tx * this.mdx[s] + ty * this.mdy[s] + tz * this.mdz[s]) / d < MISSILE.seekCos) {
+          this.mTarget[s] = -1;
+          this.dodged[t] += 1;
+          if (t === ME) {
+            this.event('dodge', this.mOwner[s], t, 0, 'missile', this.mx[s], this.my[s], this.mz[s]);
+          }
+        } else {
+          let go = (d / this.mSpeed[s]) * MISSILE.lead;
+          if (go > 2) go = 2;
+          const ax = tx + this.vx[t] * go;
+          const ay = ty + this.vy[t] * go;
+          const az = tz + this.vz[t] * go;
+          turnToward(this, 'md', s, ax, ay, az, MISSILE.turn * DT);
+        }
       }
       const sp = this.mSpeed[s] * DT;
       const bx = this.mx[s] + this.mdx[s] * sp;

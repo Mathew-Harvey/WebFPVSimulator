@@ -2321,7 +2321,9 @@ export async function boot({ loading, bootStart, mapId }) {
   const fightPos = new THREE.Vector3();
   const fightQuat = new THREE.Quaternion();
   const fightAim = new THREE.Vector3();
-  const fightExtra = { best: 0, newBest: false, nextMs: 0, kicker: 'Dogfight' };
+  const fightExtra = {
+    best: 0, newBest: false, nextMs: 0, kicker: 'Dogfight', start: '',
+  };
 
   function fightBestKey() {
     return `webfpv.dogfight.best.${fightKey}`;
@@ -12782,7 +12784,14 @@ export async function boot({ loading, bootStart, mapId }) {
       if (together && together.raceRoom()) {
         second = '';
       }
-      ui.setBanner(`${start}${second}`);
+      if (fightGame) {
+        /* A dogfight says it on its own HUD's line, which names the bots
+         * waiting; the banner would sit under its score. */
+        fightExtra.start = start;
+        ui.setBanner('');
+      } else {
+        ui.setBanner(`${start}${second}`);
+      }
       if (guidedStart && !onGrid) {
         ui.noteGuideShown();
       }

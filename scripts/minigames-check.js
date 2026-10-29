@@ -7,7 +7,7 @@
  * a round ending and the next one starting, leaving, a restart, a quad of
  * another size, and the results table's buttons.
  *
- *   node scripts/minigames-check.js [--only=menu,load,yard,goats,drift,dogfight,ribbon,scale]
+ *   node scripts/minigames-check.js [--only=menu,load,yard,touch,goats,drift,dogfight,ribbon,scale]
  *
  * Minutes of wall clock on a software rasteriser. Written for the bug hunt
  * of 2026-10-29 ("Across all games before we push to main, please do a bug
@@ -305,6 +305,61 @@ async function sceneYard() {
 }
 
 /*
+ * On the glass, in a dogfight: the GUN and MISSILE buttons sit beside the
+ * right thumb plate, as the mockup drew them (/mnt/project-files/dogfight/
+ * shots/phone.png), not on it. They were placed in fixed pixels and sat on
+ * the plate, so a thumb landing on its left half fired instead of steering
+ * (2026-10-29). The health panel draws over the left plate's corner and
+ * takes no touches (pointer-events none), so only the buttons are held to
+ * this.
+ */
+async function sceneTouch() {
+  for (const [w, h] of [[844, 390], [390, 844], [1024, 768]]) {
+    console.log(`touch: a dogfight on the glass at ${w} by ${h}`);
+    const page = await openPage({ root: ROOT, width: w, height: h, touch: true, url: '/index.html?map=city&fly=1' });
+    const ev = async (body) => {
+      const r = await page.cdp.send('Runtime.evaluate', { expression: `(async()=>{${body}})()`, awaitPromise: true, returnByValue: true }, page.sessionId);
+      if (r.exceptionDetails) {
+        throw new Error(JSON.stringify(r.exceptionDetails).slice(0, 900));
+      }
+      return r.result.value;
+    };
+    const until = async (body, ms = 20000) => {
+      const end = Date.now() + ms;
+      while (Date.now() < end) {
+        if (await ev(body)) {
+          return true;
+        }
+        await sleep(200);
+      }
+      return false;
+    };
+    try {
+      if (!(await until("const m = window.__map ? window.__map() : null; return Boolean(window.__shellReady && m && m.ready && m.id === 'city');", 150000))) {
+        throw new Error('the town never became ready');
+      }
+      await answerQuadPicker(page, 60000).catch(() => {});
+      await until("return window.__ui.screen === 'flight'", 20000);
+      await ev("window.__ui.dogfight = { bots: 1, skill: 'rookie', round: '3m', hits: 'arcade' }; return 1;");
+      await until('return Boolean(window.__dogfight())', 20000);
+      await until("const g = document.querySelector('.df-fire.is-gun'); return Boolean(g && g.getBoundingClientRect().width > 0);", 5000);
+      const crossing = await ev(`const R = (e) => e.getBoundingClientRect();
+        const plates = [...document.querySelectorAll('.touch-plate')].filter((e) => R(e).width > 0).map(R);
+        const mine = ['.df-fire.is-gun', '.df-fire.is-missile'].map((q) => [q, document.querySelector(q)]).filter(([, e]) => e && R(e).width > 0);
+        const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+        const off = mine.filter(([, e]) => R(e).left < 0 || R(e).right > innerWidth || R(e).top < 0 || R(e).bottom > innerHeight).map(([q]) => q);
+        return JSON.stringify({ plates: plates.length, mine: mine.length, over: mine.filter(([, e]) => plates.some((p) => hit(R(e), p))).map(([q]) => q), off });`);
+      const cr = JSON.parse(crossing);
+      check(`the fire buttons are clear of both thumb plates, and on the glass`, cr.plates === 2 && cr.mine === 2 && cr.over.length === 0 && cr.off.length === 0, crossing);
+      const errs = pageErrors(page);
+      check('no errors on the page', errs.length === 0, errs.slice(0, 3).join(' | '));
+    } finally {
+      await page.close();
+    }
+  }
+}
+
+/*
  * A key pressed while the world is building. The quad picker's Fly starts
  * the map's load, and the loading screen covers the title, but the title
  * was still taking keys behind it: a second Enter (a pad's A pressed twice,
@@ -370,6 +425,7 @@ try {
   if (wanted('menu')) await sceneMenu();
   if (wanted('load')) await sceneLoadKeys();
   if (wanted('yard')) await sceneYard();
+  if (wanted('touch')) await sceneTouch();
   if (wanted('goats')) await sceneMapGame('goats', 'goat-hud');
   if (wanted('drift')) await sceneMapGame('drift', 'film-hud');
   if (wanted('dogfight')) await sceneDogfight();

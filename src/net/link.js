@@ -375,6 +375,11 @@ export class RoomLink {
         this.race = m.race || null;
         this.onEvent('race', m);
         break;
+      case 'ribbon':
+      case 'rbCut':
+        /* A ribbon cutting room's round, and a cut the board believed. */
+        this.onEvent(m.t, m);
+        break;
       case 'refused':
         /* A resume the board cannot honour is the end of this room for
          * this pilot, which the shell says differently from a refusal at

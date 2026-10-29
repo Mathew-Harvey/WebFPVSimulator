@@ -30,7 +30,7 @@
  */
 
 import {
-  RibbonCut, RIBBON, RIBBON_POINTS, RIBBON_ROUNDS, normaliseRibbonRules,
+  RibbonCut, RibbonRoom, RIBBON, RIBBON_POINTS, RIBBON_ROUNDS, normaliseRibbonRules,
 } from '../src/game/ribbons.js';
 import { ME, MAX_PILOTS } from '../src/game/dogfight.js';
 
@@ -429,6 +429,91 @@ function crossing(at, { cutter = ME, owner = 1, started = true } = {}) {
   const us = Number(t) / 1000 / N;
   console.log(`  cost  ${us.toFixed(2)} us a feed, ${(us * 100 / 60 / 1000).toFixed(4)} ms a 60 Hz frame`);
   check(us < 30, 'a feed with seven aces and eight ribbons is under 30 us', `${us.toFixed(2)} us`);
+}
+
+/*
+ * A ROOM. The board's round heard as src/net/together.js passes it on, two
+ * remote pilots drawn from poses, and this page's quad flown through one of
+ * their ribbons: the cut goes out to the board and is not made here, and
+ * the board's word back is what shortens the ribbon.
+ */
+{
+  let wall = 1000;
+  const g = new RibbonRoom(world(), { now: () => wall });
+  g.setYou(5, true);
+  const pose = (x, y, z) => ({
+    px: x, py: y, pz: z, qx: 0, qy: 0, qz: 0, qw: 1, cut: false,
+  });
+  const feed = (me, n = 1) => {
+    for (let i = 0; i < n; i += 1) {
+      g.remote(7, pose(0, 10, 0), { handle: 'Kiwi' });
+      g.remote(9, pose(40, 10, 40), { handle: 'Nori' });
+      g.step(me);
+      wall += 10;
+    }
+  };
+  /* Nose -Z, so the ribbon trails toward +Z from the quad at the origin. */
+  const r7 = g.slotFor(7);
+  feed(still(-20, 10, -20), 50);
+  check(g.rCount[r7] === RIBBON_POINTS && g.live(r7), 'out of a round, a pilot drawn in the room flies a whole ribbon');
+  check(g.banner.startsWith('Press G'), 'the host is told how to start', g.banner);
+  check(!g.cutting, 'nothing can be cut before a round');
+  const rows = [5, 7, 9].map((id) => ({
+    id, count: RIBBON_POINTS, out: false, outAt: 0, cuts: 0, snips: 0,
+  }));
+  g.heard({
+    phase: 'count', length: 'normal', round: '2m', n: 1, goAt: 0, endAt: 0, winner: null, rows,
+  }, wall + 2000, wall + 122000);
+  check(g.banner === 'Ribbons out in 2', 'the count is on the page\'s clock', g.banner);
+  feed(still(-20, 10, -20), 400);
+  g.heard({ ...g.state, phase: 'live' }, g.goLocal, g.endLocal);
+  feed(still(-20, 10, -20), 20);
+  check(g.cutting, 'past GO and its grace, cuts can land');
+  check(g.leftMs() > 110000 && g.leftMs() <= 120000, 'the clock runs from the board\'s end', String(g.leftMs()));
+  /* Across the ribbon trailing behind pilot 7, three metres back. */
+  const j = r7 * RIBBON_POINTS + 10;
+  const cx = g.rx[j];
+  const cz = g.rz[j];
+  const cy = g.ry[j];
+  feed(still(cx - 2, cy, cz));
+  let sent = null;
+  for (let n = 0; n < 8 && !sent; n += 1) {
+    feed(still(cx - 1.5 + n * 0.5, cy, cz));
+    sent = g.takeOutbox();
+  }
+  check(sent && sent.length === 1 && sent[0].t === 'rbCut' && sent[0].to === 7 && sent[0].n === 1,
+    'a ribbon flown through is sent to the board as a cut', JSON.stringify(sent));
+  check(g.rCount[r7] === RIBBON_POINTS, 'and is not cut on this page until the board says so');
+  feed(still(cx + 2, cy, cz), 2);
+  check(!g.takeOutbox(), 'the same ribbon is not asked about twice before the board answers');
+  g.applyCut({
+    n: 1, by: 5, to: 7, s: sent[0].s, out: false,
+  });
+  check(g.rCount[r7] === sent[0].s && g.events[0].type === 'cut' && g.events[0].by === ME && g.events[0].to === r7,
+    'the board\'s word cuts it, as the pilot\'s own cut', `${g.rCount[r7]} ${g.events[0] && g.events[0].type}`);
+  g.eventCount = 0;
+  g.applyCut({
+    n: 0, by: 5, to: 7, s: 5, out: true,
+  });
+  check(g.rCount[r7] === sent[0].s, 'a word about another round is not heard');
+  g.applyCut({
+    n: 1, by: 9, to: 5, s: 5, out: true,
+  });
+  check(!g.alive[ME] && g.rCount[ME] === 0 && g.banner.startsWith('You are out'), 'cut out by a remote pilot', g.banner);
+  g.eventCount = 0;
+  const end = g.state.rows.map((r) => (r.id === 5 ? { ...r, count: 0, out: true } : r.id === 7 ? { ...r, count: sent[0].s } : r));
+  g.heard({
+    ...g.state, phase: 'results', winner: 9, rows: end,
+  }, 0, 0);
+  check(g.over && g.winner === g.slotFor(9) && g.nameOf(g.winner) === 'Nori', 'the board\'s winner, by name');
+  wall += 9500;
+  check(g.sinceOverMs() >= 9000, 'the results time out on this page');
+  feed(still(-20, 10, -20));
+  g.reset();
+  check(!g.over && g.rCount[ME] === RIBBON_POINTS && g.banner.startsWith('Press G'), 'then everybody flies a whole ribbon again', g.banner);
+  /* A remote pilot gone quiet is not drawn and cannot be cut. */
+  wall += 2000;
+  check(!g.live(r7), 'a pilot not heard from is not in the air here');
 }
 
 console.log(`${passed} passed, ${failed} failed`);

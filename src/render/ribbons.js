@@ -30,13 +30,12 @@
 
 import * as THREE from 'three';
 import { DogfightView } from './dogfight.js';
+import { liveryColour } from './roomcraft.js';
 import { MAX_PILOTS, ME } from '../game/dogfight.js';
 import { RIBBON_POINTS } from '../game/ribbons.js';
 
 const LINKS = RIBBON_POINTS - 1;
 const FALLING = 8;
-const STRIPS = MAX_PILOTS + FALLING;
-const VERTS = STRIPS * LINKS * 4;
 const CREAM = 0xf3ead4;
 /* How long a cut piece falls before it is gone, ms. */
 const FALL_MS = 2600;
@@ -49,8 +48,15 @@ const WIDTH = 0.14;
 const MINE_FROM = 2;
 
 export class RibbonView extends DogfightView {
+  /* opts.slots: how many ribbons there can be, the dogfight's eight, or a
+   * room's pilots (src/game/ribbons.js RibbonRoom). The ribbons drawn are
+   * packed to the front and only those are uploaded and drawn, so a room
+   * built for 64 with three in it costs what three cost. */
   constructor(opts = {}) {
     super(opts);
+    this.slots = opts.slots || MAX_PILOTS;
+    const STRIPS = this.slots + FALLING;
+    const VERTS = STRIPS * LINKS * 4;
     const geo = new THREE.BufferGeometry();
     this.pos = new Float32Array(VERTS * 3);
     this.ribbonCol = new Float32Array(VERTS * 3);
@@ -78,6 +84,7 @@ export class RibbonView extends DogfightView {
     /* Each strip's colour, so a strip is repainted only when its owner
      * changes. */
     this.stripHex = new Int32Array(STRIPS).fill(-1);
+    this.stripsDrawn = 0;
     /* Falling pieces: points, how many, whose, when cut, how they drift. */
     this.fall = new Float32Array(FALLING * RIBBON_POINTS * 3);
     this.fallN = new Int8Array(FALLING);
@@ -89,6 +96,15 @@ export class RibbonView extends DogfightView {
     this.colour = new THREE.Color();
   }
 
+  /* A room's pilots wear their own livery, and so do their ribbons. */
+  liveryOf(slot) {
+    const g = this.game;
+    if (g && g.room) {
+      return liveryColour(g.avatars[slot], slot === ME ? g.you : g.idOf[slot]);
+    }
+    return super.liveryOf(slot);
+  }
+
   dispose() {
     super.dispose();
     this.ribbons.geometry.dispose();
@@ -98,6 +114,7 @@ export class RibbonView extends DogfightView {
   /* A cut: the piece that fell off, copied out of the game before anything
    * writes over it, and the dogfight's confetti for the pop. */
   event(e, g, nowMs) {
+    this.game = g;
     if (e.type === 'cut' || e.type === 'out') {
       const k = g.k;
       const f = this.fallNext;
@@ -146,6 +163,7 @@ export class RibbonView extends DogfightView {
         }
       }
       this.colAttr.needsUpdate = true;
+      this.colDirty = true;
     }
     const p = this.pts;
     let quads = 0;
@@ -185,15 +203,20 @@ export class RibbonView extends DogfightView {
   }
 
   frame(g, t, camPos, dtMs, nowMs) {
+    this.game = g;
     super.frame(g, t, camPos, dtMs, nowMs);
     const k = g.k;
     const u = 1 - t;
     const w = WIDTH * k;
     const p = this.pts;
-    let any = 0;
+    const slots = Math.min(this.slots, g.cap || MAX_PILOTS);
+    let strip = 0;
     /* The ribbons in the round, between the game's last two feeds. */
-    for (let i = 0; i < MAX_PILOTS; i += 1) {
+    for (let i = 0; i < slots; i += 1) {
       const n = g.rCount[i];
+      if (n < 2 || (g.here && !g.here(i))) {
+        continue;
+      }
       const base = i * RIBBON_POINTS;
       for (let s = 0; s < n; s += 1) {
         const j = base + s;
@@ -201,21 +224,18 @@ export class RibbonView extends DogfightView {
         p[s * 3 + 1] = g.ryPrev[j] * u + g.ry[j] * t;
         p[s * 3 + 2] = g.rzPrev[j] * u + g.rz[j] * t;
       }
-      any += this.strip(i, n, i === ME ? MINE_FROM : 0, this.liveryOf(i), w, camPos);
+      this.strip(strip, n, i === ME ? MINE_FROM : 0, this.liveryOf(i), w, camPos);
+      strip += 1;
     }
     /* The pieces cut off, falling and drifting, narrowing as they go. */
     const dt = Math.min(dtMs, 50) / 1000;
     for (let f = 0; f < FALLING; f += 1) {
       const age = nowMs - this.fallBorn[f];
-      const strip = MAX_PILOTS + f;
-      if (age > FALL_MS) {
-        if (this.fallN[f]) {
-          this.fallN[f] = 0;
-          this.strip(strip, 0, 0, this.stripHex[strip], w, camPos);
-        }
+      const n = this.fallN[f];
+      if (age > FALL_MS || n < 2) {
+        this.fallN[f] = 0;
         continue;
       }
-      const n = this.fallN[f];
       const sink = 1.4 * k * dt;
       for (let s = 0; s < n; s += 1) {
         const o = (f * RIBBON_POINTS + s) * 3;
@@ -228,9 +248,21 @@ export class RibbonView extends DogfightView {
         p[s * 3 + 2] = this.fall[o + 2];
       }
       const shrink = age > FALL_MS * 0.6 ? 1 - (age - FALL_MS * 0.6) / (FALL_MS * 0.4) : 1;
-      any += this.strip(strip, n, 0, this.liveryOf(this.fallOwner[f]), w * Math.max(0.05, shrink), camPos);
+      this.strip(strip, n, 0, this.liveryOf(this.fallOwner[f]), w * Math.max(0.05, shrink), camPos);
+      strip += 1;
     }
-    this.posAttr.needsUpdate = true;
-    this.ribbons.geometry.setDrawRange(0, any ? STRIPS * LINKS * 6 : 0);
+    /* Only the strips drawn are uploaded, the colours only when one
+     * changed hands. */
+    const floats = strip * LINKS * 12;
+    this.posAttr.clearUpdateRanges();
+    this.posAttr.addUpdateRange(0, floats);
+    this.posAttr.needsUpdate = floats > 0;
+    if (this.colDirty) {
+      this.colDirty = false;
+      this.colAttr.clearUpdateRanges();
+      this.colAttr.addUpdateRange(0, Math.max(floats, this.stripsDrawn * LINKS * 12));
+    }
+    this.stripsDrawn = strip;
+    this.ribbons.geometry.setDrawRange(0, strip * LINKS * 6);
   }
 }

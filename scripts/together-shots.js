@@ -4059,6 +4059,110 @@ async function sceneOverview() {
   }
 }
 
+/*
+ * RIBBON CUTTING IN A ROOM: a room that plays it from the moment it opens,
+ * every pilot's ribbon drawn from the poses, the host's start, the board's
+ * count and GO, a cut by the page sent to the board and heard back by the
+ * host, and a cut by the host heard on the page.
+ */
+async function sceneRibbon() {
+  console.log('\nribbon: ribbon cutting in a room');
+  const kite = bot('Kite Runner', 341);
+  const room = await hostRoom(kite, {
+    name: 'Ribbons', way: 'freestyle', map: 'bardwell', mapName: "Bardwell's house", scale: 50, game: 'ribbon',
+  });
+  check('the board opens a ribbon cutting room', room.game === 'ribbon', String(room.game));
+  const at = `/index.html?mp=1&board=${encodeURIComponent(boardOrigin)}&map=bardwell`;
+  const page = await open(at, seedFor({ met: true, name: 'Ribbon Pilot', map: 'bardwell' }));
+  const shot = shooter(page, 'ribbon');
+  const G = 'window.__dogfight && window.__dogfight()';
+  let hover = null;
+  try {
+    /* The Mini games menu's way in to a room of ribbons: the room picker,
+     * titled for it. */
+    const pick = await page.evaluate("(() => { window.__ui.pickRibbons({ room: true }); return window.__ui.hostPick; })()");
+    check('pickRibbons with room opens the room picker for ribbon cutting', pick && pick.game === 'ribbon' && pick.way === 'freestyle', JSON.stringify(pick));
+    check('titled for it', await page.until(SEES('Ribbon cutting room', '#ui'), 5000).then(() => true, () => false));
+    await shot('pick');
+    await page.evaluate("(() => { window.__ui.back(); return 1; })()");
+    await joinByCode(page, room.code);
+    await page.until(`${T} && window.__together().inRoom`, 15000);
+    await page.until("window.__mode === 'flight' && window.__ui.screen === 'flight'", 20000);
+    const youId = (await state(page)).you;
+    /* The host hangs still a few metres off the page's quad, nose to -Z,
+     * so its ribbon trails toward +Z. */
+    const me = await poseOf(kite, 'Ribbon Pilot');
+    const spot = { x: me.px + 6, y: me.py + 1.5, z: me.pz };
+    hover = setInterval(() => kite.s.uplink(spot.x, spot.y, spot.z, 0, 0, 0, 1, true, 0), 1000 / 30);
+    check('the page plays the room\'s ribbons', await page.until(`${G} && window.__dogfight().room === true`, 15000).then(() => true, () => false));
+    const kiteSlot = () => page.evaluate(`(${G}) ? window.__dogfight().slotFor(${kite.s.you}) : -1`);
+    check('the host flies a whole ribbon on the page', await page.until(`${G} && window.__dogfight().rCount[window.__dogfight().slotFor(${kite.s.you})] === 16`, 10000).then(() => true, () => false));
+    const banner = await page.evaluate(`${G}.banner`);
+    check('the page is told the host starts a round', banner.startsWith('Waiting for the host'), banner);
+    check('the HUD says it on screen', await page.evaluate(SEES('Waiting for the host', '#ui')));
+    const drawn = await page.evaluate('window.__dogfightView().ribbons.geometry.drawRange.count');
+    check('two ribbons are drawn, the page\'s and the host\'s', drawn === 2 * 15 * 6, String(drawn));
+    await wait(600);
+    await shot('pit');
+
+    kite.s.link.raceSend({ t: 'rbStart' });
+    check('the host\'s start counts down on the page', await page.until(`${G} && window.__dogfight().phase === 'count'`, 5000).then(() => true, () => false));
+    const count = await page.evaluate(`${G}.banner`);
+    check('with the seconds to GO', /^Ribbons out in [1-5]$/.test(count), count);
+    await shot('count');
+    check('and goes live', await page.until(`${G} && window.__dogfight().phase === 'live'`, 9000).then(() => true, () => false));
+    check('cuts land once the grace is over', await page.until(`${G} && window.__dogfight().cutting`, 4000).then(() => true, () => false));
+
+    /* The page's quad flown across the host's ribbon, two thirds down. */
+    const across = await page.evaluate(`(async () => {
+      const g = window.__dogfight();
+      const s = g.slotFor(${kite.s.you});
+      const j = s * 16 + 11;
+      const x = g.rx[j], y = g.ry[j], z = g.rz[j];
+      const k = g.k;
+      for (let n = -8; n <= 8; n += 1) {
+        window.__placeCraft(x + n * 0.25 * k, y, z);
+        for (let f = 0; f < 3; f += 1) await new Promise((r) => requestAnimationFrame(r));
+      }
+      return { x, y, z, k };
+    })()`);
+    const heard = await until(() => kite.heard.some((h) => h.name === 'rbCut' && h.data.by === youId && h.data.to === kite.s.you), 5000);
+    check('the page\'s cut reaches the board and the host hears it', heard, JSON.stringify(across));
+    const left = await page.evaluate(`${G}.rCount[${await kiteSlot()}]`);
+    check('and the host\'s ribbon is shorter on the page', left > 0 && left < 16, String(left));
+    await shot('cut');
+
+    /* The host cuts the page's ribbon off at the knot: the page is out. */
+    await wait(500);
+    const n = await page.evaluate(`${G}.state.n`);
+    kite.s.link.raceSend({ t: 'rbCut', n, to: youId, s: 5 });
+    check('the host\'s cut puts the page out', await page.until(`${G} && window.__dogfight().alive[0] === 0`, 5000).then(() => true, () => false));
+    check('which the board calls the end of a two pilot round', await page.until(`${G} && window.__dogfight().over`, 5000).then(() => true, () => false));
+    const title = await page.evaluate("(document.querySelector('.rb-hud h2') || {}).textContent || ''");
+    check('the results name the host as the winner', title.includes('KITE RUNNER WINS'), title);
+    check('and the page is told the host starts the next', await page.evaluate(SEES('The host starts the next round', '#ui')));
+    await shot('results');
+    await page.evaluate("(() => { const b = [...document.querySelectorAll('.rb-hud .df-btn')].find((x) => x.textContent === 'Fly on'); b.click(); return 1; })()");
+    check('Fly on puts the table away, and everybody has a whole ribbon again', await page.until(`${G} && !window.__dogfight().over && window.__dogfight().rCount[0] === 16`, 3000).then(() => true, () => false));
+
+    /* The pause rows. */
+    const rows = await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); return window.__ui.items().filter(Boolean).map((x) => x.label); })()");
+    check('the pause menu says who starts a round', rows.includes('Ribbon cutting'), rows.join(', '));
+    await page.evaluate("(() => { window.__ui.act('resume'); return 1; })()");
+    /* The picker asks for Drift Matsuri's picture, which main does not
+     * have yet (PROGRESS.md, the swap scene's entry). */
+    endChecks(page, /thumbs\/drift\.jpg/);
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.message}`);
+    await shot('failed').catch(() => {});
+  } finally {
+    if (hover) clearInterval(hover);
+    kite.s.leave();
+    await page.close();
+  }
+}
+
 try {
   if (wanted('host')) { await freshBoard(); await sceneHost(); }
   if (wanted('lobby')) { await freshBoard(); await sceneLobby(); }
@@ -4083,6 +4187,7 @@ try {
   if (wanted('vote')) { await freshBoard(); await sceneVote(); }
   if (wanted('swap')) { await freshBoard(); await sceneSwap(); }
   if (wanted('overview')) { await freshBoard(); await sceneOverview(); }
+  if (wanted('ribbon')) { await freshBoard(); await sceneRibbon(); }
 } finally {
   if (board) board.kill('SIGKILL');
   rmSync(scratch, { recursive: true, force: true });

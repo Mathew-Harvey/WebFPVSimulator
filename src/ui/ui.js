@@ -4495,6 +4495,40 @@ function craftItem(s, midRun) {
  * room's own card for it (swapQuad in src/net/together.js), and the quad
  * changes here when the room has heard it.
  */
+/*
+ * A ribbon cutting room's pause rows: the host starts a round and sets the
+ * ribbons' length between rounds; everybody else is told who starts one.
+ */
+const RIBBON_LENGTH_NAMES = { short: 'Short', normal: 'Normal', long: 'Long' };
+function ribbonRoomItems(info) {
+  const rb = info.ribbon;
+  if (!rb) {
+    return [];
+  }
+  const between = rb.phase === 'pit' || rb.phase === 'results';
+  if (!info.host) {
+    return [{
+      label: 'Ribbon cutting',
+      value: between ? 'Waiting' : 'Round on',
+      action: 'noop',
+      note: 'The host starts each round. Everybody here when it starts gets a ribbon.',
+    }];
+  }
+  return [
+    {
+      label: between ? 'Start a ribbon round' : 'Round on',
+      action: between ? 'room-ribbon-start' : 'noop',
+      note: between ? 'Everybody in the room gets a ribbon. Or press G while flying.' : 'The next one can start when this one ends.',
+    },
+    {
+      label: 'Ribbon length',
+      value: RIBBON_LENGTH_NAMES[rb.length] || 'Normal',
+      action: between ? 'room-ribbon-length' : 'noop',
+      note: 'Long ribbons are easier to cut. Changes between rounds.',
+    },
+  ];
+}
+
 function roomCraftItem(s, info) {
   const af = airframeById(s.airframe);
   if (info.host && info.freestyle) {
@@ -10893,6 +10927,7 @@ export class Ui {
         { label: 'Resume', action: 'resume', primary: true },
         { label: 'Restart run', action: 'restart' },
         ...this.goatItems(),
+        ...ribbonRoomItems(r),
         {
           label: 'Room',
           value: `${r.code} · ${r.n} ${r.n === 1 ? 'pilot' : 'pilots'}`,
@@ -14440,7 +14475,8 @@ export class Ui {
     if (id === 'fly-together') {
       const world = this.roomWorldOf(entry);
       if (world && this.onFlyTogether) {
-        this.onFlyTogether(this.hostPick && this.hostPick.move ? { ...world, move: true } : world);
+        const hp = this.hostPick;
+        this.onFlyTogether(hp && hp.move ? { ...world, move: true } : hp && hp.game ? { ...world, game: hp.game } : world);
       }
       return;
     }
@@ -14560,10 +14596,16 @@ export class Ui {
    * every quad trails a ribbon, cut the others', keep yours, the last with
    * a ribbon wins. The entry point the Mini games menu calls: the
    * dogfight's arena picker titled for ribbons, then Set the ribbons, then
-   * the map. `room` asks for the room version, which hosts a room on the
-   * picked map with the ribbon way; until rooms carry ribbons it is solo.
+   * the map. `room` asks for the room version: the room picker titled
+   * for ribbons, then the host's room page, and a room that plays ribbon
+   * cutting from the moment it opens. Where rooms are off it is solo.
    */
-  pickRibbons() {
+  pickRibbons({ room = false } = {}) {
+    if (room && this.roomsOn && this.onFlyTogether) {
+      this.endFightPick();
+      this.pickRoomWorld('freestyle', { game: 'ribbon' });
+      return;
+    }
     this.pickDogfight('ribbon');
   }
 
@@ -14654,11 +14696,13 @@ export class Ui {
     }
   }
 
-  pickRoomWorld(way, { move = false } = {}) {
+  pickRoomWorld(way, { move = false, game = '' } = {}) {
     const shelf = { freestyle: 'maps', '5inch': 'five', whoop: 'whoop' }[way] || 'maps';
     /* move: the host of a room taking it to another map, from the pause
      * menu, which is where the pilot goes back to. */
-    this.hostPick = { way, move, from: this.onGate() ? 'gate' : this.screen };
+    this.hostPick = {
+      way, move, game: move ? '' : game, from: this.onGate() ? 'gate' : this.screen,
+    };
     if (isCardScreen(this.screen) && this.pickerShelf() === shelf) {
       this.paintHostPick();
       return;
@@ -14703,6 +14747,7 @@ export class Ui {
           ? ['Ribbon cutting', 'Pick a map', 'Any map works. Double click a map, or choose it and press Fly here.', 'Ribbon cutting']
           : ['Dogfight', 'Pick an arena', 'Any map works. Double click a map, or choose it and press Fight here.', 'Dogfight arena'])
         : move ? ['Change map', 'Pick the room\'s next map', 'Everybody votes to come with you or stay. Double click a map, or choose it and press Move the room here.', 'Moving the room']
+        : this.hostPick.game === 'ribbon' ? ['Ribbon cutting room', 'Pick the map for your room', 'Any map works. Double click a map, or choose it and press Host a room here.', 'Hosting ribbon cutting']
         : ['Host a room', 'Pick the map for your room', 'Double click a map, or choose it and press Host a room here.', 'Hosting a room'];
       const titleEl = this.hostBand.querySelector('.host-band-title');
       if (titleEl.dataset.words !== title) {
@@ -20629,6 +20674,10 @@ export class Ui {
     }
     if (action === 'gate-ribbon') {
       this.pickRibbons();
+      return;
+    }
+    if (action === 'gate-ribbon-room') {
+      this.pickRibbons({ room: true });
       return;
     }
     if (action === 'gate-solo' || action === 'gate-together') {

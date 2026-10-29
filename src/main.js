@@ -2305,6 +2305,10 @@ export async function boot({ loading, bootStart, mapId }) {
   let fightMods = null;
   const fightLib = { dogfight: null, ribbon: null };
   let fightKind = 'dogfight';
+  /* Whether the game is a ribbon cutting room's (RibbonRoom), which the
+   * room plays rather than the pilot's own rules. */
+  let fightInRoom = false;
+  const ROOM_RIBBON_RULES = Object.freeze({ game: 'ribbon', room: true });
   const fightHuds = { dogfight: null, ribbon: null };
   let fightLoading = false;
   let fightGame = null;
@@ -2585,8 +2589,11 @@ export async function boot({ loading, bootStart, mapId }) {
   /* Once a frame, before anything reads the game: on, off, a new map or
    * new rules. */
   function syncDogfight() {
-    const rules = ui.dogfight;
-    const want = Boolean(view) && Boolean(rules) && mapReady && !replayMode && !ui.roomInfo;
+    /* A ribbon cutting room on this world plays ribbons whatever the pilot
+     * was doing; any other room plays no game of this kind. */
+    const roomRibbon = Boolean(together && ui.roomInfo && together.ribbonRoom());
+    const rules = roomRibbon ? ROOM_RIBBON_RULES : ui.dogfight;
+    const want = Boolean(view) && Boolean(rules) && mapReady && !replayMode && (roomRibbon || !ui.roomInfo);
     if (!want) {
       if (fightGame) {
         fightOff();
@@ -2595,7 +2602,10 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     const kind = rules.game === 'ribbon' ? 'ribbon' : 'dogfight';
     const rulesKey = JSON.stringify(rules);
-    if (fightFor === view && fightGame && fightKind === kind) {
+    if (fightFor === view && fightGame && fightKind === kind && fightInRoom === roomRibbon) {
+      if (roomRibbon) {
+        return;
+      }
       if (rulesKey !== fightRulesKey) {
         fightRulesKey = rulesKey;
         fightGame.setRules(rules);
@@ -2641,12 +2651,15 @@ export async function boot({ loading, bootStart, mapId }) {
     fightWhoop = runAirframe === 'whoop65';
     fightKey = `${view.id}:${(view.egg && view.egg.key) || view.name || ''}:${fightWhoop ? 'whoop' : 'five'}`;
     fightRulesKey = rulesKey;
+    fightInRoom = roomRibbon;
     const builtAt = performance.now();
     const world = fightWorld();
-    fightGame = new Game(world, rules, hashKey(fightKey) ^ (Date.now() >>> 0));
+    fightGame = roomRibbon
+      ? new fightMods.RibbonRoom(world)
+      : new Game(world, rules, hashKey(fightKey) ^ (Date.now() >>> 0));
     /* For the checks: what reading the map cost, once. */
     fightGame.buildMs = performance.now() - builtAt;
-    fightView = new View({ whoop: fightWhoop });
+    fightView = new View({ whoop: fightWhoop, slots: roomRibbon ? fightMods.ROOM_SLOTS : 0 });
     fightView.attach(view.scene, shell.renderer, shell.camera, view.post && view.post.rtScene);
     for (const other of Object.keys(fightHuds)) {
       if (other !== kind && fightHuds[other]) {
@@ -2657,8 +2670,15 @@ export async function boot({ loading, bootStart, mapId }) {
       fightHuds[kind] = new Hud(ui.root, {
         input,
         onAgain: () => {
-          if (fightGame) {
+          if (fightGame && fightGame.room) {
+            together.ribbonStart();
+          } else if (fightGame) {
             fightNewRound();
+          }
+        },
+        onFlyOn: () => {
+          if (fightGame && fightGame.room) {
+            fightGame.reset();
           }
         },
         onChange: () => ui.act('fight-change'),
@@ -2670,10 +2690,45 @@ export async function boot({ loading, bootStart, mapId }) {
     fightFor = view;
     fightBest = readFightBest();
     fightRound = 0;
+    if (roomRibbon) {
+      const last = together.ribbonLast();
+      fightRoomSync();
+      if (last) {
+        fightGame.heard(last.state, last.goLocal, last.endLocal);
+      }
+    }
     fightNewRound();
     /* Ribbons fire nothing: the gun and missile buttons stay what they
      * were. */
     input.weaponsLive = kind !== 'ribbon';
+  }
+
+  /* Once a frame in a ribbon cutting room: who this page is, the board's
+   * round and the cuts it believed in, and this page's cuts out to it. */
+  function fightRoomSync() {
+    if (!fightGame || !fightGame.room || !together) {
+      return;
+    }
+    const who = together.ribbonWho();
+    if (who) {
+      fightGame.setYou(who.you, who.host, who.avatar);
+    }
+    const rb = together.takeRibbon();
+    if (rb) {
+      fightGame.heard(rb.state, rb.goLocal, rb.endLocal);
+    }
+    const cuts = together.takeRibbonCuts();
+    if (cuts) {
+      for (const c of cuts) {
+        fightGame.applyCut(c);
+      }
+    }
+    const out = fightGame.takeOutbox();
+    if (out) {
+      for (const m of out) {
+        together.sendRibbon(m);
+      }
+    }
   }
 
   /* One step loop feed with the craft at state `st`. */
@@ -2750,7 +2805,7 @@ export async function boot({ loading, bootStart, mapId }) {
       resetCraft();
       fightTeleported = true;
     }
-    if (g.over && !fightSaved) {
+    if (g.over && !fightSaved && !g.room) {
       fightSaved = true;
       const mine = g.pops[ME];
       if (mine > fightBest) {
@@ -3974,6 +4029,10 @@ export async function boot({ loading, bootStart, mapId }) {
   const ovKeepAt = { x: 0, y: 0, z: 0 };
   let ovKeepSeen = false;
   const mpDraw = (id, pose, pilot) => {
+    /* A ribbon cutting room's game draws every pilot's ribbon from here. */
+    if (fightGame && fightGame.room) {
+      fightGame.remote(id, pose, pilot);
+    }
     const dx = pose.px - mpHx;
     const dy = pose.py - mpHy;
     const dz = pose.pz - mpHz;
@@ -12165,6 +12224,7 @@ export async function boot({ loading, bootStart, mapId }) {
         }
       }
       syncDogfight();
+      fightRoomSync();
       if (fightGame) {
         if (mode === 'title' || (mode === 'flight' && balloonIdle)) {
           fightFrame(fightIdleTick(dt), dt, nowWall);
@@ -12850,7 +12910,9 @@ export async function boot({ loading, bootStart, mapId }) {
       if (together && together.raceRoom()) {
         second = '';
       }
-      ui.setBanner(`${start}${second}`);
+      /* A dogfight or ribbon cutting says what starts in its own line, under
+       * its score bar, and this one sat on the bar. */
+      ui.setBanner(fightGame ? '' : `${start}${second}`);
       if (guidedStart && !onGrid) {
         ui.noteGuideShown();
       }

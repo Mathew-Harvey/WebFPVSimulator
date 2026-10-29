@@ -59,6 +59,8 @@ function place(n) {
 export class RibbonHud extends DogfightHud {
   constructor(root, opts = {}) {
     super(root, opts);
+    /* A room's results: put the table away and fly on. */
+    this.onFlyOn = opts.onFlyOn || null;
     this.root.classList.add('rb-hud');
     /* Nothing to fire: the touch buttons never show. */
     this.touch.remove();
@@ -103,9 +105,9 @@ export class RibbonHud extends DogfightHud {
   }
 
   /* A slip in the feed: who took whose ribbon. */
-  slip(by, to) {
+  slip(by, to, g) {
     const s = el('div', 'df-slip');
-    const who = (i) => el('b', i === ME ? 'df-you' : null, nameOf(i));
+    const who = (i) => el('b', i === ME ? 'df-you' : null, nameIn(g, i));
     if (by >= 0) {
       s.append(who(by), document.createTextNode(' cut '), who(to), document.createTextNode(to === ME ? ' ribbon' : '’s ribbon'));
     } else {
@@ -134,7 +136,7 @@ export class RibbonHud extends DogfightHud {
   event(e, g, nowMs) {
     if (e.type === 'cut' || e.type === 'out') {
       if (e.type === 'out') {
-        this.slip(e.by, e.to);
+        this.slip(e.by, e.to, g);
       }
       if (e.by === ME) {
         this.call(e.type === 'out' ? this.cutCall : this.snipCall, nowMs);
@@ -181,7 +183,8 @@ export class RibbonHud extends DogfightHud {
     const offscreen = [];
     /* A mark over every quad still in, above the name tag the craft
      * already wear: a chevron, and how much ribbon it has as pips. */
-    for (let i = 0; i < MAX_PILOTS; i += 1) {
+    const slots = g.cap || MAX_PILOTS;
+    for (let i = 0; i < slots; i += 1) {
       if (i === ME || !g.live(i)) {
         continue;
       }
@@ -221,7 +224,7 @@ export class RibbonHud extends DogfightHud {
     offscreen.sort((a, b) => a.d - b.d);
     for (let n = 0; n < Math.min(3, offscreen.length); n += 1) {
       const o = offscreen[n];
-      this.edgeArrow(ctx, o.p, AMBER, nameOf(o.i));
+      this.edgeArrow(ctx, o.p, AMBER, nameIn(g, o.i));
     }
 
     /* SNIP! and CUT!, for a moment. */
@@ -234,7 +237,10 @@ export class RibbonHud extends DogfightHud {
     const total = g.starters;
     const leftN = g.left;
     const cuts = g.cuts[ME];
-    const score = total > 1 ? `LEFT ${leftN}/${total}` : 'PRACTICE';
+    let score = total > 1 ? `LEFT ${leftN}/${total}` : 'PRACTICE';
+    if (g.room && !g.inRound) {
+      score = `PILOTS ${total}`;
+    }
     if (L.meScore !== score) {
       L.meScore = score;
       this.scoreMe.textContent = score;
@@ -263,7 +269,9 @@ export class RibbonHud extends DogfightHud {
     }
 
     let banner = '';
-    if (!g.over && alive && g.startedMs < 0) {
+    if (g.room) {
+      banner = g.banner;
+    } else if (!g.over && alive && g.startedMs < 0) {
       const n = g.ribbon.bots;
       banner = n
         ? `Take off to start. ${n === 1 ? 'One bot has' : `${n} bots have`} a ribbon. Cut theirs and keep yours.`
@@ -287,7 +295,9 @@ export class RibbonHud extends DogfightHud {
     const nextRound = g.over ? Math.max(1, Math.ceil((extra.nextMs || 0) / 1000)) : 0;
     if (g.over && this.resultKeys && L.nextRound !== nextRound) {
       L.nextRound = nextRound;
-      this.resultKeys.textContent = `Next round in ${nextRound} s`;
+      this.resultKeys.textContent = g.room
+        ? (g.host ? 'Press G for another round' : 'The host starts the next round')
+        : `Next round in ${nextRound} s`;
     }
   }
 
@@ -298,12 +308,15 @@ export class RibbonHud extends DogfightHud {
     let title;
     if (g.winner === ME) {
       title = 'YOU WIN!';
+    } else if (g.room && g.winner >= 0) {
+      /* A room's round is everybody's: its winner first. */
+      title = `${nameIn(g, g.winner).toUpperCase()} WINS`;
     } else if (meRow && !meRow.alive) {
       title = `CUT OUT! ${place(mine + 1).toUpperCase()}`;
     } else if (g.winner < 0) {
-      title = 'A DRAW!';
+      title = g.room && !meRow ? 'ROUND OVER' : 'A DRAW!';
     } else {
-      title = `${nameOf(g.winner)} WINS`;
+      title = `${nameIn(g, g.winner).toUpperCase()} WINS`;
     }
     const h = el('h2');
     h.append(el('small', null, extra.kicker || 'Ribbon cutting'), document.createTextNode(title));
@@ -313,7 +326,7 @@ export class RibbonHud extends DogfightHud {
     table.append(head);
     rows.forEach((r, n) => {
       const tr = el('tr', r.slot === ME ? 'is-me' : null);
-      const name = el('td', null, nameOf(r.slot));
+      const name = el('td', null, nameIn(g, r.slot));
       if (r.bot) {
         name.append(el('span', 'df-bot', 'BOT'));
       }
@@ -331,9 +344,9 @@ export class RibbonHud extends DogfightHud {
       medal('Ribbons taken', `${meRow.cuts} ${meRow.cuts === 1 ? 'ribbon' : 'ribbons'} cut off`);
       medal('Snips', `${meRow.snips} ${meRow.snips === 1 ? 'cut' : 'cuts'} into a ribbon`);
       if (!meRow.alive && this.cutBy != null && this.cutBy >= 0) {
-        medal('Cut by', nameOf(this.cutBy));
+        medal('Cut by', nameIn(g, this.cutBy));
       }
-      if (extra.best != null) {
+      if (extra.best != null && !g.room) {
         medal('Your best here', extra.newBest ? `${extra.best} ribbons, a new best` : `${extra.best} ribbons`);
       }
     }
@@ -352,9 +365,23 @@ export class RibbonHud extends DogfightHud {
     leave.addEventListener('click', () => this.onLeave && this.onLeave());
     const keys = el('span', 'df-keys', '');
     this.resultKeys = keys;
-    row.append(again, change, leave, keys);
+    if (g.room) {
+      /* The room's round: the host starts the next one, and anybody can
+       * put the table away and fly on. */
+      const fly = el('button', 'df-btn', 'Fly on');
+      fly.type = 'button';
+      fly.addEventListener('click', () => this.onFlyOn && this.onFlyOn());
+      row.append(...(g.host ? [again, fly] : [fly]), keys);
+    } else {
+      row.append(again, change, leave, keys);
+    }
     this.result.replaceChildren(h, cols, row);
   }
+}
+
+/* A slot's name: the room's pilot, or the dogfight's bot. */
+function nameIn(g, i) {
+  return g && g.nameOf ? g.nameOf(i) : nameOf(i);
 }
 
 function clockText(ms) {

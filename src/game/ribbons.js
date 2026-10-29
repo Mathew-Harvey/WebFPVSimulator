@@ -151,6 +151,9 @@ export class RibbonCut extends Dogfight {
     const r = normaliseRibbonRules(rules);
     super(world, underneath(r), seed);
     this.ribbon = r;
+    /* How many slots there are: the dogfight's eight here, a room's
+     * pilots in RibbonRoom below. */
+    this.cap = MAX_PILOTS;
     const n = MAX_PILOTS * RIBBON_POINTS;
     const f = () => new Float64Array(n);
     this.rx = f(); this.ry = f(); this.rz = f();
@@ -213,7 +216,7 @@ export class RibbonCut extends Dogfight {
     this.snips.fill(0);
     this.calmUntil.fill(0);
     this.missAt.fill(0);
-    for (let i = 0; i < MAX_PILOTS; i += 1) {
+    for (let i = 0; i < this.cap; i += 1) {
       /* Nobody comes back in this game, and nobody needs a shield. */
       this.shieldUntil[i] = 0;
       this.rCount[i] = this.inFight[i] ? RIBBON_POINTS : 0;
@@ -226,7 +229,7 @@ export class RibbonCut extends Dogfight {
   /* How many pilots are in the round, and how many still have a ribbon. */
   get starters() {
     let n = 0;
-    for (let i = 0; i < MAX_PILOTS; i += 1) {
+    for (let i = 0; i < this.cap; i += 1) {
       n += this.inFight[i];
     }
     return n;
@@ -234,7 +237,7 @@ export class RibbonCut extends Dogfight {
 
   get left() {
     let n = 0;
-    for (let i = 0; i < MAX_PILOTS; i += 1) {
+    for (let i = 0; i < this.cap; i += 1) {
       if (this.live(i)) {
         n += 1;
       }
@@ -286,7 +289,7 @@ export class RibbonCut extends Dogfight {
   }
 
   snapshot() {
-    for (let i = 0; i < MAX_PILOTS; i += 1) {
+    for (let i = 0; i < this.cap; i += 1) {
       this.xPrev[i] = this.x[i];
       this.yPrev[i] = this.y[i];
       this.zPrev[i] = this.z[i];
@@ -372,18 +375,18 @@ export class RibbonCut extends Dogfight {
       this.startedMs = now;
       this.event('go', -1, -1, 0, '', this.x[ME], this.y[ME], this.z[ME]);
     }
-    for (let i = 1; i < MAX_PILOTS; i += 1) {
+    for (let i = 1; i < this.cap; i += 1) {
       if (this.isBot[i] && this.alive[i]) {
         this.fly(i, now, false);
       }
     }
-    for (let i = 0; i < MAX_PILOTS; i += 1) {
+    for (let i = 0; i < this.cap; i += 1) {
       if (this.rCount[i] > 1) {
         this.stepRibbon(i);
       }
     }
     if (this.cutting) {
-      for (let c = 0; c < MAX_PILOTS; c += 1) {
+      for (let c = 0; c < this.cap; c += 1) {
         if (!this.live(c) || (c === ME && (jump || !this.meFlying))) {
           continue;
         }
@@ -493,7 +496,7 @@ export class RibbonCut extends Dogfight {
     const moved = Math.sqrt(ex * ex + ey * ey + ez * ez);
     const reach = RIBBON.lengths[this.ribbon.length] * k + r + moved + 1 * k;
     const first = this.firstLink;
-    for (let o = 0; o < MAX_PILOTS; o += 1) {
+    for (let o = 0; o < this.cap; o += 1) {
       if (o === c || !this.live(o) || this.rCount[o] <= first || now < this.rSafeUntil[o]) {
         continue;
       }
@@ -567,7 +570,7 @@ export class RibbonCut extends Dogfight {
    * is asked when the round ends, never per step. */
   standings() {
     const out = [];
-    for (let i = 0; i < MAX_PILOTS; i += 1) {
+    for (let i = 0; i < this.cap; i += 1) {
       if (!this.inFight[i]) {
         continue;
       }
@@ -590,6 +593,582 @@ export class RibbonCut extends Dogfight {
     return out;
   }
 }
+
+/*
+ * RIBBON CUTTING IN A ROOM. The board holds the round (src/rooms.js in the
+ * board's repository): who is in it, how long every ribbon is, who is out,
+ * and who won. This page draws every pilot's ribbon from the poses the room
+ * sends, as RibbonCut draws a bot's from where the bot flew, and looks for
+ * cuts by its own quad only. A cut it sees is not made here: it goes to the
+ * board as { t: 'rbCut', n, to, s }, and the board's word back, heard by
+ * every page in the room at once, is what cuts the ribbon (applyCut). So
+ * two pages that both saw a cut agree on the one the board believed, and a
+ * page that is behind is put right by the next word.
+ *
+ * It is a RibbonCut to the view and the HUD: the same arrays, the same
+ * events, for up to ROOM_SLOTS pilots, slot 0 this page's. Nobody here is a
+ * bot, and nothing is fired.
+ */
+export const ROOM_SLOTS = 64;
+/* A remote pilot not heard from for this long is not drawn, ms. */
+const GONE_MS = 1500;
+
+function borrow(to, from, names) {
+  for (const name of names) {
+    Object.defineProperty(to, name, Object.getOwnPropertyDescriptor(from, name));
+  }
+}
+
+export class RibbonRoom {
+  constructor(world, { now = () => performance.now() } = {}) {
+    this.world = world;
+    this.k = world.k;
+    this.now = now;
+    this.room = true;
+    this.cap = ROOM_SLOTS;
+    this.ribbon = {
+      game: 'ribbon', bots: 0, skill: 'rookie', round: '2m', length: 'normal',
+    };
+    const n = ROOM_SLOTS;
+    const f = (m = n) => new Float64Array(m);
+    for (const a of ['x', 'y', 'z', 'fx', 'fy', 'fz', 'ux', 'uy', 'uz']) {
+      this[a] = f();
+      this[`${a}Prev`] = f();
+    }
+    this.uy.fill(1);
+    this.uyPrev.fill(1);
+    this.fz.fill(-1);
+    this.fzPrev.fill(-1);
+    this.alive = new Uint8Array(n);
+    this.inFight = new Uint8Array(n);
+    this.isBot = new Uint8Array(n);
+    this.pops = new Int32Array(n);
+    this.popped = new Int32Array(n);
+    this.cuts = new Int32Array(n);
+    this.snips = new Int32Array(n);
+    this.outAt = new Float64Array(n);
+    this.rSafeUntil = new Float64Array(n);
+    this.rCount = new Int8Array(n);
+    const m = n * RIBBON_POINTS;
+    this.rx = f(m); this.ry = f(m); this.rz = f(m);
+    this.rox = f(m); this.roy = f(m); this.roz = f(m);
+    this.rxPrev = f(m); this.ryPrev = f(m); this.rzPrev = f(m);
+    /* Nothing is fired in a ribbon round: the view's loops find none. */
+    this.pAlive = [];
+    this.mAlive = [];
+    this.events = [];
+    for (let i = 0; i < 96; i += 1) {
+      this.events.push({
+        type: '', by: -1, to: -1, dmg: 0, weapon: '', x: 0, y: 0, z: 0, big: false, fromX: 0, fromY: 0, fromZ: 0, at: 0, end: 0, share: 0,
+      });
+    }
+    this.eventCount = 0;
+    /* Which room pilot is in which slot, their name, and the latest pose
+     * the room drew for them, taken at the next feed. */
+    this.idOf = new Int32Array(n).fill(-1);
+    this.slots = new Map();
+    this.names = new Array(n).fill('');
+    this.avatars = new Array(n).fill(null);
+    this.seenAt = new Float64Array(n).fill(-1e9);
+    this.fresh = new Uint8Array(n);
+    this.tx = f(); this.ty = f(); this.tz = f();
+    this.tfx = f(); this.tfy = f(); this.tfz = f();
+    this.tux = f(); this.tuy = f(); this.tuz = f();
+    this.relay = new Uint8Array(n);
+    this.you = 0;
+    this.host = false;
+    this.state = {
+      phase: 'pit', length: 'normal', round: '2m', n: 0, goAt: 0, endAt: 0, winner: null, rows: [],
+    };
+    this.rows = new Map();
+    this.goLocal = 0;
+    this.endLocal = 0;
+    this.heardOverAt = 0;
+    this.dismissed = false;
+    this.outbox = [];
+    this.clockMs = 0;
+    this.havePrevMe = false;
+    this.meFlying = false;
+    this.round = 0;
+    this.alive[ME] = 1;
+    this.inFight[ME] = 1;
+    this.rCount[ME] = RIBBON_POINTS;
+  }
+
+  /* The room's numbers for the HUD. */
+  get phase() {
+    return this.state.phase;
+  }
+
+  get roundMs() {
+    return RIBBON_ROUNDS[this.state.round] || 0;
+  }
+
+  /* In a round: counting down, live, or its results. */
+  get inRound() {
+    const p = this.state.phase;
+    return (p === 'count' || p === 'live' || p === 'results') && !this.dismissed;
+  }
+
+  get running() {
+    return this.state.phase === 'live';
+  }
+
+  get cutting() {
+    return this.state.phase === 'live' && this.now() >= this.goLocal + RIBBON.graceMs;
+  }
+
+  /* Over, for the results panel: the board's results, until they have
+   * been up for RESULT_MS on this page. */
+  get over() {
+    return this.state.phase === 'results' && !this.dismissed;
+  }
+
+  get startedMs() {
+    return this.running ? 0 : -1;
+  }
+
+  get winner() {
+    const w = this.state.winner;
+    return w == null || !this.slots.has(w) ? -1 : this.slots.get(w);
+  }
+
+  leftMs() {
+    if (!this.roundMs) {
+      return 0;
+    }
+    if (this.state.phase === 'live' || this.state.phase === 'count') {
+      return Math.max(0, Math.min(this.roundMs, this.endLocal - this.now()));
+    }
+    return this.roundMs;
+  }
+
+  sinceOverMs() {
+    return this.over ? this.now() - this.heardOverAt : 0;
+  }
+
+  /* Results are dismissed after their time; a fresh run changes nothing
+   * else, since the round is the room's. */
+  reset() {
+    if (this.over) {
+      this.dismissed = true;
+      this.fillAll();
+    }
+    this.havePrevMe = false;
+  }
+
+  setRules() {
+  }
+
+  nameOf(i) {
+    return i === ME ? 'YOU' : (this.names[i] || 'PILOT');
+  }
+
+  /* A slot for room pilot `id`, made the first time it is asked for. */
+  slotFor(id) {
+    if (id === this.you) {
+      return ME;
+    }
+    let s = this.slots.get(id);
+    if (s !== undefined) {
+      return s;
+    }
+    s = -1;
+    for (let i = 1; i < ROOM_SLOTS; i += 1) {
+      if (this.idOf[i] < 0) {
+        s = i;
+        break;
+      }
+    }
+    if (s < 0) {
+      /* Full: the one longest unheard and not in the round gives way. */
+      let oldest = Infinity;
+      for (let i = 1; i < ROOM_SLOTS; i += 1) {
+        if (!this.rows.has(this.idOf[i]) && this.seenAt[i] < oldest) {
+          oldest = this.seenAt[i];
+          s = i;
+        }
+      }
+      if (s < 0) {
+        return -1;
+      }
+      this.slots.delete(this.idOf[s]);
+    }
+    this.idOf[s] = id;
+    this.slots.set(id, s);
+    this.names[s] = '';
+    this.avatars[s] = null;
+    this.fresh[s] = 1;
+    this.rCount[s] = 0;
+    this.alive[s] = 0;
+    this.inFight[s] = 0;
+    return s;
+  }
+
+  /* Present: this page's own pilot, or a remote one drawn lately. */
+  here(i) {
+    return i === ME || this.now() - this.seenAt[i] < GONE_MS;
+  }
+
+  live(i) {
+    return this.inFight[i] === 1 && this.alive[i] === 1 && this.here(i);
+  }
+
+  /*
+   * A remote pilot's pose as the room drew it this frame (src/main.js
+   * mpDraw): world metres and the craft's quaternion, and the room's
+   * pilot, { handle, avatar }, for the name and the ribbon's livery. Taken
+   * at the next feed, so the ribbon moves on the game's own beat.
+   */
+  remote(id, pose, pilot) {
+    const s = this.slotFor(id);
+    if (s <= 0) {
+      return;
+    }
+    if (pilot) {
+      this.names[s] = String(pilot.handle || '').slice(0, 24);
+      this.avatars[s] = pilot.avatar || null;
+    }
+    const t = this.now();
+    if (pose.cut || t - this.seenAt[s] > GONE_MS) {
+      this.fresh[s] = 1;
+    }
+    this.seenAt[s] = t;
+    const qx = pose.qx; const qy = pose.qy; const qz = pose.qz; const qw = pose.qw;
+    this.tx[s] = pose.px;
+    this.ty[s] = pose.py;
+    this.tz[s] = pose.pz;
+    /* The craft's up, +Y turned, and its nose, -Z turned. */
+    this.tux[s] = 2 * (qx * qy - qw * qz);
+    this.tuy[s] = 1 - 2 * (qx * qx + qz * qz);
+    this.tuz[s] = 2 * (qy * qz + qw * qx);
+    this.tfx[s] = -2 * (qx * qz + qw * qy);
+    this.tfy[s] = -2 * (qy * qz - qw * qx);
+    this.tfz[s] = -(1 - 2 * (qx * qx + qy * qy));
+  }
+
+  /* Who this page is in the room, whether it is the host, and its own
+   * avatar for its ribbon's livery. */
+  setYou(you, host, avatar = null) {
+    if (you !== this.you) {
+      const s = this.slots.get(you);
+      if (s !== undefined) {
+        this.slots.delete(you);
+        this.idOf[s] = -1;
+      }
+      this.you = you;
+    }
+    this.host = Boolean(host);
+    this.avatars[ME] = avatar;
+  }
+
+  /*
+   * The board's round, { phase, length, round, n, goAt, endAt, winner,
+   * rows }, with GO and the end already put on this page's clock.
+   */
+  heard(state, goLocal, endLocal) {
+    const was = this.state;
+    this.state = state;
+    this.goLocal = goLocal;
+    this.endLocal = endLocal;
+    this.ribbon.length = state.length;
+    this.ribbon.round = state.round;
+    const fresh = state.n !== was.n || state.length !== was.length;
+    if (state.phase === 'results' && (was.phase !== 'results' || state.n !== was.n)) {
+      this.heardOverAt = this.now();
+      this.dismissed = false;
+    }
+    if (state.phase !== 'results') {
+      this.dismissed = false;
+    }
+    this.rows = new Map();
+    for (const row of state.rows) {
+      this.rows.set(row.id, { ...row });
+    }
+    if (!this.inRound) {
+      this.fillAll(fresh);
+      return;
+    }
+    for (let i = 0; i < ROOM_SLOTS; i += 1) {
+      const id = i === ME ? this.you : this.idOf[i];
+      const row = id >= 0 ? this.rows.get(id) : null;
+      if (!row) {
+        this.inFight[i] = 0;
+        this.alive[i] = 0;
+        this.rCount[i] = 0;
+        continue;
+      }
+      this.inFight[i] = 1;
+      this.alive[i] = row.out ? 0 : 1;
+      this.cuts[i] = row.cuts;
+      this.pops[i] = row.cuts;
+      this.snips[i] = row.snips;
+      this.outAt[i] = row.outAt;
+      const want = row.out ? 0 : row.count;
+      if (fresh || want > this.rCount[i]) {
+        this.rCount[i] = want;
+        if (want) {
+          this.layRibbon(i);
+        }
+      } else {
+        this.rCount[i] = want;
+      }
+    }
+    /* Rows for pilots this page has not drawn yet get their slot now, so
+     * the table can name them. */
+    for (const id of this.rows.keys()) {
+      this.slotFor(id);
+    }
+  }
+
+  /* Out of a round: everybody here flies a whole ribbon, which nothing can
+   * cut until the host starts one. */
+  fillAll(relay = false) {
+    for (let i = 0; i < ROOM_SLOTS; i += 1) {
+      const known = i === ME || this.idOf[i] >= 0;
+      this.inFight[i] = known ? 1 : 0;
+      this.alive[i] = known ? 1 : 0;
+      this.cuts[i] = 0;
+      this.pops[i] = 0;
+      this.snips[i] = 0;
+      if (known && (relay || this.rCount[i] < RIBBON_POINTS)) {
+        this.rCount[i] = RIBBON_POINTS;
+        this.layRibbon(i);
+      }
+    }
+  }
+
+  /* The board's word on a cut: { by, to, s, out } for round n. */
+  applyCut(msg) {
+    if (msg.n !== this.state.n) {
+      return;
+    }
+    const c = this.slotFor(msg.by);
+    const o = this.slotFor(msg.to);
+    const row = this.rows.get(msg.to);
+    const byRow = this.rows.get(msg.by);
+    if (byRow) {
+      byRow.snips += 1;
+      if (msg.out) {
+        byRow.cuts += 1;
+      }
+    }
+    if (row) {
+      row.count = msg.out ? 0 : msg.s;
+      row.out = Boolean(msg.out);
+      if (msg.out) {
+        row.outAt = this.now();
+      }
+    }
+    if (o < 0) {
+      return;
+    }
+    const old = this.rCount[o];
+    const at = Math.max(1, Math.min(msg.s, old > 0 ? old : msg.s));
+    const j = o * RIBBON_POINTS + at - 1;
+    const x = this.rx[j];
+    const y = this.ry[j];
+    const z = this.rz[j];
+    if (c >= 0) {
+      this.snips[c] += 1;
+      if (msg.out) {
+        this.cuts[c] += 1;
+        this.pops[c] += 1;
+      }
+    }
+    let e;
+    if (msg.out) {
+      this.rCount[o] = 0;
+      this.alive[o] = 0;
+      this.outAt[o] = this.now();
+      e = this.event('out', c, o, 0, 'ribbon', x, y, z, true);
+      if (e) e.at = 0;
+    } else {
+      this.rCount[o] = Math.min(old, msg.s);
+      e = this.event('cut', c, o, 0, 'ribbon', x, y, z, false);
+      if (e) e.at = at - 1;
+    }
+    if (e) {
+      e.end = old;
+      e.share = this.share(o);
+    }
+  }
+
+  /* A cut this page saw, for the board to judge. Not made here; and the
+   * same ribbon is not asked about again until the board could have
+   * answered. */
+  cut(c, o, s, now) {
+    if (c !== ME || this.idOf[o] < 0) {
+      return;
+    }
+    this.rSafeUntil[o] = now + RIBBON.safeMs;
+    this.outbox.push({
+      t: 'rbCut', n: this.state.n, to: this.idOf[o], s,
+    });
+  }
+
+  /* What there is to send, taken. */
+  takeOutbox() {
+    if (!this.outbox.length) {
+      return null;
+    }
+    const out = this.outbox;
+    this.outbox = [];
+    return out;
+  }
+
+  snapshot() {
+    for (const a of ['x', 'y', 'z', 'fx', 'fy', 'fz', 'ux', 'uy', 'uz']) {
+      this[`${a}Prev`].set(this[a]);
+    }
+    this.rxPrev.set(this.rx);
+    this.ryPrev.set(this.ry);
+    this.rzPrev.set(this.rz);
+  }
+
+  /* ONE FEED: this page's pilot as RibbonCut takes it, the others where
+   * the room last drew them, every ribbon on, and this pilot's cuts. */
+  step(me, teleported = false) {
+    this.snapshot();
+    this.clockMs += DOGFIGHT_EVERY;
+    const now = this.clockMs;
+    this.meFlying = Boolean(me.flying);
+    const wasX = this.x[ME];
+    const wasY = this.y[ME];
+    const wasZ = this.z[ME];
+    const first = !this.havePrevMe;
+    this.havePrevMe = true;
+    this.x[ME] = me.x; this.y[ME] = me.y; this.z[ME] = me.z;
+    this.fx[ME] = me.fx; this.fy[ME] = me.fy; this.fz[ME] = me.fz;
+    this.ux[ME] = me.ux; this.uy[ME] = me.uy; this.uz[ME] = me.uz;
+    const k = this.k;
+    const jx = me.x - wasX;
+    const jy = me.y - wasY;
+    const jz = me.z - wasZ;
+    const jump = first || teleported || jx * jx + jy * jy + jz * jz > JUMP * JUMP * k * k;
+    if (jump) {
+      this.xPrev[ME] = me.x;
+      this.yPrev[ME] = me.y;
+      this.zPrev[ME] = me.z;
+      if (this.rCount[ME] > 0) {
+        this.layRibbon(ME);
+      }
+    }
+    for (let i = 1; i < ROOM_SLOTS; i += 1) {
+      if (this.idOf[i] < 0 || !this.here(i)) {
+        continue;
+      }
+      this.x[i] = this.tx[i]; this.y[i] = this.ty[i]; this.z[i] = this.tz[i];
+      this.fx[i] = this.tfx[i]; this.fy[i] = this.tfy[i]; this.fz[i] = this.tfz[i];
+      this.ux[i] = this.tux[i]; this.uy[i] = this.tuy[i]; this.uz[i] = this.tuz[i];
+      const dx = this.x[i] - this.xPrev[i];
+      const dy = this.y[i] - this.yPrev[i];
+      const dz = this.z[i] - this.zPrev[i];
+      if (this.fresh[i] || dx * dx + dy * dy + dz * dz > JUMP * JUMP * k * k) {
+        this.fresh[i] = 0;
+        this.xPrev[i] = this.x[i]; this.yPrev[i] = this.y[i]; this.zPrev[i] = this.z[i];
+        if (!this.inRound && this.rCount[i] < RIBBON_POINTS) {
+          this.inFight[i] = 1;
+          this.alive[i] = 1;
+          this.rCount[i] = RIBBON_POINTS;
+        }
+        if (this.rCount[i] > 0) {
+          this.layRibbon(i);
+        }
+      }
+    }
+    for (let i = 0; i < ROOM_SLOTS; i += 1) {
+      if (this.rCount[i] > 1 && this.here(i)) {
+        this.stepRibbon(i);
+      }
+    }
+    if (this.cutting && this.live(ME) && this.meFlying && !jump) {
+      this.cutsBy(ME, now);
+    }
+  }
+
+  /* How many are in the round, and how many still have a ribbon. */
+  get starters() {
+    if (!this.inRound) {
+      let n = 0;
+      for (let i = 0; i < ROOM_SLOTS; i += 1) {
+        if (this.idOf[i] >= 0 || i === ME) n += this.here(i) ? 1 : 0;
+      }
+      return n;
+    }
+    return this.rows.size;
+  }
+
+  get left() {
+    if (!this.inRound) {
+      return this.starters;
+    }
+    let n = 0;
+    for (const row of this.rows.values()) {
+      n += row.out ? 0 : 1;
+    }
+    return n;
+  }
+
+  /* Whether this pilot flies in the round on now. */
+  get mine() {
+    return this.rows.has(this.you);
+  }
+
+  /* The table, as the board sorts it. */
+  standings() {
+    const out = [];
+    for (const row of this.rows.values()) {
+      const slot = this.slotFor(row.id);
+      out.push({
+        slot,
+        bot: false,
+        alive: !row.out,
+        share: row.out || row.count <= 1 ? 0 : (row.count - 1) / (RIBBON_POINTS - 1),
+        cuts: row.cuts,
+        snips: row.snips,
+        outAt: row.outAt,
+        pops: row.cuts,
+        popped: 0,
+      });
+    }
+    out.sort((a, b) => (Number(b.alive) - Number(a.alive))
+      || (a.alive ? (b.share - a.share) : (b.outAt - a.outAt))
+      || (b.cuts - a.cuts) || (a.slot - b.slot));
+    return out;
+  }
+
+  /* The line across the top, or '' for none. */
+  get banner() {
+    const st = this.state;
+    const t = this.now();
+    if (st.phase === 'count' || (st.phase === 'live' && t < this.goLocal + RIBBON.graceMs)) {
+      if (!this.mine) {
+        return 'A round is starting. You fly the next one.';
+      }
+      const s = Math.ceil((this.goLocal - t) / 1000);
+      return s > 0 ? `Ribbons out in ${s}` : 'Ribbons out!';
+    }
+    if (st.phase === 'live') {
+      if (!this.mine) {
+        return 'This round started before you came in. You fly the next one.';
+      }
+      return this.alive[ME] ? '' : 'You are out. The round goes on without you.';
+    }
+    if (this.over) {
+      return '';
+    }
+    if (this.starters < 2) {
+      return 'Ribbon cutting needs two pilots. Send the room\'s link to a friend.';
+    }
+    return this.host
+      ? 'Press G to start a round. Everybody here gets a ribbon.'
+      : 'Waiting for the host to start a round. Fly about and get ready.';
+  }
+}
+
+borrow(RibbonRoom.prototype, RibbonCut.prototype, ['linkLen', 'firstLink', 'share', 'anchor', 'layRibbon', 'stepRibbon', 'cutsBy']);
+borrow(RibbonRoom.prototype, Dogfight.prototype, ['event']);
 
 /*
  * The squared distance between two segments, a + s e and b + t f with s

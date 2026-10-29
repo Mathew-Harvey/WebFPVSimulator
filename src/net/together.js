@@ -1106,6 +1106,10 @@ export function createTogether(shell) {
     }
     shell.roomInfo({
       code: r.code, name: r.name, n: session.link.pilots.size, host: isHost(), race: RoomRace.racing(r.way), freestyle: r.way === 'freestyle',
+      ribbon: r.game === 'ribbon' ? {
+        phase: ribbonNow ? ribbonNow.state.phase : 'pit',
+        length: ribbonNow ? ribbonNow.state.length : 'normal',
+      } : null,
     });
   }
 
@@ -1347,6 +1351,9 @@ export function createTogether(shell) {
       map: entry.map,
       mapName: String(entry.name || 'A map').slice(0, 48),
       scale: entry.whoop ? 100 : 50,
+      /* A mini game the room plays, fixed when it opens: 'ribbon', or
+       * none. The board refuses a name it does not know. */
+      game: entry.game || undefined,
     });
     sheetConnecting({ hosting: entry, step: 0 });
   }
@@ -1696,9 +1703,70 @@ export function createTogether(shell) {
         if (race) race.heard(data.race);
         raceChanged();
         break;
+      case 'ribbon':
+        ribbonHeard(data.ribbon);
+        break;
+      case 'rbCut':
+        if (ribbonCuts.length < 64) {
+          ribbonCuts.push(data);
+        }
+        break;
       default:
         break;
     }
+  }
+
+  /*
+   * RIBBON CUTTING (src/game/ribbons.js RibbonRoom). The board's round and
+   * its cuts are kept here for the shell to take once a frame, GO and the
+   * end put on this page's clock as they arrive.
+   */
+  let ribbonNow = null;
+  let ribbonCuts = [];
+  function ribbonHeard(rb) {
+    if (!rb || !race) {
+      ribbonNow = null;
+      return;
+    }
+    const clock = race.clock;
+    ribbonNow = {
+      state: rb,
+      goLocal: rb.goAt ? clock.toLocal(rb.goAt) : 0,
+      endLocal: rb.endAt ? clock.toLocal(rb.endAt) : 0,
+    };
+    infoForShell();
+  }
+
+  function ribbonRoom() {
+    const r = room();
+    return Boolean(r && r.game === 'ribbon');
+  }
+
+  /* The host's start: everybody here, in the air or not, gets a ribbon. */
+  function ribbonStart() {
+    if (!ribbonRoom() || !isHost()) {
+      return false;
+    }
+    const ph = ribbonNow ? ribbonNow.state.phase : 'pit';
+    if (ph !== 'pit' && ph !== 'results') {
+      return false;
+    }
+    if (session.link.pilots.size < 2) {
+      toast('Ribbon cutting needs two pilots. Send the link.', 'warn');
+      return true;
+    }
+    session.link.raceSend({ t: 'rbStart' });
+    return true;
+  }
+
+  /* The host's ribbon length, round by round. */
+  function ribbonLength() {
+    if (!ribbonRoom() || !isHost() || !ribbonNow) {
+      return;
+    }
+    const order = ['short', 'normal', 'long'];
+    const at = order.indexOf(ribbonNow.state.length);
+    session.link.raceSend({ t: 'rbSet', length: order[(at + 1) % order.length] });
   }
 
   function welcomed(data, now) {
@@ -1721,6 +1789,8 @@ export function createTogether(shell) {
     if (race) {
       race.welcome(data, now);
     }
+    ribbonCuts = [];
+    ribbonHeard(data.ribbon);
     lastLink = 'good';
     paintChip();
     infoForShell();
@@ -2705,7 +2775,7 @@ export function createTogether(shell) {
         });
       };
       return scrimmed(h('div.page.fit.sheet.halftone', null,
-        h('div.page-head', null, h('div.grow', null, h('span.kicker', { text: `Host a room on ${entry.name}` }), lettered('OPEN YOUR ROOM', [INKS.cream, INKS.sakura], 50, 620)),
+        h('div.page-head', null, h('div.grow', null, h('span.kicker', { text: entry.game === 'ribbon' ? `Host ribbon cutting on ${entry.name}` : `Host a room on ${entry.name}` }), lettered('OPEN YOUR ROOM', [INKS.cream, INKS.sakura], 50, 620)),
           btn('Back to the maps', 'small ghost', () => back(), { 'data-k': 'cancel' })),
         h('div.rule'),
         h('div.page-body', null, h('div.tg-cols', null,
@@ -5341,6 +5411,10 @@ export function createTogether(shell) {
       offerWatch(now);
     }
     const r = room();
+    if (r && race && r.game === 'ribbon') {
+      /* The board's clock, for GO and the round's end. */
+      race.ping(now);
+    }
     if (!r || !race || !RoomRace.racing(r.way)) {
       return;
     }
@@ -5419,6 +5493,12 @@ export function createTogether(shell) {
         return true;
       }
       return false;
+    }
+    /* G starts a ribbon round, for the host, from the air or the pause. */
+    if (code === 'KeyG' && ribbonRoom() && isHost() && (shell.flying() || shell.paused())) {
+      if (ribbonStart()) {
+        return true;
+      }
     }
     /* G answers the race's panel, which also sits beside the results. */
     if (code === 'KeyG' && race && race.race && panelScreen()) {
@@ -5685,6 +5765,12 @@ export function createTogether(shell) {
       sheetScene();
     } else if (action === 'room-quad') {
       sheetSwapQuad();
+    } else if (action === 'room-ribbon-start') {
+      if (ribbonStart()) {
+        shell.resume();
+      }
+    } else if (action === 'room-ribbon-length') {
+      ribbonLength();
     }
   }
 
@@ -5739,6 +5825,46 @@ export function createTogether(shell) {
     inRoom() {
       return Boolean(room());
     },
+    /* A ribbon cutting room on the world being flown: the shell plays
+     * RibbonRoom in it (src/main.js syncDogfight). */
+    ribbonRoom() {
+      return ribbonRoom() && sameWorld(room());
+    },
+    /* The board's round since the last ask, or null when nothing new. */
+    takeRibbon() {
+      const r = ribbonNow;
+      if (!r || r.taken) {
+        return null;
+      }
+      r.taken = true;
+      return r;
+    },
+    /* Whatever the shell's game needs: who this page is, the host, its
+     * avatar, and the round as it stands. */
+    ribbonWho() {
+      if (!session) {
+        return null;
+      }
+      const me = session.link.pilots.get(session.you);
+      return { you: session.you, host: isHost(), avatar: me ? me.avatar : null };
+    },
+    ribbonLast() {
+      return ribbonNow;
+    },
+    takeRibbonCuts() {
+      if (!ribbonCuts.length) {
+        return null;
+      }
+      const out = ribbonCuts;
+      ribbonCuts = [];
+      return out;
+    },
+    sendRibbon(msg) {
+      if (session && session.inRoom && ribbonRoom()) {
+        session.link.raceSend(msg);
+      }
+    },
+    ribbonStart,
     modalOpen() {
       return !modal.hidden;
     },

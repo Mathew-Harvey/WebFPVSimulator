@@ -47,16 +47,16 @@ const CSS = `
 .df-hud { position: absolute; inset: 0; pointer-events: none; overflow: hidden; font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; z-index: 3; }
 .df-hud.is-off, .df-hud .is-off { display: none !important; }
 .df-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
-.df-score { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); display: flex; align-items: stretch; }
+.df-score { position: absolute; left: 50%; top: 92px; transform: translateX(-50%); display: flex; align-items: stretch; }
 .df-score > div { border: 3px solid ${INK}; background: #f7f0dc; color: ${INK}; padding: 5px 12px; font: 900 14px/1.1 inherit; font-weight: 900; display: grid; place-items: center; white-space: nowrap; }
 .df-score .df-me { background: ${MINT}; }
 .df-score .df-clock { background: ${INK}; color: ${AMBER}; font-size: 22px; padding: 4px 16px; min-width: 86px; }
-.df-feed { position: absolute; right: 18px; top: 96px; display: grid; gap: 6px; justify-items: end; }
+.df-feed { position: absolute; right: 18px; top: 110px; display: grid; gap: 6px; justify-items: end; }
 .df-slip { background: #f7f0dc; color: ${INK}; border: 3px solid ${INK}; padding: 5px 10px; font-size: 13px; font-weight: 800; box-shadow: 3px 3px 0 ${INK}; transition: opacity .6s; }
 .df-slip b { font-weight: 900; }
 .df-slip .df-you { color: #0a7a44; }
 .df-slip.is-old { opacity: 0; }
-.df-me-panel { position: absolute; left: 22px; bottom: 22px; width: 250px; }
+.df-me-panel { position: absolute; left: 22px; bottom: 132px; width: 250px; }
 .df-lbl { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; font-weight: 900; letter-spacing: .14em; color: ${CREAM}; text-shadow: 0 2px 0 ${INK}; margin: 0 0 4px; }
 .df-lbl em { font-size: 26px; font-style: italic; letter-spacing: 0; }
 .df-bar { height: 12px; border: 2px solid ${INK}; background: rgba(11,17,22,.55); position: relative; box-shadow: 2px 2px 0 ${INK}; margin-bottom: 9px; }
@@ -66,7 +66,7 @@ const CSS = `
 .df-rack svg { width: 14px; height: 28px; }
 .df-rack span { font-size: 11px; font-weight: 800; letter-spacing: .1em; color: ${CREAM}; text-shadow: 0 2px 0 ${INK}; margin-left: 6px; }
 .df-call { position: absolute; }
-.df-banner { position: absolute; left: 50%; top: 24%; transform: translateX(-50%); text-align: center; color: ${CREAM}; text-shadow: 0 2px 0 ${INK}, 0 0 8px rgba(0,0,0,.6); font-size: 20px; font-weight: 800; max-width: 80%; }
+.df-banner { position: absolute; left: 50%; bottom: 150px; transform: translateX(-50%); text-align: center; color: ${CREAM}; text-shadow: 0 2px 0 ${INK}, 0 0 8px rgba(0,0,0,.6); font-size: 20px; font-weight: 800; max-width: 80%; }
 .df-pop { position: absolute; inset: 0; display: grid; place-items: center; align-content: center; gap: 14px; background: rgba(11,17,22,.35); }
 .df-pop .df-say { background: #fff; border: 3px solid ${INK}; border-radius: 22px; padding: 10px 20px; font: 700 20px/1.2 "Comic Neue", "Comic Sans MS", system-ui, sans-serif; color: ${INK}; }
 .df-pop .df-back { color: ${CREAM}; font-size: 18px; font-weight: 900; letter-spacing: .14em; text-shadow: 0 2px 0 ${INK}; text-align: center; }
@@ -180,7 +180,7 @@ export class DogfightHud {
     /* The lettered callouts, painted once. */
     this.lockCall = el('canvas', 'df-call is-off');
     this.warnCall = el('canvas', 'df-call is-off');
-    this.popCall = el('canvas', 'df-call');
+    this.popCall = el('canvas', 'df-pop-call');
 
     this.pop = el('div', 'df-pop is-off');
     this.popSay = el('div', 'df-say', '');
@@ -631,6 +631,11 @@ export class DogfightHud {
         this.showResult(g, extra);
       }
     }
+    const nextRound = g.over ? Math.max(1, Math.ceil((extra.nextMs || 0) / 1000)) : 0;
+    if (g.over && this.resultKeys && L.nextRound !== nextRound) {
+      L.nextRound = nextRound;
+      this.resultKeys.textContent = `Next round in ${nextRound} s`;
+    }
   }
 
   /* An arrow on the screen's edge toward something off it. Returns where
@@ -730,7 +735,10 @@ export class DogfightHud {
     again.addEventListener('click', () => this.onAgain && this.onAgain());
     change.addEventListener('click', () => this.onChange && this.onChange());
     leave.addEventListener('click', () => this.onLeave && this.onLeave());
-    const keys = el('span', 'df-keys', 'Enter: again');
+    /* The next round starts on its own, so a pilot on a radio who cannot
+     * reach the buttons is never stuck here. */
+    const keys = el('span', 'df-keys', '');
+    this.resultKeys = keys;
     row.append(again, change, leave, keys);
     this.result.replaceChildren(h, cols, row);
   }

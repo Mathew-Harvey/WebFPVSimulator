@@ -65,7 +65,7 @@ const HAND = 'system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif';
  * ------------------------------------------------------------------ */
 
 /*
- * The cover's two panels. Multiplayer is the wider one and wears the NEW
+ * The cover's panels. Multiplayer is the wider one and wears the NEW
  * sticker, because it is the news; solo is first, because a pilot who has
  * never flown should not be asked to meet strangers before a hover.
  */
@@ -86,6 +86,15 @@ export const GATE_SIDES = [
     caption: 'Host a room or join one. Race, chase and chat with other pilots.',
     sticker: 'NEW!',
     action: 'gate-together',
+  },
+  /* The owner's ask of 2026-10-29: guns, missiles and bots on any map. */
+  {
+    id: 'dogfight',
+    label: 'Dogfight',
+    kicker: 'New mode',
+    art: 'assets/gate/dogfight.jpg',
+    caption: 'Guns, missiles and bots, on any map you like.',
+    action: 'gate-dogfight',
   },
 ];
 
@@ -412,6 +421,17 @@ const SCENES = {
     { cls: 'gp-bub-a', svg: svg('0 0 160 92', bubble(160, 76, ['RACE YOU!'], [128, 90])) },
     { cls: 'gp-bub-b', svg: svg('0 0 110 82', bubble(110, 66, ['GG!'], [24, 80])) },
     { cls: 'gp-sticker', svg: svg('0 0 120 120', burst(60, 60, 34, 54, 13, AMBER, 'NEW!', -12)) },
+  ],
+  /* Two quads at it, the tracer between them, and the noise it makes. */
+  dogfight: () => [
+    {
+      cls: 'gp-dog',
+      svg: svg('0 0 240 150', streaks(64, 104, 20, 80, 6, 18, 41) + streaks(186, 46, 200, 80, 6, 18, 43)
+        + `<path d="M92 92 L158 58" stroke="${AMBER}" stroke-width="4" stroke-linecap="round" stroke-dasharray="10 9"/>`
+        + quad(64, 104, 0.8, 62, SAKURA) + quad(186, 46, 0.8, -118, AMBER)),
+    },
+    { cls: 'gp-dog-sfx', svg: svg('0 0 200 70', sfx(14, 54, 'POW!', 46, -9, AMBER)) },
+    { cls: 'gp-dog-sticker', svg: svg('0 0 120 120', burst(60, 60, 34, 54, 13, MINT, 'NEW!', 10)) },
   ],
   career: () => [
     { cls: 'gp-career-bub', svg: svg('0 0 170 100', bubble(170, 80, ['START', 'HERE!'], [40, 98])) },

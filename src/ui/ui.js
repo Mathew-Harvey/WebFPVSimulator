@@ -5565,6 +5565,20 @@ export class Ui {
      * host a room"). { way } while it lasts, null otherwise.
      */
     this.hostPick = null;
+    /*
+     * DOGFIGHT (src/game/dogfight.js), the owner's ask of 2026-10-29: guns,
+     * missiles and bots on any map. fightPick is the picker opened from the
+     * gate's Dogfight panel, { from }, and while it lasts the picker's one
+     * button is Fight here. fightArmed says Set the fight and Arm up were
+     * answered for it. dogfight is the rules the seated world is fought
+     * under, or null when it is flown as ever; main.js reads it each frame.
+     * input is main.js's InputManager, for Arm up.
+     */
+    this.fightPick = null;
+    this.fightArmed = false;
+    this.dogfight = null;
+    this.input = null;
+    this.onFight = null;
     this.onRoom = null;
     this.roomInfo = null;
     this.roomCounts = null;
@@ -10900,6 +10914,30 @@ export class Ui {
         { label: 'Quit to title', action: 'room-title', note: 'Leaves the room too.' },
       ];
     }
+    if (this.screen === 'paused' && this.dogfight) {
+      /* A dogfight's pause: the fight's own rows, then the tuning a pilot
+       * pauses for, then the ways out. Leave the fight flies on here with
+       * no guns and no bots. */
+      return [
+        { label: 'Resume', action: 'resume', primary: true },
+        { label: 'Restart the round', action: 'restart' },
+        { label: 'Change the fight', action: 'fight-change', note: 'Bots, how good they are, the round and how hard hits land.' },
+        { label: 'Gun and missile buttons', action: 'fight-buttons', note: 'Pick a button or switch for each, and test them.' },
+        { label: 'Does it feel wrong?', section: true },
+        tuneItem(s, true),
+        flightModeItem(s, this.flightModeKey()),
+        {
+          label: 'Rates',
+          value: ratesShort(s.rates),
+          action: 'rates',
+          note: 'How far the sticks go, and the throttle limit. Changing them here leaves the quad where it is and the clock running.',
+        },
+        { label: 'Elsewhere', section: true },
+        { label: 'Settings', action: 'pilot', note: 'Your name, your radio, graphics and sound.' },
+        { label: 'Leave the fight', action: 'fight-leave', note: 'Fly on here with no guns and no bots.' },
+        { label: 'Quit to title', action: 'title' },
+      ];
+    }
     if (this.screen === 'paused') {
       /* Resume is the button. The conditional Edit a copy that used to
        * appear here belongs on the Courses screen. Report a bug is the
@@ -14087,7 +14125,7 @@ export class Ui {
     this.pickerOpened = false;
     this.feedPicker();
     this.loadRoomCounts();
-    if (this.hostPick) {
+    if (this.hostPick || this.fightPick) {
       this.paintHostPick();
     }
   }
@@ -14312,6 +14350,10 @@ export class Ui {
   }
 
   pickerActions(entry) {
+    /* Picking a dogfight's arena: the one button fights there. */
+    if (this.fightPick) {
+      return [{ id: this.screen === 'courses' ? 'card-fly' : 'fly', label: 'Fight here', primary: true }];
+    }
     /* Hosting: the one button is the room, so Enter and a double click
      * host this map. A map that lives only in this browser cannot be a
      * room's, and says so rather than flying solo instead. */
@@ -14380,6 +14422,16 @@ export class Ui {
         this.onFlyTogether(this.hostPick && this.hostPick.move ? { ...world, move: true } : world);
       }
       return;
+    }
+    /* A dogfight's arena: Set the fight and Arm up first, then on as any
+     * map is flown, the quad picker included. Any other map flown from
+     * the picker is flown without one. */
+    if (this.fightPick && !this.fightArmed) {
+      this.armFight(id, entry, ev);
+      return;
+    }
+    if (!this.fightPick && !this.quadPicking) {
+      this.dogfight = null;
     }
     if (this.screen === 'courses') {
       this.cardSubject = entry.key;
@@ -14458,6 +14510,114 @@ export class Ui {
    * on a map, so the picker, on the shelf of the kind of room the pilot was
    * looking at. From the title as well as from the picker's own Rooms tab.
    */
+  /*
+   * THE DOGFIGHT'S ARENA: the map picker on its Maps shelf, opened from the
+   * gate's Dogfight panel, as Host a room opens it (pickRoomWorld). Any map
+   * works, and the other shelves stay one tab away.
+   */
+  pickDogfight() {
+    this.endHostPick();
+    this.fightPick = { from: this.onGate() ? 'gate' : this.screen };
+    this.fightArmed = false;
+    if (this.onUiSound) {
+      this.onUiSound('select');
+    }
+    if (isCardScreen(this.screen) && this.pickerShelf() === 'maps') {
+      this.paintHostPick();
+      return;
+    }
+    if (this.onGate()) {
+      this.craftGate = false;
+      this.settings.airframeAsked = true;
+    }
+    this.pickerShelfChosen('maps');
+    this.paintHostPick();
+  }
+
+  endFightPick() {
+    if (!this.fightPick) {
+      return;
+    }
+    this.fightPick = null;
+    this.fightArmed = false;
+    this.paintHostPick();
+  }
+
+  /* The dogfight's two pages, fetched the first time they are wanted. */
+  fightPages() {
+    if (!this.fightPagesP) {
+      this.fightPagesP = import('./dogfightpages.js').catch((e) => {
+        this.fightPagesP = null;
+        throw e;
+      });
+    }
+    return this.fightPagesP;
+  }
+
+  /* Set the fight, Arm up the first time or when asked, then the map is
+   * flown as the picker flies it. Back on either page leaves the pilot on
+   * the arena picker with nothing changed. */
+  async armFight(id, entry, ev) {
+    let pages;
+    try {
+      pages = await this.fightPages();
+    } catch (e) {
+      console.warn('dogfight: the pages did not load', e);
+      return;
+    }
+    const kit = { letterHeading };
+    const name = entry.name || entry.label || (entry.item && entry.item.map && entry.item.map.name) || 'This map';
+    const got = await pages.askFight(this, kit, name);
+    if (!got || !this.fightPick) {
+      return;
+    }
+    if (this.input && (got.buttons || !pages.armed())) {
+      const ok = await pages.askArm(this, kit, this.input);
+      if (!ok || !this.fightPick) {
+        return;
+      }
+    }
+    this.dogfight = got.rules;
+    this.fightArenaName = name;
+    this.fightArmed = true;
+    this.pickerAction(id, entry, ev);
+  }
+
+  /* The pause rows of a dogfight, and the results' Change the fight. */
+  async fightAction(action) {
+    if (action === 'fight-leave') {
+      this.dogfight = null;
+      if (this.onFight) {
+        this.onFight('leave');
+      }
+      this.act('resume');
+      return;
+    }
+    let pages;
+    try {
+      pages = await this.fightPages();
+    } catch (e) {
+      return;
+    }
+    const kit = { letterHeading };
+    if (action === 'fight-change') {
+      const got = await pages.askFight(this, kit, this.fightArenaName || 'This map');
+      if (got && this.dogfight) {
+        this.dogfight = got.rules;
+        if (this.onFight) {
+          this.onFight('rules');
+        }
+      }
+      if (got && got.buttons && this.input) {
+        await pages.askArm(this, kit, this.input);
+      }
+      return;
+    }
+    if (action === 'fight-buttons' && this.input) {
+      await pages.askArm(this, kit, this.input);
+    }
+  }
+
   pickRoomWorld(way, { move = false } = {}) {
     const shelf = { freestyle: 'maps', '5inch': 'five', whoop: 'whoop' }[way] || 'maps';
     /* move: the host of a room taking it to another map, from the pause
@@ -14482,7 +14642,7 @@ export class Ui {
    * is for now, and the way out of it. Built once, shown and hidden.
    */
   paintHostPick() {
-    const on = Boolean(this.hostPick) && isCardScreen(this.screen) && Boolean(this.pickerHost && this.pickerHost.isConnected);
+    const on = Boolean(this.hostPick || this.fightPick) && isCardScreen(this.screen) && Boolean(this.pickerHost && this.pickerHost.isConnected);
     if (!this.hostBand) {
       this.hostBand = el('div', 'host-band');
       this.hostBand.setAttribute('role', 'status');
@@ -14500,9 +14660,10 @@ export class Ui {
     const head = this.pickerHost ? this.pickerHost.querySelector('.wp-head') : null;
     const hero = this.pickerHost ? this.pickerHost.querySelector('.wp-hero') : null;
     if (on) {
-      const move = this.hostPick.move;
-      const [kick, title, line, tab] = move
-        ? ['Change map', 'Pick the room\'s next map', 'Everybody votes to come with you or stay. Double click a map, or choose it and press Move the room here.', 'Moving the room']
+      const move = Boolean(this.hostPick && this.hostPick.move);
+      const [kick, title, line, tab] = !this.hostPick
+        ? ['Dogfight', 'Pick an arena', 'Any map works. Double click a map, or choose it and press Fight here.', 'Dogfight arena']
+        : move ? ['Change map', 'Pick the room\'s next map', 'Everybody votes to come with you or stay. Double click a map, or choose it and press Move the room here.', 'Moving the room']
         : ['Host a room', 'Pick the map for your room', 'Double click a map, or choose it and press Host a room here.', 'Hosting a room'];
       const titleEl = this.hostBand.querySelector('.host-band-title');
       if (titleEl.dataset.words !== title) {
@@ -15462,6 +15623,9 @@ export class Ui {
     this.closeDrop();
     if (this.hostPick && !isCardScreen(screen)) {
       this.endHostPick();
+    }
+    if (this.fightPick && !isCardScreen(screen)) {
+      this.endFightPick();
     }
     /* In the air by any path, a card's double click and a ?fly=1 link
      * included, is having flown: see hasFlown. */
@@ -19453,7 +19617,9 @@ export class Ui {
      * rather than a key: a double click on a track flies it (flyCard). Not
      * in the radio's voice, which has no pointer to double click with, nor
      * the phone's, where a double tap is the browser's to interpret. */
-    if (this.hostPick && isCardScreen(this.screen) && !pad) {
+    if (this.fightPick && isCardScreen(this.screen) && !pad) {
+      out.push({ keys: ['Double click'], text: 'Fight here' });
+    } else if (this.hostPick && isCardScreen(this.screen) && !pad) {
       out.push({ keys: ['Double click'], text: this.hostPick.move ? 'Move here' : 'Host here' });
     } else if (this.screen === 'courses' && !pad) {
       out.push({ keys: ['Double click'], text: 'Fly' });
@@ -20119,6 +20285,23 @@ export class Ui {
     /* Back out of picking a map for a room: to the multiplayer page when
      * that is where Host a room was pressed, otherwise to the picker as it
      * is for flying, which is where the pilot was. */
+    if (this.fightPick && isCardScreen(this.screen)) {
+      const fromGate = this.fightPick.from === 'gate';
+      this.endFightPick();
+      if (this.onUiSound) {
+        this.onUiSound('back');
+      }
+      if (fromGate) {
+        this.mode = null;
+        this.craftGate = true;
+        this.gatePage = this.roomsOn ? 'cover' : 'solo';
+        this.gateTurn = 'back';
+        this.show('title');
+        this.setCursor(this.titleStop());
+        this.renderMenu();
+      }
+      return;
+    }
     if (this.hostPick && this.hostPick.move && isCardScreen(this.screen)) {
       this.endMovePick();
       if (this.onUiSound) {
@@ -20314,6 +20497,11 @@ export class Ui {
   }
 
   act(action) {
+    /* A dogfight's pause rows. */
+    if (typeof action === 'string' && action.startsWith('fight-')) {
+      this.fightAction(action);
+      return;
+    }
     /* The goat map's own row on the pause menu (goatItems): the herd back
      * out, then straight back to flying. */
     if (action === 'goats-out') {
@@ -20396,6 +20584,10 @@ export class Ui {
      * otherwise the default board. */
     /* The gate's cover, and the multiplayer page's four doors, which are
      * together.js's (main.js routes them). */
+    if (action === 'gate-dogfight') {
+      this.pickDogfight();
+      return;
+    }
     if (action === 'gate-solo' || action === 'gate-together') {
       this.turnGate(action === 'gate-solo' ? 'solo' : 'together');
       return;
@@ -21566,6 +21758,10 @@ export class Ui {
           key('ArrowLeft');
         } else if (now.right && !this.padPrev.right) {
           key('ArrowRight');
+        } else if (now.up && !this.padPrev.up) {
+          key('ArrowUp');
+        } else if (now.down && !this.padPrev.down) {
+          key('ArrowDown');
         } else if (now.select && !this.padPrev.select) {
           this.dialogPadArmed = false;
           key('Enter');

@@ -260,7 +260,9 @@ void main() {
  * Returns { group, begin, add, end, forget, dispose }: begin() a frame,
  * add() each pilot to draw, end() to hand the frame to the GPU.
  */
-export function buildRoomCraft({ capacity = 30, whoop = false } = {}) {
+/* `scale` draws every craft that many times life size: the dogfight's bots
+ * are drawn as big as a hit on them is counted (src/render/dogfight.js). */
+export function buildRoomCraft({ capacity = 30, whoop = false, scale = 1 } = {}) {
   const group = new THREE.Group();
   group.name = 'room-craft';
   group.visible = false;
@@ -450,7 +452,7 @@ export function buildRoomCraft({ capacity = 30, whoop = false } = {}) {
     }
     p.set(pose.px, pose.py, pose.pz);
     q.set(pose.qx, pose.qy, pose.qz, pose.qw);
-    drawn.setScalar(1 / WORLD_SCALE);
+    drawn.setScalar(scale / WORLD_SCALE);
     tagMat.uniforms.uLift.value = 0.09 / WORLD_SCALE;
     m4.compose(p, q, drawn);
     body.setMatrixAt(n, m4);

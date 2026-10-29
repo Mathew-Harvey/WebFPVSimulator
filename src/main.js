@@ -766,6 +766,8 @@ export async function boot({ loading, bootStart, mapId }) {
     canvas.style.cursor = 'none';
   }
   const ui = new Ui(uiRoot);
+  /* For the dogfight's Arm up page, which listens for a button or switch. */
+  ui.input = input;
   /*
    * The thumb sticks, on a device that has thumbs to offer. Mounted after
    * the Ui so the overlay sits ABOVE every screen in the stacking order,
@@ -2146,7 +2148,7 @@ export async function boot({ loading, bootStart, mapId }) {
   /* Once a frame, before anything reads the game: on, off, or a new map. */
   function syncBalloons() {
     const want = Boolean(view) && view.mode === 'freestyle' && Boolean(view.balloonChase)
-      && mapReady && !replayMode;
+      && mapReady && !replayMode && !ui.dogfight;
     if (!want) {
       if (balloonGame) {
         balloonOff();
@@ -2277,6 +2279,476 @@ export async function boot({ loading, bootStart, mapId }) {
     return balloonIdleAcc;
   }
 
+
+  /*
+   * DOGFIGHT (src/game/dogfight.js, src/render/dogfight.js,
+   * src/ui/dogfighthud.js), the owner's ask of 2026-10-29: guns, missiles
+   * and bots on any map, picked from the gate's Dogfight panel. ui.dogfight
+   * is the rules while one is on and null otherwise, so every map flown
+   * any other way runs nothing below past one comparison a frame.
+   *
+   * NOTHING HERE REACHES THE PLANT. The bots, pellets and missiles are drawn
+   * and never uploaded, and a hit takes health and nothing else. In flight
+   * the game is fed from the step loop every DOGFIGHT_EVERY steps of the
+   * lap clock, as the balloons are, so a dropped frame changes nothing it
+   * does; while the plant is not stepping (sat on the ground, a turtle
+   * wait) the frame feeds it so the bots fly on. Pause freezes it.
+   *
+   * A pop of the pilot is the shell's own put back at the spawn, the same
+   * resetCraft a restart uses, with the lap clock left alone. The bots and
+   * the walls they see are read from the map's colliders once, when the
+   * fight starts, into what the game calls its world (fightWorld).
+   */
+  let fightMods = null;
+  let fightLoading = false;
+  let fightGame = null;
+  let fightView = null;
+  let fightHud = null;
+  let fightFor = null;
+  let fightRulesKey = '';
+  let fightKey = '';
+  let fightRound = 0;
+  let fightBest = 0;
+  let fightSaved = false;
+  let fightNewBest = false;
+  let fightFeedAt = 0;
+  let fightIdleAcc = 0;
+  let fightTeleported = true;
+  let fightWhoop = false;
+  const fightMe = {
+    x: 0, y: 0, z: 0, fx: 0, fy: 0, fz: -1, ux: 0, uy: 1, uz: 0, gun: false, missile: false, flying: false,
+  };
+  const fightPos = new THREE.Vector3();
+  const fightQuat = new THREE.Quaternion();
+  const fightAim = new THREE.Vector3();
+  const fightExtra = { best: 0, newBest: false, nextMs: 0, kicker: 'Dogfight' };
+
+  function fightBestKey() {
+    return `webfpv.dogfight.best.${fightKey}`;
+  }
+
+  function readFightBest() {
+    try {
+      const v = Number(localStorage.getItem(fightBestKey()));
+      return Number.isFinite(v) && v > 0 ? Math.floor(v) : 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  function writeFightBest(v) {
+    try {
+      localStorage.setItem(fightBestKey(), String(v));
+    } catch (e) {
+      /* Private window: the best lasts the session. */
+    }
+  }
+
+  /*
+   * THE FIGHT'S WORLD, read once when it starts. Where the bots roam: round
+   * the spawn, out to the map's colliders, never further than a fight can
+   * see across. The ground as a grid, so the game's floor is an array read.
+   *
+   * AND THE SOLIDS AS A GRID OF CELLS, filled once from the colliders, so
+   * `blocked`, the one question the game asks of them, is a walk of array
+   * reads along the line. The first build asked the colliders' own through
+   * test instead and cost 0.3 to 0.4 ms a feed in the town, forty times
+   * the game's whole budget: each query walks every bucket within the
+   * largest solid's reach. A cell is marked when a solid touches any of
+   * it, so a wall thinner than a cell still stops a pellet; the price is a
+   * wall half a cell thicker than it is, which nobody aiming a gun sees.
+   * The cars and the train are not in it: they move, and a pellet through
+   * a train is the train's business.
+   */
+  function fightWorld() {
+    const c = view.colliders;
+    const k = simLenToWorld(1);
+    const cx = startX;
+    const cz = startZ;
+    const cy = startY;
+    const solid = Boolean(c && c.built && c.fax);
+    /* How far the map's solids go from the spawn, and how high. */
+    let far = 0;
+    let topY = cy;
+    if (solid) {
+      for (let i = 0; i < c.count; i += 1) {
+        const x0 = Math.min(c.fax[i], c.fbx[i]);
+        const x1 = Math.max(c.fax[i], c.fbx[i]);
+        const z0 = Math.min(c.faz[i], c.fbz[i]);
+        const z1 = Math.max(c.faz[i], c.fbz[i]);
+        const dx = Math.max(Math.abs(x0 - cx), Math.abs(x1 - cx));
+        const dz = Math.max(Math.abs(z0 - cz), Math.abs(z1 - cz));
+        const d = Math.sqrt(dx * dx + dz * dz);
+        /* A ground slab the size of the map says nothing about where the
+         * fight is. */
+        if (d < 400 * k) {
+          far = Math.max(far, d);
+          topY = Math.max(topY, c.fay[i], c.fby[i]);
+        }
+      }
+    }
+    const radius = Math.max(40 * k, Math.min(150 * k, far * 0.85));
+    const top = Math.max(12 * k, Math.min(60 * k, topY - cy + 4 * k));
+    /* The ground, sampled from just above the spawn's height so a deck or
+     * a floor indoors is the floor and not the street under it. */
+    const half = radius + 30 * k;
+    const n = 160;
+    const cell = (half * 2) / n;
+    const ground = new Float32Array(n * n);
+    const fromY = cy + 1 * k;
+    let lowY = cy;
+    for (let i = 0; i < n; i += 1) {
+      for (let j = 0; j < n; j += 1) {
+        const g = view.height(cx - half + (i + 0.5) * cell, cz - half + (j + 0.5) * cell, fromY);
+        ground[i * n + j] = Number.isFinite(g) ? g : cy;
+        lowY = Math.min(lowY, ground[i * n + j]);
+      }
+    }
+    const x0g = cx - half;
+    const z0g = cz - half;
+    const floorAt = (x, y, z) => {
+      const i = Math.floor((x - x0g) / cell);
+      const j = Math.floor((z - z0g) / cell);
+      if (i < 0 || j < 0 || i >= n || j >= n) {
+        return cy;
+      }
+      return ground[i * n + j];
+    };
+    /* The cells: as fine as three million of them allow, and never finer
+     * than a third of a metre of the aircraft's. */
+    const yLo = lowY - 2 * k;
+    const yHi = cy + top + 12 * k;
+    let v = Math.max(0.35 * k, (half * 2) / 256);
+    while (Math.ceil((half * 2) / v) ** 2 * Math.ceil((yHi - yLo) / v) > 3e6) {
+      v *= 1.15;
+    }
+    const nx = Math.ceil((half * 2) / v);
+    const ny = Math.ceil((yHi - yLo) / v);
+    const occ = new Uint8Array(nx * nx * ny);
+    const at = (i, j, l) => (l * nx + j) * nx + i;
+    if (solid) {
+      const lo = (q, o, nmax) => Math.max(0, Math.min(nmax - 1, Math.floor((q - o) / v)));
+      for (let s = 0; s < c.count; s += 1) {
+        const box = c.fbox[s] === 1;
+        const r = box ? 0 : c.fr[s];
+        const ax = c.fax[s];
+        const ay = c.fay[s];
+        const az = c.faz[s];
+        const bx = c.fbx[s];
+        const by = c.fby[s];
+        const bz = c.fbz[s];
+        const minX = Math.min(ax, bx) - r;
+        const maxX = Math.max(ax, bx) + r;
+        const minY = Math.min(ay, by) - r;
+        const maxY = Math.max(ay, by) + r;
+        const minZ = Math.min(az, bz) - r;
+        const maxZ = Math.max(az, bz) + r;
+        if (maxX < x0g || minX > x0g + nx * v || maxZ < z0g || minZ > z0g + nx * v || maxY < yLo || minY > yLo + ny * v) {
+          continue;
+        }
+        const i0 = lo(minX, x0g, nx);
+        const i1 = lo(maxX, x0g, nx);
+        const j0 = lo(minZ, z0g, nx);
+        const j1 = lo(maxZ, z0g, nx);
+        const l0 = lo(minY, yLo, ny);
+        const l1 = lo(maxY, yLo, ny);
+        /* A capsule marks the cells whose middle is within its radius and
+         * half a cell's diagonal of its axis. */
+        const ex = bx - ax;
+        const ey = by - ay;
+        const ez = bz - az;
+        const ee = ex * ex + ey * ey + ez * ez;
+        const reach = r + v * 0.87;
+        for (let l = l0; l <= l1; l += 1) {
+          for (let j = j0; j <= j1; j += 1) {
+            for (let i = i0; i <= i1; i += 1) {
+              if (!box) {
+                const px = x0g + (i + 0.5) * v - ax;
+                const py = yLo + (l + 0.5) * v - ay;
+                const pz = z0g + (j + 0.5) * v - az;
+                let u = ee > 0 ? (px * ex + py * ey + pz * ez) / ee : 0;
+                u = u < 0 ? 0 : (u > 1 ? 1 : u);
+                const qx = px - ex * u;
+                const qy = py - ey * u;
+                const qz = pz - ez * u;
+                if (qx * qx + qy * qy + qz * qz > reach * reach) {
+                  continue;
+                }
+              }
+              occ[at(i, j, l)] = 1;
+            }
+          }
+        }
+      }
+    }
+    const inside = (x, y, z) => {
+      const i = Math.floor((x - x0g) / v);
+      const j = Math.floor((z - z0g) / v);
+      const l = Math.floor((y - yLo) / v);
+      if (i < 0 || j < 0 || l < 0 || i >= nx || j >= nx || l >= ny) {
+        return false;
+      }
+      return occ[at(i, j, l)] === 1;
+    };
+    /* Along the line in half cells. A line that starts in a marked cell, a
+     * bot brushing a wall, is let out of it before anything counts, so
+     * nothing is ever stuck to the wall it touched. */
+    const blocked = (ax, ay, az, bx, by, bz) => {
+      const dx = bx - ax;
+      const dy = by - ay;
+      const dz = bz - az;
+      const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      if (!(len > 0)) {
+        return -1;
+      }
+      const steps = Math.max(1, Math.ceil(len / (v * 0.5)));
+      let out = !inside(ax, ay, az);
+      for (let s = 1; s <= steps; s += 1) {
+        const t = s / steps;
+        const x = ax + dx * t;
+        const y = ay + dy * t;
+        const z = az + dz * t;
+        if (y < floorAt(x, y, z)) {
+          return t;
+        }
+        const hit = inside(x, y, z);
+        if (!out) {
+          out = !hit;
+        } else if (hit) {
+          return t;
+        }
+      }
+      return -1;
+    };
+    /* Where a bot comes back: open air round the spawn that can be seen
+     * from it, in eight directions at three distances, nearest first. */
+    const DIRS = [[1, 0], [0.7071, 0.7071], [0, 1], [-0.7071, 0.7071], [-1, 0], [-0.7071, -0.7071], [0, -1], [0.7071, -0.7071]];
+    const spawns = [];
+    const eyeY = cy + 2 * k;
+    for (const share of [0.3, 0.5, 0.7, 0.15]) {
+      for (let d = 0; d < DIRS.length && spawns.length < 14; d += 1) {
+        const [ux, uz] = DIRS[d];
+        const x = cx + ux * radius * share;
+        const z = cz + uz * radius * share;
+        const y = Math.min(cy + top - 2 * k, Math.max(floorAt(x, cy, z) + 4 * k, eyeY + 2 * k));
+        if (inside(x, y, z) || blocked(cx, eyeY, cz, x, y, z) >= 0) {
+          continue;
+        }
+        spawns.push({ x, y, z });
+      }
+    }
+    if (spawns.length < 3) {
+      spawns.push({ x: cx, y: eyeY + 3 * k, z: cz });
+    }
+    return {
+      k,
+      cruise: fightWhoop ? 9 : 24,
+      cx,
+      cy,
+      cz,
+      radius,
+      top,
+      spawns,
+      floorAt,
+      blocked,
+    };
+  }
+
+  function fightOff() {
+    if (fightView) {
+      fightView.dispose();
+    }
+    fightView = null;
+    fightGame = null;
+    fightFor = null;
+    input.weaponsLive = false;
+    input.touchGun = false;
+    if (fightHud) {
+      fightHud.setVisible(false);
+    }
+  }
+
+  function fightNewRound() {
+    fightRound += 1;
+    fightGame.reset(fightRound);
+    fightSaved = false;
+    fightNewBest = false;
+    fightTeleported = true;
+  }
+
+  /* Once a frame, before anything reads the game: on, off, a new map or
+   * new rules. */
+  function syncDogfight() {
+    const rules = ui.dogfight;
+    const want = Boolean(view) && Boolean(rules) && mapReady && !replayMode && !ui.roomInfo;
+    if (!want) {
+      if (fightGame) {
+        fightOff();
+      }
+      return;
+    }
+    const rulesKey = JSON.stringify(rules);
+    if (fightFor === view && fightGame) {
+      if (rulesKey !== fightRulesKey) {
+        fightRulesKey = rulesKey;
+        fightGame.setRules(rules);
+        fightSaved = false;
+        fightNewBest = false;
+        fightTeleported = true;
+      }
+      return;
+    }
+    if (!fightMods) {
+      if (!fightLoading) {
+        fightLoading = true;
+        Promise.all([import('./game/dogfight.js'), import('./render/dogfight.js'), import('./ui/dogfighthud.js')])
+          .then(([game, render, hud]) => {
+            fightMods = { ...game, DogfightView: render.DogfightView, feedFraction: render.feedFraction, DogfightHud: hud.DogfightHud };
+          })
+          .catch((e) => {
+            console.warn('dogfight: the game did not load', e);
+          })
+          .finally(() => {
+            fightLoading = false;
+          });
+      }
+      return;
+    }
+    if (fightGame) {
+      fightOff();
+    }
+    const { Dogfight, hashKey, DogfightView, DogfightHud } = fightMods;
+    fightWhoop = runAirframe === 'whoop65';
+    fightKey = `${view.id}:${(view.egg && view.egg.key) || view.name || ''}:${fightWhoop ? 'whoop' : 'five'}`;
+    fightRulesKey = rulesKey;
+    const builtAt = performance.now();
+    const world = fightWorld();
+    fightGame = new Dogfight(world, rules, hashKey(fightKey) ^ (Date.now() >>> 0));
+    /* For the checks: what reading the map cost, once. */
+    fightGame.buildMs = performance.now() - builtAt;
+    fightView = new DogfightView({ whoop: fightWhoop });
+    fightView.attach(view.scene, shell.renderer, shell.camera, view.post && view.post.rtScene);
+    if (!fightHud) {
+      fightHud = new DogfightHud(ui.root, {
+        input,
+        onAgain: () => {
+          if (fightGame) {
+            fightNewRound();
+          }
+        },
+        onChange: () => ui.act('fight-change'),
+        onLeave: () => ui.act('fight-leave'),
+      });
+    }
+    fightFor = view;
+    fightBest = readFightBest();
+    fightRound = 0;
+    fightNewRound();
+    input.weaponsLive = true;
+  }
+
+  /* One step loop feed with the craft at state `st`. */
+  function fightStep(clock, st, flying) {
+    poseFromState(st, fightPos);
+    simQuatToThree(st[7], st[8], st[9], st[10], fightQuat);
+    fightQuat.premultiply(qSpawn);
+    const m = fightMe;
+    m.x = fightPos.x;
+    m.y = fightPos.y;
+    m.z = fightPos.z;
+    fightAim.set(0, 1, 0).applyQuaternion(fightQuat);
+    m.ux = fightAim.x;
+    m.uy = fightAim.y;
+    m.uz = fightAim.z;
+    /* The gun points where the camera looks, its tilt included, which is
+     * where the reticle is. */
+    fightQuat.multiply(qTilt);
+    fightAim.set(0, 0, -1).applyQuaternion(fightQuat);
+    m.fx = fightAim.x;
+    m.fy = fightAim.y;
+    m.fz = fightAim.z;
+    m.flying = flying;
+    m.gun = flying && mode === 'flight' && input.gunHeld();
+    /* Taken whatever: a press on the ground is not a missile on takeoff. */
+    m.missile = input.takeMissile() && flying && mode === 'flight';
+    fightGame.step(m, fightTeleported);
+    fightTeleported = false;
+    fightFeedAt = clock;
+  }
+
+  /* While the plant does not step: feeds from the frame's own time, with
+   * the craft where it sits. Returns how far past the last feed the frame
+   * is. */
+  function fightIdleTick(dtMs) {
+    const { DOGFIGHT_EVERY } = fightMods;
+    fightIdleAcc += dtMs;
+    let n = 0;
+    while (fightIdleAcc >= DOGFIGHT_EVERY && n < 40) {
+      fightIdleAcc -= DOGFIGHT_EVERY;
+      fightStep(fightFeedAt, stateCurr, false);
+      n += 1;
+    }
+    if (n === 40) {
+      fightIdleAcc = 0;
+    }
+    return fightIdleAcc;
+  }
+
+  /* Once a drawn frame: the game's events out to the world, the HUD and
+   * the speaker, a pop of the pilot put back at the spawn, and the round's
+   * end. `ahead` is how far past the last feed this frame is drawn. */
+  function fightFrame(ahead, dtMs, nowMs) {
+    if (!fightGame) {
+      return;
+    }
+    const { RESULT_MS, ME, feedFraction } = fightMods;
+    const g = fightGame;
+    let popMe = false;
+    for (let n = 0; n < g.eventCount; n += 1) {
+      const e = g.events[n];
+      fightView.event(e, g, nowMs);
+      const sound = fightHud.event(e, g, nowMs);
+      if (sound && mode === 'flight' && typeof audio.event === 'function') {
+        audio.event(sound);
+      }
+      if (e.type === 'pop' && e.to === ME) {
+        popMe = true;
+      }
+    }
+    g.eventCount = 0;
+    if (popMe && mode === 'flight') {
+      adoptSpawn();
+      resetCraft();
+      fightTeleported = true;
+    }
+    if (g.over && !fightSaved) {
+      fightSaved = true;
+      const mine = g.pops[ME];
+      if (mine > fightBest) {
+        fightNewBest = fightBest > 0 || mine > 0;
+        fightBest = mine;
+        writeFightBest(mine);
+      }
+    }
+    if (g.over && g.sinceOverMs() >= RESULT_MS) {
+      fightNewRound();
+    }
+    const t = feedFraction(ahead);
+    fightView.frame(g, t, shell.camera.position, dtMs, nowMs);
+    /* Not over a menu: the pause and its dialogs are read, not flown. */
+    const on = ui.screen === 'flight';
+    let touch = false;
+    try {
+      touch = window.matchMedia('(pointer: coarse)').matches;
+    } catch (e) {
+      touch = false;
+    }
+    fightHud.setVisible(on, { touch: touch && ui.screen === 'flight' });
+    fightExtra.best = fightBest;
+    fightExtra.newBest = fightNewBest;
+    fightExtra.nextMs = g.over ? Math.max(0, RESULT_MS - g.sinceOverMs()) : 0;
+    fightHud.frame(g, t, shell.camera, nowMs, fightExtra);
+  }
 
   /* A crash the shell called, told to the chase as it is told to the score:
    * the tail and everything waiting to pay are lost. */
@@ -6410,9 +6882,12 @@ export async function boot({ loading, bootStart, mapId }) {
      */
     simTimeMs = 0;
     airtimeMs = 0;
-    /* A fresh run is a fresh balloon round. */
+    /* A fresh run is a fresh balloon round, and a fresh fight. */
     if (balloonGame) {
       balloonNewRound();
+    }
+    if (fightGame) {
+      fightNewRound();
     }
     /* Anything that holds a stamp ON that clock has to go back with it, or a
      * fresh run compares a zeroed clock against last run's stamp and stays
@@ -6498,7 +6973,9 @@ export async function boot({ loading, bootStart, mapId }) {
     ghostGap = null;
     ghostChased = null;
     ghostRig.setPresence(0);
-    runLaps = ui.settings.laps;
+    /* A dogfight on a race track is practice: no end to the run, so the
+     * fight is never cut off by a results screen. */
+    runLaps = ui.dogfight ? PRACTICE_LAPS : ui.settings.laps;
     view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
     /* Steam edition: career. A new run of the lesson under way, if any. */
     if (career) {
@@ -10436,6 +10913,13 @@ export async function boot({ loading, bootStart, mapId }) {
               }
             }
           }
+          if (fightGame) {
+            for (let t = simTimeMs + 1; t <= simTimeMs + steps; t += 1) {
+              if (t % fightMods.DOGFIGHT_EVERY === 0) {
+                fightStep(t, stateCurr, false);
+              }
+            }
+          }
           if (plantUpZ(stateCurr) < 0) {
             endLaunchStaging(false);
             takingOff = false;
@@ -10484,6 +10968,10 @@ export async function boot({ loading, bootStart, mapId }) {
             }
             if (balloonGame && (simTimeMs + i + 1) % balloonMods.BALLOON_EVERY === 0) {
               balloonStep(simTimeMs + i + 1, stNow, true);
+            }
+            /* The dogfight, on the same lap clock. */
+            if (fightGame && (simTimeMs + i + 1) % fightMods.DOGFIGHT_EVERY === 0) {
+              fightStep(simTimeMs + i + 1, stNow, true);
             }
             if (scoring) {
               /* Body rates, the two quaternion components the attitude test
@@ -11645,6 +12133,16 @@ export async function boot({ loading, bootStart, mapId }) {
         } else {
           /* Paused, results: frozen where it is. */
           balloonFrame(0, 0, nowWall);
+        }
+      }
+      syncDogfight();
+      if (fightGame) {
+        if (mode === 'title' || (mode === 'flight' && balloonIdle)) {
+          fightFrame(fightIdleTick(dt), dt, nowWall);
+        } else if (mode === 'flight') {
+          fightFrame(simTimeMs - 1 + a - fightFeedAt, dt, nowWall);
+        } else {
+          fightFrame(0, 0, nowWall);
         }
       }
       if (trafficOn) {
@@ -12884,6 +13382,9 @@ export async function boot({ loading, bootStart, mapId }) {
   window.__score = () => score.summary();
   /* Balloon chase, for its checks: the game, or null while it is off. */
   window.__balloons = () => balloonGame;
+  /* Dogfight, for its checks: the game, or null while there is none. */
+  window.__dogfight = () => fightGame;
+  window.__dogfightView = () => fightView;
   window.__balloonCraft = () => ({ ...balloonCraft });
   /*
    * THE COUNTER, for the checks and the flown rigs: the live view (the

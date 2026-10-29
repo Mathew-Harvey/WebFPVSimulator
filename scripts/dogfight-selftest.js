@@ -340,6 +340,27 @@ function missileAt(lockFirst) {
   check(worst < 0.05, 'a world built bigger flies the bots bigger, not differently', `${worst.toFixed(2)}`);
 }
 
+/* A map with few open spots hands two bots the same one. Found in the
+ * town on the first browser run: two bots on one point had no line
+ * between them and the closer one's heading went NaN. */
+{
+  const w = world(1, false);
+  w.spawns = [{ x: 40, y: 6, z: 0 }];
+  const g = new Dogfight(w, { bots: 3 }, 9);
+  const me = {
+    x: 0, y: 0, z: 0, fx: 0, fy: 0, fz: -1, ux: 0, uy: 1, uz: 0, gun: false, missile: false, flying: false,
+  };
+  let finite = true;
+  for (let n = 0; n < 500; n += 1) {
+    g.step(me, n === 0);
+    g.eventCount = 0;
+    for (let i = 0; i < 4; i += 1) {
+      finite = finite && Number.isFinite(g.x[i]) && Number.isFinite(g.y[i]) && Number.isFinite(g.fx[i]);
+    }
+  }
+  check(finite, 'bots that start on the same spot stay finite');
+}
+
 /* Cost: seven bots and the gun held, per feed. */
 {
   const g = new Dogfight(world(), { bots: 7, skill: 'ace' }, 3);

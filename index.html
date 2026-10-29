@@ -2610,7 +2610,7 @@
         gap: clamp(10px, 1.4vw, 18px);
       }
       .gate-page-cover .gate-grid {
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) minmax(0, 0.9fr);
         grid-template-rows: minmax(0, 1fr);
       }
       .gate-page-solo .gate-grid {
@@ -2747,6 +2747,9 @@
       .gp-bub-a { left: 4%; top: 6%; width: 25%; max-width: 210px; }
       .gp-bub-b { right: 5%; top: 44%; width: 15%; max-width: 130px; }
       .gp-sticker { right: 3%; top: 3%; width: 16%; max-width: 140px; }
+      .gp-dog { left: 10%; top: 16%; width: 80%; max-width: 380px; }
+      .gp-dog-sfx { left: 6%; top: 4%; width: 36%; max-width: 190px; }
+      .gp-dog-sticker { right: 4%; top: 3%; width: 22%; max-width: 120px; }
       .gp-career-bub { right: 5%; top: 9%; width: 44%; max-width: 200px; }
       .gp-medal { left: 6%; top: 32%; width: 18%; max-width: 84px; }
       .gp-watch { left: 5%; top: 21%; width: 12%; max-width: 64px; }
@@ -4764,7 +4767,7 @@
         .gate-card-blurb { display: none; }
         .gate-page-cover .gate-card-blurb { display: block; font-size: 12.5px; }
         .gate-card-kicker { left: calc(var(--gc-bleed) + 8px); top: 8px; font-size: 10px; }
-        .gp-solo-sfx, .gp-bub-a, .gp-bub-b, .gp-career-bub, .gp-free-sfx, .gp-build-bub, .gp-pilot-bub { display: none; }
+        .gp-solo-sfx, .gp-bub-a, .gp-bub-b, .gp-career-bub, .gp-free-sfx, .gp-build-bub, .gp-pilot-bub, .gp-dog-sfx { display: none; }
         .gate-folio { display: none; }
         /* The art is half a phone's width here, so the mark comes down with
            it. Same box on every card that has one, as ever. */
@@ -4859,7 +4862,7 @@
         .gate-card-blurb, .gate-page-cover .gate-card-blurb { display: none; }
         .gate-card-name, .gate-card-mp-host .gate-card-name { font-size: clamp(15px, 4.4vh, 20px); }
         .gate-page-cover .gate-card-name { font-size: clamp(22px, 7vh, 32px); }
-        .gp-solo-sfx, .gp-bub-a, .gp-bub-b, .gp-career-bub, .gp-free-sfx, .gp-build-bub, .gp-pilot-bub, .gp-medal, .gp-watch, .gp-pencil { display: none; }
+        .gp-solo-sfx, .gp-bub-a, .gp-bub-b, .gp-career-bub, .gp-free-sfx, .gp-build-bub, .gp-pilot-bub, .gp-medal, .gp-watch, .gp-pencil, .gp-dog-sfx { display: none; }
         .gate-card-mark { width: 38px; height: 38px; right: calc(var(--gc-bleed) + 6px); top: 5px; }
       }
 

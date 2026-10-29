@@ -337,7 +337,7 @@ export class Dogfight {
     }
     for (let i = 1; i < MAX_PILOTS; i += 1) {
       if (this.isBot[i]) {
-        this.spawnBot(i, i - 1);
+        this.spawnBot(i, (i - 1) * 3);
       }
     }
   }
@@ -1140,9 +1140,11 @@ export class Dogfight {
       dz = tz + this.vz[t] * tof * sk.lead;
       /* Too close: overshoot and come round again rather than sit on it. */
       if (dist < 6 * k) {
-        dx = this.fx[i] + (tx / dist) * 0.3;
+        /* Two on the same spot have no line between them: straight on. */
+        const near = dist > 1e-6 ? 0.3 / dist : 0;
+        dx = this.fx[i] + tx * near;
         dy = this.fy[i] + 0.3;
-        dz = this.fz[i] + (tz / dist) * 0.3;
+        dz = this.fz[i] + tz * near;
       }
     } else {
       if (now >= this.wanderAt[i]) {
@@ -1185,7 +1187,7 @@ export class Dogfight {
     }
     const top = w.cy + w.top;
     if (this.y[i] > top) {
-      dy -= 0.8;
+      dy -= 0.8 + (this.y[i] - top) / k * 0.2;
     }
     /* Look ahead for walls, 20 times a second, staggered across the bots. */
     if (now >= this.lookAt[i]) {
@@ -1218,7 +1220,9 @@ export class Dogfight {
       this.vy[i] = 0;
       this.vz[i] = 0;
     } else {
-      const lift = by < floor + 0.3 * k ? floor + 0.3 * k : by;
+      /* Never under the floor, and never far over the arena's top. */
+      const roof = top + 3 * k;
+      const lift = by < floor + 0.3 * k ? floor + 0.3 * k : (by > roof ? roof : by);
       this.x[i] = bx;
       this.y[i] = lift;
       this.z[i] = bz;
@@ -1231,9 +1235,16 @@ export class Dogfight {
       this.vy[i] = nvy;
       this.vz[i] = nvz;
       const lean = 0.35 * G * k;
-      let ux = axx + this.fx[i] * lean;
-      let uy = ayy + G * k;
-      let uz = azz + this.fz[i] * lean;
+      /* At most two g of it, so a bounce off a wall, which turns the
+       * velocity round in one feed, does not lay the bot on its side, and
+       * a hard turn banks it to about sixty degrees, where it still reads
+       * as a quad and not as a line. */
+      const am = Math.sqrt(axx * axx + ayy * ayy + azz * azz);
+      const cap = 2 * G * k;
+      const as = am > cap ? cap / am : 1;
+      let ux = axx * as + this.fx[i] * lean;
+      let uy = ayy * as + G * k;
+      let uz = azz * as + this.fz[i] * lean;
       const um = Math.sqrt(ux * ux + uy * uy + uz * uz);
       if (um > 1e-9) {
         ux /= um;
@@ -1340,11 +1351,16 @@ export class Dogfight {
       sz = 0;
     }
     const first = this.rand() < 0.5 ? 1 : -1;
+    /* Round it first, then over or under it: a bot that always went over
+     * climbed out of a town on the first run and fought above the roofs,
+     * out of anybody's sight. Under the arena's top it may go over; at the
+     * top only down. */
+    const high = y > w.cy + w.top * 0.8;
     const tries = [
-      [fx * 0.4, 1, fz * 0.4],
-      [fx * 0.3 + sx * first, 0.2, fz * 0.3 + sz * first],
-      [fx * 0.3 - sx * first, 0.2, fz * 0.3 - sz * first],
-      [-fx, 0.3, -fz],
+      [fx * 0.3 + sx * first, 0, fz * 0.3 + sz * first],
+      [fx * 0.3 - sx * first, 0, fz * 0.3 - sz * first],
+      [fx * 0.4, high ? -0.8 : 1, fz * 0.4],
+      [-fx, high ? -0.3 : 0.3, -fz],
     ];
     for (let n = 0; n < tries.length; n += 1) {
       const [a, b, c] = tries[n];

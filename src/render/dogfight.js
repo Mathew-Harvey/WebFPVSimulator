@@ -86,7 +86,10 @@ export class DogfightView {
   constructor({ whoop = false } = {}) {
     this.group = new THREE.Group();
     this.group.name = 'dogfight';
-    this.craft = buildRoomCraft({ capacity: MAX_PILOTS, whoop });
+    /* Twice life size, which is the size a pellet counts as a hit at
+     * (HIT_R in src/game/dogfight.js): a five inch quad at fifty metres is
+     * a few pixels, and a target nobody can see is no fun at eight. */
+    this.craft = buildRoomCraft({ capacity: MAX_PILOTS, whoop, scale: 2 });
     this.group.add(this.craft.group);
 
     this.boxMat = new THREE.MeshBasicMaterial({ color: 0xffffff, fog: true });
@@ -96,7 +99,7 @@ export class DogfightView {
     this.missiles = new THREE.InstancedMesh(missileGeometry(), this.missileMat, MISSILES);
     this.missiles.name = 'dogfight-missiles';
     this.puffMat = new THREE.MeshBasicMaterial({ color: 0xffffff, fog: true });
-    this.puffs = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), this.puffMat, PUFFS);
+    this.puffs = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), this.puffMat, PUFFS);
     this.puffs.name = 'dogfight-puffs';
     for (const m of [this.boxes, this.missiles, this.puffs]) {
       m.frustumCulled = false;

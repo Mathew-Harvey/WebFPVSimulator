@@ -21574,6 +21574,14 @@ export class Ui {
     const leaving = action === 'title' && (from === 'paused' || from === 'flight')
       ? this.takeTuneFlight()
       : null;
+    /* Quit to title ends a dogfight or ribbon cutting as Leave the fight
+     * does. It used to fight on behind the title, the bots shooting each
+     * other over the menus, and a Fly from there was back in it, score
+     * and all, where the pilot had chosen to stop. */
+    if (action === 'title' && this.dogfight && (from === 'paused' || from === 'flight' || from === 'results')) {
+      this.dogfight = null;
+      this.fightArmed = false;
+    }
     if (action === 'title' || action === 'paused') {
       this.show(action);
     }

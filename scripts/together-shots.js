@@ -4187,12 +4187,23 @@ async function sceneRibbon() {
     }, 5000);
     check('the host\'s start puts the bots in the round', started);
     check('the start puts the host back in the air', await page.until("window.__ui.screen === 'flight'", 3000).then(() => true, () => false));
+    /* The host goes into the pause menu in a live round: the bots fly on,
+     * not hang in the air for the room to shoot. */
+    await page.until(`${G} && window.__dogfight().state.phase === 'live'`, 9000).catch(() => {});
+    await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); return 1; })()");
+    const botAt = '(() => { const g = window.__dogfight(); for (let i = 1; i < g.cap; i += 1) if (g.isBot[i] && g.botFlies(i) && g.alive[i]) return [g.x[i], g.y[i], g.z[i]]; return null; })()';
+    const before = await page.evaluate(botAt);
+    await wait(1500);
+    const after = await page.evaluate(botAt);
+    const moved = before && after ? Math.hypot(after[0] - before[0], after[1] - before[1], after[2] - before[2]) : 0;
+    check('the bots fly on while the host is in the pause menu', moved > 0.5, `${moved.toFixed(2)} m in 1.5 s`);
+    await page.evaluate("(() => { window.__ui.act('resume'); return 1; })()");
     const botCut = await until(() => moss.heard.some((h) => h.name === 'rbCut' && h.data.by > 200), 90000, 200);
     check('a bot cuts somebody\'s ribbon, and the room hears it', botCut);
     await shot('bots-live');
     /* Moss joined after Kite left and the board gave Moss Kite's id: the
      * slot is named for who has the id now, though Moss never flew. */
-    const mossName = await page.evaluate(`(() => { const g = window.__dogfight(); return g.nameOf(g.slotOf(${moss.s.you})); })()`);
+    const mossName = await page.evaluate(`(() => { const g = window.__dogfight(); return g.nameOf(g.slotFor(${moss.s.you})); })()`);
     check('a pilot who takes a leaver\'s id is named as themselves', mossName === 'Moss Comet', mossName);
     moss.s.leave();
     /* The picker asks for Drift Matsuri's picture, which main does not
@@ -4302,6 +4313,17 @@ async function sceneDogfight() {
     }, 5000);
     check('the host\'s start puts the bots in the round', started);
     check('the start puts the host back in the air', await page.until("window.__ui.screen === 'flight'", 3000).then(() => true, () => false));
+    /* The host goes into the pause menu in a live round: the bots fly on,
+     * not hang in the air for the room to shoot. */
+    await page.until(`${G} && window.__dogfight().state.phase === 'live'`, 9000).catch(() => {});
+    await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); return 1; })()");
+    const botAt = '(() => { const g = window.__dogfight(); for (let i = 1; i < g.cap; i += 1) if (g.isBot[i] && !g.puppet[i] && g.alive[i]) return [g.x[i], g.y[i], g.z[i]]; return null; })()';
+    const before = await page.evaluate(botAt);
+    await wait(1500);
+    const after = await page.evaluate(botAt);
+    const moved = before && after ? Math.hypot(after[0] - before[0], after[1] - before[1], after[2] - before[2]) : 0;
+    check('the bots fly on while the host is in the pause menu', moved > 0.5, `${moved.toFixed(2)} m in 1.5 s`);
+    await page.evaluate("(() => { window.__ui.act('resume'); return 1; })()");
     const botHit = await until(() => moss.heard.some((h) => h.name === 'dfHit' && h.data.by > 200), 90000, 200);
     check('a bot hits somebody, and the room hears it', botHit);
     await shot('bots-live');

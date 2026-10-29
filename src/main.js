@@ -12307,7 +12307,12 @@ export async function boot({ loading, bootStart, mapId }) {
       syncDogfight();
       fightRoomSync();
       if (fightGame) {
-        if (mode === 'title' || (mode === 'flight' && balloonIdle)) {
+        /* A room's bots flown by this page fly on while its pilot is in
+         * the pause menu: the room does not stop for one pilot, and frozen
+         * they hung in the air for everybody else to shoot or cut, as
+         * often as not while the host was in that menu adding them. */
+        const roomBotsHere = fightGame.room && fightGame.host && mode === 'paused';
+        if (mode === 'title' || (mode === 'flight' && balloonIdle) || roomBotsHere) {
           fightFrame(fightIdleTick(dt), dt, nowWall);
         } else if (mode === 'flight') {
           fightFrame(simTimeMs - 1 + a - fightFeedAt, dt, nowWall);

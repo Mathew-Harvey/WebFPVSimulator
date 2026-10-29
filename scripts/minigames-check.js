@@ -125,6 +125,13 @@ async function sceneDogfight() {
     await ev("window.__ui.act('restart'); return 1;");
     check('a restart starts a fresh round', await until(`${G} return g.round === ${r2 + 1};`, 10000));
 
+    /* Quit to title is the end of the fight too, not a fight behind the
+     * menus waiting for the next Fly. */
+    await ev("window.__ui.act('pause'); window.__ui.act('title'); return 1;");
+    check('quit to title ends the fight', await until('return window.__dogfight() === null && window.__ui.dogfight === null', 5000));
+    await ev("window.__ui.dogfight = { bots: 1, skill: 'rookie', round: '3m', hits: 'arcade' }; window.__ui.act('fly'); return 1;");
+    await until("return Boolean(window.__dogfight()) && window.__ui.screen === 'flight'", 20000);
+
     /* Leaving: nothing of the fight is left behind. */
     await ev("window.__ui.act('pause'); window.__ui.act('fight-leave'); return 1;");
     check('leaving ends the fight', await until('return window.__dogfight() === null', 5000));

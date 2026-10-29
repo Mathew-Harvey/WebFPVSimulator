@@ -341,6 +341,9 @@ async function sceneLoadKeys() {
     await ev("window.__ui.act('gate-games'); window.__ui.act('gate-ribbon'); return 1;");
     await until("return window.__ui.screen === 'freestyle'", 10000);
     await sleep(800);
+    /* A phone has no double click, so the band over the picker says tap. */
+    const band = await ev("const b = document.querySelector('.host-band-line'); return b ? b.textContent : '';");
+    check('on a phone the picker\'s band says tap, not double click', band.includes('Tap a map') && !/double click/i.test(band), band);
     let loading = false;
     for (let i = 0; i < 8 && !loading; i += 1) {
       await page.tap('Enter');

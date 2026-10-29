@@ -14980,7 +14980,13 @@ export class Ui {
         setHeadingText(titleEl, title);
       }
       this.hostBand.querySelector('.host-band-kick').textContent = kick;
-      this.hostBand.querySelector('.host-band-line').textContent = line;
+      /* A phone has no double click (the bar's touch voice, hints(), says
+       * the same): tap the map, then the band's button. */
+      const touch = this.lastInput === 'none'
+        && typeof navigator !== 'undefined' && (navigator.maxTouchPoints || 0) > 0;
+      this.hostBand.querySelector('.host-band-line').textContent = touch
+        ? line.replace('Double click a map, or choose it and press', 'Tap a map, then press')
+        : line;
       this.hostTab.textContent = tab;
     }
     if (on && head) {

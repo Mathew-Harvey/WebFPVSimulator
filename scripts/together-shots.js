@@ -4097,6 +4097,11 @@ async function sceneRibbon() {
     check('the page plays the room\'s ribbons', await page.until(`${G} && window.__dogfight().room === true`, 15000).then(() => true, () => false));
     const kiteSlot = () => page.evaluate(`(${G}) ? window.__dogfight().slotFor(${kite.s.you}) : -1`);
     check('the host flies a whole ribbon on the page', await page.until(`${G} && window.__dogfight().rCount[window.__dogfight().slotFor(${kite.s.you})] === 16`, 10000).then(() => true, () => false));
+    /* Waited for, not read once: a pilot counts as here for 1.5 s after
+     * the last frame that drew them, and the software rasteriser's first
+     * frames over Bardwell's trees can take longer than that, so a single
+     * read sometimes caught "needs two pilots" (2 of 4 runs). */
+    await page.until(`${G} && window.__dogfight().banner.startsWith('Waiting for the host')`, 5000).catch(() => {});
     const banner = await page.evaluate(`${G}.banner`);
     check('the page is told the host starts a round', banner.startsWith('Waiting for the host'), banner);
     check('the HUD says it on screen', await page.evaluate(SEES('Waiting for the host', '#ui')));
@@ -4180,12 +4185,23 @@ async function sceneRibbon() {
     moss.s.eachRemote((id, pose, p) => { if (p.bot && !named) named = p.handle; });
     check('named from the board\'s list', named === 'MOCHI' || named === 'GIZMO', named);
     await shot('bots');
+    /* One bot for the round, and the joiner hanging still a few metres off
+     * it. Two aces pick each other, as the nearest ribbons, and can circle
+     * for minutes without either getting through, which is the game but
+     * not this check: 2 of 4 runs saw no cut in the minute and a half,
+     * the probe showing the pair locked 30 m from everyone else. */
+    await page.evaluate("(() => { window.__roomBots().drop(202); return 1; })()");
+    await page.until(`${G} && window.__dogfight().isBot[2] === 0`, 5000).catch(() => {});
+    const b1 = await page.evaluate(`(() => { const g = window.__dogfight(); return { x: g.x[1], y: g.y[1], z: g.z[1] }; })()`);
+    const perch = { x: b1.x + 4, y: Math.max(b1.y, 3), z: b1.z };
+    hover = setInterval(() => moss.s.uplink(perch.x, perch.y, perch.z, 0, 0, 0, 1, true, 0), 1000 / 30);
+    await wait(500);
     await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); window.__ui.act('room-ribbon-start'); return 1; })()");
     const started = await until(() => {
       const r = moss.heard.filter((h) => h.name === 'ribbon').pop();
-      return r && r.data.ribbon.phase === 'count' && r.data.ribbon.rows.length === 4;
+      return r && r.data.ribbon.phase === 'count' && r.data.ribbon.rows.length === 3;
     }, 5000);
-    check('the host\'s start puts the bots in the round', started);
+    check('the host\'s start puts the bot in the round', started);
     check('the start puts the host back in the air', await page.until("window.__ui.screen === 'flight'", 3000).then(() => true, () => false));
     /* The host goes into the pause menu in a live round: the bots fly on,
      * not hang in the air for the room to shoot. */
@@ -4205,6 +4221,8 @@ async function sceneRibbon() {
      * slot is named for who has the id now, though Moss never flew. */
     const mossName = await page.evaluate(`(() => { const g = window.__dogfight(); return g.nameOf(g.slotFor(${moss.s.you})); })()`);
     check('a pilot who takes a leaver\'s id is named as themselves', mossName === 'Moss Comet', mossName);
+    clearInterval(hover);
+    hover = null;
     moss.s.leave();
     /* The picker asks for Drift Matsuri's picture, which main does not
      * have yet (PROGRESS.md, the swap scene's entry). */

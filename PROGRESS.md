@@ -72982,3 +72982,7 @@ The bug hunt thread saw together-shots' ribbon check "a bot cuts somebody's ribb
 - Merged main 43ce75de; the conflicts were scripts/together-shots.js (both scenes kept) and PROGRESS.md (both entries kept).
 - Latency: none, menus and one check every half second while a first round is owed.
 - Checks this turn: `together-shots --only=gamehostmaps,gamehost` 32 of 32 (dogfight, ribbon, goats and drift). A run before that failed two lines: a check that read a function `__together()` does not expose, now fixed, and the drift room's first round once not starting. The first round waits at most a minute after the sheets close, and the headless page builds the drift map slowly. It passed on both runs after. On a slow machine the host may need to press G.
+
+## 2026-10-29 | release | Goat rooms, drift bots and drift rooms to main
+
+- The owner, 14:34Z, "push to main", after the goat bots' +0.025 ms a frame inside a round was stated to him. Board 706d2c0 went to main first (npm test all passed), then the sim at 2d7d2ec1, with main's ada187db merged in (conflicts in PROGRESS.md and scripts/minigames-check.js, both sides kept). On the merged tree: driftroom-check and goats-check all passed, lint:boot 9 of 9, check:fresh 18 of 18. Not flown.

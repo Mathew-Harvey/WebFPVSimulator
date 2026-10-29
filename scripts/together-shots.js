@@ -4164,6 +4164,9 @@ async function sceneRibbon() {
     check('two presses seat two bots, flown by the page', seated);
     const row = await page.evaluate("(() => { const it = window.__ui.items().find((x) => x && x.label === 'Bots'); return it ? it.value : ''; })()");
     check('and the row says so', row === '2', row);
+    /* Aces, so a bot's cut comes inside the check's minute on a software
+     * rasteriser. */
+    await page.evaluate("(() => { const b = window.__roomBots(); b.skill(201, 'ace'); b.skill(202, 'ace'); return 1; })()");
     await page.evaluate("(() => { window.__ui.act('resume'); return 1; })()");
     const moss = bot('Moss Comet', 343);
     await joinRoom(moss, room.code, '');
@@ -4184,7 +4187,7 @@ async function sceneRibbon() {
     }, 5000);
     check('the host\'s start puts the bots in the round', started);
     check('the start puts the host back in the air', await page.until("window.__ui.screen === 'flight'", 3000).then(() => true, () => false));
-    const botCut = await until(() => moss.heard.some((h) => h.name === 'rbCut' && h.data.by > 200), 45000, 200);
+    const botCut = await until(() => moss.heard.some((h) => h.name === 'rbCut' && h.data.by > 200), 90000, 200);
     check('a bot cuts somebody\'s ribbon, and the room hears it', botCut);
     await shot('bots-live');
     moss.s.leave();

@@ -13297,6 +13297,8 @@ export async function boot({ loading, bootStart, mapId }) {
   /* Flying together, for scripts/together-shots.js: what is on screen and
    * the room it is in, or null before anything asked for a room. */
   window.__together = () => (together ? together.debugState() : null);
+  /* For scripts/together-shots.js: the room's bot seats (src/net/roombots.js). */
+  window.__roomBots = () => (together && together.roomBots ? together.roomBots() : null);
   /* For scripts/together-shots.js: the watching camera as it is now, and
    * what one of its frames costs, timed riding behind the pilot watched on
    * the real map's colliders with a camera of its own. Harness only. */

@@ -5851,6 +5851,12 @@ export function createTogether(shell) {
     inRoom() {
       return Boolean(room());
     },
+    /* The mini game the room plays on the world being flown, 'ribbon' or
+     * another of the board's GAMES, or '' for none. */
+    gameRoom() {
+      const r = room();
+      return r && r.game && sameWorld(r) ? r.game : '';
+    },
     /* A ribbon cutting room on the world being flown: the shell plays
      * RibbonRoom in it (src/main.js syncDogfight). */
     ribbonRoom() {

@@ -4156,14 +4156,21 @@ async function sceneRibbon() {
     kite.s.leave();
     check('the page is host once the host goes', await page.until(`${T} && window.__together().host === window.__together().you`, 10000).then(() => true, () => false));
     const botRows = await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); return window.__ui.items().filter(Boolean).map((x) => x.label); })()");
-    check('the host\'s pause menu has Start a ribbon round and Bots', botRows.includes('Start a ribbon round') && botRows.includes('Bots'), botRows.join(', '));
-    await page.evaluate("(() => { window.__ui.act('room-ribbon-bots'); return 1; })()");
-    await wait(300);
-    await page.evaluate("(() => { window.__ui.act('room-ribbon-bots'); return 1; })()");
+    check('the host\'s pause menu has Start a ribbon round and Fill the roster', botRows.includes('Start a ribbon round') && botRows.includes('Fill the roster'), botRows.join(', '));
+    await page.evaluate("(() => { window.__ui.act('room-roster'); return 1; })()");
+    const rosterUp = await page.until("!!document.querySelector('#tg .botroster')", 3000).then(() => true, () => false);
+    check('Fill the roster opens the roster sheet', rosterUp);
+    await page.evaluate("(() => { document.querySelector('#tg .botroster [data-k=\\'add-0\\']').click(); return 1; })()");
+    await wait(400);
+    await page.evaluate("(() => { document.querySelector('#tg .botroster [data-k=\\'add-0\\']').click(); return 1; })()");
     const seated = await page.until(`${G} && window.__dogfight().isBot[1] === 1 && window.__dogfight().isBot[2] === 1`, 5000).then(() => true, () => false);
     check('two presses seat two bots, flown by the page', seated);
-    const row = await page.evaluate("(() => { const it = window.__ui.items().find((x) => x && x.label === 'Bots'); return it ? it.value : ''; })()");
-    check('and the row says so', row === '2', row);
+    const seatsShown = await page.evaluate("document.querySelectorAll('#tg .botroster .rseat.is-bot').length");
+    check('and the roster shows them', seatsShown === 2, String(seatsShown));
+    await shot('roster');
+    await page.evaluate("(() => { document.querySelector('#tg .botroster [data-k=\\'done\\']').click(); return 1; })()");
+    const row = await page.evaluate("(() => { const it = window.__ui.items().find((x) => x && x.label === 'Fill the roster'); return it ? it.value : ''; })()");
+    check('and the row says so', row === '2 bots', row);
     /* Aces, so a bot's cut comes inside the check's minute on a software
      * rasteriser. */
     await page.evaluate("(() => { const b = window.__roomBots(); b.skill(201, 'ace'); b.skill(202, 'ace'); return 1; })()");
@@ -4289,10 +4296,13 @@ async function sceneDogfight() {
     await page.evaluate("(() => { [...document.querySelectorAll('.df-result .df-btn')].find((b) => b.textContent === 'Fly on').click(); return 1; })()");
     check('Fly on puts the table away', await page.until("document.querySelector('.df-result').classList.contains('is-off')", 3000).then(() => true, () => false));
     const hostRows = await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); return window.__ui.items().filter(Boolean).map((x) => x.label); })()");
-    check('the host\'s pause menu has Start a dogfight round, Bots, Hits and Round', ['Start a dogfight round', 'Bots', 'Hits', 'Round'].every((x) => hostRows.includes(x)), hostRows.join(', '));
-    await page.evaluate("(() => { window.__ui.act('room-df-bots'); return 1; })()");
-    await wait(300);
-    await page.evaluate("(() => { window.__ui.act('room-df-bots'); return 1; })()");
+    check('the host\'s pause menu has Start a dogfight round, Fill the roster, Hits and Round', ['Start a dogfight round', 'Fill the roster', 'Hits', 'Round'].every((x) => hostRows.includes(x)), hostRows.join(', '));
+    await page.evaluate("(() => { window.__ui.act('room-roster'); return 1; })()");
+    const rosterUp = await page.until("!!document.querySelector('#tg .botroster')", 3000).then(() => true, () => false);
+    check('Fill the roster opens the roster sheet', rosterUp);
+    await page.evaluate("(() => { document.querySelector('#tg .botroster [data-k=\\'add-0\\']').click(); return 1; })()");
+    await wait(400);
+    await page.evaluate("(() => { document.querySelector('#tg .botroster [data-k=\\'add-0\\']').click(); return 1; })()");
     const seated = await page.until(`${G} && (() => { const g = window.__dogfight(); let k = 0; for (let i = 1; i < g.cap; i += 1) if (g.isBot[i] && !g.puppet[i]) k += 1; return k === 2; })()`, 5000).then(() => true, () => false);
     check('two presses seat two bots, flown by the page', seated);
     await page.evaluate("(() => { const b = window.__roomBots(); b.skill(201, 'ace'); b.skill(202, 'ace'); return 1; })()");

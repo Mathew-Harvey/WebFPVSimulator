@@ -73044,3 +73044,5 @@ The bug hunt thread saw together-shots' ribbon check "a bot cuts somebody's ribb
 - Not flown.
 
 - Pass 3 (owner, 23:49Z, "keep going"): advertising boards along both sides of the start straight, six metres a panel in the team colours with a white stripe, solid at their 0.95 m height, from the existing materials. Parked camera: draw calls 271 before and after, triangles 673,070 to 676,910 (+0.6 percent). The grey wall past the field's edge is the built map's horizon backdrop shared by every built map, so it is left alone here; a pilot at the pad or on the track does not see it. `check:moto` 17 of 17. Not flown.
+
+- The owner, 23:59Z, "push to main, the game is filming like the drifting one". Latency effect as stated in the PR and the passes above (parked camera draw calls 271 flat, triangles +2.5 percent over pass 2, none in the flight loop); his word covers the rise. Fetched first: origin/main had nothing new, so a fast forward. Not flown by me.

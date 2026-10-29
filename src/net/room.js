@@ -202,6 +202,11 @@ export class RoomSession {
         this.peers.reset();
         this.peers.setIce(data.ice, data.you);
       }
+    } else if (name === 'bots') {
+      /* A seat gone is a pilot gone. */
+      for (const id of [...this.remotes.keys()]) {
+        if (id > 200 && !this.link.bots.has(id)) this.remotes.delete(id);
+      }
     } else if (name === 'left') {
       this.remotes.delete(data.id);
       this.peers.drop(data.id, false);
@@ -245,7 +250,7 @@ export class RoomSession {
     }
     const at = this.now();
     decodeFrame(bytes, this.units, (id, pose) => {
-      if (id === this.link.you || !this.link.pilots.has(id)) {
+      if (id === this.link.you || !(this.link.pilots.has(id) || this.link.bots.has(id))) {
         return;
       }
       let r = this.remotes.get(id);
@@ -328,7 +333,7 @@ export class RoomSession {
   eachRemote(draw) {
     const t = this.now();
     for (const r of this.remotes.values()) {
-      const pilot = this.link.pilots.get(r.id);
+      const pilot = this.link.pilots.get(r.id) || this.link.bots.get(r.id);
       if (pilot && r.sample(t, this.scratch)) {
         draw(r.id, this.scratch, pilot);
       }

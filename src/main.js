@@ -2713,6 +2713,21 @@ export async function boot({ loading, bootStart, mapId }) {
     if (who) {
       fightGame.setYou(who.you, who.host, who.avatar);
     }
+    /* The host's bots: the seats, and their places out to the room when
+     * this page is the one flying them (src/net/roombots.js). */
+    const bots = together.roomBots();
+    if (bots) {
+      const g = fightGame;
+      const mine = bots.mine();
+      g.setBots(bots.seats(), mine);
+      if (mine) {
+        for (let s = 1; s < fightMods.MAX_PILOTS; s += 1) {
+          if (g.botFlies(s)) {
+            bots.pose(g.idOf[s], g.x[s], g.y[s], g.z[s], g.fx[s], g.fy[s], g.fz[s], g.ux[s], g.uy[s], g.uz[s]);
+          }
+        }
+      }
+    }
     const rb = together.takeRibbon();
     if (rb) {
       fightGame.heard(rb.state, rb.goLocal, rb.endLocal);

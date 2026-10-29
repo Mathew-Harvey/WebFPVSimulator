@@ -56,6 +56,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
+import { BOTS_MAX, createRoomBots } from './roombots.js';
 import { RoomSession } from './room.js';
 import { ROOM_MAX, STREAM_MAX, roomsUrl } from './link.js';
 import { RoomRace, RACE_LAPS_MAX } from './roomrace.js';
@@ -489,6 +490,8 @@ export function createTogether(shell) {
 
   let session = null;
   let race = null;
+  /* The host's bots (src/net/roombots.js), one transport per session. */
+  let bots = null;
   /* What the pilot asked for and has not got yet: { kind: 'host', entry }
    * or { kind: 'join', code, room }. */
   let pending = null;
@@ -976,6 +979,7 @@ export function createTogether(shell) {
       send: (m) => session && session.link.raceSend(m),
       you: () => (session ? session.you : 0),
     });
+    bots = createRoomBots(session);
     return session;
   }
 
@@ -995,6 +999,10 @@ export function createTogether(shell) {
     }
     session = null;
     race = null;
+    if (bots) {
+      bots.heard([]);
+    }
+    bots = null;
     pending = null;
     welcomedOnce = false;
     cardOwed = '';
@@ -1109,6 +1117,7 @@ export function createTogether(shell) {
       ribbon: r.game === 'ribbon' ? {
         phase: ribbonNow ? ribbonNow.state.phase : 'pit',
         length: ribbonNow ? ribbonNow.state.length : 'normal',
+        bots: session.link.bots.size,
       } : null,
     });
   }
@@ -1706,6 +1715,10 @@ export function createTogether(shell) {
       case 'ribbon':
         ribbonHeard(data.ribbon);
         break;
+      case 'bots':
+        if (bots) bots.heard(data.bots);
+        infoForShell();
+        break;
       case 'rbCut':
         if (ribbonCuts.length < 64) {
           ribbonCuts.push(data);
@@ -1751,8 +1764,8 @@ export function createTogether(shell) {
     if (ph !== 'pit' && ph !== 'results') {
       return false;
     }
-    if (session.link.pilots.size < 2) {
-      toast('Ribbon cutting needs two pilots. Send the link.', 'warn');
+    if (session.link.pilots.size + session.link.bots.size < 2) {
+      toast('Ribbon cutting needs two pilots. Add a bot or send the link.', 'warn');
       return true;
     }
     session.link.raceSend({ t: 'rbStart' });
@@ -1791,6 +1804,7 @@ export function createTogether(shell) {
     }
     ribbonCuts = [];
     ribbonHeard(data.ribbon);
+    if (bots) bots.heard(data.bots);
     lastLink = 'good';
     paintChip();
     infoForShell();
@@ -5771,6 +5785,18 @@ export function createTogether(shell) {
       }
     } else if (action === 'room-ribbon-length') {
       ribbonLength();
+    } else if (action === 'room-ribbon-bots') {
+      /* One more bot each press, and none after the last: the roster page
+       * does this properly once it is in. */
+      if (bots && bots.mine()) {
+        const seats = bots.seats();
+        const full = seats.length >= BOTS_MAX || session.link.pilots.size + seats.length >= room().max;
+        if (full) {
+          for (const seat of seats) bots.drop(seat.id);
+        } else {
+          bots.add('rookie');
+        }
+      }
     }
   }
 
@@ -5865,6 +5891,11 @@ export function createTogether(shell) {
       }
     },
     ribbonStart,
+    /* The room's bot seats and their poses, for the games and the roster
+     * page; null out of a room. */
+    roomBots() {
+      return session && session.inRoom ? bots : null;
+    },
     modalOpen() {
       return !modal.hidden;
     },

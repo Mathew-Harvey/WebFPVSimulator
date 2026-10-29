@@ -516,5 +516,90 @@ function crossing(at, { cutter = ME, owner = 1, started = true } = {}) {
   check(!g.live(r7), 'a pilot not heard from is not in the air here');
 }
 
+/* A room's host flying two bots: they chase the ribbons there are, their
+ * cuts go to the board as theirs, and a page that is not the host flies
+ * none of them. */
+{
+  let wall = 1000;
+  const g = new RibbonRoom(world(), { now: () => wall });
+  g.setYou(1, true);
+  const seats = [{ id: 201, name: 'MOCHI', skill: 'ace' }, { id: 202, name: 'GIZMO', skill: 'ace' }];
+  g.setBots(seats, true);
+  check(g.slotFor(201) === 1 && g.slotFor(202) === 2 && g.isBot[1] && g.isBot[2] && g.rCount[1] === RIBBON_POINTS && g.nameOf(2) === 'GIZMO', 'the host\'s bots take the dogfight\'s slots, flown here, with whole ribbons');
+  const pose = (x, y, z) => ({
+    px: x, py: y, pz: z, qx: 0, qy: 0, qz: 0, qw: 1, cut: false,
+  });
+  const feed = (n) => {
+    for (let i = 0; i < n; i += 1) {
+      g.remote(7, pose(0, 6, 0), { handle: 'Kiwi' });
+      g.step(still(-40, 10, -40));
+      wall += 10;
+    }
+  };
+  const x0 = g.x[1];
+  feed(100);
+  check(Math.abs(g.x[1] - x0) > 1, 'they fly between rounds', `${x0} -> ${g.x[1]}`);
+  const rows = [1, 7, 201, 202].map((id) => ({
+    id, count: RIBBON_POINTS, out: false, outAt: 0, cuts: 0, snips: 0,
+  }));
+  g.heard({
+    phase: 'live', length: 'long', round: 'none', n: 1, goAt: 0, endAt: 0, winner: null, rows,
+  }, wall - 2000, 0);
+  check(g.live(1) && g.live(2) && g.inFight[g.slotFor(7)], 'the round puts them in it');
+  let botCut = null;
+  for (let n = 0; n < 6000 && !botCut; n += 1) {
+    feed(1);
+    const out = g.takeOutbox();
+    if (out) botCut = out.find((m) => m.by === 201 || m.by === 202);
+  }
+  check(botCut && botCut.t === 'rbCut' && botCut.n === 1 && botCut.to !== botCut.by, 'a bot cuts a ribbon, sent to the board as the bot\'s',
+    JSON.stringify(botCut));
+  check(g.rCount[g.slotFor(botCut ? botCut.to : 7)] === RIBBON_POINTS || botCut.to === 1, 'and the ribbon waits for the board\'s word');
+  g.setBots(seats, false);
+  check(!g.isBot[1] && !g.isBot[2], 'a page that is no longer host flies none');
+  g.setBots([seats[0]], false);
+  check(g.idOf[2] === -1 && g.rCount[2] === 0, 'a seat the board took away is gone');
+}
+
+/* What a full room costs a feed on the host's page: seven ace bots and
+ * twenty two other pilots, everybody with a ribbon. */
+{
+  let wall = 0;
+  const g = new RibbonRoom(world(), { now: () => wall });
+  g.setYou(1, true);
+  const seats = [];
+  for (let i = 0; i < 7; i += 1) seats.push({ id: 201 + i, name: `B${i}`, skill: 'ace' });
+  g.setBots(seats, true);
+  const ids = [1, ...seats.map((x) => x.id)];
+  for (let p = 0; p < 22; p += 1) ids.push(10 + p);
+  g.heard({
+    phase: 'live', length: 'normal', round: 'none', n: 1, goAt: 0, endAt: 0, winner: null,
+    rows: ids.map((id) => ({
+      id, count: RIBBON_POINTS, out: false, outAt: 0, cuts: 0, snips: 0,
+    })),
+  }, -5000, 0);
+  const me = {};
+  const N = 10000;
+  let t = 0n;
+  for (let n = 0; n < N; n += 1) {
+    for (let p = 0; p < 22; p += 1) {
+      const a = n * 0.01 + p;
+      g.remote(10 + p, {
+        px: 20 * Math.cos(a), py: 8, pz: 20 * Math.sin(a), qx: 0, qy: 0, qz: 0, qw: 1, cut: false,
+      }, null);
+    }
+    pilotAt(n, me);
+    const t0 = process.hrtime.bigint();
+    g.step(me);
+    t += process.hrtime.bigint() - t0;
+    g.takeOutbox();
+    g.eventCount = 0;
+    wall += 10;
+  }
+  const us = Number(t) / 1000 / N;
+  console.log(`  cost  ${us.toFixed(2)} us a room feed, 30 ribbons, 7 bots`);
+  check(us < 60, 'a full room\'s feed on the host is under 60 us', `${us.toFixed(2)} us`);
+}
+
 console.log(`${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

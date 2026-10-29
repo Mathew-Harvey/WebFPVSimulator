@@ -49,6 +49,8 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
+import { botPilot, isBotId } from './roombots.js';
+
 /* The board's protocol version, src/rooms.js PROTOCOL. */
 export const PROTOCOL = 1;
 export const SOCKET_PATH = '/api/rooms/socket';
@@ -137,6 +139,8 @@ export class RoomLink {
     this.vote = null;
     this.moved = null;
     this.pilots = new Map();
+    /* The host's bots, as pilots (src/net/roombots.js). */
+    this.bots = new Map();
     this.retries = 0;
     this.retryTimer = null;
     this.connectTimer = null;
@@ -273,6 +277,7 @@ export class RoomLink {
         for (const p of m.pilots || []) {
           this.pilots.set(p.id, p);
         }
+        this.takeBots(m.bots);
         this.onEvent('welcome', m);
         break;
       case 'joined':
@@ -375,6 +380,10 @@ export class RoomLink {
         this.race = m.race || null;
         this.onEvent('race', m);
         break;
+      case 'bots':
+        this.takeBots(m.bots);
+        this.onEvent('bots', m);
+        break;
       case 'ribbon':
       case 'rbCut':
         /* A ribbon cutting room's round, and a cut the board believed. */
@@ -448,6 +457,16 @@ export class RoomLink {
     this.ws.send(text);
     this.sentBytes += text.length;
     return true;
+  }
+
+  /* The board's list of the host's bots, kept as pilots are. */
+  takeBots(seats) {
+    this.bots.clear();
+    for (const seat of Array.isArray(seats) ? seats : []) {
+      if (seat && isBotId(seat.id)) {
+        this.bots.set(seat.id, botPilot(seat));
+      }
+    }
   }
 
   /* One pose, or nothing if the socket is behind: never a queue. */

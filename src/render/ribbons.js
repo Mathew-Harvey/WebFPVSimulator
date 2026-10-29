@@ -99,7 +99,9 @@ export class RibbonView extends DogfightView {
   /* A room's pilots wear their own livery, and so do their ribbons. */
   liveryOf(slot) {
     const g = this.game;
-    if (g && g.room) {
+    /* A room's bots wear the dogfight's bot colours on every page
+     * (src/net/roombots.js). */
+    if (g && g.room && (slot < 1 || slot >= MAX_PILOTS)) {
       return liveryColour(g.avatars[slot], slot === ME ? g.you : g.idOf[slot]);
     }
     return super.liveryOf(slot);

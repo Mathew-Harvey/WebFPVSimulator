@@ -52,7 +52,7 @@
  */
 
 import {
-  Dogfight, DOGFIGHT_EVERY, MAX_PILOTS, MAX_BOTS, ME, SKILLS,
+  Dogfight, DOGFIGHT_EVERY, MAX_PILOTS, MAX_BOTS, ME, SKILLS, rng,
 } from './dogfight.js';
 
 const DT = DOGFIGHT_EVERY / 1000;
@@ -609,7 +609,13 @@ export class RibbonCut extends Dogfight {
  * events, for up to ROOM_SLOTS pilots, slot 0 this page's. Nobody here is a
  * bot, and nothing is fired.
  */
-export const ROOM_SLOTS = 64;
+export const ROOM_SLOTS = MAX_PILOTS + 64;
+/* The host's bots are slots 1 to 7, as the dogfight's are, so the view
+ * draws the host's own as it draws the dogfight's; a bot's room id is its
+ * slot past BOT_ID_BASE (src/net/roombots.js BOT_ID_FIRST is 201). Room
+ * pilots are from slot 8. */
+const BOT_ID_BASE = 200;
+const FIRST_PILOT_SLOT = MAX_PILOTS;
 /* A remote pilot not heard from for this long is not drawn, ms. */
 const GONE_MS = 1500;
 
@@ -642,6 +648,21 @@ export class RibbonRoom {
     this.alive = new Uint8Array(n);
     this.inFight = new Uint8Array(n);
     this.isBot = new Uint8Array(n);
+    /* What the dogfight's bot flying reads and writes (Dogfight fly and
+     * lookAhead, borrowed below), for the host's bots. */
+    for (const a of ['vx', 'vy', 'vz', 'retargetAt', 'avoidUntil', 'ax', 'ay', 'az', 'lookAt', 'burstUntil', 'restUntil',
+      'lockMs', 'wanderAt', 'wx', 'wy', 'wz', 'breakUntil', 'breakSign', 'heat', 'shieldUntil', 'losAt',
+      'calmUntil', 'missAt', 'mx0', 'my0', 'mz0']) {
+      this[a] = f();
+    }
+    this.target = new Int8Array(n).fill(-1);
+    this.firing = new Uint8Array(n);
+    this.losOk = new Uint8Array(n);
+    this.botSkill = new Array(n).fill('rookie');
+    this.rules = { skill: 'rookie' };
+    this.closeIn = 0;
+    this.meBias = 1;
+    this.rand = rng(0x5eed);
     this.pops = new Int32Array(n);
     this.popped = new Int32Array(n);
     this.cuts = new Int32Array(n);
@@ -764,7 +785,8 @@ export class RibbonRoom {
     return i === ME ? 'YOU' : (this.names[i] || 'PILOT');
   }
 
-  /* A slot for room pilot `id`, made the first time it is asked for. */
+  /* A slot for room pilot `id`, made the first time it is asked for. A
+   * bot's is fixed by its id. */
   slotFor(id) {
     if (id === this.you) {
       return ME;
@@ -773,8 +795,14 @@ export class RibbonRoom {
     if (s !== undefined) {
       return s;
     }
+    if (id > BOT_ID_BASE && id < BOT_ID_BASE + FIRST_PILOT_SLOT) {
+      s = id - BOT_ID_BASE;
+      this.idOf[s] = id;
+      this.slots.set(id, s);
+      return s;
+    }
     s = -1;
-    for (let i = 1; i < ROOM_SLOTS; i += 1) {
+    for (let i = FIRST_PILOT_SLOT; i < ROOM_SLOTS; i += 1) {
       if (this.idOf[i] < 0) {
         s = i;
         break;
@@ -783,7 +811,7 @@ export class RibbonRoom {
     if (s < 0) {
       /* Full: the one longest unheard and not in the round gives way. */
       let oldest = Infinity;
-      for (let i = 1; i < ROOM_SLOTS; i += 1) {
+      for (let i = FIRST_PILOT_SLOT; i < ROOM_SLOTS; i += 1) {
         if (!this.rows.has(this.idOf[i]) && this.seenAt[i] < oldest) {
           oldest = this.seenAt[i];
           s = i;
@@ -805,9 +833,110 @@ export class RibbonRoom {
     return s;
   }
 
-  /* Present: this page's own pilot, or a remote one drawn lately. */
+  /* Present: this page's own pilot, a bot this page flies, or a remote
+   * one drawn lately. */
   here(i) {
-    return i === ME || this.now() - this.seenAt[i] < GONE_MS;
+    return i === ME || this.isBot[i] === 1 || this.now() - this.seenAt[i] < GONE_MS;
+  }
+
+  /* Missiles never come at a ribbon bot. */
+  incoming() {
+    return -1;
+  }
+
+  /*
+   * The board's bot seats, [{ id, name, skill }], and whether this page is
+   * the host that flies them. A bot this page starts flying starts where
+   * the room last drew it, or at a spawn if it was never drawn.
+   */
+  setBots(seats, mine) {
+    for (let s = 1; s < FIRST_PILOT_SLOT; s += 1) {
+      const id = BOT_ID_BASE + s;
+      let seat = null;
+      for (let n = 0; n < seats.length; n += 1) {
+        if (seats[n].id === id) seat = seats[n];
+      }
+      if (!seat) {
+        if (this.idOf[s] >= 0) {
+          this.slots.delete(this.idOf[s]);
+          this.idOf[s] = -1;
+          this.isBot[s] = 0;
+          this.rCount[s] = 0;
+          this.inFight[s] = 0;
+          this.alive[s] = 0;
+        }
+        continue;
+      }
+      const fresh = this.idOf[s] < 0;
+      this.slotFor(id);
+      this.names[s] = seat.name;
+      this.botSkill[s] = seat.skill;
+      if (mine && !this.isBot[s]) {
+        this.isBot[s] = 1;
+        if (fresh || this.now() - this.seenAt[s] > GONE_MS) {
+          const sp = this.world.spawns[(s - 1) % this.world.spawns.length];
+          this.x[s] = sp.x; this.y[s] = sp.y; this.z[s] = sp.z;
+          const dx = this.world.cx - sp.x;
+          const dz = this.world.cz - sp.z;
+          const m = Math.sqrt(dx * dx + dz * dz) || 1;
+          this.fx[s] = dx / m; this.fy[s] = 0; this.fz[s] = dz / m;
+          this.ux[s] = 0; this.uy[s] = 1; this.uz[s] = 0;
+          this.vx[s] = 0; this.vy[s] = 0; this.vz[s] = 0;
+          this.xPrev[s] = sp.x; this.yPrev[s] = sp.y; this.zPrev[s] = sp.z;
+        }
+        this.target[s] = -1;
+        if (!this.inRound) {
+          this.inFight[s] = 1;
+          this.alive[s] = 1;
+          this.rCount[s] = RIBBON_POINTS;
+          this.layRibbon(s);
+        }
+      } else if (!mine && this.isBot[s]) {
+        this.isBot[s] = 0;
+        this.fresh[s] = 1;
+      }
+    }
+  }
+
+  /* Whether bot slot s should be in the air: in the round, or between
+   * rounds. */
+  botFlies(s) {
+    return this.isBot[s] === 1 && (this.inRound ? this.live(s) : true);
+  }
+
+  /* One feed of a host's bot: a target with a ribbon to chase, then the
+   * dogfight's own flying, at the seat's skill. */
+  flyBot(i, now) {
+    const skill = this.botSkill[i];
+    this.rules.skill = skill;
+    this.ribbon.skill = skill;
+    let t = this.target[i];
+    if (t < 0 || !this.live(t) || this.rCount[t] <= this.firstLink || now >= this.retargetAt[i]) {
+      let best = -1;
+      let bestD = Infinity;
+      for (let j = 0; j < ROOM_SLOTS; j += 1) {
+        if (j === i || !this.live(j) || this.rCount[j] <= this.firstLink || (j === ME && !this.meFlying)) {
+          continue;
+        }
+        const dx = this.x[j] - this.x[i];
+        const dy = this.y[j] - this.y[i];
+        const dz = this.z[j] - this.z[i];
+        const d = dx * dx + dy * dy + dz * dz;
+        if (d < bestD) {
+          bestD = d;
+          best = j;
+        }
+      }
+      t = best;
+      this.target[i] = t;
+      this.retargetAt[i] = now + 1500 + Math.floor(this.rand() * 1000);
+    }
+    /* The dogfight's search never runs: its target is this one, until
+     * this asks again. */
+    const again = this.retargetAt[i];
+    this.retargetAt[i] = Infinity;
+    this.fly(i, now, false);
+    this.retargetAt[i] = again;
   }
 
   live(i) {
@@ -994,17 +1123,23 @@ export class RibbonRoom {
     }
   }
 
-  /* A cut this page saw, for the board to judge. Not made here; and the
-   * same ribbon is not asked about again until the board could have
-   * answered. */
+  /* A cut this page saw, its pilot's or a bot's it flies, for the board
+   * to judge. Not made here; and the same ribbon is not asked about again
+   * until the board could have answered. */
   cut(c, o, s, now) {
-    if (c !== ME || this.idOf[o] < 0) {
+    const to = o === ME ? this.you : this.idOf[o];
+    if ((c !== ME && !this.isBot[c]) || to < 0) {
       return;
     }
     this.rSafeUntil[o] = now + RIBBON.safeMs;
-    this.outbox.push({
-      t: 'rbCut', n: this.state.n, to: this.idOf[o], s,
-    });
+    const msg = {
+      t: 'rbCut', n: this.state.n, to, s,
+    };
+    if (c !== ME) {
+      msg.by = this.idOf[c];
+      this.calmUntil[c] = now + RIBBON_BOTS[this.botSkill[c]].calmMs;
+    }
+    this.outbox.push(msg);
   }
 
   /* What there is to send, taken. */
@@ -1055,6 +1190,12 @@ export class RibbonRoom {
       }
     }
     for (let i = 1; i < ROOM_SLOTS; i += 1) {
+      if (this.isBot[i]) {
+        if (this.botFlies(i)) {
+          this.flyBot(i, now);
+        }
+        continue;
+      }
       if (this.idOf[i] < 0 || !this.here(i)) {
         continue;
       }
@@ -1064,7 +1205,14 @@ export class RibbonRoom {
       const dx = this.x[i] - this.xPrev[i];
       const dy = this.y[i] - this.yPrev[i];
       const dz = this.z[i] - this.zPrev[i];
+      /* Its speed, which a bot leads it by. */
+      this.vx[i] = dx / DT;
+      this.vy[i] = dy / DT;
+      this.vz[i] = dz / DT;
       if (this.fresh[i] || dx * dx + dy * dy + dz * dz > JUMP * JUMP * k * k) {
+        this.vx[i] = 0;
+        this.vy[i] = 0;
+        this.vz[i] = 0;
         this.fresh[i] = 0;
         this.xPrev[i] = this.x[i]; this.yPrev[i] = this.y[i]; this.zPrev[i] = this.z[i];
         if (!this.inRound && this.rCount[i] < RIBBON_POINTS) {
@@ -1082,8 +1230,15 @@ export class RibbonRoom {
         this.stepRibbon(i);
       }
     }
-    if (this.cutting && this.live(ME) && this.meFlying && !jump) {
-      this.cutsBy(ME, now);
+    if (this.cutting) {
+      if (this.live(ME) && this.meFlying && !jump) {
+        this.cutsBy(ME, now);
+      }
+      for (let c = 1; c < FIRST_PILOT_SLOT; c += 1) {
+        if (this.isBot[c] && this.live(c)) {
+          this.cutsBy(c, now);
+        }
+      }
     }
   }
 
@@ -1167,8 +1322,8 @@ export class RibbonRoom {
   }
 }
 
-borrow(RibbonRoom.prototype, RibbonCut.prototype, ['linkLen', 'firstLink', 'share', 'anchor', 'layRibbon', 'stepRibbon', 'cutsBy']);
-borrow(RibbonRoom.prototype, Dogfight.prototype, ['event']);
+borrow(RibbonRoom.prototype, RibbonCut.prototype, ['linkLen', 'firstLink', 'share', 'anchor', 'layRibbon', 'stepRibbon', 'cutsBy', 'goal']);
+borrow(RibbonRoom.prototype, Dogfight.prototype, ['event', 'fly', 'lookAhead']);
 
 /*
  * The squared distance between two segments, a + s e and b + t f with s

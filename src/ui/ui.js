@@ -4521,6 +4521,12 @@ function ribbonRoomItems(info) {
       note: between ? 'Everybody in the room gets a ribbon. Or press G while flying.' : 'The next one can start when this one ends.',
     },
     {
+      label: 'Bots',
+      value: String(rb.bots || 0),
+      action: 'room-ribbon-bots',
+      note: 'Press for one more rookie bot, and once the room is full, for none. Bots fly from your computer and give a seat to a friend who joins.',
+    },
+    {
       label: 'Ribbon length',
       value: RIBBON_LENGTH_NAMES[rb.length] || 'Normal',
       action: between ? 'room-ribbon-length' : 'noop',

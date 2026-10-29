@@ -4149,6 +4149,45 @@ async function sceneRibbon() {
     const rows = await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); return window.__ui.items().filter(Boolean).map((x) => x.label); })()");
     check('the pause menu says who starts a round', rows.includes('Ribbon cutting'), rows.join(', '));
     await page.evaluate("(() => { window.__ui.act('resume'); return 1; })()");
+
+    /* The host goes, the page is host, and fills the room with bots. */
+    clearInterval(hover);
+    hover = null;
+    kite.s.leave();
+    check('the page is host once the host goes', await page.until(`${T} && window.__together().host === window.__together().you`, 10000).then(() => true, () => false));
+    const botRows = await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); return window.__ui.items().filter(Boolean).map((x) => x.label); })()");
+    check('the host\'s pause menu has Start a ribbon round and Bots', botRows.includes('Start a ribbon round') && botRows.includes('Bots'), botRows.join(', '));
+    await page.evaluate("(() => { window.__ui.act('room-ribbon-bots'); return 1; })()");
+    await wait(300);
+    await page.evaluate("(() => { window.__ui.act('room-ribbon-bots'); return 1; })()");
+    const seated = await page.until(`${G} && window.__dogfight().isBot[1] === 1 && window.__dogfight().isBot[2] === 1`, 5000).then(() => true, () => false);
+    check('two presses seat two bots, flown by the page', seated);
+    const row = await page.evaluate("(() => { const it = window.__ui.items().find((x) => x && x.label === 'Bots'); return it ? it.value : ''; })()");
+    check('and the row says so', row === '2', row);
+    await page.evaluate("(() => { window.__ui.act('resume'); return 1; })()");
+    const moss = bot('Moss Comet', 343);
+    await joinRoom(moss, room.code, '');
+    const sees = await until(() => {
+      let n = 0;
+      moss.s.eachRemote((id, pose, p) => { if (p.bot) n += 1; });
+      return n === 2;
+    }, 8000);
+    check('a pilot who joins sees both bots fly, as pilots', sees);
+    let named = '';
+    moss.s.eachRemote((id, pose, p) => { if (p.bot && !named) named = p.handle; });
+    check('named from the board\'s list', named === 'MOCHI' || named === 'GIZMO', named);
+    await shot('bots');
+    await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); window.__ui.act('room-ribbon-start'); return 1; })()");
+    const started = await until(() => {
+      const r = moss.heard.filter((h) => h.name === 'ribbon').pop();
+      return r && r.data.ribbon.phase === 'count' && r.data.ribbon.rows.length === 4;
+    }, 5000);
+    check('the host\'s start puts the bots in the round', started);
+    check('the start puts the host back in the air', await page.until("window.__ui.screen === 'flight'", 3000).then(() => true, () => false));
+    const botCut = await until(() => moss.heard.some((h) => h.name === 'rbCut' && h.data.by > 200), 45000, 200);
+    check('a bot cuts somebody\'s ribbon, and the room hears it', botCut);
+    await shot('bots-live');
+    moss.s.leave();
     /* The picker asks for Drift Matsuri's picture, which main does not
      * have yet (PROGRESS.md, the swap scene's entry). */
     endChecks(page, /thumbs\/drift\.jpg/);

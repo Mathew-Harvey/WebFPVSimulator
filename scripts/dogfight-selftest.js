@@ -31,6 +31,7 @@ import {
   Dogfight, GUN, MISSILE, HITS, ME, MAX_PILOTS, DOGFIGHT_EVERY, SKILLS,
 } from '../src/game/dogfight.js';
 import { ATTACK, EXTEND, PATROL } from '../src/game/dogbrain.js';
+import { BotFlyer } from '../src/game/botflyer.js';
 
 let failed = 0;
 let passed = 0;
@@ -515,6 +516,46 @@ function dodgeRate(skill) {
   const lowest = patrol[7] ? lowPatrol[7] / patrol[7] : Infinity;
   const gizmo = patrol[2] ? lowPatrol[2] / patrol[2] : 0;
   check(lowest < gizmo, 'the ambusher patrols lower than the diver', `${lowest.toFixed(1)} m < ${gizmo.toFixed(1)} m`);
+}
+
+/* BotFlyer alone, as the goats and the drift bots use it: no fight, a
+ * goal on the far side of a wall, and only setGoal and step. */
+{
+  const w = world();
+  const n = 2;
+  const f = () => new Float64Array(n);
+  let a = 99;
+  const game = {
+    world: w,
+    clockMs: 0,
+    x: f(), y: f(), z: f(), vx: f(), vy: f(), vz: f(), fx: f(), fy: f(), fz: f(), ux: f(), uy: f(), uz: f(),
+    live: (j) => j === 1,
+    rand: () => {
+      a = (a + 0x6d2b79f5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    },
+  };
+  const flyer = new BotFlyer(game, { DT: DOGFIGHT_EVERY / 1000, MAX: n });
+  game.x[1] = 20; game.y[1] = 6; game.z[1] = 0; game.fx[1] = 1; game.uy[1] = 1;
+  flyer.reset();
+  flyer.placed(1);
+  flyer.setGoal(1, 70, 6, 0, 15);
+  const spec = { ...SKILLS.pilot, alt: 4 };
+  let at = -1;
+  let fastest = 0;
+  for (let s = 0; s < 3000 && at < 0; s += 1) {
+    game.clockMs = s * DOGFIGHT_EVERY;
+    flyer.step(1, game.clockMs, spec);
+    fastest = Math.max(fastest, Math.sqrt(game.vx[1] * game.vx[1] + game.vy[1] * game.vy[1] + game.vz[1] * game.vz[1]));
+    const dx = game.x[1] - 70;
+    const dz = game.z[1];
+    if (dx * dx + dz * dz < 25) at = s;
+  }
+  check(at > 0, 'a BotFlyer finds its way round a wall to a goal with setGoal and step', `${at < 0 ? 'never' : `${(at / 100).toFixed(1)} s`}`);
+  check(fastest <= 15 * 1.05, 'and no faster than the speed it was given', `${fastest.toFixed(1)} m/s`);
 }
 
 /* Cost: seven bots and the gun held, per feed. */

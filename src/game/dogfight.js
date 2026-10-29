@@ -450,7 +450,19 @@ export class Dogfight {
      * handed two spots between them. */
     this.brain.reset();
     const sp = this.world.spawns;
-    this.spawnList = sp.length >= 8 ? sp : sp.concat(this.brain.nav.slice(0, 12 - sp.length));
+    if (sp.length >= 8) {
+      this.spawnList = sp;
+    } else {
+      /* The open air the brains found, every point reachable from the
+       * pilot's start, the start itself and what is near it left out. */
+      const w = this.world;
+      const away = 15 * w.k;
+      this.spawnList = sp.concat(this.brain.nav.filter((a) => {
+        const dx = a.x - w.cx;
+        const dz = a.z - w.cz;
+        return dx * dx + dz * dz > away * away;
+      }).slice(0, 12 - sp.length));
+    }
     for (let i = 1; i < MAX_PILOTS; i += 1) {
       if (this.isBot[i]) {
         this.spawnBot(i, Math.floor(((i - 1) * this.spawnList.length) / MAX_BOTS));

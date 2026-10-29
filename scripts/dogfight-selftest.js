@@ -402,14 +402,21 @@ function circling(skill, seed, jink, bots = 3) {
   }
   return { g, taken };
 }
+/* Ten seeds for the jink: over two, a change anywhere else that moves the
+ * dice could turn the answer over (it did, once, on the nav graph). */
 {
-  const steady = circling('pilot', 1, false).taken + circling('pilot', 2, false).taken;
-  const jinky = circling('pilot', 1, true).taken + circling('pilot', 2, true).taken;
-  check(steady > 20, 'bots lead a pilot flying a steady circle and hit it', `${steady} hits in two minutes`);
+  let steady = 0;
+  let jinky = 0;
+  for (let seed = 1; seed <= 10; seed += 1) {
+    steady += circling('pilot', seed, false).taken;
+    jinky += circling('pilot', seed, true).taken;
+  }
+  check(steady > 100, 'bots lead a pilot flying a steady circle and hit it', `${steady} hits in ten minutes`);
   check(jinky < steady, 'and a pilot who jinks is hit less, because what a bot sees lags what is', `${jinky} < ${steady}`);
+  const two = circling('pilot', 1, false).taken + circling('pilot', 2, false).taken;
   const rookie = circling('rookie', 1, false).taken + circling('rookie', 2, false).taken;
   const ace = circling('ace', 1, false).taken + circling('ace', 2, false).taken;
-  check(rookie < steady && steady < ace, 'a rookie hits less than a pilot and a pilot less than an ace', `${rookie} < ${steady} < ${ace}`);
+  check(rookie < two && two < ace, 'a rookie hits less than a pilot and a pilot less than an ace', `${rookie} < ${two} < ${ace}`);
 }
 
 /* Missiles: fired locked from far at one bot, forty times. A rookie never

@@ -136,6 +136,8 @@ const T_MIN = 0.08;
 const HEAR = 14;
 /* How far a gun can be heard, m. */
 const GUN_HEARD = 150;
+/* The most points in the graph of ways round a map. */
+const NAV = 64;
 /* How far a bot can pick a quad out at all, m. */
 const SIGHT = 170;
 /* How long a pilot out of sight is remembered, ms. */
@@ -232,6 +234,13 @@ export class BotBrain {
     this.mePerf = 0;
     this.meBackAt = -Infinity;
     this.nav = [];
+    this.navNear = new Float64Array(8);
+    this.navDist = new Float64Array(NAV);
+    this.navPrev = new Int16Array(NAV);
+    this.navDone = new Uint8Array(NAV);
+    this.routeTo = new Int16Array(n).fill(-1);
+    this.routeAt = f();
+    this.to = { x: 0, y: 0, z: 0 };
     /* Scratch, so a feed allocates nothing. */
     this.want = {
       vx: 0, vy: 0, vz: 0, aim: false, ax: 0, ay: 0, az: 0, face: false, fx: 0, fy: 0, fz: 0, wander: 0,
@@ -284,8 +293,15 @@ export class BotBrain {
     }
   }
 
-  /* Places in the open air to fly between, found once a fight: up to 48
-   * points over the floor inside the arena, nothing solid round them. */
+  /*
+   * THE WAYS ROUND THE MAP, found once a fight: up to NAV points in the
+   * open air, each one seen from one already found, so every point is
+   * reachable from where the pilot started and none is out in the void
+   * past a building's walls; and the lines between them that are clear,
+   * which make a graph a bot can find its way round a wall by. It grows
+   * from the start outward, so a map that is one warehouse fills the
+   * warehouse and a town fills the town.
+   */
   findNav() {
     const g = this.g;
     const w = g.world;
@@ -293,27 +309,194 @@ export class BotBrain {
     const rand = g.rand;
     const solid = w.inside ? w.inside : () => false;
     const out = [];
-    for (let tries = 0; tries < 600 && out.length < 48; tries += 1) {
-      const a = rand() * 2 - 1;
-      const b = rand() * 2 - 1;
-      if (a * a + b * b > 1) {
-        continue;
-      }
-      const x = w.cx + a * w.radius * 0.92;
-      const z = w.cz + b * w.radius * 0.92;
-      const floor = w.floorAt(x, w.cy + w.top, z);
-      const y = Math.min(w.cy + w.top - 1 * k, floor + (1.5 + rand() * 9) * k);
-      if (y < floor + 1.2 * k) {
-        continue;
-      }
+    const reach = 60 * k;
+    const open = (x, y, z) => {
       const r = 1.2 * k;
-      if (solid(x, y, z) || solid(x + r, y, z) || solid(x - r, y, z) || solid(x, y, z + r) || solid(x, y, z - r)
-        || solid(x, y + r, z) || solid(x, y - r, z)) {
+      return !(solid(x, y, z) || solid(x + r, y, z) || solid(x - r, y, z) || solid(x, y, z + r) || solid(x, y, z - r)
+        || solid(x, y + r, z) || solid(x, y - r, z));
+    };
+    const add = (x, y, z, low) => {
+      out.push({
+        x, y, z, low, links: [],
+      });
+    };
+    /* The roots: the pilot's start, and the map's spawns that it can see. */
+    const sy = w.cy + 2 * k;
+    add(w.cx, sy, w.cz, true);
+    for (let s = 0; s < w.spawns.length; s += 1) {
+      const p = w.spawns[s];
+      if (w.blocked(w.cx, sy, w.cz, p.x, p.y, p.z) < 0) {
+        add(p.x, p.y, p.z, false);
+      }
+    }
+    /* The nearest few found so far, scratch. */
+    const near = this.navNear;
+    for (let tries = 0; tries < 1200 && out.length < NAV; tries += 1) {
+      /* Near a point already found, so it grows outward from the start. */
+      const from = out[Math.floor(rand() * out.length)];
+      const x = from.x + (rand() * 2 - 1) * reach;
+      const z = from.z + (rand() * 2 - 1) * reach;
+      const rx = x - w.cx;
+      const rz = z - w.cz;
+      if (rx * rx + rz * rz > w.radius * w.radius) {
         continue;
       }
-      out.push({ x, y, z, low: y - floor < 4 * k });
+      const floor = w.floorAt(x, from.y, z);
+      const y = Math.min(w.cy + w.top - 1 * k, floor + (1.5 + rand() * 9) * k);
+      if (y < floor + 1.2 * k || !open(x, y, z)) {
+        continue;
+      }
+      /* Not on top of one it has, and seen from at least one of the
+       * nearest. */
+      let tooNear = false;
+      let found = 0;
+      for (let n = 0; n < out.length; n += 1) {
+        const o = out[n];
+        const d = (o.x - x) * (o.x - x) + (o.y - y) * (o.y - y) + (o.z - z) * (o.z - z);
+        if (d < 64 * k * k) {
+          tooNear = true;
+          break;
+        }
+        found = keepNearest(near, found, n, d);
+      }
+      if (tooNear || !found) {
+        continue;
+      }
+      const at = out.length;
+      let linked = false;
+      for (let m = 0; m < found; m += 1) {
+        const o = out[near[m * 2]];
+        if (near[m * 2 + 1] < reach * reach * 1.6 && w.blocked(x, y, z, o.x, o.y, o.z) < 0) {
+          if (!linked) {
+            add(x, y, z, y - floor < 4 * k);
+            linked = true;
+          }
+          out[at].links.push(near[m * 2]);
+          o.links.push(at);
+        }
+      }
     }
     this.nav = out;
+  }
+
+  /*
+   * Where bot i should fly next to get to (x, y, z): straight there if it
+   * can see it, else the next point on the shortest way round through the
+   * graph, worked out again every so often. Writes the point to `to`.
+   */
+  route(i, x, y, z, now, to) {
+    const g = this.g;
+    const w = g.world;
+    const nav = this.nav;
+    to.x = x;
+    to.y = y;
+    to.z = z;
+    if (now >= this.routeAt[i]) {
+      this.routeAt[i] = now + 500 + (i * 37) % 200;
+      this.routeTo[i] = -1;
+      if (w.blocked(g.x[i], g.y[i], g.z[i], x, y, z) < 0 || nav.length < 2) {
+        return;
+      }
+      const start = this.nearestSeen(g.x[i], g.y[i], g.z[i]);
+      const end = this.nearestSeen(x, y, z);
+      if (start < 0 || end < 0) {
+        return;
+      }
+      this.routeTo[i] = start === end ? end : this.nextStep(start, end);
+    }
+    const n = this.routeTo[i];
+    if (n >= 0) {
+      to.x = nav[n].x;
+      to.y = nav[n].y;
+      to.z = nav[n].z;
+      /* There: ask again now. */
+      const k = w.k;
+      if (this.near(i, to.x, to.y, to.z, 4 * k)) {
+        this.routeAt[i] = 0;
+      }
+    }
+  }
+
+  /* The graph's point nearest (x, y, z) that can be seen from it, of the
+   * four nearest. */
+  nearestSeen(x, y, z) {
+    const nav = this.nav;
+    const near = this.navNear;
+    let found = 0;
+    for (let n = 0; n < nav.length; n += 1) {
+      const o = nav[n];
+      const d = (o.x - x) * (o.x - x) + (o.y - y) * (o.y - y) + (o.z - z) * (o.z - z);
+      found = keepNearest(near, found, n, d);
+    }
+    /* Nearest first. */
+    for (let a = 0; a < found; a += 1) {
+      let b = a;
+      for (let m = a + 1; m < found; m += 1) {
+        if (near[m * 2 + 1] < near[b * 2 + 1]) b = m;
+      }
+      const n = near[b * 2];
+      const d = near[b * 2 + 1];
+      near[b * 2] = near[a * 2];
+      near[b * 2 + 1] = near[a * 2 + 1];
+      near[a * 2] = n;
+      near[a * 2 + 1] = d;
+      const o = nav[n];
+      if (this.g.world.blocked(x, y, z, o.x, o.y, o.z) < 0) {
+        return n;
+      }
+    }
+    return -1;
+  }
+
+  /* The first step from graph point a toward b on the shortest way, by
+   * Dijkstra over a graph of at most NAV points; a itself if there is no
+   * way. */
+  nextStep(a, b) {
+    const nav = this.nav;
+    const n = nav.length;
+    const dist = this.navDist;
+    const prev = this.navPrev;
+    const done = this.navDone;
+    for (let m = 0; m < n; m += 1) {
+      dist[m] = Infinity;
+      prev[m] = -1;
+      done[m] = 0;
+    }
+    dist[a] = 0;
+    for (;;) {
+      let u = -1;
+      let best = Infinity;
+      for (let m = 0; m < n; m += 1) {
+        if (!done[m] && dist[m] < best) {
+          best = dist[m];
+          u = m;
+        }
+      }
+      if (u < 0 || u === b) {
+        break;
+      }
+      done[u] = 1;
+      const links = nav[u].links;
+      for (let l = 0; l < links.length; l += 1) {
+        const v = links[l];
+        const dx = nav[v].x - nav[u].x;
+        const dy = nav[v].y - nav[u].y;
+        const dz = nav[v].z - nav[u].z;
+        const d = best + Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (d < dist[v]) {
+          dist[v] = d;
+          prev[v] = u;
+        }
+      }
+    }
+    if (prev[b] < 0) {
+      return a;
+    }
+    let step = b;
+    while (prev[step] !== a && prev[step] >= 0) {
+      step = prev[step];
+    }
+    return step;
   }
 
   /* A bot back at a spawn: no memory of where it was, nothing on its
@@ -346,6 +529,8 @@ export class BotBrain {
     this.stuckAt[i] = g.clockMs + 1000;
     this.unstickUntil[i] = 0;
     this.lookAt[i] = g.clockMs + i * 7;
+    this.routeAt[i] = 0;
+    this.routeTo[i] = -1;
     const n = this.n;
     for (let j = 0; j < n; j += 1) {
       this.known[i * n + j] = 0;
@@ -1135,7 +1320,9 @@ export class BotBrain {
     if (mode === HUNT && t >= 0 && this.known[i * n + t]) {
       /* To where it was last seen, a little above, looking for it. */
       const q = i * n + t;
-      this.toward(i, this.kx[q], this.ky[q] + 1.5 * k, this.kz[q], vmax * 0.8, want);
+      const to = this.to;
+      this.route(i, this.kx[q], this.ky[q] + 1.5 * k, this.kz[q], now, to);
+      this.toward(i, to.x, to.y, to.z, vmax * 0.8, want);
       want.wander = 0.2;
       return;
     }
@@ -1146,11 +1333,16 @@ export class BotBrain {
       this.pickGoal(i, ambush);
       this.goalAt[i] = now + (ambush ? 6000 : 4000) + Math.floor(g.rand() * 4000);
     }
-    let gy = this.goalY[i];
+    const to = this.to;
+    this.route(i, this.goalX[i], this.goalY[i], this.goalZ[i], now, to);
+    let gy = to.y;
     if (!ambush) {
-      gy = Math.max(gy, floor + p.alt * k);
+      gy = Math.max(gy, Math.min(floor + p.alt * k, w.cy + w.top - 1 * k));
+    } else if (this.routeTo[i] < 0) {
+      /* In sight of where it is going: down to its own height, low. */
+      gy = Math.min(gy, floor + p.alt * k + 1 * k);
     }
-    this.toward(i, this.goalX[i], gy, this.goalZ[i], vmax * (ambush ? 0.3 : 0.6), want);
+    this.toward(i, to.x, gy, to.z, vmax * (ambush ? 0.3 : 0.6), want);
     want.wander = 0.35;
   }
 
@@ -1789,6 +1981,27 @@ export class BotBrain {
       g.pull(i, sx, sy, sz, now);
     }
   }
+}
+
+
+/* Keep the four nearest of a list (pairs of index and squared distance
+ * in `near`, `found` long): append while there is room, else put n in
+ * place of the farthest if it is nearer. Returns the new length. */
+function keepNearest(near, found, n, d) {
+  if (found < 4) {
+    near[found * 2] = n;
+    near[found * 2 + 1] = d;
+    return found + 1;
+  }
+  let far = 0;
+  for (let m = 1; m < 4; m += 1) {
+    if (near[m * 2 + 1] > near[far * 2 + 1]) far = m;
+  }
+  if (d < near[far * 2 + 1]) {
+    near[far * 2] = n;
+    near[far * 2 + 1] = d;
+  }
+  return 4;
 }
 
 /* Turn unit vector v (three numbers) toward (dx, dy, dz) by at most

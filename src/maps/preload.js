@@ -411,6 +411,7 @@ export const MAP_PRELOAD = {
     'maps/goats/yard.js',
     'maps/goats/herd.js',
     'maps/goats/goatdraw.js',
+    'maps/goats/patrons.js',
     'maps/goats/shadows.js',
     'maps/goats/traffic.js',
     'maps/goats/cardraw.js',

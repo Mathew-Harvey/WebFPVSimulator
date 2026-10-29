@@ -53,6 +53,7 @@ import { fileURLToPath } from 'node:url';
 
 import { headsLayout, FRAME } from '../src/maps/heads/heads.js';
 import { WALL_STICKERS } from '../src/maps/heads/logos.js';
+import { PATRONS, MAX_PATRON_GOATS, tidy } from '../src/maps/goats/patrons.js';
 import { hoodLayout, BOUNDS, PARK } from '../src/maps/goats/hood.js';
 import { goatsDocument } from '../src/maps/goats/yard.js';
 import { makeGrid, makeHerd, GARAGE_IN, HOME } from '../src/maps/goats/herd.js';
@@ -225,7 +226,16 @@ function goatsBlock(house, hood) {
   const names = WALL_STICKERS.map((c) => c.name);
   check('one goat for every 90%er sticker but the patches', names.length === 98 && !names.includes('90%'), `${names.length}`);
   check('every goat has a logo cut from a sheet', WALL_STICKERS.every((c) => c.w > 0 && c.h > 0 && (c.sheet === 0 || c.sheet === 1)));
-  const herd = makeHerd(names, grid, { parks: [PARK] });
+  /* The patrons' goats ride on the same herd (src/maps/goats/patrons.js). */
+  const tidied = tidy();
+  check('the patron list has entries, all labelled EXAMPLE until real ones are added', tidied.length === PATRONS.length && tidied.length > 0, `${tidied.length}`);
+  const many = Array.from({ length: MAX_PATRON_GOATS + 25 }, (_, i) => ({ name: `Patron ${i}` }));
+  check(`tidy holds the patrons to MAX_PATRON_GOATS (${MAX_PATRON_GOATS})`, tidy(many).length === MAX_PATRON_GOATS);
+  const rough = tidy([null, {}, { name: '' }, { name: 5 }, { name: '  <b>Ann</b>  ', logo: '../../etc/x.png', tier: 'platinum' }, { name: 'Bo', logo: 'assets/patrons/bo.png', tier: 'gold' }]);
+  check('tidy drops a bad entry, strips symbols, refuses an unsafe logo path and an unknown tier',
+    rough.length === 2 && rough[0].name === 'bAnnb' && rough[0].logo === '' && rough[0].tier === 'bronze' && rough[1].logo === 'assets/patrons/bo.png' && rough[1].tier === 'gold', JSON.stringify(rough));
+  const herd = makeHerd([...names, ...tidied.map((p) => p.name)], grid, { parks: [PARK] });
+  check('a patron goat is in the herd after the 90%ers', herd.count === names.length + tidied.length && herd.names[names.length] === tidied[0].name, `${herd.count}`);
   const stuck = [];
   const near = [];
   for (let i = 0; i < herd.count; i += 1) {

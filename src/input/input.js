@@ -85,6 +85,29 @@ const AUTORESET_STORE_KEY = 'webfpv.autoreset.v1';
 /* An axis counts as the switch being flipped when it moves this far from
  * where it was when the row was chosen: half its travel, so a three
  * position switch moved one notch counts and a jittering gimbal does not. */
+/*
+ * THE DOGFIGHT'S GUN AND MISSILE (the owner's ask of 2026-10-29: "prompted
+ * to bind a gun and missile to a button or switch"). A pad's are picked
+ * the way the restart switch is, by flipping or pressing the thing wanted,
+ * and kept the same way, each under its own key. The gun fires while its
+ * button is held or its switch is on; the missile fires once each time its
+ * button goes down or its switch goes on. A standard gamepad that has
+ * picked nothing fires on its right trigger and right bumper. The keys are
+ * Space and Left Shift unless the pilot picked others, and the touch
+ * screen gets two buttons of its own (src/ui/dogfighthud.js), so nothing
+ * there needs picking. None of it is read outside a dogfight, except while
+ * a pick is being made.
+ */
+const GUN_STORE_KEY = 'webfpv.dogfight.gun.v1';
+const MISSILE_STORE_KEY = 'webfpv.dogfight.missile.v1';
+const WEAPON_KEYS_STORE_KEY = 'webfpv.dogfight.keys.v1';
+export const WEAPON_KEYS_DEFAULT = Object.freeze({ gun: 'Space', missile: 'ShiftLeft' });
+/* The standard gamepad's right trigger and right bumper. */
+const PAD_GUN_DEFAULT = 7;
+const PAD_MISSILE_DEFAULT = 5;
+/* Keys a weapon may not take: the sticks, and the menu's own. */
+const WEAPON_KEYS_REFUSED = new Set(['Escape', 'Enter', 'Tab', 'KeyR']);
+
 const RESTART_FLIP = 1.0;
 /* And the switch is ON while the axis is this far towards the side it was
  * flipped to. */
@@ -782,6 +805,46 @@ export function describeRestart(spec) {
     return null;
   }
   return spec.kind === 'button' ? `Button ${spec.index}` : `Switch on axis ${spec.index}`;
+}
+
+/* A key code as the pilot reads it on the key: "Space", "Left Shift", "F". */
+export function describeKey(code) {
+  if (!code) {
+    return null;
+  }
+  if (/^Key[A-Z]$/.test(code)) {
+    return code.slice(3);
+  }
+  if (/^Digit[0-9]$/.test(code)) {
+    return code.slice(5);
+  }
+  const side = /^(Shift|Control|Alt|Meta)(Left|Right)$/.exec(code);
+  if (side) {
+    const name = { Control: 'Ctrl', Meta: 'Cmd' }[side[1]] || side[1];
+    return `${side[2]} ${name}`;
+  }
+  return code.replace(/^Numpad/, 'Pad ');
+}
+
+function loadWeaponKeys() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(WEAPON_KEYS_STORE_KEY) || 'null');
+    if (raw && typeof raw.gun === 'string' && typeof raw.missile === 'string' && raw.gun !== raw.missile) {
+      return { gun: raw.gun, missile: raw.missile };
+    }
+  } catch (e) {
+    /* Private mode or a corrupt blob: the defaults. */
+  }
+  return { ...WEAPON_KEYS_DEFAULT };
+}
+
+function saveWeaponKeys(keys) {
+  try {
+    localStorage.setItem(WEAPON_KEYS_STORE_KEY, JSON.stringify(keys));
+    return true;
+  } catch (e) {
+    return false;
+  }
 }
 
 function maxAbsDelta(axes, rest) {
@@ -1614,6 +1677,20 @@ export class InputManager {
     this.autoCapture = null;
     this.autoEdge = null;
     this.autoResult = null;
+    /* The dogfight's gun and missile. See GUN_STORE_KEY. weaponsLive is set
+     * by main.js while a dogfight is flying; nothing is read while it is
+     * not, except a pick in progress. */
+    this.weaponSpec = { gun: loadRestartSpec(GUN_STORE_KEY), missile: loadRestartSpec(MISSILE_STORE_KEY) };
+    this.weaponKeys = loadWeaponKeys();
+    this.weaponsLive = false;
+    this.weaponCapture = null;
+    this.weaponResult = null;
+    this.padGun = false;
+    this.padMissilePrev = null;
+    this.missileFired = false;
+    this.touchGun = false;
+    /* The last pad seen, standard or not, for the arm up page's words. */
+    this.weaponPadKind = null;
     /* The hold-to-select bootstrap for a radio reporting zero buttons.
      * See SELECT_STEP. */
     this.holdMs = 0;
@@ -1741,6 +1818,16 @@ export class InputManager {
           this.onKey(e.code, false);
         }
         return;
+      }
+      if (!e.repeat && this.weaponCapture && this.weaponCapture.keys) {
+        if (this.takeWeaponKey(e.code)) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+      }
+      if (!e.repeat && this.weaponsLive && e.code === this.weaponKeys.missile) {
+        this.missileFired = true;
       }
       if (!e.repeat) {
         this.keys.add(e.code);
@@ -2463,6 +2550,139 @@ export class InputManager {
     const r = this.restartResult;
     this.restartResult = null;
     return r;
+  }
+
+  /*
+   * THE DOGFIGHT'S GUN AND MISSILE on a pad, watched on every poll that
+   * reads one, beside the restart switch. A pick in progress listens for
+   * the next button or switch, as the restart switch's does; otherwise,
+   * only while a dogfight flies, the gun is whether its button or switch
+   * is on and the missile is the moment its own goes on.
+   */
+  noteWeapons(gp) {
+    this.weaponPadKind = gp.mapping === 'standard' ? 'gamepad' : 'radio';
+    const cap = this.weaponCapture;
+    if (cap && cap.pad) {
+      const spec = this.captureSwitch(cap.pad, gp);
+      if (spec) {
+        const other = cap.which === 'gun' ? 'missile' : 'gun';
+        const o = this.weaponSpec[other];
+        /* One switch cannot be both: the other one gives it up. */
+        if (o && o.id === spec.id && o.kind === spec.kind && o.index === spec.index) {
+          this.weaponSpec[other] = null;
+          saveRestartSpec(null, other === 'gun' ? GUN_STORE_KEY : MISSILE_STORE_KEY);
+        }
+        this.weaponSpec[cap.which] = spec;
+        this.weaponCapture = null;
+        this.padMissilePrev = null;
+        this.weaponResult = {
+          which: cap.which,
+          saved: saveRestartSpec(spec, cap.which === 'gun' ? GUN_STORE_KEY : MISSILE_STORE_KEY),
+          label: describeRestart(spec),
+        };
+      }
+      return;
+    }
+    if (!this.weaponsLive) {
+      this.padGun = false;
+      this.padMissilePrev = null;
+      return;
+    }
+    const gun = this.weaponSpecFor('gun', gp);
+    this.padGun = gun ? restartOn(gp, gun) : false;
+    const missile = this.weaponSpecFor('missile', gp);
+    if (!missile) {
+      this.padMissilePrev = null;
+      return;
+    }
+    const on = restartOn(gp, missile);
+    if (this.padMissilePrev === false && on) {
+      this.missileFired = true;
+    }
+    this.padMissilePrev = on;
+  }
+
+  /* The spec in use on this pad: the one picked for it, or a standard
+   * gamepad's trigger and bumper when nothing was. */
+  weaponSpecFor(which, gp) {
+    const spec = this.weaponSpec[which];
+    if (spec && spec.id === gp.id) {
+      return spec;
+    }
+    if (!spec && gp.mapping === 'standard') {
+      return { id: gp.id, kind: 'button', index: which === 'gun' ? PAD_GUN_DEFAULT : PAD_MISSILE_DEFAULT, dir: 1 };
+    }
+    return null;
+  }
+
+  /* Pick the gun or the missile: the next button, switch or key. */
+  beginWeaponCapture(which) {
+    this.cancelRestartCapture();
+    this.cancelAutoResetCapture();
+    this.weaponCapture = { which, pad: { id: null, buttons: null, axes: null }, keys: true };
+    this.weaponResult = null;
+  }
+
+  cancelWeaponCapture() {
+    this.weaponCapture = null;
+  }
+
+  /* A key pressed while a pick is listening. False when the key is not one
+   * a weapon may take, so it does what it always does. */
+  takeWeaponKey(code) {
+    const cap = this.weaponCapture;
+    if (!cap || WEAPON_KEYS_REFUSED.has(code) || this.isStickKey(code)) {
+      return false;
+    }
+    const other = cap.which === 'gun' ? 'missile' : 'gun';
+    const keys = { ...this.weaponKeys, [cap.which]: code };
+    if (keys[other] === code) {
+      keys[other] = this.weaponKeys[cap.which];
+    }
+    this.weaponKeys = keys;
+    this.weaponCapture = null;
+    this.weaponResult = { which: cap.which, saved: saveWeaponKeys(keys), label: describeKey(code), key: true };
+    return true;
+  }
+
+  takeWeaponResult() {
+    const r = this.weaponResult;
+    this.weaponResult = null;
+    return r;
+  }
+
+  clearWeaponSwitch(which) {
+    this.weaponSpec[which] = null;
+    saveRestartSpec(null, which === 'gun' ? GUN_STORE_KEY : MISSILE_STORE_KEY);
+  }
+
+  /* Held this poll: the key, the pad's button or switch, or the screen's
+   * button. */
+  gunHeld() {
+    return this.keys.has(this.weaponKeys.gun) || this.padGun || this.touchGun;
+  }
+
+  /* Pressed since it was last asked: once a press. */
+  takeMissile() {
+    const f = this.missileFired;
+    this.missileFired = false;
+    return f;
+  }
+
+  /* What the arm up page and Settings say the weapons are on, for the pad
+   * in use, or the keys when there is none. */
+  weaponLabels(gp = null) {
+    const out = {};
+    for (const which of ['gun', 'missile']) {
+      const spec = gp ? this.weaponSpecFor(which, gp) : this.weaponSpec[which];
+      let pad = null;
+      if (spec) {
+        pad = this.weaponSpec[which] ? describeRestart(spec)
+          : (which === 'gun' ? 'Right trigger' : 'Right bumper');
+      }
+      out[which] = { pad, picked: Boolean(this.weaponSpec[which]), key: describeKey(this.weaponKeys[which]) };
+    }
+    return out;
   }
 
   /* Can the mapping be trusted for more than flying: a pilot's own map
@@ -4389,6 +4609,7 @@ export class InputManager {
       this.noteStandardParked(gp, nowWall);
       this.noteRestartSwitch(gp);
       this.noteAutoResetSwitch(gp);
+      this.noteWeapons(gp);
       if (this.stickCheck) {
         this.noteStickCheck(gp);
       }

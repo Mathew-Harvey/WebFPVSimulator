@@ -5477,7 +5477,10 @@ export class Ui {
       const always = quadAlways(this.settings)[key];
       const own = always || quadPicks(this.settings)[key];
       const rec = craftForMap(linkedMapId) || '5inch';
-      linkedAf = own || (linkedFly() ? rec : (linkedAf || rec));
+      /* A link to the title that names no quad leaves the seat as it is,
+       * as before the picker: `|| rec` here seated the map's own quad over
+       * a pilot's whoop on any ?map= address (check:seat, from 2026-10-28). */
+      linkedAf = own || (linkedFly() ? rec : linkedAf);
       quadAskKey = always ? null : key;
     }
     if (craftForMap(linkedMapId)) {

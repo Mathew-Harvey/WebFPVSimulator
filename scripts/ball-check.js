@@ -99,6 +99,16 @@ async function main() {
     await ev('window.__setCam(-62, 30, -52, 0, 4, 0); return 1;');
     await sleep(8000);
     await shot('overview');
+    if (SHOTS) {
+      /* The gate card's picture: the same view with the page's own
+       * furniture hidden, scaled to 448 high and cropped to 720 wide by
+       * hand for assets/gate/ball.jpg. */
+      await ev("window.__ui.root.style.visibility = 'hidden'; return 1;");
+      await ev('window.__setCam(10, 70, -30, 0, 0, 2); return 1;');
+      await sleep(1200);
+      await shot('card');
+      await ev("window.__ui.root.style.visibility = ''; return 1;");
+    }
     await ev('window.__setCam(60, 8, 0, -20, 6, 0); return 1;');
     await sleep(1500);
     await shot('goal-end');

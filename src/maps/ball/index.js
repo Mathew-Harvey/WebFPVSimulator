@@ -38,8 +38,16 @@ export async function buildMap(shell, onProgress, options) {
     padBase: 0,
     draw: (kit) => drawArena(kit),
   };
+  /* The one hidden Konex Drone sign (the owner's promise of a logo hidden
+   * in every map), by hand because this map's walls are its own: low on
+   * the OUTSIDE of the north side wall, a third of the way in from the west
+   * end, where only a pilot who flies out over the roof line and looks back
+   * down finds it. */
+  const markSpots = [{
+    slug: 'konexdrone', key: 'ball#konexdrone~hidden', p: [-ARENA.hx * 0.35, 1.6, ARENA.hz + 0.9], n: [0, 0, 1], up: [0, 1, 0], w: 1.2, chunk: 'extra',
+  }];
   const map = await buildBuilt(shell, onProgress, {
-    ...(options || {}), document: ballDocument(), extra, sponsorMarks: false,
+    ...(options || {}), document: ballDocument(), extra, sponsorMarks: false, markSpots,
   });
   /* Its own world: the shell keys the world, the results and the board's
    * refusal by this id. */

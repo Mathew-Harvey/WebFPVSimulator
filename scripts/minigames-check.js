@@ -7,7 +7,7 @@
  * a round ending and the next one starting, leaving, a restart, a quad of
  * another size, and the results table's buttons.
  *
- *   node scripts/minigames-check.js [--only=menu,dogfight,ribbon,scale]
+ *   node scripts/minigames-check.js [--only=menu,herd,goats,drift,dogfight,ribbon,scale]
  *
  * Minutes of wall clock on a software rasteriser. Written for the bug hunt
  * of 2026-10-29 ("Across all games before we push to main, please do a bug
@@ -162,6 +162,60 @@ async function sceneRibbon() {
   }
 }
 
+/*
+ * GOAT HERDING WITH BOTS (src/game/goatround.js): a round on the goat map,
+ * the bots herding for real, a goat home counted to whoever pushed it, the
+ * table at the end, and nothing left on the herd once it is left.
+ */
+async function sceneHerd() {
+  console.log('herd: goat herding with bots');
+  const { page, ev, until } = await flying('goats');
+  try {
+    await ev("window.__ui.dogfight = { game: 'goats', bots: 3, skill: 'ace', round: '3m' }; return 1;");
+    check('the round is built on the map\'s herd', await until(`${G} return Boolean(g && g.herd && g.total === g.herd.count);`, 30000));
+    check('nothing is fired in goat herding', await ev('return window.__input.weaponsLive === false'));
+    check('the round\'s HUD is up and the map\'s own steps aside', await until("return !document.querySelector('.df-hud').classList.contains('is-off') && document.querySelector('.goat-hud').classList.contains('is-off')", 5000));
+    check('the herd is handed the bots', await ev(`${G} return g.pen.nOthers === 7 && g.pen.others[2] < 1e8 && g.pen.others[11] > 1e8;`));
+    await ev('window.__stick(0, 0, 0, 0.7); return 1;');
+    check('taking off starts the round', await until(`${G} return g.startedMs >= 0;`, 20000));
+    const finite = await ev(`${G} for (let i = 0; i < g.cap; i += 1) { if (!Number.isFinite(g.x[i] + g.y[i] + g.z[i])) return false; } return true;`);
+    check('every slot is somewhere real', finite);
+    /* One of the pilot's: a goat put in the garage as the pilot's. */
+    await ev(`${G} const h = g.herd; let n = 0; while (h.MODE[n] === 2) n += 1; h.BY[n] = 0; h.place(n, 15.9, 4); return 1;`);
+    check('a goat home that the pilot moved is the pilot\'s', await until(`${G} return g.pops[0] === 1;`, 5000));
+    check('and the HUD counts it', await until("return document.querySelector('.df-me-panel em').textContent === '1'", 3000));
+    /* A headless page flies slower than the wall clock, a fifth as fast
+     * here, so this waits on the round's own clock: a minute and a half of
+     * it, which is a dozen goats' worth in scripts/goats-check.js. */
+    const bots = await until(`${G} return g.pops[1] + g.pops[2] + g.pops[3] > 0 || g.clockMs - g.startedMs > 90000;`, 600000);
+    const botGoats = await ev(`${G} return g.pops[1] + g.pops[2] + g.pops[3];`);
+    const roundS = await ev(`${G} return ((g.clockMs - g.startedMs) / 1000).toFixed(0);`);
+    check('the bots herd goats home on their own', bots && botGoats > 0, `${botGoats} home by ${roundS} s of the round`);
+    const low = await ev(`${G} let n = 0; for (let s = 1; s <= 3; s += 1) { if (g.y[s] / g.plan.S < 3.2) n += 1; } return n;`);
+    check('and none of them is lost in a solid', await ev(`${G} for (let s = 1; s <= 3; s += 1) { if (g.world.inside(g.x[s], g.y[s], g.z[s])) return false; } return true;`), `${low} of 3 down low herding`);
+    await ev(`${G} g.roundMs = g.clockMs - g.startedMs + 30; return 1;`);
+    check('the clock running out ends the round', await until(`${G} return g.over;`, 10000));
+    check('and the table is up', await until("return !document.querySelector('.df-result').classList.contains('is-off')", 3000));
+    const buttons = await ev("return [...document.querySelectorAll('.df-result .df-btn')].map((b) => b.textContent)");
+    check('with Again, Change the round and Leave', ['Again', 'Change the round', 'Leave'].every((b) => buttons.includes(b)), buttons.join(', '));
+    const top = await ev(`${G} const r = g.standings(); return r[0].goats >= r[1].goats && (g.winner < 0 || g.winner === r[0].slot);`);
+    check('the most goats is first, and the winner', top);
+    await ev("[...document.querySelectorAll('.df-result .df-btn')].find((b) => b.textContent === 'Again').click(); return 1;");
+    check('Again starts the next round with a fresh herd', await until(`${G} return !g.over && g.pops[0] === 0 && g.herd.homeCount() === 0;`, 5000));
+    await ev("window.__ui.act('pause'); window.__ui.show('paused'); return 1;");
+    const rows = await ev("return window.__ui.items().map((i) => i.label).join(',')");
+    check('the pause has the round\'s rows', rows.includes('Change the round') && rows.includes('Leave the round'), rows);
+    await ev(`${G} window.__pen = g.pen; window.__ui.act('fight-leave'); return 1;`);
+    check('leaving ends the round', await until('return window.__dogfight() === null', 5000));
+    check('and the herd has no bots left in it', await ev('return window.__pen.nOthers === 0'));
+    check('and the map\'s own HUD is back', await until("return !document.querySelector('.goat-hud').classList.contains('is-off')", 5000));
+    const errs = pageErrors(page);
+    check('no errors on the page', errs.length === 0, errs.slice(0, 3).join(' | '));
+  } finally {
+    await page.close();
+  }
+}
+
 /* The fight is read in the aircraft's own metres through the world scale.
  * A quad of another size on the same map (the room host's swap, the quad
  * picker on a map already loaded) moves the scale under it. */
@@ -264,10 +318,14 @@ async function sceneMenu() {
       check(`and Escape${escs > 1 ? ' twice' : ''} is back on the page, on ${name}`, await until(onPage(card), 5000));
     }
     await play('mg-goats', false);
-    await until("return Boolean(document.querySelector('.qp-page'))", 30000);
+    check('goat herding alone opens Set the herd', await until("return Boolean(document.querySelector('.df-page'))", 30000));
+    await sleep(450);
+    await page.tap('Enter');
+    await until("return Boolean(document.querySelector('.qp-page:not(.df-page)'))", 30000);
     await sleep(450);
     await page.tap('Enter');
     check('goat herding flies from the page', await until("return window.__ui.screen === 'flight'", 150000));
+    check('as a round with bots', await until("const g = window.__dogfight(); return Boolean(g && g.herd && window.__ui.dogfight.game === 'goats');", 30000));
     await ev("window.__ui.act('pause'); window.__ui.show('paused'); window.__ui.act('title'); return 1;");
     check('and quit to title is back on the page, on goat herding', await until(onPage('mg-goats'), 5000));
     const errs = pageErrors(page);
@@ -279,6 +337,7 @@ async function sceneMenu() {
 
 try {
   if (wanted('menu')) await sceneMenu();
+  if (wanted('herd')) await sceneHerd();
   if (wanted('goats')) await sceneMapGame('goats', 'goat-hud');
   if (wanted('drift')) await sceneMapGame('drift', 'film-hud');
   if (wanted('dogfight')) await sceneDogfight();

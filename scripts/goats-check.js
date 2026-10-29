@@ -27,6 +27,13 @@
  *                 goats put in front of them, chased by a craft half the
  *                 time, no car ever has a goat's middle inside it and no
  *                 goat is ever in a solid
+ *   6. others     the round with bots (src/game/goatround.js): craft
+ *                 handed to the herd as `others` but out of reach change
+ *                 nothing to the bit; a goat one of them pushes home is
+ *                 that one's; the way home reaches every goat the herd
+ *                 starts with; and a herder flying the bots' rule, at
+ *                 every skill, gets each of a dozen goats home inside a
+ *                 round
  *
  * Usage: node scripts/goats-check.js
  *
@@ -56,7 +63,10 @@ import { WALL_STICKERS } from '../src/maps/heads/logos.js';
 import { PATRONS, MAX_PATRON_GOATS, tidy } from '../src/maps/goats/patrons.js';
 import { hoodLayout, BOUNDS, PARK } from '../src/maps/goats/hood.js';
 import { goatsDocument } from '../src/maps/goats/yard.js';
-import { makeGrid, makeHerd, GARAGE_IN, HOME } from '../src/maps/goats/herd.js';
+import {
+  makeGrid, makeHerd, homeField, GARAGE_IN, HOME,
+} from '../src/maps/goats/herd.js';
+import { GOAT_BOTS, herdPoint } from '../src/game/goatround.js';
 import { goatTraffic } from '../src/maps/goats/traffic.js';
 import { uploadTraffic } from '../src/maps/built/traffic.js';
 import { makeVehiclePoses, readVehicles, setVehicleClock } from '../src/game/plantworld.js';
@@ -350,6 +360,117 @@ function herdingBlock(grid, names, world) {
   check(`the herd's step is under ${STEP_US_MAX} microseconds`, best < STEP_US_MAX, `${best.toFixed(1)} us, best of three`);
 }
 
+function othersBlock(grid, names) {
+  console.log('\n6. others');
+  /* Others overhead, out of the spook's reach: the herd as it is alone. */
+  const a = makeHerd(names, grid, { parks: [PARK] });
+  const b = makeHerd(names, grid, { parks: [PARK] });
+  const high = new Float64Array([0, 0, 1e9, 10, 10, 50, -20, 4, 3.3]);
+  let apart = 0;
+  for (let k = 0; k < 60 * 60; k += 1) {
+    const c = { x: a.X[3] + 2.5, y: a.Y[3], h: 0.9 };
+    a.step(1 / 60, c);
+    b.step(1 / 60, { ...c }, null, 0, high, 3);
+    for (let i = 0; i < a.count; i += 1) {
+      apart += a.X[i] === b.X[i] && a.Y[i] === b.Y[i] && a.MODE[i] === b.MODE[i] ? 0 : 1;
+    }
+  }
+  check('others out of reach change nothing: a minute side by side, the same to the bit', apart === 0, `${apart} goat steps apart`);
+
+  /* A goat pushed up the drive by the second of two others. */
+  const herd = makeHerd(names, grid, { parks: [PARK] });
+  herd.place(0, 15.9, -12);
+  const two = new Float64Array([-60, -60, 0.8, 0, 0, 0.8]);
+  let homed = false;
+  for (let k = 0; k < 60 * 40 && !homed; k += 1) {
+    const dx = 15.9 - herd.X[0];
+    const dy = 4 - herd.Y[0];
+    const d = Math.hypot(dx, dy) || 1;
+    two[3] = herd.X[0] - (dx / d) * 2.2;
+    two[4] = herd.Y[0] - (dy / d) * 2.2;
+    herd.step(1 / 60, null, null, 0, two, 2);
+    homed = herd.MODE[0] === HOME;
+  }
+  const ev = herd.events.filter((e) => e.kind === 'home');
+  check('a goat the second other pushes home is the second other\'s', homed && ev.length === 1 && ev[0].by === 2, J(ev));
+
+  /* The way home, and the bots' rule flown by a herder that goes where it
+   * means to: behind its goat on the way home, low when it is there, over
+   * the roofs on the way round. */
+  const field = homeField(grid);
+  const start = makeHerd(names, grid, { parks: [PARK] });
+  let lost = 0;
+  for (let i = 0; i < start.count; i += 1) {
+    lost += field.at(start.X[i], start.Y[i]) < 0 ? 1 : 0;
+  }
+  check('the way home reaches every goat where the herd first starts', lost === 0, `${start.count - lost} of ${start.count}`);
+  /* Let out again and again, no goat starts in a yard with no way out a
+   * goat can walk: one in twenty five did, before the herd asked. */
+  let shut = 0;
+  for (let r = 0; r < 20; r += 1) {
+    start.reset();
+    for (let i = 0; i < start.count; i += 1) {
+      shut += field.at(start.X[i], start.Y[i]) < 0 ? 1 : 0;
+    }
+  }
+  check('let out twenty times, every goat can get home', shut === 0, `${shut} of ${start.count * 20} shut in`);
+  const way = new Float64Array(2);
+  const at = new Float64Array(2);
+  const one = new Float64Array(3);
+  for (const skill of Object.keys(GOAT_BOTS)) {
+    const sk = GOAT_BOTS[skill];
+    const times = [];
+    for (let trial = 0; trial < 12; trial += 1) {
+      start.reset();
+      /* A goat a bot would go after: one with a way home. */
+      let t = (trial * 7) % start.count;
+      while (field.at(start.X[t], start.Y[t]) < 0) {
+        t = (t + 1) % start.count;
+      }
+      let bx = start.X[t] + 20;
+      let by = start.Y[t] + 20;
+      let bh = 6.5;
+      let done = -1;
+      let best = Infinity;
+      let bestAt = 0;
+      let side = 0;
+      for (let k = 0; k < 60 * 180 && done < 0; k += 1) {
+        const left = field.at(start.X[t], start.Y[t]);
+        if (left < best) {
+          best = left;
+          bestAt = k;
+        } else if (k - bestAt > 150) {
+          side = side > 0 ? -1.4 : 1.4;
+          bestAt = k;
+        }
+        herdPoint(field, start.X[t], start.Y[t], sk.behind, side, way, at);
+        const dx = at[0] - bx;
+        const dy = at[1] - by;
+        const d = Math.hypot(dx, dy);
+        const ahead = (bx - start.X[t]) * way[0] + (by - start.Y[t]) * way[1] > 0;
+        const low = d < 3 && !ahead;
+        const step = Math.min(d, (low ? sk.pace : 12) / 60);
+        if (d > 1e-6) {
+          bx += (dx / d) * step;
+          by += (dy / d) * step;
+        }
+        bh += Math.max(-4 / 60, Math.min(4 / 60, (low ? 1.3 : 6.5) - bh));
+        one[0] = bx;
+        one[1] = by;
+        one[2] = bh;
+        start.step(1 / 60, null, null, 0, one, 1);
+        if (start.MODE[t] === HOME) {
+          done = k / 60;
+        }
+      }
+      times.push(done);
+    }
+    const home = times.filter((x) => x >= 0);
+    check(`a ${skill} herder gets each of a dozen goats home inside three minutes`, home.length === times.length,
+      times.map((x) => (x >= 0 ? `${x.toFixed(0)} s` : 'never')).join(' '));
+  }
+}
+
 /*
  * The street's traffic in the physics module, as the map uploads it:
  * `at(ms)` sets the module's clock and reads every car, into `poses` (the
@@ -593,6 +714,7 @@ async function main() {
   const world = await carWorld();
   herdingBlock(grid, names, world);
   await carsBlock(world, solids, grid, names);
+  othersBlock(grid, names);
   console.log(failures ? `\n${failures} failed` : '\nall passed');
   process.exit(failures ? 1 : 0);
 }

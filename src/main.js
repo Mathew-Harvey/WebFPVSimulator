@@ -2309,7 +2309,7 @@ export async function boot({ loading, bootStart, mapId }) {
    * the dogfight's, and ribbon cutting's (src/game/ribbons.js), which is the
    * dogfight with ribbons for guns and runs through everything below. */
   let fightMods = null;
-  const fightLib = { dogfight: null, ribbon: null };
+  const fightLib = { dogfight: null, ribbon: null, goats: null };
   let fightKind = 'dogfight';
   /* The room game being played, 'ribbon' (RibbonRoom) or 'dogfight'
    * (DogfightRoom), which the room plays rather than the pilot's own
@@ -2323,7 +2323,7 @@ export async function boot({ loading, bootStart, mapId }) {
   const fightBotPose = (id, x, y, z, fx, fy, fz, ux, uy, uz) => {
     fightBots.pose(id, x, y, z, fx, fy, fz, ux, uy, uz);
   };
-  const fightHuds = { dogfight: null, ribbon: null };
+  const fightHuds = { dogfight: null, ribbon: null, goats: null };
   let fightLoading = false;
   let fightGame = null;
   let fightView = null;
@@ -2354,6 +2354,9 @@ export async function boot({ loading, bootStart, mapId }) {
   };
 
   function fightBestKey() {
+    if (fightKind === 'goats') {
+      return `webfpv.goats.best.${fightKey}`;
+    }
     return fightKind === 'ribbon' ? `webfpv.ribbons.best.${fightKey}` : `webfpv.dogfight.best.${fightKey}`;
   }
 
@@ -2546,6 +2549,9 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   function fightOff() {
+    if (fightGame && fightGame.detach) {
+      fightGame.detach();
+    }
     if (fightView) {
       fightView.dispose();
     }
@@ -2577,14 +2583,16 @@ export async function boot({ loading, bootStart, mapId }) {
     const roomGame = inGame === 'ribbon' || inGame === 'dogfight' ? inGame : '';
     const roomRibbon = roomGame === 'ribbon';
     const rules = roomGame ? (roomRibbon ? ROOM_RIBBON_RULES : ROOM_DOGFIGHT_RULES) : ui.dogfight;
-    const want = Boolean(view) && Boolean(rules) && mapReady && !replayMode && (Boolean(roomGame) || !ui.roomInfo);
+    /* Goat herding's round is the goat map's, and nowhere else. */
+    const herdable = !rules || rules.game !== 'goats' || Boolean(view && view.goatGame);
+    const want = Boolean(view) && Boolean(rules) && herdable && mapReady && !replayMode && (Boolean(roomGame) || !ui.roomInfo);
     if (!want) {
       if (fightGame) {
         fightOff();
       }
       return;
     }
-    const kind = rules.game === 'ribbon' ? 'ribbon' : 'dogfight';
+    const kind = rules.game === 'ribbon' || rules.game === 'goats' ? rules.game : 'dogfight';
     /* The rules as text only when the object is a new one: a string a
      * frame for as long as a fight lasts is garbage, and a collection is a
      * hitch. */
@@ -2617,7 +2625,12 @@ export async function boot({ loading, bootStart, mapId }) {
     if (!fightLib[kind]) {
       if (!fightLoading) {
         fightLoading = true;
-        const want = kind === 'ribbon'
+        const want = kind === 'goats'
+          ? Promise.all([import('./game/goatround.js'), import('./ui/herdhud.js'), import('./game/dogfight.js'), import('./render/dogfight.js')])
+            .then(([game, hud, base, render]) => ({
+              ...base, ...game, Game: game.GoatRound, View: render.DogfightView, feedFraction: render.feedFraction, Hud: hud.HerdHud, kicker: 'Goat herding',
+            }))
+          : kind === 'ribbon'
           ? Promise.all([import('./game/ribbons.js'), import('./render/ribbons.js'), import('./ui/ribbonhud.js'), import('./game/dogfight.js'), import('./render/dogfight.js')])
             .then(([game, render, hud, base, baseRender]) => ({
               ...base, ...game, Game: game.RibbonCut, View: render.RibbonView, feedFraction: baseRender.feedFraction, Hud: hud.RibbonHud, kicker: 'Ribbon cutting',
@@ -2661,6 +2674,8 @@ export async function boot({ loading, bootStart, mapId }) {
       fightGame = new fightMods.RibbonRoom(world);
     } else if (roomGame === 'dogfight') {
       fightGame = new fightMods.DogfightRoom(world, { seed });
+    } else if (kind === 'goats') {
+      fightGame = new Game(world, rules, seed, view.goatGame);
     } else {
       fightGame = new Game(world, rules, seed);
     }
@@ -2718,9 +2733,9 @@ export async function boot({ loading, bootStart, mapId }) {
       }
     }
     fightNewRound();
-    /* Ribbons fire nothing: the gun and missile buttons stay what they
-     * were. */
-    input.weaponsLive = kind !== 'ribbon';
+    /* Ribbons and goats fire nothing: the gun and missile buttons stay
+     * what they were. */
+    input.weaponsLive = kind === 'dogfight';
   }
 
   /* Once a frame in a ribbon cutting room: who this page is, the board's

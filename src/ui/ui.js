@@ -11036,6 +11036,27 @@ export class Ui {
         { label: 'Quit to title', action: 'room-title', note: 'Leaves the room too.' },
       ];
     }
+    if (this.screen === 'paused' && this.dogfight && this.dogfight.game === 'goats') {
+      /* A goat herding round's pause: the ribbons', with goats. */
+      return [
+        { label: 'Resume', action: 'resume', primary: true },
+        { label: 'Restart the round', action: 'restart' },
+        { label: 'Change the round', action: 'fight-change', note: 'Bots, how well they herd, and when the round ends.' },
+        { label: 'Does it feel wrong?', section: true },
+        tuneItem(s, true),
+        flightModeItem(s, this.flightModeKey()),
+        {
+          label: 'Rates',
+          value: ratesShort(s.rates),
+          action: 'rates',
+          note: 'How far the sticks go, and the throttle limit. Changing them here leaves the quad where it is and the clock running.',
+        },
+        { label: 'Elsewhere', section: true },
+        { label: 'Settings', action: 'pilot', note: 'Your name, your radio, graphics and sound.' },
+        { label: 'Leave the round', action: 'fight-leave', note: 'Herd on here alone, with no bots and no clock.' },
+        { label: 'Quit to title', action: 'title' },
+      ];
+    }
     if (this.screen === 'paused' && this.dogfight && this.dogfight.game === 'ribbon') {
       /* Ribbon cutting's pause: the dogfight's, with nothing to fire. */
       return [
@@ -13372,6 +13393,12 @@ export class Ui {
         return;
       }
     }
+    /* Goat herding alone is a round with bots (src/game/goatround.js):
+     * Set the herd first, as a dogfight's arena has Set the fight. */
+    if (id === 'goats') {
+      this.fightPick = { from: 'gate', game: 'goats' };
+      this.fightArmed = false;
+    }
     this.pickerAction('fly', entry);
   }
 
@@ -14615,7 +14642,7 @@ export class Ui {
   pickerActions(entry) {
     /* Picking a dogfight's arena: the one button fights there. */
     if (this.fightPick) {
-      return [{ id: this.screen === 'courses' ? 'card-fly' : 'fly', label: this.fightPick.game === 'ribbon' ? 'Fly here' : 'Fight here', primary: true }];
+      return [{ id: this.screen === 'courses' ? 'card-fly' : 'fly', label: this.fightPick.game === 'dogfight' ? 'Fight here' : 'Fly here', primary: true }];
     }
     /* Hosting: the one button is the room, so Enter and a double click
      * host this map. A map that lives only in this browser cannot be a
@@ -14862,12 +14889,14 @@ export class Ui {
     }
     const kit = { letterHeading };
     const name = entry.name || entry.label || (entry.item && entry.item.map && entry.item.map.name) || 'This map';
-    const ribbon = this.fightPick.game === 'ribbon';
-    const got = ribbon ? await pages.askRibbon(this, kit, name) : await pages.askFight(this, kit, name);
+    const game = this.fightPick.game;
+    const quiet = game === 'ribbon' || game === 'goats';
+    const ask = { ribbon: pages.askRibbon, goats: pages.askGoats }[game] || pages.askFight;
+    const got = await ask(this, kit, name);
     if (!got || !this.fightPick) {
       return;
     }
-    if (!ribbon && this.input && (got.buttons || !pages.armed())) {
+    if (!quiet && this.input && (got.buttons || !pages.armed())) {
       const ok = await pages.askArm(this, kit, this.input);
       if (!ok || !this.fightPick) {
         return;
@@ -14897,8 +14926,8 @@ export class Ui {
     }
     const kit = { letterHeading };
     if (action === 'fight-change') {
-      const ribbon = Boolean(this.dogfight && this.dogfight.game === 'ribbon');
-      const ask = ribbon ? pages.askRibbon : pages.askFight;
+      const game = this.dogfight ? this.dogfight.game : '';
+      const ask = { ribbon: pages.askRibbon, goats: pages.askGoats }[game] || pages.askFight;
       const got = await ask(this, kit, this.fightArenaName || 'This map');
       if (got && this.dogfight) {
         this.dogfight = got.rules;
@@ -14963,8 +14992,11 @@ export class Ui {
     if (on) {
       const move = Boolean(this.hostPick && this.hostPick.move);
       const ribbon = Boolean(this.fightPick && this.fightPick.game === 'ribbon');
+      const goats = Boolean(this.fightPick && this.fightPick.game === 'goats');
       const [kick, title, line, tab] = !this.hostPick
-        ? (ribbon
+        ? (goats
+          ? ['Goat herding', 'The goats are out', 'Set the herd, then fly.', 'Goat herding']
+          : ribbon
           ? ['Ribbon cutting', 'Pick a map', 'Any map works. Double click a map, or choose it and press Fly here.', 'Ribbon cutting']
           : ['Dogfight', 'Pick an arena', 'Any map works. Double click a map, or choose it and press Fight here.', 'Dogfight arena'])
         : move ? ['Change map', 'Pick the room\'s next map', 'Everybody votes to come with you or stay. Double click a map, or choose it and press Move the room here.', 'Moving the room']
@@ -19925,7 +19957,7 @@ export class Ui {
      * in the radio's voice, which has no pointer to double click with, nor
      * the phone's, where a double tap is the browser's to interpret. */
     if (this.fightPick && isCardScreen(this.screen) && !pad) {
-      out.push({ keys: ['Double click'], text: this.fightPick.game === 'ribbon' ? 'Fly here' : 'Fight here' });
+      out.push({ keys: ['Double click'], text: this.fightPick.game === 'dogfight' ? 'Fight here' : 'Fly here' });
     } else if (this.hostPick && isCardScreen(this.screen) && !pad) {
       out.push({ keys: ['Double click'], text: this.hostPick.move ? 'Move here' : 'Host here' });
     } else if (this.screen === 'courses' && !pad) {

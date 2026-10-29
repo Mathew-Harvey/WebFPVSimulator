@@ -330,6 +330,17 @@ export async function buildMap(shell, onProgress, options) {
         restart() {
           herd.reset();
         },
+        /*
+         * FOR A ROUND WITH OTHERS (src/game/goatround.js): the herd is
+         * stepped with `others`, nOthers more craft as plan x, y and h in
+         * threes, which the round writes each feed and nothing here reads
+         * but the step; the plan's frame, for the round to put a plan
+         * point in the world; and the way home the herd made.
+         */
+        others: new Float64Array(3 * 16),
+        nOthers: 0,
+        frame: { OX, OZ, S },
+        field: () => herd.field,
         /* For the harness: where every goat is, plan metres. */
         goats: () => Array.from({ length: herd.count }, (_, i) => ({
           name: herd.names[i], x: herd.X[i], y: herd.Y[i], mode: ['graze', 'flee', 'home'][herd.MODE[i]],
@@ -341,6 +352,7 @@ export async function buildMap(shell, onProgress, options) {
       let last = null;
       const eye = shell.camera.position;
       const craft = { x: 0, y: 0, h: 0 };
+      const game = map.goatGame;
       function update(ms) {
         let dt = last === null ? 0 : (ms - last) / 1000;
         last = ms;
@@ -358,7 +370,7 @@ export async function buildMap(shell, onProgress, options) {
         }
         while (dt > 1e-6) {
           const h = Math.min(dt, SUBSTEP);
-          herd.step(h, q ? craft : null, cars.feed, cars.count);
+          herd.step(h, q ? craft : null, cars.feed, cars.count, game.nOthers ? game.others : null, game.nOthers);
           dt -= h;
         }
         draw.update(frame);

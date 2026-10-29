@@ -84,7 +84,7 @@ export const GUN = {
   near: 9,
   far: 4,
   behind: 1.5,
-  drop: 3,
+  drop: 1,
   heatShots: 36,
   coolPerS: 1 / 1.5,
   resume: 0.35,
@@ -1140,9 +1140,9 @@ export class Dogfight {
       dz = tz + this.vz[t] * tof * sk.lead;
       /* Too close: overshoot and come round again rather than sit on it. */
       if (dist < 6 * k) {
-        dx = this.fx[i] + tx * 0.1;
+        dx = this.fx[i] + (tx / dist) * 0.3;
         dy = this.fy[i] + 0.3;
-        dz = this.fz[i] + tz * 0.1;
+        dz = this.fz[i] + (tz / dist) * 0.3;
       }
     } else {
       if (now >= this.wanderAt[i]) {

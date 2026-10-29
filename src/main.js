@@ -9940,6 +9940,20 @@ export async function boot({ loading, bootStart, mapId }) {
     if (career && career.handleKey(code, repeat)) {
       return;
     }
+    /*
+     * NOT WHILE A WORLD BUILDS. The loading screen covers the menu that was
+     * up when the load began, usually the title, and that menu still has a
+     * cursor. A key pressed while the bar fills (Enter on the quad picker
+     * pressed twice, a pad's A) used to choose the hidden row, which on a
+     * phone sized window is Fly together, and a solo round opened under the
+     * room's pages (2026-10-29, scripts/minigames-check.js --only=load).
+     * swapInFlight rather than the loading screen's own state: it ends as
+     * the world is adopted, so a check that waits for the map to be ready
+     * and then presses a key is not racing the screen's last frame.
+     */
+    if (swapInFlight) {
+      return;
+    }
     if (ui.handleKey(code, repeat)) {
       return;
     }
@@ -10879,6 +10893,11 @@ export async function boot({ loading, bootStart, mapId }) {
       together.pollPad(padNav(), nowWall);
     } else if (career && career.wantsPad()) {
       career.pollPad(padNav(), nowWall);
+    } else if (swapInFlight) {
+      /* Nothing under a loading screen, as for keys (input.onKey), and
+       * the first poll after it learns where the pad is, acting on nothing,
+       * so a button held through the load is not a press when it ends. */
+      ui.padRearm = true;
     } else if (ui.isModal()) {
       ui.pollPad(padNav());
     }

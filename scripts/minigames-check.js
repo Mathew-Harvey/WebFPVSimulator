@@ -7,7 +7,7 @@
  * a round ending and the next one starting, leaving, a restart, a quad of
  * another size, and the results table's buttons.
  *
- *   node scripts/minigames-check.js [--only=dogfight,ribbon,scale]
+ *   node scripts/minigames-check.js [--only=load,goats,drift,dogfight,ribbon,scale]
  *
  * Minutes of wall clock on a software rasteriser. Written for the bug hunt
  * of 2026-10-29 ("Across all games before we push to main, please do a bug
@@ -205,7 +205,67 @@ async function sceneMapGame(map, hud) {
   }
 }
 
+/*
+ * A key pressed while the world is building. The quad picker's Fly starts
+ * the map's load, and the loading screen covers the title, but the title
+ * was still taking keys behind it: a second Enter (a pad's A pressed twice,
+ * a key held) chose whatever row the hidden menu had under its cursor, and
+ * on a phone sized window that row is Fly together, so a solo ribbon round
+ * opened under "This is you" and the room's pages. Found 2026-10-29 walking
+ * the Mini games page; the fix is in main.js, input.onKey and the pad poll.
+ */
+async function sceneLoadKeys() {
+  console.log('load: keys while the world builds act on nothing');
+  const page = await openPage({ root: ROOT, width: 844, height: 390, touch: true, url: '/index.html' });
+  const ev = async (body) => {
+    const r = await page.cdp.send('Runtime.evaluate', { expression: `(async()=>{${body}})()`, awaitPromise: true, returnByValue: true }, page.sessionId);
+    if (r.exceptionDetails) {
+      throw new Error(JSON.stringify(r.exceptionDetails).slice(0, 900));
+    }
+    return r.result.value;
+  };
+  const until = async (body, ms = 20000) => {
+    const end = Date.now() + ms;
+    while (Date.now() < end) {
+      if (await ev(body)) {
+        return true;
+      }
+      await sleep(100);
+    }
+    return false;
+  };
+  try {
+    if (!(await until('return !!window.__shellReady', 120000)) || !(await until("return window.__ui.screen === 'title'", 60000))) {
+      throw new Error('the shell never came up');
+    }
+    await sleep(1000);
+    await ev("window.__ui.act('gate-games'); window.__ui.act('gate-ribbon'); return 1;");
+    await until("return window.__ui.screen === 'freestyle'", 10000);
+    await sleep(800);
+    let loading = false;
+    for (let i = 0; i < 8 && !loading; i += 1) {
+      await page.tap('Enter');
+      loading = await until('return Boolean(window.__loading && window.__loading.visible)', 1200);
+    }
+    check('Enter through the arena, Set the ribbons and the quad picker builds the town', loading);
+    await page.tap('Enter');
+    await sleep(300);
+    await page.tap('Enter');
+    check('the round starts once the town is built', await until("return window.__ui.screen === 'flight' && Boolean(window.__dogfight())", 150000),
+      await ev('return window.__ui.screen'));
+    await sleep(1500);
+    const sheet = await ev("return [...document.querySelectorAll('#tg .sheet')].filter((e) => e.getBoundingClientRect().width > 0).length");
+    check('and the keys pressed while it built opened nothing', sheet === 0 && await ev("return window.__ui.screen === 'flight'"),
+      `${sheet} sheets, screen ${await ev('return window.__ui.screen')}`);
+    const errs = pageErrors(page);
+    check('no errors on the page', errs.length === 0, errs.slice(0, 3).join(' | '));
+  } finally {
+    await page.close();
+  }
+}
+
 try {
+  if (wanted('load')) await sceneLoadKeys();
   if (wanted('goats')) await sceneMapGame('goats', 'goat-hud');
   if (wanted('drift')) await sceneMapGame('drift', 'film-hud');
   if (wanted('dogfight')) await sceneDogfight();

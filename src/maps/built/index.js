@@ -1199,6 +1199,12 @@ function trianglesOf(root) {
  *   chunkOf optional, (x, z) world metres to the name of the cull chunk
  *           a thing there is filed under, for the parts and the
  *           document's assets alike: Sunnyfield's six (src/maps/sunny/)
+ *   padBase optional, the height in world metres the start pads stand at
+ *           when they stand on the structure: Drift Matsuri's judges'
+ *           tower roof. The document's own height for them is not enough,
+ *           because seatDocument sets a raised pad down on what the
+ *           document holds under it, and the structure is not in the
+ *           document, so a pad on its roof arrives here on the paving.
  *
  * It goes in as the last item and its solids as the last solids, in part
  * order, which is the pairing ./egg.js checks. The box tops are indexed
@@ -1216,7 +1222,7 @@ function addExtra(placed, extra) {
   placed.tops = indexTops(placed.solids);
   const sp = placed.spawn;
   if (sp && sp.from === 'pads') {
-    sp.y = topUnder(placed.tops, sp.x, sp.z, sp.base);
+    sp.y = topUnder(placed.tops, sp.x, sp.z, extra.padBase ?? sp.base);
     const pads = placed.items.find((it) => it.el && it.el.type === 'startPads');
     if (pads) {
       pads.y = sp.y;

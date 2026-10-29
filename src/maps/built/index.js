@@ -834,6 +834,11 @@ function orbitPath(placed) {
   const req = [];
   const pts = [];
   const S = { s: 0, c: 1 };
+  /* A solid is cleared if it is within reach of a point, and the reach is
+   * at least half the way to the next point: on a map as wide as the goat
+   * street the points are 42 m apart, and a 10 m reach left a wall between
+   * two of them under the camera (lint:attract, goats, 2026-10-29). */
+  const reach = Math.max(10, (Math.PI * R) / N + 2);
   for (let i = 0; i < N; i += 1) {
     sincos((i / N) * Math.PI * 2, S);
     const x = R * S.c;
@@ -841,7 +846,7 @@ function orbitPath(placed) {
     let need = EYE;
     for (const o of placed.solids) {
       const r = planReach(o, x, z);
-      if (r.d < 10) {
+      if (r.d < reach) {
         need = Math.max(need, r.top + 4);
       }
     }

@@ -302,6 +302,19 @@ function dressing(line, P, decor, keep) {
       prev = q;
     }
   }
+  /* Advertising boards along the start straight, a hand's breadth off the
+   * track's shoulder: 6 m panels in the team colours, solid at their own
+   * height (the straight runs along x here, so the boxes are axis aligned). */
+  for (const side of [-1, 1]) {
+    for (let k = 0; k < 20; k += 1) {
+      const s0 = 28 + k * 6.2;
+      const a0 = beside(line, s0, side * (TRACK_WIDTH / 2 + 2.6));
+      pbox(P, 'plywood', a0.x, a0.y - 0.08, 0, a0.x + 6, a0.y + 0.08, 0.95, { draw: false, name: 'board' });
+      decor.push({
+        t: 'board', x: a0.x, y: a0.y, k: k + (side > 0 ? 3 : 0),
+      });
+    }
+  }
   /* Marshals' huts, and their flags, by the big jumps. */
   for (const [s, side] of [[52, -1], [104, 1], [424, -1], [622, 1], [750, -1]]) {
     const q = beside(line, s, side * (TRACK_WIDTH / 2 + 7));

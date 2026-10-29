@@ -73042,3 +73042,5 @@ The bug hunt thread saw together-shots' ribbon check "a bot cuts somebody's ribb
 - Checks run: `check:moto` 17 of 17, `lint:preload` up to date, headless shots of the arch, the bunting, the huts and the overview.
 - What went wrong: the first draw call comparison was taken at the pad without a parked camera, so the number moved by 30 from run to run; the pass 2 note above reads "181 to 170" from that kind of sample and its triangle figures are the sturdier half. Bunting first used six flag colours; three is enough.
 - Not flown.
+
+- Pass 3 (owner, 23:49Z, "keep going"): advertising boards along both sides of the start straight, six metres a panel in the team colours with a white stripe, solid at their 0.95 m height, from the existing materials. Parked camera: draw calls 271 before and after, triangles 673,070 to 676,910 (+0.6 percent). The grey wall past the field's edge is the built map's horizon backdrop shared by every built map, so it is left alone here; a pilot at the pad or on the track does not see it. `check:moto` 17 of 17. Not flown.

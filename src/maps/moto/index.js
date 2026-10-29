@@ -355,6 +355,16 @@ function drawDecor(kit, decor) {
         kit.blob('mxDirtDark', [p[0], 0.08, p[2]], 0.14 + (d.k % 4) * 0.05, 0.1 + (d.k % 3) * 0.03, [0, d.k, 0]);
         break;
       }
+      case 'board': {
+        const BOARDS = ['mxOrange', 'mxBlue', 'white', 'mxRed', 'mxGreen'];
+        const m = BOARDS[d.k % BOARDS.length];
+        const a = w(d.x, d.y, 0);
+        kit.box(m, a[0], 0.15, a[2] - 0.07, a[0] + 6, 0.95, a[2] + 0.07);
+        kit.box('white', a[0], 0.55, a[2] - 0.075, a[0] + 6, 0.62, a[2] + 0.075);
+        kit.box('metal', a[0] + 0.1, 0, a[2] - 0.05, a[0] + 0.16, 0.15, a[2] + 0.05);
+        kit.box('metal', a[0] + 5.84, 0, a[2] - 0.05, a[0] + 5.9, 0.15, a[2] + 0.05);
+        break;
+      }
       case 'bump': {
         turned(kit, d.x, d.y, heading(d.tx, d.ty), () => {
           kit.box('mxDirtDark', -0.15, 0, -TRACK_WIDTH / 2 + 0.8 + (d.k % 2) * 0.4, 0.15, 0.045 + (d.k % 3) * 0.01, TRACK_WIDTH / 2 - 0.8 - ((d.k + 1) % 2) * 0.4);

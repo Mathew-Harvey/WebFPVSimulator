@@ -27,6 +27,12 @@
  *                 goats put in front of them, chased by a craft half the
  *                 time, no car ever has a goat's middle inside it and no
  *                 goat is ever in a solid
+ *   7. room       goat herding in a room (src/game/goatroom.js), two
+ *                 pages and a stand in board: both let the goats out to
+ *                 the same places, the host's herd credits a goat the other
+ *                 pilot pushes in and its bots' goats, the other page's
+ *                 herd stays with the host's, what the herd costs on the
+ *                 wire, and the clock ends the round with a winner
  *   6. others     the round with bots (src/game/goatround.js): craft
  *                 handed to the herd as `others` but out of reach change
  *                 nothing to the bit; a goat one of them pushes home is
@@ -67,6 +73,8 @@ import {
   makeGrid, makeHerd, homeField, GARAGE_IN, HOME,
 } from '../src/maps/goats/herd.js';
 import { GOAT_BOTS, herdPoint } from '../src/game/goatround.js';
+import { GoatRoom } from '../src/game/goatroom.js';
+import { DOGFIGHT_EVERY, ME } from '../src/game/dogfight.js';
 import { goatTraffic } from '../src/maps/goats/traffic.js';
 import { uploadTraffic } from '../src/maps/built/traffic.js';
 import { makeVehiclePoses, readVehicles, setVehicleClock } from '../src/game/plantworld.js';
@@ -707,6 +715,243 @@ async function carsBlock(world, solids, grid, names) {
   check('the clock starts at the first goat the craft moves, one dodging a car included', clockHerd.started());
 }
 
+/*
+ * GOAT HERDING IN A ROOM, two pages and a board in one process. Page A is
+ * the host and flies two bots; page B is another pilot, who herds one goat
+ * by the bots' rule. Each page steps its own herd with its own pilot as
+ * the craft and the round's others, as the goat map does. The board is a
+ * stand in for the real one's goatsMessage (the board's own
+ * src/rooms-test.js checks that): it counts every goat the host says and
+ * passes the herd on.
+ */
+function roomBlock(grid, names) {
+  console.log('\n7. room');
+  const world = {
+    k: S,
+    cruise: 9 * S,
+    cx: OX + 10 * S,
+    cy: 0,
+    cz: OZ + 10 * S,
+    radius: 150 * S,
+    top: 45 * S,
+    spawns: [
+      { x: OX + 40 * S, y: 6 * S, z: OZ + 10 * S }, { x: OX - 20 * S, y: 6 * S, z: OZ + 30 * S },
+      { x: OX + 10 * S, y: 6 * S, z: OZ + 40 * S }, { x: OX - 30 * S, y: 6 * S, z: OZ - 10 * S },
+    ],
+    floorAt: () => 0,
+    blocked: () => -1,
+  };
+  const clock = { t: 1000 };
+  const now = () => clock.t;
+  const toLocal = (ms) => ms;
+  const page = (seed) => {
+    const herd = makeHerd(names, grid, { parks: [PARK] });
+    const pen = {
+      herd, others: new Float64Array(3 * 64), nOthers: 0, frame: FRAME, field: () => herd.field,
+    };
+    return { herd, pen, g: new GoatRoom(world, { now, seed, pen }) };
+  };
+  const A = page(11);
+  const B = page(22);
+  const YOU_A = 1;
+  const YOU_B = 2;
+  const BOTS = [{ id: 201, name: 'MOCHI', skill: 'ace' }, { id: 202, name: 'GIZMO', skill: 'ace' }];
+  A.g.setYou(YOU_A, true);
+  B.g.setYou(YOU_B, false);
+  A.g.setBots(BOTS);
+  B.g.setBots(BOTS);
+  /* Stray the two herds before the round: a page that joined later. */
+  for (let k = 0; k < 300; k += 1) {
+    A.herd.step(1 / 30, { x: A.herd.X[5] + 1, y: A.herd.Y[5], h: 0.5 });
+  }
+  const board = {
+    n: 0, goAt: 0, endAt: 0, rows: new Map(), homed: new Set(), winner: null, bytes: 0, herds: 0, wrong: 0,
+    state(phase) {
+      return {
+        phase,
+        round: '3m',
+        n: this.n,
+        goAt: this.goAt,
+        endAt: this.endAt,
+        total: A.herd.count,
+        home: this.homed.size,
+        winner: this.winner,
+        rows: [...this.rows].map(([id, goats]) => ({ id, goats })).sort((a, b) => b.goats - a.goats || a.id - b.id),
+      };
+    },
+    take(from, msg) {
+      if (msg.n !== this.n) {
+        return;
+      }
+      if (msg.t === 'gtHerd') {
+        this.herds += 1;
+        this.bytes += JSON.stringify(msg).length;
+        B.g.heardHerd(msg);
+        return;
+      }
+      if (msg.t !== 'gtHome' || from !== A || this.homed.has(msg.goat)) {
+        this.wrong += msg.t === 'gtHome' ? 1 : 0;
+        return;
+      }
+      this.homed.add(msg.goat);
+      const has = this.rows.has(msg.by);
+      if (has) {
+        this.rows.set(msg.by, this.rows.get(msg.by) + 1);
+      }
+      const out = {
+        t: 'gtHome', n: this.n, goat: msg.goat, by: has ? msg.by : -1, goats: has ? this.rows.get(msg.by) : 0,
+      };
+      A.g.heardHome(out);
+      B.g.heardHome(out);
+    },
+  };
+  board.n = 1;
+  board.goAt = clock.t + 5000;
+  board.endAt = board.goAt + 180000;
+  board.rows = new Map([YOU_A, YOU_B, 201, 202].map((id) => [id, 0]));
+  A.g.heard(board.state('count'), toLocal);
+  B.g.heard(board.state('count'), toLocal);
+  let same = 0;
+  for (let i = 0; i < A.herd.count; i += 1) {
+    same += A.herd.X[i] === B.herd.X[i] && A.herd.Y[i] === B.herd.Y[i] ? 1 : 0;
+  }
+  check('both pages let the goats out to the same places for the round', same === A.herd.count, `${same} of ${A.herd.count}`);
+  check('both put everybody in the round, the bots too', A.g.inFight[ME] && B.g.inFight[ME] && A.g.inFight[A.g.slotOf(201)] && B.g.inFight[B.g.slotOf(202)]);
+
+  /* The host hovers high over the garage, out of every goat's way; B
+   * herds the goat nearest the garage by the bots' rule. */
+  const meA = {
+    x: OX + 16 * S, y: 9 * S, z: OZ - 4 * S, fx: 1, fy: 0, fz: 0, ux: 0, uy: 1, uz: 0, flying: true, gun: false, missile: false,
+  };
+  const meB = { ...meA };
+  const field = B.herd.field;
+  let t = -1;
+  let tBest = Infinity;
+  for (let i = 0; i < B.herd.count; i += 1) {
+    const d = field.at(B.herd.X[i], B.herd.Y[i]);
+    if (d >= 0 && d < tBest) {
+      tBest = d;
+      t = i;
+    }
+  }
+  let bx = B.herd.X[t] + 15;
+  let by = B.herd.Y[t] + 15;
+  let bh = 6.5;
+  let best = Infinity;
+  let bestAt = 0;
+  let side = 0;
+  const way = new Float64Array(2);
+  const at = new Float64Array(2);
+  const pose = {
+    px: 0, py: 0, pz: 0, qx: 0, qy: 0, qz: 0, qw: 1, cut: false,
+  };
+  const craftA = { x: 0, y: 0, h: 0 };
+  const craftB = { x: 0, y: 0, h: 0 };
+  let live = false;
+  let ended = false;
+  let apartSum = 0;
+  let apartN = 0;
+  let worst = 0;
+  let stepUs = 0;
+  let steps = 0;
+  const liveFrom = { herds: 0, bytes: 0 };
+  for (let k = 0; k < (5000 + 181000) / DOGFIGHT_EVERY && !ended; k += 1) {
+    clock.t += DOGFIGHT_EVERY;
+    if (!live && clock.t >= board.goAt) {
+      live = true;
+      liveFrom.herds = board.herds;
+      liveFrom.bytes = board.bytes;
+      A.g.heard(board.state('live'), toLocal);
+      B.g.heard(board.state('live'), toLocal);
+    }
+    if (live && clock.t >= board.endAt) {
+      const rows = board.state('results').rows;
+      board.winner = rows[0].goats > 0 && (!rows[1] || rows[1].goats < rows[0].goats) ? rows[0].id : null;
+      A.g.heard(board.state('results'), toLocal);
+      B.g.heard(board.state('results'), toLocal);
+      ended = true;
+      break;
+    }
+    /* B's pilot: behind its goat on the way home, low when there. */
+    if (B.herd.MODE[t] !== HOME) {
+      const left = field.at(B.herd.X[t], B.herd.Y[t]);
+      if (left < best) {
+        best = left;
+        bestAt = k;
+      } else if (k - bestAt > 250) {
+        side = side > 0 ? -1.4 : 1.4;
+        bestAt = k;
+      }
+      herdPoint(field, B.herd.X[t], B.herd.Y[t], GOAT_BOTS.ace.behind, side, way, at);
+      const dx = at[0] - bx;
+      const dy = at[1] - by;
+      const d = Math.hypot(dx, dy);
+      const ahead = (bx - B.herd.X[t]) * way[0] + (by - B.herd.Y[t]) * way[1] > 0;
+      const low = d < 3 && !ahead;
+      const stepM = Math.min(d, ((low ? GOAT_BOTS.ace.pace : 12) * DOGFIGHT_EVERY) / 1000);
+      if (d > 1e-6) {
+        bx += (dx / d) * stepM;
+        by += (dy / d) * stepM;
+      }
+      bh += Math.max(-0.04, Math.min(0.04, (low ? 1.3 : 6.5) - bh));
+    } else {
+      bh = 9;
+    }
+    meB.x = OX + bx * S;
+    meB.z = OZ - by * S;
+    meB.y = bh * S;
+    /* What each page draws of the other, and of the host's bots. */
+    pose.px = meB.x; pose.py = meB.y; pose.pz = meB.z;
+    A.g.remote(YOU_B, pose, { handle: 'Lou' });
+    pose.px = meA.x; pose.py = meA.y; pose.pz = meA.z;
+    B.g.remote(YOU_A, pose, { handle: 'Host' });
+    A.g.eachFlown((id, x, y, z) => {
+      pose.px = x; pose.py = y; pose.pz = z;
+      B.g.remote(id, pose, { handle: BOTS.find((b) => b.id === id).name, bot: true, skill: 'ace' });
+    });
+    const t0 = process.hrtime.bigint();
+    A.g.step(meA);
+    craftA.x = (meA.x - OX) / S; craftA.y = (OZ - meA.z) / S; craftA.h = meA.y / S;
+    A.herd.step(DOGFIGHT_EVERY / 1000, craftA, null, 0, A.pen.nOthers ? A.pen.others : null, A.pen.nOthers);
+    stepUs += Number(process.hrtime.bigint() - t0) / 1000;
+    steps += 1;
+    B.g.step(meB);
+    craftB.x = bx; craftB.y = by; craftB.h = bh;
+    B.herd.step(DOGFIGHT_EVERY / 1000, craftB, null, 0, B.pen.nOthers ? B.pen.others : null, B.pen.nOthers);
+    for (const p of [A, B]) {
+      const out = p.g.takeOutbox();
+      if (out) {
+        for (const m of out) board.take(p, m);
+      }
+    }
+    if (live && k % 100 === 0) {
+      for (let i = 0; i < A.herd.count; i += 1) {
+        const d = Math.hypot(A.herd.X[i] - B.herd.X[i], A.herd.Y[i] - B.herd.Y[i]);
+        apartSum += d;
+        apartN += 1;
+        if (d > worst) {
+          worst = d;
+        }
+      }
+    }
+  }
+  const rows = board.state('results').rows;
+  const goatsOf = (id) => (rows.find((r) => r.id === id) || { goats: 0 }).goats;
+  check('the host\'s herd credits the goat the other pilot pushed in to that pilot', goatsOf(YOU_B) >= 1 && A.herd.MODE[t] === HOME, `Lou ${goatsOf(YOU_B)}, goat ${t} ${A.herd.MODE[t] === HOME ? 'home' : 'out'} on the host`);
+  check('and that pilot\'s page counts it as theirs', B.g.pops[ME] === goatsOf(YOU_B), `${B.g.pops[ME]}`);
+  check('the host\'s bots herd goats home in a round', goatsOf(201) + goatsOf(202) >= 1, `MOCHI ${goatsOf(201)}, GIZMO ${goatsOf(202)}`);
+  check('only the host says a goat is home, and once', board.wrong === 0, `${board.wrong} refused`);
+  check('both pages agree how many are home', A.g.home === board.homed.size && B.g.home === board.homed.size, `${A.g.home} ${B.g.home} ${board.homed.size}`);
+  const mean = apartSum / Math.max(1, apartN);
+  check('the other page\'s herd stays with the host\'s', mean < 0.5 && worst < 6, `mean ${mean.toFixed(2)} m, worst ${worst.toFixed(1)} m`);
+  const secs = 180;
+  const bps = (board.bytes - liveFrom.bytes) / secs;
+  check('the herd costs the host under a kilobyte a second on the wire', bps < 1000, `${bps.toFixed(0)} B/s, ${((board.herds - liveFrom.herds) / secs).toFixed(1)} a second`);
+  check('the clock ends the round, and both pages show the winner', ended && A.g.over && B.g.over && A.g.winner === A.g.slotOf(board.winner ?? -9) && B.g.winner === B.g.slotOf(board.winner ?? -9),
+    `winner ${board.winner}, ${rows.map((r) => `${r.id}:${r.goats}`).join(' ')}`);
+  check('a feed of the host\'s round and its herd, under the solo step\'s line', stepUs / steps < STEP_US_MAX * 2, `${(stepUs / steps).toFixed(0)} us`);
+}
+
 async function main() {
   const house = houseBlock();
   const { hood, solids } = await streetBlock(house);
@@ -715,6 +960,7 @@ async function main() {
   herdingBlock(grid, names, world);
   await carsBlock(world, solids, grid, names);
   othersBlock(grid, names);
+  roomBlock(grid, names);
   console.log(failures ? `\n${failures} failed` : '\nall passed');
   process.exit(failures ? 1 : 0);
 }

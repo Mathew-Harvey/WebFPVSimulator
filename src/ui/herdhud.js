@@ -95,7 +95,7 @@ export class HerdHud extends DogfightHud {
     const s = el('div', 'df-slip');
     const name = g.herd && goat >= 0 ? g.herd.names[goat] : 'A goat';
     if (by >= 0) {
-      s.append(el('b', by === ME ? 'df-you' : null, nameOf(by)), document.createTextNode(` got ${name} home`));
+      s.append(el('b', by === ME ? 'df-you' : null, nameOf(by, g)), document.createTextNode(` got ${name} home`));
     } else {
       s.append(document.createTextNode(`${name} wandered home`));
     }
@@ -216,7 +216,7 @@ export class HerdHud extends DogfightHud {
         lead = i;
       }
     }
-    const best = lead >= 0 ? `TOP ${nameOf(lead)} ${g.pops[lead]}` : '';
+    const best = lead >= 0 ? `TOP ${nameOf(lead, g)} ${g.pops[lead]}` : '';
     if (L.best !== best) {
       L.best = best;
       this.scoreBest.textContent = best;
@@ -229,7 +229,13 @@ export class HerdHud extends DogfightHud {
     }
 
     let banner = '';
-    if (!g.over && g.startedMs < 0) {
+    if (g.room) {
+      if (!g.over && g.startedMs < 0) {
+        banner = g.host
+          ? 'Press G or the pause menu to start a round. Every goat is whoever pushed it in last.'
+          : 'The host starts each round. Every goat is whoever pushed it in last.';
+      }
+    } else if (!g.over && g.startedMs < 0) {
       const n = g.goatRules.bots;
       banner = n
         ? `Take off to start. ${n === 1 ? 'One bot is' : `${n} bots are`} herding too. Every goat is whoever pushed it in last.`
@@ -241,17 +247,21 @@ export class HerdHud extends DogfightHud {
       this.banner.classList.toggle('is-off', !banner);
     }
 
-    if (L.over !== g.over) {
-      L.over = g.over;
-      this.result.classList.toggle('is-off', !g.over);
-      if (g.over) {
+    /* A room's table is put away by Fly on while the round stays over. */
+    const showing = g.over && !g.dismissed;
+    if (L.over !== showing) {
+      L.over = showing;
+      this.result.classList.toggle('is-off', !showing);
+      if (showing) {
         this.showResult(g, extra);
       }
     }
-    const nextRound = g.over ? Math.max(1, Math.ceil((extra.nextMs || 0) / 1000)) : 0;
-    if (g.over && this.resultKeys && L.nextRound !== nextRound) {
+    const nextRound = showing ? Math.max(1, Math.ceil((extra.nextMs || 0) / 1000)) : 0;
+    if (showing && this.resultKeys && L.nextRound !== nextRound) {
       L.nextRound = nextRound;
-      this.resultKeys.textContent = `Next round in ${nextRound} s`;
+      this.resultKeys.textContent = g.room
+        ? (g.host ? 'Press G for another round' : 'The host starts the next round')
+        : `Next round in ${nextRound} s`;
     }
   }
 
@@ -261,7 +271,7 @@ export class HerdHud extends DogfightHud {
     if (g.winner === ME) {
       title = 'YOU WIN!';
     } else if (g.winner >= 0) {
-      title = `${nameOf(g.winner).toUpperCase()} WINS`;
+      title = `${nameOf(g.winner, g).toUpperCase()} WINS`;
     } else {
       title = rows[0] && rows[0].goats > 0 ? 'A DRAW!' : 'NO GOATS HOME';
     }
@@ -273,7 +283,7 @@ export class HerdHud extends DogfightHud {
     table.append(head);
     rows.forEach((r, n) => {
       const tr = el('tr', r.slot === ME ? 'is-me' : null);
-      const name = el('td', null, nameOf(r.slot));
+      const name = el('td', null, nameOf(r.slot, g));
       if (r.bot) {
         name.append(el('span', 'df-bot', 'BOT'));
       }
@@ -289,7 +299,7 @@ export class HerdHud extends DogfightHud {
     const mine = g.pops[ME];
     medal('Your goats', `${mine} ${mine === 1 ? 'goat' : 'goats'} home`);
     medal('The herd', `${g.home} of ${g.total} home`);
-    if (extra.best != null) {
+    if (extra.best != null && !g.room) {
       medal('Your best here', extra.newBest ? `${extra.best} goats, a new best` : `${extra.best} goats`);
     }
     const cols = el('div', 'df-cols');
@@ -306,7 +316,16 @@ export class HerdHud extends DogfightHud {
     leave.addEventListener('click', () => this.onLeave && this.onLeave());
     const keys = el('span', 'df-keys', '');
     this.resultKeys = keys;
-    row.append(again, change, leave, keys);
+    if (g.room) {
+      /* The room's next round is the host's, its rules are on the host's
+       * pause menu, and leaving is leaving the room. */
+      const fly = el('button', 'df-btn', 'Fly on');
+      fly.type = 'button';
+      fly.addEventListener('click', () => this.onFlyOn && this.onFlyOn());
+      row.append(...(g.host ? [again, fly] : [fly]), keys);
+    } else {
+      row.append(again, change, leave, keys);
+    }
     this.result.replaceChildren(h, cols, row);
   }
 }

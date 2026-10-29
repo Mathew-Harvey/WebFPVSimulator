@@ -144,6 +144,7 @@
     'src/game/film.js',
     'src/game/gaps.js',
     'src/game/ghost.js',
+    'src/game/goatroom.js',
     'src/game/goatround.js',
     'src/game/guide.js',
     'src/game/obstacles.js',

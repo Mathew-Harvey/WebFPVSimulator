@@ -129,6 +129,40 @@ function underneath(r) {
   };
 }
 
+/*
+ * What a herding game keeps beside the dogfight's, for every slot it has:
+ * the map's herd and its frame, the goat each bot is after and how it is
+ * getting on with it, and the bots' flying. GoatRound's and a room's
+ * (src/game/goatroom.js GoatRoom), which shares the methods below.
+ */
+export function herding(g, pen) {
+  const n = g.cap;
+  g.pen = pen;
+  g.herd = pen ? pen.herd : null;
+  g.field = pen ? pen.field() : null;
+  g.plan = pen ? pen.frame : { OX: 0, OZ: 0, S: 1 };
+  const N = g.herd ? g.herd.count : 0;
+  g.counted = new Uint8Array(N);
+  g.herdFrom = 0;
+  g.gTarget = new Int16Array(n).fill(-1);
+  g.gRetarget = new Float64Array(n);
+  g.gWobbleAt = new Float64Array(n);
+  g.gwx = new Float64Array(n);
+  g.gwy = new Float64Array(n);
+  g.hx = new Float64Array(n);
+  g.hy = new Float64Array(n);
+  g.hz = new Float64Array(n);
+  g.way = new Float64Array(2);
+  g.at2 = new Float64Array(2);
+  g.gHome = new Int32Array(n);
+  g.gHomeAt = new Float64Array(n);
+  g.gSide = new Float64Array(n);
+  g.flyer = new BotFlyer(g, { DT, MAX: n });
+  for (const e of g.events) {
+    e.goat = -1;
+  }
+}
+
 export class GoatRound extends Dogfight {
   /*
    * pen: the goat map's game (map.goatGame, src/maps/goats/index.js): its
@@ -139,30 +173,7 @@ export class GoatRound extends Dogfight {
     const r = normaliseGoatRules(rules);
     super(world, underneath(r), seed);
     this.goatRules = r;
-    this.pen = pen;
-    this.herd = pen ? pen.herd : null;
-    this.field = pen ? pen.field() : null;
-    this.plan = pen ? pen.frame : { OX: 0, OZ: 0, S: 1 };
-    const N = this.herd ? this.herd.count : 0;
-    this.counted = new Uint8Array(N);
-    this.herdFrom = 0;
-    this.gTarget = new Int16Array(MAX_PILOTS).fill(-1);
-    this.gRetarget = new Float64Array(MAX_PILOTS);
-    this.gWobbleAt = new Float64Array(MAX_PILOTS);
-    this.gwx = new Float64Array(MAX_PILOTS);
-    this.gwy = new Float64Array(MAX_PILOTS);
-    this.hx = new Float64Array(MAX_PILOTS);
-    this.hy = new Float64Array(MAX_PILOTS);
-    this.hz = new Float64Array(MAX_PILOTS);
-    this.way = new Float64Array(2);
-    this.at2 = new Float64Array(2);
-    this.gHome = new Int32Array(MAX_PILOTS);
-    this.gHomeAt = new Float64Array(MAX_PILOTS);
-    this.gSide = new Float64Array(MAX_PILOTS);
-    this.flyer = new BotFlyer(this, { DT, MAX: MAX_PILOTS });
-    for (const e of this.events) {
-      e.goat = -1;
-    }
+    herding(this, pen);
     this.reset(0);
   }
 
@@ -219,9 +230,15 @@ export class GoatRound extends Dogfight {
     return n;
   }
 
-  /* The bots to the herd, as more craft in the plan: slot s is the herd's
-   * pusher s, so a goat's BY is the slot that pushed it. A slot with no
-   * bot in it is out of reach overhead. */
+  /* Whether slot s leans on the goats: here, a bot that is flying. */
+  pushes(s) {
+    return this.isBot[s] === 1 && this.alive[s] === 1;
+  }
+
+  /* The others to the herd, as more craft in the plan: slot s is the
+   * herd's pusher s, so a goat's BY is the slot that pushed it. A slot
+   * with nobody in it is out of reach overhead, and the herd is handed
+   * only as many as reach the last one somebody is in. */
   tellHerd() {
     const pen = this.pen;
     if (!pen) {
@@ -230,19 +247,21 @@ export class GoatRound extends Dogfight {
     const { OX, OZ, S } = this.plan;
     const o = pen.others;
     const n = Math.min(this.cap - 1, (o.length / 3) | 0);
+    let last = 0;
     for (let s = 1; s <= n; s += 1) {
       const b = (s - 1) * 3;
-      if (this.isBot[s] && this.alive[s]) {
+      if (this.pushes(s)) {
         o[b] = (this.x[s] - OX) / S;
         o[b + 1] = (OZ - this.z[s]) / S;
         o[b + 2] = this.y[s] / S;
+        last = s;
       } else {
         o[b] = 0;
         o[b + 1] = 0;
         o[b + 2] = 1e9;
       }
     }
-    pen.nOthers = n;
+    pen.nOthers = last;
   }
 
   /* Off the map's herd, when the round is put away. */
@@ -286,7 +305,8 @@ export class GoatRound extends Dogfight {
 
   /* ONE FEED OF A BOT. */
   herdBot(i, now) {
-    const sk = GOAT_BOTS[this.goatRules.skill];
+    const skill = this.skillOf(i);
+    const sk = GOAT_BOTS[skill] || GOAT_BOTS.pilot;
     const { OX, OZ, S } = this.plan;
     const w = this.world;
     const H = this.herd;
@@ -345,7 +365,7 @@ export class GoatRound extends Dogfight {
       }
     }
     this.flyer.setGoal(i, gx, gy, gz, speed);
-    this.flyer.step(i, now, SKILLS[this.goatRules.skill]);
+    this.flyer.step(i, now, SKILLS[skill] || SKILLS.pilot);
   }
 
   /* ONE FEED. me: as the dogfight's, gun and missile ignored. */

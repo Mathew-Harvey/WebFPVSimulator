@@ -2317,6 +2317,7 @@ export async function boot({ loading, bootStart, mapId }) {
   let fightInRoom = '';
   const ROOM_RIBBON_RULES = Object.freeze({ game: 'ribbon', room: true });
   const ROOM_DOGFIGHT_RULES = Object.freeze({ game: 'dogfight', room: true });
+  const ROOM_GOATS_RULES = Object.freeze({ game: 'goats', room: true });
   /* What the room pump last gave a DogfightRoom of the bot seats. */
   let fightSeats = null;
   let fightBots = null;
@@ -2552,6 +2553,9 @@ export async function boot({ loading, bootStart, mapId }) {
     if (fightGame && fightGame.detach) {
       fightGame.detach();
     }
+    if (together) {
+      together.goatsHerdSize(0);
+    }
     if (fightView) {
       fightView.dispose();
     }
@@ -2580,9 +2584,11 @@ export async function boot({ loading, bootStart, mapId }) {
      * whatever the pilot was doing; any other room plays no game of this
      * kind. */
     const inGame = together && ui.roomInfo ? together.gameRoom() : '';
-    const roomGame = inGame === 'ribbon' || inGame === 'dogfight' ? inGame : '';
+    const roomGame = inGame === 'ribbon' || inGame === 'dogfight' || inGame === 'goats' ? inGame : '';
     const roomRibbon = roomGame === 'ribbon';
-    const rules = roomGame ? (roomRibbon ? ROOM_RIBBON_RULES : ROOM_DOGFIGHT_RULES) : ui.dogfight;
+    const rules = roomGame
+      ? ({ ribbon: ROOM_RIBBON_RULES, dogfight: ROOM_DOGFIGHT_RULES, goats: ROOM_GOATS_RULES })[roomGame]
+      : ui.dogfight;
     /* Goat herding's round is the goat map's, and nowhere else. */
     const herdable = !rules || rules.game !== 'goats' || Boolean(view && view.goatGame);
     const want = Boolean(view) && Boolean(rules) && herdable && mapReady && !replayMode && (Boolean(roomGame) || !ui.roomInfo);
@@ -2626,9 +2632,9 @@ export async function boot({ loading, bootStart, mapId }) {
       if (!fightLoading) {
         fightLoading = true;
         const want = kind === 'goats'
-          ? Promise.all([import('./game/goatround.js'), import('./ui/herdhud.js'), import('./game/dogfight.js'), import('./render/dogfight.js')])
-            .then(([game, hud, base, render]) => ({
-              ...base, ...game, Game: game.GoatRound, View: render.DogfightView, feedFraction: render.feedFraction, Hud: hud.HerdHud, kicker: 'Goat herding',
+          ? Promise.all([import('./game/goatround.js'), import('./ui/herdhud.js'), import('./game/dogfight.js'), import('./render/dogfight.js'), import('./game/goatroom.js')])
+            .then(([game, hud, base, render, room]) => ({
+              ...base, ...game, Game: game.GoatRound, View: render.DogfightView, feedFraction: render.feedFraction, Hud: hud.HerdHud, kicker: 'Goat herding', GoatRoom: room.GoatRoom,
             }))
           : kind === 'ribbon'
           ? Promise.all([import('./game/ribbons.js'), import('./render/ribbons.js'), import('./ui/ribbonhud.js'), import('./game/dogfight.js'), import('./render/dogfight.js')])
@@ -2674,6 +2680,8 @@ export async function boot({ loading, bootStart, mapId }) {
       fightGame = new fightMods.RibbonRoom(world);
     } else if (roomGame === 'dogfight') {
       fightGame = new fightMods.DogfightRoom(world, { seed });
+    } else if (roomGame === 'goats') {
+      fightGame = new fightMods.GoatRoom(world, { seed, pen: view.goatGame });
     } else if (kind === 'goats') {
       fightGame = new Game(world, rules, seed, view.goatGame);
     } else {
@@ -2698,6 +2706,8 @@ export async function boot({ loading, bootStart, mapId }) {
           if (fightGame && fightGame.room) {
             if (fightKind === 'ribbon') {
               together.ribbonStart();
+            } else if (fightKind === 'goats') {
+              together.goatsStart();
             } else {
               together.dogfightStart();
             }
@@ -2731,6 +2741,12 @@ export async function boot({ loading, bootStart, mapId }) {
       if (last) {
         fightGame.heard(last, together.boardToLocal);
       }
+    } else if (roomGame === 'goats') {
+      fightRoomSync();
+      const last = together.goatsLast();
+      if (last) {
+        fightGame.heard(last, together.boardToLocal);
+      }
     }
     fightNewRound();
     /* Ribbons and goats fire nothing: the gun and missile buttons stay
@@ -2746,6 +2762,10 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     if (fightKind === 'dogfight') {
       dogfightRoomSync();
+      return;
+    }
+    if (fightKind === 'goats') {
+      goatsRoomSync();
       return;
     }
     const who = together.ribbonWho();
@@ -2828,6 +2848,51 @@ export async function boot({ loading, bootStart, mapId }) {
     if (out) {
       for (const m of out) {
         together.sendDogfight(m);
+      }
+    }
+  }
+
+  /* The same, in a goat herding room (src/game/goatroom.js): who this
+   * page is, the bot seats and their places, the board's round and the
+   * goats it counted, the host's herd on everybody else's page, and on the
+   * host's page its herd and its goats home out to the room. */
+  function goatsRoomSync() {
+    const g = fightGame;
+    const who = together.ribbonWho();
+    if (who) {
+      g.setYou(who.you, who.host);
+    }
+    const bots = together.roomBots();
+    if (bots) {
+      const seats = bots.seats();
+      if (seats !== fightSeats) {
+        fightSeats = seats;
+        g.setBots(seats);
+      }
+      if (bots.mine()) {
+        fightBots = bots;
+        g.eachFlown(fightBotPose);
+      }
+    }
+    together.goatsHerdSize(g.herd ? g.herd.count : 0);
+    const st = together.takeGoats();
+    if (st) {
+      g.heard(st, together.boardToLocal);
+    }
+    const ins = together.takeGoatsIn();
+    if (ins) {
+      for (const m of ins) {
+        if (m.t === 'gtHome') {
+          g.heardHome(m);
+        } else if (m.t === 'gtHerd') {
+          g.heardHerd(m);
+        }
+      }
+    }
+    const out = g.takeOutbox();
+    if (out) {
+      for (const m of out) {
+        together.sendGoats(m);
       }
     }
   }

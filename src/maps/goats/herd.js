@@ -993,7 +993,7 @@ export function makeHerd(names, grid, { seed = 0x60a7, parks = [] } = {}) {
   return {
     names,
     count: N,
-    X, Y, FX, FY, HOP, PHASE, SPEED, MODE, FEAR, HOME_AT, BY,
+    X, Y, VX, VY, FX, FY, HOP, PHASE, SPEED, MODE, FEAR, HOME_AT, BY,
     grid,
     field,
     step,
@@ -1001,10 +1001,12 @@ export function makeHerd(names, grid, { seed = 0x60a7, parks = [] } = {}) {
     /*
      * Let the goats out: every goat back on the street, somewhere new each
      * time, standing, none home and the clock not started. The herd's own
-     * clock goes on, forward only, as it always does.
+     * clock goes on, forward only, as it always does. `at`, when given, is
+     * the let out's number, so every page in a room that is told the same
+     * one scatters the goats to the same places (src/game/goatroom.js).
      */
-    reset() {
-      round += 1;
+    reset(at) {
+      round = Number.isInteger(at) ? at : round + 1;
       for (const a of [VX, VY, SPEED, FEAR, HOP, LEAP, LVX, LVY, MODE]) {
         a.fill(0);
       }
@@ -1014,6 +1016,32 @@ export function makeHerd(names, grid, { seed = 0x60a7, parks = [] } = {}) {
       firstRun = -1;
       homeCount = 0;
       events.length = 0;
+    },
+    /*
+     * Goat i where another page's herd says it is (a room's host, in
+     * src/game/goatroom.js): plan metres, metres a second, its mode and its
+     * fear. Getting home or leaving it is counted as a step would; no
+     * event is made, because the page that saw it happen made it.
+     */
+    put(i, x, y, vx, vy, mode, fear) {
+      X[i] = x;
+      Y[i] = y;
+      VX[i] = vx;
+      VY[i] = vy;
+      FEAR[i] = fear;
+      if (mode === HOME && MODE[i] !== HOME) {
+        HOME_AT[i] = clock;
+        T[i] = 0;
+        homeCount += 1;
+      } else if (mode !== HOME && MODE[i] === HOME) {
+        HOME_AT[i] = -1;
+        homeCount -= 1;
+      }
+      if (mode !== MODE[i]) {
+        TX[i] = x;
+        TY[i] = y;
+      }
+      MODE[i] = mode;
     },
     /* The whole herd, to be taken by another of the same goats. */
     state: () => ({ arrays: ARRAYS, clock, firstRun, homeCount, round }),

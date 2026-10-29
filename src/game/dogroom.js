@@ -593,6 +593,23 @@ export class DogfightRoom extends Dogfight {
     const t = this.now();
     this.tNow = t;
     const now = this.clockMs + DOGFIGHT_EVERY;
+    this.carry(t);
+    super.step(me, teleported);
+    for (let i = 1; i < ROOM_SLOTS; i += 1) {
+      if (this.idOf[i] < 0 || !this.puppet[i]) {
+        continue;
+      }
+      this.firing[i] = 0;
+      if (this.gunOn[i] && this.running && this.live(i)) {
+        this.pull(i, this.fx[i], this.fy[i], this.fz[i], now);
+      }
+    }
+    this.tellGuns(now);
+  }
+
+  /* The puppets where the room last drew them, carried on by how fast
+   * they were going, at this page's time t. */
+  carry(t) {
     for (let i = 1; i < ROOM_SLOTS; i += 1) {
       if (this.idOf[i] < 0 || !this.puppet[i]) {
         continue;
@@ -607,17 +624,10 @@ export class DogfightRoom extends Dogfight {
       this.fx[i] = this.tfx[i]; this.fy[i] = this.tfy[i]; this.fz[i] = this.tfz[i];
       this.ux[i] = this.tux[i]; this.uy[i] = this.tuy[i]; this.uz[i] = this.tuz[i];
     }
-    super.step(me, teleported);
-    for (let i = 1; i < ROOM_SLOTS; i += 1) {
-      if (this.idOf[i] < 0 || !this.puppet[i]) {
-        continue;
-      }
-      this.firing[i] = 0;
-      if (this.gunOn[i] && this.running && this.live(i)) {
-        this.pull(i, this.fx[i], this.fy[i], this.fz[i], now);
-      }
-    }
-    /* This page's own guns, told to the others when they change. */
+  }
+
+  /* This page's own guns, told to the others when they change. */
+  tellGuns(now) {
     for (let i = 0; i < ROOM_SLOTS; i += 1) {
       if (i !== ME && (!this.isBot[i] || this.puppet[i] || this.idOf[i] < 0)) {
         continue;

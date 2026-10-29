@@ -337,7 +337,7 @@ export async function buildMap(shell, onProgress, options) {
          * but the step; the plan's frame, for the round to put a plan
          * point in the world; and the way home the herd made.
          */
-        others: new Float64Array(3 * 16),
+        others: new Float64Array(3 * 64),
         nOthers: 0,
         frame: { OX, OZ, S },
         field: () => herd.field,

@@ -4373,6 +4373,91 @@ async function sceneDogfight() {
   }
 }
 
+/*
+ * GOAT HERDING IN A ROOM: the owner's ask of 2026-10-29, "Every map should
+ * be available with friends", with his pick of the same day, "Most goats
+ * wins". A room on the goat map that plays goat herding from the moment it
+ * opens; the page as host seats two bots and starts a round; a pilot who
+ * joined hears the round, the host's herd and, once the bots have got one
+ * in, a goat home with a bot's name on it.
+ */
+async function sceneGoats() {
+  console.log('\ngoats: goat herding in a room');
+  const kite = bot('Kite Runner', 361);
+  const room = await hostRoom(kite, {
+    name: 'Goats', way: 'freestyle', map: 'goats', mapName: 'Goat herding', scale: 50, game: 'goats',
+  });
+  check('the board opens a goat herding room', room.game === 'goats', String(room.game));
+  const at = `/index.html?mp=1&board=${encodeURIComponent(boardOrigin)}&map=goats`;
+  const page = await open(at, seedFor({ met: true, name: 'Goat Pilot', map: 'goats' }));
+  const shot = shooter(page, 'goats');
+  const G = 'window.__dogfight && window.__dogfight()';
+  let moss = null;
+  try {
+    await joinByCode(page, room.code);
+    await page.until(`${T} && window.__together().inRoom`, 15000);
+    await page.until("window.__mode === 'flight' && window.__ui.screen === 'flight'", 60000);
+    check('the page plays the room\'s goat herding on the map\'s herd', await page.until(`${G} && window.__dogfight().room === true && window.__dogfight().cap === 64 && !!window.__dogfight().herd`, 20000).then(() => true, () => false));
+    const rows = await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); return window.__ui.items().filter(Boolean).map((x) => x.label + '=' + (x.value || '')); })()");
+    check('the pause menu says the host starts a round', rows.includes('Goat herding=Waiting'), rows.join(', '));
+    check('and has no Let the goats out, which would let out this page\'s goats alone', !rows.some((r) => r.startsWith('Let the goats out')));
+    await page.evaluate("(() => { window.__ui.act('resume'); return 1; })()");
+    kite.s.leave();
+    check('the page is host once the host goes', await page.until(`${T} && window.__together().host === window.__together().you`, 10000).then(() => true, () => false));
+    const hostRows = await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); return window.__ui.items().filter(Boolean).map((x) => x.label); })()");
+    check('the host\'s pause menu has Start a goat round, Fill the roster and Round', ['Start a goat round', 'Fill the roster', 'Round'].every((x) => hostRows.includes(x)), hostRows.join(', '));
+    await page.evaluate("(() => { window.__ui.act('room-gt-round'); return 1; })()");
+    check('Round steps the round\'s length', await page.until("window.__ui.roomInfo && window.__ui.roomInfo.goats && window.__ui.roomInfo.goats.round === '5m'", 3000).then(() => true, () => false));
+    await page.evaluate("(() => { window.__ui.act('room-roster'); return 1; })()");
+    await page.until("!!document.querySelector('#tg .botroster')", 3000).catch(() => {});
+    await page.evaluate("(() => { document.querySelector('#tg .botroster [data-k=\\'add-0\\']').click(); return 1; })()");
+    await wait(400);
+    await page.evaluate("(() => { document.querySelector('#tg .botroster [data-k=\\'add-0\\']').click(); return 1; })()");
+    const seated = await page.until(`${G} && (() => { const g = window.__dogfight(); let k = 0; for (let i = 1; i < g.cap; i += 1) if (g.isBot[i] && !g.puppet[i]) k += 1; return k === 2; })()`, 5000).then(() => true, () => false);
+    check('two presses seat two bots, flown by the page', seated);
+    await page.evaluate("(() => { const b = window.__roomBots(); for (const s of b.seats()) b.skill(s.id, 'ace'); window.__ui.act('resume'); return 1; })()");
+    moss = bot('Moss Comet', 363);
+    await joinRoom(moss, room.code, '');
+    await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); window.__ui.act('room-gt-start'); return 1; })()");
+    const started = await until(() => {
+      const r = moss.heard.filter((h) => h.name === 'goats').pop();
+      return r && r.data.goats.phase === 'count' && r.data.goats.rows.length === 4 && r.data.goats.total > 90;
+    }, 5000);
+    check('the host\'s start puts both pilots and both bots in, with the map\'s herd', started,
+      JSON.stringify((moss.heard.filter((h) => h.name === 'goats').pop() || {}).data));
+    check('and puts the host back in the air', await page.until("window.__ui.screen === 'flight'", 3000).then(() => true, () => false));
+    check('the round goes live', await page.until(`${G} && window.__dogfight().state.phase === 'live'`, 30000).then(() => true, () => false));
+    /* A headless page flies at about a fifth of the wall clock, and a
+     * grazing goat is sent only once it has wandered a metre: a minute. */
+    const herds = await until(() => moss.heard.filter((h) => h.name === 'gtHerd').length >= 3, 60000, 500);
+    check('a pilot who joined hears the host\'s herd', herds, `${moss.heard.filter((h) => h.name === 'gtHerd').length}`);
+    await shot('live');
+    /* On the round's own clock: the solo round's bots get their first in
+     * 40 to 60 s of it. Two minutes of it, or ten of the wall. */
+    let roundMs = 0;
+    const home = await until(async () => {
+      if (moss.heard.some((h) => h.name === 'gtHome' && h.data.by > 200)) return true;
+      roundMs = await page.evaluate(`${G} ? window.__dogfight().clockMs - window.__dogfight().startedMs : 0`);
+      if (roundMs > 120000) throw new Error(`no bot goat home in ${Math.round(roundMs / 1000)} s of the round`);
+      return false;
+    }, 600000, 2000).catch((e) => { console.log(`  note  ${e.message}`); return false; });
+    const probe = await page.evaluate(`(() => { const g = window.__dogfight(); if (!g) return ''; const out = []; for (let i = 1; i < g.cap; i += 1) if (g.isBot[i] && !g.puppet[i]) out.push(i + ':goat ' + g.gTarget[i] + ' h' + (g.y[i] / 3.5).toFixed(1)); return out.join(' ') + ' nOthers ' + g.pen.nOthers + ' round ' + Math.round((g.clockMs - g.startedMs) / 1000) + ' s'; })()`);
+    check('a bot gets a goat home, and the room hears whose it was', home, probe);
+    const hud = await page.evaluate("document.querySelector('.rb-hud') ? document.querySelector('.rb-hud').textContent : ''");
+    check('the host\'s HUD counts the herd', /HOME [1-9]\d*\//.test(hud), hud.slice(0, 120));
+    await shot('home');
+    endChecks(page, /thumbs\/drift\.jpg/);
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.message}`);
+    await shot('failed').catch(() => {});
+  } finally {
+    if (moss) moss.s.leave();
+    kite.s.leave();
+    await page.close();
+  }
+}
+
 try {
   if (wanted('host')) { await freshBoard(); await sceneHost(); }
   if (wanted('lobby')) { await freshBoard(); await sceneLobby(); }
@@ -4399,6 +4484,7 @@ try {
   if (wanted('overview')) { await freshBoard(); await sceneOverview(); }
   if (wanted('ribbon')) { await freshBoard(); await sceneRibbon(); }
   if (wanted('dogfight')) { await freshBoard(); await sceneDogfight(); }
+  if (wanted('goats')) { await freshBoard(); await sceneGoats(); }
 } finally {
   if (board) board.kill('SIGKILL');
   rmSync(scratch, { recursive: true, force: true });

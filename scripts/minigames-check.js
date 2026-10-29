@@ -175,7 +175,7 @@ async function sceneHerd() {
     check('the round is built on the map\'s herd', await until(`${G} return Boolean(g && g.herd && g.total === g.herd.count);`, 30000));
     check('nothing is fired in goat herding', await ev('return window.__input.weaponsLive === false'));
     check('the round\'s HUD is up and the map\'s own steps aside', await until("return !document.querySelector('.df-hud').classList.contains('is-off') && document.querySelector('.goat-hud').classList.contains('is-off')", 5000));
-    check('the herd is handed the bots', await ev(`${G} return g.pen.nOthers === 7 && g.pen.others[2] < 1e8 && g.pen.others[11] > 1e8;`));
+    check('the herd is handed the bots', await ev(`${G} return g.pen.nOthers === 3 && g.pen.others[2] < 1e8 && g.pen.others[8] < 1e8;`));
     await ev('window.__stick(0, 0, 0, 0.7); return 1;');
     check('taking off starts the round', await until(`${G} return g.startedMs >= 0;`, 20000));
     const finite = await ev(`${G} for (let i = 0; i < g.cap; i += 1) { if (!Number.isFinite(g.x[i] + g.y[i] + g.z[i])) return false; } return true;`);

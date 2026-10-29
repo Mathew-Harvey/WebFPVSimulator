@@ -4584,6 +4584,46 @@ function dogfightRoomItems(info) {
   ];
 }
 
+/*
+ * A goat herding room's pause rows, as the dogfight's: the host starts a
+ * round, seats bots and sets how long a round runs between rounds.
+ */
+const GOAT_ROUND_NAMES = { '3m': '3 minutes', '5m': '5 minutes', all: 'All home' };
+function goatsRoomItems(info) {
+  const gt = info.goats;
+  if (!gt) {
+    return [];
+  }
+  const between = gt.phase === 'pit' || gt.phase === 'results';
+  if (!info.host) {
+    return [{
+      label: 'Goat herding',
+      value: between ? 'Waiting' : 'Round on',
+      action: 'noop',
+      note: 'The host starts each round. Every goat is whoever pushed it into the garage last.',
+    }];
+  }
+  return [
+    {
+      label: between ? 'Start a goat round' : 'Round on',
+      action: between ? 'room-gt-start' : 'noop',
+      note: between ? 'The goats go back out and everybody herds, the bots too. Or press G while flying.' : 'The next one can start when this one ends.',
+    },
+    {
+      label: 'Fill the roster',
+      value: `${gt.bots || 0} bots`,
+      action: 'room-roster',
+      note: 'Your friends and the empty seats, and bots to fill them. Bots fly from your computer and give a seat to a friend who joins.',
+    },
+    {
+      label: 'Round',
+      value: GOAT_ROUND_NAMES[gt.round] || '3 minutes',
+      action: between ? 'room-gt-round' : 'noop',
+      note: 'How long a round runs, or until every goat is home. Changes between rounds.',
+    },
+  ];
+}
+
 function roomCraftItem(s, info) {
   const af = airframeById(s.airframe);
   if (info.host && info.freestyle) {
@@ -7158,7 +7198,10 @@ export class Ui {
    * no muscle memory lands on it.
    */
   goatItems() {
-    if (!this.goatsOn) {
+    /* A goat herding room's herd is the host's and its rounds let the
+     * goats out: one page letting its own out would leave it herding goats
+     * nobody else has. */
+    if (!this.goatsOn || (this.roomInfo && this.roomInfo.goats)) {
       return [];
     }
     return [{
@@ -11018,6 +11061,7 @@ export class Ui {
         ...this.goatItems(),
         ...ribbonRoomItems(r),
         ...dogfightRoomItems(r),
+        ...goatsRoomItems(r),
         {
           label: 'Room',
           value: `${r.code} · ${r.n} ${r.n === 1 ? 'pilot' : 'pilots'}`,
@@ -13392,7 +13436,9 @@ export class Ui {
         if (this.onUiSound) {
           this.onUiSound('select');
         }
-        this.onFlyTogether(world);
+        /* A goat room is goat herding from the moment it opens: rounds,
+         * bots and most goats wins (src/game/goatroom.js). */
+        this.onFlyTogether(id === 'goats' ? { ...world, game: 'goats' } : world);
         return;
       }
     }

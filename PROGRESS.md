@@ -72907,3 +72907,9 @@ The bug hunt thread saw together-shots' ribbon check "a bot cuts somebody's ribb
 - Not fixed, and why: `lint:input` 246 of 247, the touch laptop "a finger on the glass" race that fails on main too (memory: touch-laptop-input-flake). `check:firstflight` failed one line once in the batch and passed alone, and failed two on yesterday's tree, so it is a flake older than today.
 - Latency: no change in flight. Two booleans read per key and per frame (`swapInFlight`, `fightGame`), the title orbit's points worked out once per map build.
 - Not flown. What a pilot would notice: pressing Enter or A again while the "Building the world" bar fills does nothing now.
+
+## 2026-10-29 | ui | Mini games: the page's names on a phone held sideways
+
+- Found by the check thread (relayed by the coordinator, 09:02Z): on a phone held sideways (844 by 390, touch) the Mini games page clipped RIBBON CUTTING at its panel's edge and drew Drift Matsuri's name as a speck. Cause: the names are lettered on screen from their measured boxes, and they were measured during the page turn, when the page is swung about its spine, so each was fitted to where the swing had it. They are lettered again when the turn's animation ends (`renderTitleCards` in src/ui/ui.js). Every gate page turns, so every page gets this, and a name already right paints nothing (letterHeading's key).
+- Latency: none in flight. One more lettering pass on a menu, after a page turn.
+- Checks: a shot at 844 by 390 with touch before and after (/mnt/project-files/mini-games/shots/landscape-before.png and landscape-after.png), every name's fitted width 137 px after, against 55 to 174 before. Not run: npm run verify (menus only). Not flown.

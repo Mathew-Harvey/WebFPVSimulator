@@ -58,6 +58,8 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
+import { BotBrain } from './dogbrain.js';
+
 /* Milliseconds of the game's clock a feed, and steps of the lap clock
  * between feeds in flight. 100 a second is finer than any frame and a
  * tenth of the plant's rate, so the game's whole cost is a tenth of what
@@ -91,13 +93,18 @@ export const GUN = {
 };
 
 /* THE MISSILE. One a press. Locks after LOCK_MS with a target held in the
- * circle; without a lock it flies straight. It turns at TURN rad/s, which
- * is less than a quad can, so a hard turn at the right moment beats it. */
+ * circle; without a lock it flies straight. It turns at TURN rad/s and
+ * leads only part of its target's motion, so a quad flying fast and side
+ * on to it close in swings out of its reach, and once the target is off
+ * its nose by more than the seeker sees it is lost and flies on: a hard
+ * turn at the right moment beats it. It was 3.5 rad/s with the whole lead
+ * at first, and nothing in the arena (scripts/dogfight-arena.js) ever got
+ * away from one in open air, bot or scripted pilot. */
 export const MISSILE = {
   speed0: 45,
   speedMax: 70,
   accel: 25,
-  turn: 3.5,
+  turn: 2.0,
   lifeMs: 10000,
   rack: 4,
   reloadMs: 8000,
@@ -109,6 +116,12 @@ export const MISSILE = {
   blastFar: 10,
   lockMs: 800,
   lockRange: 350,
+  /* How much of the target's motion it leads: less than all of it, so a
+   * quad flying side on to it close in swings its line of sight faster
+   * than it can turn, and a break at the right moment beats it. */
+  lead: 0.35,
+  /* cos 65 degrees: how far off its nose the seeker still sees. */
+  seekCos: 0.42262,
 };
 /* cos 12 degrees: the lock circle. */
 export const LOCK_COS = 0.97815;
@@ -130,22 +143,28 @@ export const ROUNDS = {
 export const RESULT_MS = 9000;
 
 /*
- * THE BOTS' SKILLS. speed is a share of the pilot's own aircraft's cruise;
- * turn is rad/s; aim is how far off their aim wanders, rad; lead is how
- * much of the target's motion they aim for; fireCos is how square the
- * target must be in front of them before they shoot; dodge is the chance
- * they break when a missile is coming; missile is the chance a lock is
- * fired, asked twice a second; react is how long a new target takes them.
+ * THE BOTS' SKILLS, for src/game/dogbrain.js. speed: a share of the pilot's
+ * own aircraft's cruise, which is about two thirds of a bot's top speed.
+ * thrust: its motors, in g. rate: how fast it swings its thrust round,
+ * rad/s, and yaw how fast its nose. agility: how hard it chases the
+ * velocity it wants, 1/s. react: how long what it sees takes to sink in,
+ * ms. aim: how far its aim wanders, rad. lead: how much of a target's
+ * motion it allows for. fov: the cosine of half its camera's view, as far
+ * round as it notices anybody. think: how often it reconsiders, ms.
+ * tokens: how many bots may be on the pilot at once. dodge: the chance it
+ * notices a missile at all, notice how long that takes, ms, and breakTti
+ * how long before it arrives the break comes, s. missile: how readily a
+ * lock is fired. discipline: how sure a shot must be.
  */
 export const SKILLS = {
   rookie: {
-    speed: 0.7, turn: 2.0, aim: 0.07, lead: 0, fireCos: 0.985, dodge: 0, missile: 0.25, react: 900, lockMul: 1.6,
+    speed: 0.75, thrust: 2.8, rate: 4.5, yaw: 4, agility: 1.8, react: 450, aim: 0.05, lead: 0.7, fov: 0.45, think: 380, tokens: 1, dodge: 0.35, notice: 700, breakTti: 0.95, missile: 0.5, discipline: 0.2,
   },
   pilot: {
-    speed: 0.85, turn: 2.8, aim: 0.035, lead: 0.6, fireCos: 0.975, dodge: 0.25, missile: 0.5, react: 500, lockMul: 1.2,
+    speed: 0.88, thrust: 3.6, rate: 7, yaw: 6, agility: 2.6, react: 280, aim: 0.028, lead: 0.85, fov: 0.2, think: 260, tokens: 2, dodge: 0.7, notice: 400, breakTti: 0.6, missile: 0.6, discipline: 0.55,
   },
   ace: {
-    speed: 1.0, turn: 3.4, aim: 0.015, lead: 1.0, fireCos: 0.96, dodge: 0.5, missile: 0.8, react: 250, lockMul: 1,
+    speed: 1.0, thrust: 4.5, rate: 10, yaw: 8, agility: 3.4, react: 170, aim: 0.018, lead: 1.0, fov: -0.2, think: 160, tokens: 3, dodge: 0.95, notice: 220, breakTti: 0.45, missile: 0.7, discipline: 0.85,
   },
 };
 
@@ -177,6 +196,106 @@ export function hashKey(s) {
     h = Math.imul(h ^ s.charCodeAt(i), 16777619);
   }
   return h >>> 0;
+}
+
+/*
+ * THE MAP AS TWO GRIDS, the shell's fightWorld reads them once from the
+ * colliders and the ground and this answers the questions the game asks of
+ * them. It lives here, not in the shell, so the bots' arena in Node
+ * (scripts/dogfight-arena.js) asks a map dumped from the browser exactly
+ * what the browser asks it.
+ *
+ *   ground, gn, gcell, gx0, gz0  the floor's heights, gn by gn cells of
+ *                                gcell from (gx0, gz0); gout off the grid
+ *   occ, nx, ny, v, yLo          the solids, nx by nx by ny cells of v from
+ *                                (gx0, yLo, gz0), 1 where anything stands
+ */
+export function gridWorld(d) {
+  const {
+    ground, gn, gcell, gx0, gz0, gout, occ, nx, ny, v, yLo,
+  } = d;
+  const floorAt = (x, y, z) => {
+    const i = Math.floor((x - gx0) / gcell);
+    const j = Math.floor((z - gz0) / gcell);
+    if (i < 0 || j < 0 || i >= gn || j >= gn) {
+      return gout;
+    }
+    return ground[i * gn + j];
+  };
+  const inside = (x, y, z) => {
+    const i = Math.floor((x - gx0) / v);
+    const j = Math.floor((z - gz0) / v);
+    const l = Math.floor((y - yLo) / v);
+    if (i < 0 || j < 0 || l < 0 || i >= nx || j >= nx || l >= ny) {
+      return false;
+    }
+    return occ[(l * nx + j) * nx + i] === 1;
+  };
+  const solidAt = (i, j, l) => i >= 0 && j >= 0 && l >= 0 && i < nx && j < nx && l < ny && occ[(l * nx + j) * nx + i] === 1;
+  /* Along the line cell by cell (Amanatides and Woo's walk), so every cell
+   * the line passes through is asked once and no corner is stepped over.
+   * A line that starts in a marked cell, a bot brushing a wall, is let out
+   * of it before anything counts, so nothing is ever stuck to the wall it
+   * touched. The floor is asked where the line enters each cell, and at
+   * its end. */
+  const blocked = (ax, ay, az, bx, by, bz) => {
+    const dx = bx - ax;
+    const dy = by - ay;
+    const dz = bz - az;
+    if (!(dx * dx + dy * dy + dz * dz > 0)) {
+      return -1;
+    }
+    const px = (ax - gx0) / v;
+    const py = (ay - yLo) / v;
+    const pz = (az - gz0) / v;
+    let i = Math.floor(px);
+    let l = Math.floor(py);
+    let j = Math.floor(pz);
+    const si = dx > 0 ? 1 : (dx < 0 ? -1 : 0);
+    const sl = dy > 0 ? 1 : (dy < 0 ? -1 : 0);
+    const sj = dz > 0 ? 1 : (dz < 0 ? -1 : 0);
+    /* How much of t one cell is along each axis, and where the next
+     * boundary on each is. */
+    const di = si ? v / Math.abs(dx) : Infinity;
+    const dl = sl ? v / Math.abs(dy) : Infinity;
+    const dj = sj ? v / Math.abs(dz) : Infinity;
+    let ti = si > 0 ? (i + 1 - px) * di : (si < 0 ? (px - i) * di : Infinity);
+    let tl = sl > 0 ? (l + 1 - py) * dl : (sl < 0 ? (py - l) * dl : Infinity);
+    let tj = sj > 0 ? (j + 1 - pz) * dj : (sj < 0 ? (pz - j) * dj : Infinity);
+    let out = !solidAt(i, j, l);
+    for (;;) {
+      let t;
+      if (ti <= tl && ti <= tj) {
+        t = ti;
+        i += si;
+        ti += di;
+      } else if (tl <= tj) {
+        t = tl;
+        l += sl;
+        tl += dl;
+      } else {
+        t = tj;
+        j += sj;
+        tj += dj;
+      }
+      if (t > 1) {
+        break;
+      }
+      if (ay + dy * t < floorAt(ax + dx * t, 0, az + dz * t)) {
+        return t;
+      }
+      const hit = solidAt(i, j, l);
+      if (!out) {
+        out = !hit;
+      } else if (hit) {
+        return t;
+      }
+    }
+    return by < floorAt(bx, by, bz) ? 1 : -1;
+  };
+  return {
+    floorAt, inside, blocked, data: d,
+  };
 }
 
 /* The rules a fight is set up with, every field checked, so a stored
@@ -221,19 +340,8 @@ export class Dogfight {
     this.lockMs = f();
     this.lockOn = new Int8Array(n);
     this.target = new Int8Array(n);
-    this.retargetAt = f();
-    this.avoidUntil = f();
-    this.ax = f(); this.ay = f(); this.az = f();
-    this.lookAt = f();
     this.losAt = f();
     this.losOk = new Uint8Array(n);
-    this.burstUntil = f();
-    this.restUntil = f();
-    this.wanderAt = f();
-    this.wx = f(); this.wy = f(); this.wz = f();
-    this.breakUntil = f();
-    this.breakSign = f();
-    this.missileTry = f();
     this.alive = new Uint8Array(n);
     this.inFight = new Uint8Array(n);
     this.hot = new Uint8Array(n);
@@ -264,7 +372,6 @@ export class Dogfight {
     this.mAlive = new Uint8Array(MISSILES);
     this.mOwner = new Int8Array(MISSILES);
     this.mTarget = new Int8Array(MISSILES);
-    this.mDodge = new Uint8Array(MISSILES);
     this.mx = m(); this.my = m(); this.mz = m();
     this.mxPrev = m(); this.myPrev = m(); this.mzPrev = m();
     this.mdx = m(); this.mdy = m(); this.mdz = m();
@@ -283,15 +390,9 @@ export class Dogfight {
     }
     this.eventCount = 0;
     this.seen = { x: 0, y: 0, z: 0 };
-    /* A bot's goal (goal()), and how near it, in the aircraft's metres, a
-     * bot chasing to shoot breaks off and comes round again. */
-    this.gx = 0;
-    this.gy = 0;
-    this.gz = 0;
-    this.closeIn = 6;
-    /* How much nearer than they are the bots count the pilot when they
-     * choose whom to chase: under 1 is the pilot first. */
-    this.meBias = 0.75;
+    this.brain = new BotBrain(this, {
+      GUN, MISSILE, SKILLS, HIT_R, DT, EVERY: DOGFIGHT_EVERY, MAX: MAX_PILOTS, MISSILES,
+    });
     this.reset(0);
   }
 
@@ -344,9 +445,27 @@ export class Dogfight {
       this.backAt[i] = 0;
       this.shieldUntil[i] = i === ME ? Infinity : SHIELD_MS;
     }
+    /* The brains, then where the bots start: the map's spawns, and when
+     * it has few, the open air the brains found, so seven bots are not
+     * handed two spots between them. */
+    this.brain.reset();
+    const sp = this.world.spawns;
+    if (sp.length >= 8) {
+      this.spawnList = sp;
+    } else {
+      /* The open air the brains found, every point reachable from the
+       * pilot's start, the start itself and what is near it left out. */
+      const w = this.world;
+      const away = 15 * w.k;
+      this.spawnList = sp.concat(this.brain.nav.filter((a) => {
+        const dx = a.x - w.cx;
+        const dz = a.z - w.cz;
+        return dx * dx + dz * dz > away * away;
+      }).slice(0, 12 - sp.length));
+    }
     for (let i = 1; i < MAX_PILOTS; i += 1) {
       if (this.isBot[i]) {
-        this.spawnBot(i, (i - 1) * 3);
+        this.spawnBot(i, Math.floor(((i - 1) * this.spawnList.length) / MAX_BOTS));
       }
     }
   }
@@ -359,23 +478,15 @@ export class Dogfight {
     this.reloadAt[i] = 0;
     this.missileAt[i] = 0;
     this.nextShotAt[i] = 0;
-    this.avoidUntil[i] = 0;
-    this.breakUntil[i] = 0;
-    this.burstUntil[i] = 0;
-    this.restUntil[i] = 0;
-    this.lookAt[i] = i * 7;
     this.losAt[i] = 0;
     this.losOk[i] = 0;
-    this.retargetAt[i] = 0;
-    this.wanderAt[i] = 0;
-    this.missileTry[i] = 0;
   }
 
   /* A bot at a spawn: slot `pick` of the world's spawns, or the one
    * farthest from anybody who could shoot it, when pick is -1. */
   spawnBot(i, pick) {
     const w = this.world;
-    const sp = w.spawns;
+    const sp = this.spawnList;
     let s = null;
     if (sp.length && pick >= 0) {
       s = sp[pick % sp.length];
@@ -434,6 +545,7 @@ export class Dogfight {
     this.uxPrev[i] = 0;
     this.uyPrev[i] = 1;
     this.uzPrev[i] = 0;
+    this.brain.spawned(i);
   }
 
   snapshot() {
@@ -543,6 +655,7 @@ export class Dogfight {
           this.spawnBot(i, -1);
           this.shieldUntil[i] = now + SHIELD_MS;
         }
+        this.brain.onBack(i);
         this.event('back', i, i, 0, '', this.x[i], this.y[i], this.z[i]);
       }
     }
@@ -577,9 +690,10 @@ export class Dogfight {
       this.lockOn[ME] = -1;
       this.lockMs[ME] = 0;
     }
+    this.brain.tick();
     for (let i = 1; i < MAX_PILOTS; i += 1) {
       if (this.isBot[i] && this.alive[i]) {
-        this.fly(i, now, armed);
+        this.brain.fly(i, now, armed);
       }
     }
     this.stepPellets(now, armed);
@@ -748,6 +862,7 @@ export class Dogfight {
     const t = this.world.blocked(ox, oy, oz, ox + dx * reach, oy + dy * reach, oz + dz * reach);
     this.pWall[s] = t < 0 ? Infinity : t * reach;
     this.shots[i] += 1;
+    this.brain.onFire(i);
   }
 
   /* A missile from pilot i: homing on its lock, straight without one. */
@@ -780,8 +895,6 @@ export class Dogfight {
     this.mTarget[s] = tgt;
     this.mSerial += 1;
     this.mId[s] = this.mSerial;
-    /* Will the target try to dodge it: a bot's skill, asked once. */
-    this.mDodge[s] = tgt > 0 && this.isBot[tgt] && this.rand() < SKILLS[this.rules.skill].dodge ? 1 : 0;
     this.mdx[s] = this.fx[i];
     this.mdy[s] = this.fy[i];
     this.mdz[s] = this.fz[i];
@@ -816,6 +929,7 @@ export class Dogfight {
     this.hits[by] += 1;
     this.dealt[by] += d;
     this.event('hit', by, to, d, weapon, x, y, z, weapon === 'missile' || d >= 12);
+    this.brain.onHit(to, by);
     if (this.hp[to] > 0) {
       return;
     }
@@ -834,6 +948,7 @@ export class Dogfight {
         this.bestStreak[by] = this.streak[by];
       }
     }
+    this.brain.onPop(to, by);
     this.event('pop', by, to, d, weapon, this.x[to], this.y[to], this.z[to], true);
   }
 
@@ -948,12 +1063,22 @@ export class Dogfight {
         const ty = this.y[t] - this.my[s];
         const tz = this.z[t] - this.mz[s];
         const d = Math.sqrt(tx * tx + ty * ty + tz * tz);
-        let go = d / this.mSpeed[s];
-        if (go > 2) go = 2;
-        const ax = tx + this.vx[t] * go;
-        const ay = ty + this.vy[t] * go;
-        const az = tz + this.vz[t] * go;
-        turnToward(this, 'md', s, ax, ay, az, MISSILE.turn * DT);
+        /* A target that has got outside the seeker's view, a break timed
+         * so the missile flies past, is lost for good: it flies on. */
+        if (d > 1e-6 && (tx * this.mdx[s] + ty * this.mdy[s] + tz * this.mdz[s]) / d < MISSILE.seekCos) {
+          this.mTarget[s] = -1;
+          this.dodged[t] += 1;
+          if (t === ME) {
+            this.event('dodge', this.mOwner[s], t, 0, 'missile', this.mx[s], this.my[s], this.mz[s]);
+          }
+        } else {
+          let go = (d / this.mSpeed[s]) * MISSILE.lead;
+          if (go > 2) go = 2;
+          const ax = tx + this.vx[t] * go;
+          const ay = ty + this.vy[t] * go;
+          const az = tz + this.vz[t] * go;
+          turnToward(this, 'md', s, ax, ay, az, MISSILE.turn * DT);
+        }
       }
       const sp = this.mSpeed[s] * DT;
       const bx = this.mx[s] + this.mdx[s] * sp;
@@ -1066,336 +1191,6 @@ export class Dogfight {
     return best;
   }
 
-  /*
-   * A BOT, one feed: choose a target, choose a direction, turn toward it at
-   * its skill's rate, keep off the floor and out of the walls, and shoot
-   * when the target is square in front of it.
-   */
-  fly(i, now, armed) {
-    const w = this.world;
-    const k = this.k;
-    const sk = SKILLS[this.rules.skill];
-    const speed = w.cruise * sk.speed * k;
-    /* Target: the nearest live opponent in front, the pilot a little
-     * nearer than they are, re-asked every so often or when it pops. */
-    let t = this.target[i];
-    if (t >= 0 && !this.live(t)) {
-      t = -1;
-    }
-    if (t < 0 || now >= this.retargetAt[i]) {
-      let best = -1;
-      let bestScore = Infinity;
-      for (let j = 0; j < MAX_PILOTS; j += 1) {
-        if (j === i || !this.live(j)) {
-          continue;
-        }
-        if (j === ME && !this.meFlying) {
-          continue;
-        }
-        const dx = this.x[j] - this.x[i];
-        const dy = this.y[j] - this.y[i];
-        const dz = this.z[j] - this.z[i];
-        const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        const front = d > 1e-6 ? (dx * this.fx[i] + dy * this.fy[i] + dz * this.fz[i]) / d : 0;
-        let score = d * (1.4 - 0.5 * front);
-        if (j === ME) {
-          score *= this.meBias;
-        }
-        if (score < bestScore) {
-          bestScore = score;
-          best = j;
-        }
-      }
-      if (best !== this.target[i]) {
-        /* A new target takes a moment to react to. */
-        this.burstUntil[i] = 0;
-        this.restUntil[i] = now + sk.react;
-        this.lockMs[i] = 0;
-      }
-      t = best;
-      this.target[i] = t;
-      this.retargetAt[i] = now + 1500 + Math.floor(this.rand() * 1000);
-    }
-    /* Desired direction. */
-    let dx = 0;
-    let dy = 0;
-    let dz = 0;
-    let dist = Infinity;
-    const inc = this.incoming(i);
-    if (now < this.avoidUntil[i]) {
-      dx = this.ax[i];
-      dy = this.ay[i];
-      dz = this.az[i];
-    } else if (inc >= 0 && (now < this.breakUntil[i] || this.mDodge[inc])) {
-      /* Break across the missile's line, and a little up. */
-      if (now >= this.breakUntil[i]) {
-        this.breakUntil[i] = now + 1200;
-        this.breakSign[i] = this.rand() < 0.5 ? -1 : 1;
-      }
-      const mx = this.mdx[inc];
-      const mz = this.mdz[inc];
-      const side = this.breakSign[i];
-      dx = -mz * side;
-      dy = 0.35;
-      dz = mx * side;
-    } else if (t >= 0) {
-      this.goal(i, t);
-      const tx = this.gx - this.x[i];
-      const ty = this.gy - this.y[i];
-      const tz = this.gz - this.z[i];
-      dist = Math.sqrt(tx * tx + ty * ty + tz * tz);
-      const tof = dist / (GUN.speed * k);
-      dx = tx + this.vx[t] * tof * sk.lead;
-      dy = ty + this.vy[t] * tof * sk.lead;
-      dz = tz + this.vz[t] * tof * sk.lead;
-      /* Too close: overshoot and come round again rather than sit on it. */
-      if (dist < this.closeIn * k) {
-        /* Two on the same spot have no line between them: straight on. */
-        const near = dist > 1e-6 ? 0.3 / dist : 0;
-        dx = this.fx[i] + tx * near;
-        dy = this.fy[i] + 0.3;
-        dz = this.fz[i] + tz * near;
-      }
-    } else {
-      if (now >= this.wanderAt[i]) {
-        this.wanderAt[i] = now + 4000;
-        const a = this.rand() * 2 - 1;
-        const b = this.rand() * 2 - 1;
-        this.wx[i] = w.cx + a * w.radius * 0.6;
-        this.wz[i] = w.cz + b * w.radius * 0.6;
-        this.wy[i] = w.cy + (2 + this.rand() * 6) * k;
-      }
-      dx = this.wx[i] - this.x[i];
-      dy = this.wy[i] - this.y[i];
-      dz = this.wz[i] - this.z[i];
-    }
-    let m = Math.sqrt(dx * dx + dy * dy + dz * dz);
-    if (m < 1e-9) {
-      dx = this.fx[i];
-      dy = this.fy[i];
-      dz = this.fz[i];
-      m = 1;
-    }
-    dx /= m;
-    dy /= m;
-    dz /= m;
-    /* Keep off the floor. */
-    const floor = w.floorAt(this.x[i], this.y[i], this.z[i]);
-    const above = this.y[i] - floor;
-    const low = 2.5 * k;
-    if (above < low) {
-      dy += (low - above) / low * 1.5;
-    }
-    /* And within the arena. */
-    const rx = this.x[i] - w.cx;
-    const rz = this.z[i] - w.cz;
-    const r2 = rx * rx + rz * rz;
-    if (r2 > w.radius * w.radius) {
-      const r = Math.sqrt(r2);
-      dx -= rx / r * 0.8;
-      dz -= rz / r * 0.8;
-    }
-    const top = w.cy + w.top;
-    if (this.y[i] > top) {
-      dy -= 0.8 + (this.y[i] - top) / k * 0.2;
-    }
-    /* Look ahead for walls, 20 times a second, staggered across the bots. */
-    if (now >= this.lookAt[i]) {
-      this.lookAt[i] = now + 50;
-      this.lookAhead(i, speed, now);
-    }
-    turnToward(this, 'f', i, dx, dy, dz, sk.turn * DT);
-    /* Fly it, and never through anything. */
-    const ox = this.x[i];
-    const oy = this.y[i];
-    const oz = this.z[i];
-    const nvx = this.fx[i] * speed;
-    const nvy = this.fy[i] * speed;
-    const nvz = this.fz[i] * speed;
-    const bx = ox + nvx * DT;
-    const by = oy + nvy * DT;
-    const bz = oz + nvz * DT;
-    const hit = w.blocked(ox, oy, oz, bx, by, bz);
-    if (hit >= 0) {
-      /* Bounce off and turn away. */
-      this.avoidUntil[i] = now + 600;
-      this.ax[i] = -this.fx[i];
-      this.ay[i] = 0.6;
-      this.az[i] = -this.fz[i];
-      this.fx[i] = -this.fx[i];
-      this.fz[i] = -this.fz[i];
-      this.fy[i] = 0;
-      normalise(this, 'f', i);
-      this.vx[i] = 0;
-      this.vy[i] = 0;
-      this.vz[i] = 0;
-    } else {
-      /* Never under the floor, and never far over the arena's top. */
-      const roof = top + 3 * k;
-      const lift = by < floor + 0.3 * k ? floor + 0.3 * k : (by > roof ? roof : by);
-      this.x[i] = bx;
-      this.y[i] = lift;
-      this.z[i] = bz;
-      /* The bank: thrust is what it takes to make this turn and hold the
-       * height, plus a nose down share for the speed, as a quad leans. */
-      const axx = (nvx - this.vx[i]) / DT;
-      const ayy = (nvy - this.vy[i]) / DT;
-      const azz = (nvz - this.vz[i]) / DT;
-      this.vx[i] = nvx;
-      this.vy[i] = nvy;
-      this.vz[i] = nvz;
-      const lean = 0.35 * G * k;
-      /* At most two g of it, so a bounce off a wall, which turns the
-       * velocity round in one feed, does not lay the bot on its side, and
-       * a hard turn banks it to about sixty degrees, where it still reads
-       * as a quad and not as a line. */
-      const am = Math.sqrt(axx * axx + ayy * ayy + azz * azz);
-      const cap = 2 * G * k;
-      const as = am > cap ? cap / am : 1;
-      let ux = axx * as + this.fx[i] * lean;
-      let uy = ayy * as + G * k;
-      let uz = azz * as + this.fz[i] * lean;
-      const um = Math.sqrt(ux * ux + uy * uy + uz * uz);
-      if (um > 1e-9) {
-        ux /= um;
-        uy /= um;
-        uz /= um;
-        this.ux[i] = this.ux[i] * 0.8 + ux * 0.2;
-        this.uy[i] = this.uy[i] * 0.8 + uy * 0.2;
-        this.uz[i] = this.uz[i] * 0.8 + uz * 0.2;
-        normalise(this, 'u', i);
-      }
-    }
-    /* Shoot. */
-    this.firing[i] = 0;
-    if (!armed || t < 0 || !this.hittable(t)) {
-      return;
-    }
-    const tx = this.x[t] - this.x[i];
-    const ty = this.y[t] - this.y[i];
-    const tz = this.z[t] - this.z[i];
-    dist = Math.sqrt(tx * tx + ty * ty + tz * tz);
-    if (dist < 1e-6) {
-      return;
-    }
-    const front = (tx * this.fx[i] + ty * this.fy[i] + tz * this.fz[i]) / dist;
-    if (now >= this.losAt[i]) {
-      this.losAt[i] = now + 150;
-      this.losOk[i] = this.clear(i, t) ? 1 : 0;
-    }
-    if (!this.losOk[i]) {
-      this.lockMs[i] = 0;
-      return;
-    }
-    /* Missiles: a lock held long enough, asked twice a second. */
-    if (front > LOCK_COS && dist < MISSILE.lockRange * k) {
-      this.lockOn[i] = t;
-      this.lockMs[i] += DOGFIGHT_EVERY;
-      if (this.lockMs[i] >= MISSILE.lockMs * sk.lockMul && now >= this.missileTry[i]) {
-        this.missileTry[i] = now + 500;
-        if (this.rand() < sk.missile) {
-          this.lockMs[i] = MISSILE.lockMs;
-          this.launch(i, now);
-          this.lockMs[i] = 0;
-        }
-      }
-    } else {
-      this.lockMs[i] = 0;
-    }
-    /* The gun, in bursts. */
-    if (front < sk.fireCos || dist > GUN.range * k * 0.8 || now < this.restUntil[i]) {
-      return;
-    }
-    if (this.burstUntil[i] <= now) {
-      if (this.burstUntil[i] > 0) {
-        this.restUntil[i] = now + 400 + Math.floor(this.rand() * 600);
-        this.burstUntil[i] = 0;
-        return;
-      }
-      this.burstUntil[i] = now + 600 + Math.floor(this.rand() * 600);
-    }
-    if (this.heat[i] > 0.8) {
-      return;
-    }
-    /* Aim at where the target will be, give or take the skill's error. */
-    const tof = dist / (GUN.speed * k);
-    let ax = tx + this.vx[t] * tof * sk.lead;
-    let ay = ty + this.vy[t] * tof * sk.lead;
-    let az = tz + this.vz[t] * tof * sk.lead;
-    const am = Math.sqrt(ax * ax + ay * ay + az * az);
-    ax /= am;
-    ay /= am;
-    az /= am;
-    const e = sk.aim;
-    ax += (this.rand() * 2 - 1) * e;
-    ay += (this.rand() * 2 - 1) * e;
-    az += (this.rand() * 2 - 1) * e;
-    const em = Math.sqrt(ax * ax + ay * ay + az * az);
-    this.pull(i, ax / em, ay / em, az / em, now);
-  }
-
-  /* Where a bot chasing pilot t flies to, into gx, gy, gz: the pilot
-   * itself. Ribbon cutting (src/game/ribbons.js) aims at the ribbon. */
-  goal(i, t) {
-    this.gx = this.x[t];
-    this.gy = this.y[t];
-    this.gz = this.z[t];
-  }
-
-  /* Something ahead within a second: turn up, or to a side, whichever of
-   * them is clear, and hold it for a moment. */
-  lookAhead(i, speed, now) {
-    const w = this.world;
-    const k = this.k;
-    const reach = speed * 0.9 + 2 * k;
-    const x = this.x[i];
-    const y = this.y[i];
-    const z = this.z[i];
-    const fx = this.fx[i];
-    const fy = this.fy[i];
-    const fz = this.fz[i];
-    if (w.blocked(x, y, z, x + fx * reach, y + fy * reach, z + fz * reach) < 0) {
-      return;
-    }
-    /* The side: across the heading, level. */
-    let sx = -fz;
-    let sz = fx;
-    const sm = Math.sqrt(sx * sx + sz * sz);
-    if (sm > 1e-6) {
-      sx /= sm;
-      sz /= sm;
-    } else {
-      sx = 1;
-      sz = 0;
-    }
-    const first = this.rand() < 0.5 ? 1 : -1;
-    /* Round it first, then over or under it: a bot that always went over
-     * climbed out of a town on the first run and fought above the roofs,
-     * out of anybody's sight. Under the arena's top it may go over; at the
-     * top only down. */
-    const high = y > w.cy + w.top * 0.8;
-    const tries = [
-      [fx * 0.3 + sx * first, 0, fz * 0.3 + sz * first],
-      [fx * 0.3 - sx * first, 0, fz * 0.3 - sz * first],
-      [fx * 0.4, high ? -0.8 : 1, fz * 0.4],
-      [-fx, high ? -0.3 : 0.3, -fz],
-    ];
-    for (let n = 0; n < tries.length; n += 1) {
-      const [a, b, c] = tries[n];
-      const m = Math.sqrt(a * a + b * b + c * c);
-      const ex = x + (a / m) * reach * 0.7;
-      const ey = y + (b / m) * reach * 0.7;
-      const ez = z + (c / m) * reach * 0.7;
-      if (n === tries.length - 1 || w.blocked(x, y, z, ex, ey, ez) < 0) {
-        this.ax[i] = a / m;
-        this.ay[i] = b / m;
-        this.az[i] = c / m;
-        this.avoidUntil[i] = now + 400;
-        return;
-      }
-    }
-  }
-
   /* The table for the results page and the HUD's score: every pilot in the
    * fight, most pops first, fewest times popped breaking a tie. Allocates,
    * so it is asked when the round ends and when the score changes, never
@@ -1477,20 +1272,4 @@ function turnToward(g, pre, i, dx, dy, dz, step) {
   X[i] = nx;
   Y[i] = ny;
   Z[i] = nz;
-}
-
-function normalise(g, pre, i) {
-  const X = g[`${pre}x`];
-  const Y = g[`${pre}y`];
-  const Z = g[`${pre}z`];
-  const m = Math.sqrt(X[i] * X[i] + Y[i] * Y[i] + Z[i] * Z[i]);
-  if (m > 1e-12) {
-    X[i] /= m;
-    Y[i] /= m;
-    Z[i] /= m;
-  } else {
-    X[i] = 0;
-    Y[i] = 1;
-    Z[i] = 0;
-  }
 }

@@ -2331,7 +2331,9 @@ export async function boot({ loading, bootStart, mapId }) {
   const fightPos = new THREE.Vector3();
   const fightQuat = new THREE.Quaternion();
   const fightAim = new THREE.Vector3();
-  const fightExtra = { best: 0, newBest: false, nextMs: 0, kicker: 'Dogfight' };
+  const fightExtra = {
+    best: 0, newBest: false, nextMs: 0, kicker: 'Dogfight', start: '',
+  };
 
   function fightBestKey() {
     return fightKind === 'ribbon' ? `webfpv.ribbons.best.${fightKey}` : `webfpv.dogfight.best.${fightKey}`;
@@ -2416,14 +2418,6 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     const x0g = cx - half;
     const z0g = cz - half;
-    const floorAt = (x, y, z) => {
-      const i = Math.floor((x - x0g) / cell);
-      const j = Math.floor((z - z0g) / cell);
-      if (i < 0 || j < 0 || i >= n || j >= n) {
-        return cy;
-      }
-      return ground[i * n + j];
-    };
     /* The cells: as fine as three million of them allow, and never finer
      * than a third of a metre of the aircraft's. */
     const yLo = lowY - 2 * k;
@@ -2491,45 +2485,12 @@ export async function boot({ loading, bootStart, mapId }) {
         }
       }
     }
-    const inside = (x, y, z) => {
-      const i = Math.floor((x - x0g) / v);
-      const j = Math.floor((z - z0g) / v);
-      const l = Math.floor((y - yLo) / v);
-      if (i < 0 || j < 0 || l < 0 || i >= nx || j >= nx || l >= ny) {
-        return false;
-      }
-      return occ[at(i, j, l)] === 1;
-    };
-    /* Along the line in half cells. A line that starts in a marked cell, a
-     * bot brushing a wall, is let out of it before anything counts, so
-     * nothing is ever stuck to the wall it touched. */
-    const blocked = (ax, ay, az, bx, by, bz) => {
-      const dx = bx - ax;
-      const dy = by - ay;
-      const dz = bz - az;
-      const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
-      if (!(len > 0)) {
-        return -1;
-      }
-      const steps = Math.max(1, Math.ceil(len / (v * 0.5)));
-      let out = !inside(ax, ay, az);
-      for (let s = 1; s <= steps; s += 1) {
-        const t = s / steps;
-        const x = ax + dx * t;
-        const y = ay + dy * t;
-        const z = az + dz * t;
-        if (y < floorAt(x, y, z)) {
-          return t;
-        }
-        const hit = inside(x, y, z);
-        if (!out) {
-          out = !hit;
-        } else if (hit) {
-          return t;
-        }
-      }
-      return -1;
-    };
+    /* The questions the game asks of the two grids live beside the game, so
+     * the bots' arena in Node asks them of a dumped map exactly as here. */
+    const grid = fightMods.gridWorld({
+      ground, gn: n, gcell: cell, gx0: x0g, gz0: z0g, gout: cy, occ, nx, ny, v, yLo,
+    });
+    const { inside, floorAt: floorOf, blocked } = grid;
     /* Where a bot comes back: open air round the spawn that can be seen
      * from it, in eight directions at three distances, nearest first. */
     const DIRS = [[1, 0], [0.7071, 0.7071], [0, 1], [-0.7071, 0.7071], [-1, 0], [-0.7071, -0.7071], [0, -1], [0.7071, -0.7071]];
@@ -2540,7 +2501,7 @@ export async function boot({ loading, bootStart, mapId }) {
         const [ux, uz] = DIRS[d];
         const x = cx + ux * radius * share;
         const z = cz + uz * radius * share;
-        const y = Math.min(cy + top - 2 * k, Math.max(floorAt(x, cy, z) + 4 * k, eyeY + 2 * k));
+        const y = Math.min(cy + top - 2 * k, Math.max(floorOf(x, cy, z) + 4 * k, eyeY + 2 * k));
         if (inside(x, y, z) || blocked(cx, eyeY, cz, x, y, z) >= 0) {
           continue;
         }
@@ -2559,8 +2520,10 @@ export async function boot({ loading, bootStart, mapId }) {
       radius,
       top,
       spawns,
-      floorAt,
+      floorAt: floorOf,
       blocked,
+      inside,
+      grid: grid.data,
     };
   }
 
@@ -12925,9 +12888,14 @@ export async function boot({ loading, bootStart, mapId }) {
       if (together && together.raceRoom()) {
         second = '';
       }
-      /* A dogfight or ribbon cutting says what starts in its own line, under
-       * its score bar, and this one sat on the bar. */
-      ui.setBanner(fightGame ? '' : `${start}${second}`);
+      if (fightGame) {
+        /* A dogfight says it on its own HUD's line, which names the bots
+         * waiting; the banner would sit under its score. */
+        fightExtra.start = start;
+        ui.setBanner('');
+      } else {
+        ui.setBanner(`${start}${second}`);
+      }
       if (guidedStart && !onGrid) {
         ui.noteGuideShown();
       }

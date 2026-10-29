@@ -54,6 +54,7 @@
 import {
   Dogfight, DOGFIGHT_EVERY, MAX_PILOTS, MAX_BOTS, ME, SKILLS, rng,
 } from './dogfight.js';
+import { BotFlyer } from './botflyer.js';
 
 const DT = DOGFIGHT_EVERY / 1000;
 const G = 9.81;
@@ -106,9 +107,9 @@ export const RIBBON = {
  * the bots do not queue up on the same quad.
  */
 export const RIBBON_BOTS = {
-  rookie: { miss: 2.6, calmMs: 4000 },
-  pilot: { miss: 1.4, calmMs: 2500 },
-  ace: { miss: 0.6, calmMs: 1200 },
+  rookie: { miss: 3.6, calmMs: 6000 },
+  pilot: { miss: 2, calmMs: 3500 },
+  ace: { miss: 0.8, calmMs: 1500 },
 };
 
 /* Rounds: how long, 0 for no clock. When the clock runs out the longest
@@ -169,10 +170,11 @@ export class RibbonCut extends Dogfight {
     this.mx0 = new Float64Array(MAX_PILOTS);
     this.my0 = new Float64Array(MAX_PILOTS);
     this.mz0 = new Float64Array(MAX_PILOTS);
-    /* Bots fly at a ribbon, straight through it, and never break off; and
-     * the pilot is one of the field to them, not the one they want. */
-    this.closeIn = 0;
-    this.meBias = 1;
+    /* Bots fly at a ribbon, straight through it, and never break off: a
+     * flyer of their own (src/game/botflyer.js), the dogfight's flying
+     * without its fighting, on the ways round the dogfight's brain found. */
+    this.chaseArrays(MAX_PILOTS);
+    this.flyer = new BotFlyer(this, { DT, MAX: MAX_PILOTS });
     for (const e of this.events) {
       e.at = 0;
       e.end = 0;
@@ -209,6 +211,13 @@ export class RibbonCut extends Dogfight {
     }
     this.roundMs = RIBBON_ROUNDS[this.ribbon.round];
     this.popsToWin = 0;
+    if (!this.flyer.nav.length && this.brain && this.brain.nav.length) {
+      this.flyer.nav = this.brain.nav;
+    }
+    this.flyer.reset();
+    this.rTarget.fill(-1);
+    this.rRetarget.fill(0);
+    this.rWanderAt.fill(0);
     this.winner = -1;
     this.rSafeUntil.fill(0);
     this.outAt.fill(0);
@@ -223,7 +232,88 @@ export class RibbonCut extends Dogfight {
       if (this.inFight[i]) {
         this.layRibbon(i);
       }
+      if (this.isBot[i]) {
+        this.flyer.placed(i);
+      }
     }
+  }
+
+  /* What a chasing bot keeps, for `n` slots: who it is after and until
+   * when, where it wanders with nobody to chase, and the line it was given
+   * this feed. */
+  chaseArrays(n) {
+    this.rTarget = new Int8Array(n).fill(-1);
+    this.rRetarget = new Float64Array(n);
+    this.rWanderAt = new Float64Array(n);
+    this.rwx = new Float64Array(n);
+    this.rwy = new Float64Array(n);
+    this.rwz = new Float64Array(n);
+    this.gx = 0;
+    this.gy = 0;
+    this.gz = 0;
+  }
+
+  /*
+   * ONE FEED OF A BOT: a ribbon to go after, the nearest one ahead, asked
+   * again every second and a half or when it is gone; the point on it this
+   * bot aims for (goal); and the flyer takes it there, round whatever is
+   * in the way, at the skill's speed and agility.
+   */
+  chase(i, now, skill) {
+    const first = this.firstLink;
+    let t = this.rTarget[i];
+    if (t < 0 || !this.live(t) || this.rCount[t] <= first || now >= this.rRetarget[i]) {
+      let best = -1;
+      let bestScore = Infinity;
+      for (let j = 0; j < this.cap; j += 1) {
+        if (j === i || !this.live(j) || this.rCount[j] <= first || (j === ME && !this.meFlying)) {
+          continue;
+        }
+        const dx = this.x[j] - this.x[i];
+        const dy = this.y[j] - this.y[i];
+        const dz = this.z[j] - this.z[i];
+        const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        const front = d > 1e-6 ? (dx * this.fx[i] + dy * this.fy[i] + dz * this.fz[i]) / d : 0;
+        const score = d * (1.4 - 0.5 * front);
+        if (score < bestScore) {
+          bestScore = score;
+          best = j;
+        }
+      }
+      t = best;
+      this.rTarget[i] = t;
+      this.rRetarget[i] = now + 1500 + Math.floor(this.rand() * 1000);
+    }
+    this.ribbon.skill = skill;
+    if (t >= 0) {
+      this.goal(i, t);
+      /* Through it, not to it: the flyer slows for a goal it is reaching,
+       * and a ribbon is cut at speed. */
+      const dx = this.gx - this.x[i];
+      const dy = this.gy - this.y[i];
+      const dz = this.gz - this.z[i];
+      const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      if (d > 1e-6) {
+        const on = (8 * this.world.k) / d;
+        this.gx += dx * on;
+        this.gy += dy * on;
+        this.gz += dz * on;
+      }
+    } else {
+      /* Nobody to chase: about the arena. */
+      const w = this.world;
+      if (now >= this.rWanderAt[i]) {
+        this.rWanderAt[i] = now + 4000;
+        this.rwx[i] = w.cx + (this.rand() * 2 - 1) * w.radius * 0.6;
+        this.rwz[i] = w.cz + (this.rand() * 2 - 1) * w.radius * 0.6;
+        this.rwy[i] = w.cy + (2 + this.rand() * 6) * w.k;
+      }
+      this.gx = this.rwx[i];
+      this.gy = this.rwy[i];
+      this.gz = this.rwz[i];
+    }
+    this.flyer.setGoal(i, this.gx, this.gy, this.gz, 0);
+    this.flyer.step(i, now, SKILLS[skill]);
   }
 
   /* How many pilots are in the round, and how many still have a ribbon. */
@@ -325,10 +415,12 @@ export class RibbonCut extends Dogfight {
     const c = this.rCount[t];
     const first = this.firstLink;
     if (c <= first) {
-      super.goal(i, t);
+      this.gx = this.x[t];
+      this.gy = this.y[t];
+      this.gz = this.z[t];
       return;
     }
-    let s = Math.floor((c - 1) * 0.6);
+    let s = Math.floor((c - 1) * 0.75);
     if (s < first) {
       s = first;
     }
@@ -377,7 +469,7 @@ export class RibbonCut extends Dogfight {
     }
     for (let i = 1; i < this.cap; i += 1) {
       if (this.isBot[i] && this.alive[i]) {
-        this.fly(i, now, false);
+        this.chase(i, now, this.ribbon.skill);
       }
     }
     for (let i = 0; i < this.cap; i += 1) {
@@ -648,21 +740,17 @@ export class RibbonRoom {
     this.alive = new Uint8Array(n);
     this.inFight = new Uint8Array(n);
     this.isBot = new Uint8Array(n);
-    /* What the dogfight's bot flying reads and writes (Dogfight fly and
-     * lookAhead, borrowed below), for the host's bots. */
-    for (const a of ['vx', 'vy', 'vz', 'retargetAt', 'avoidUntil', 'ax', 'ay', 'az', 'lookAt', 'burstUntil', 'restUntil',
-      'lockMs', 'wanderAt', 'wx', 'wy', 'wz', 'breakUntil', 'breakSign', 'heat', 'shieldUntil', 'losAt',
-      'calmUntil', 'missAt', 'mx0', 'my0', 'mz0']) {
+    /* The host's bots: how they move, and what chasing a ribbon keeps
+     * (RibbonCut chase and goal, borrowed below). */
+    for (const a of ['vx', 'vy', 'vz', 'calmUntil', 'missAt', 'mx0', 'my0', 'mz0']) {
       this[a] = f();
     }
-    this.target = new Int8Array(n).fill(-1);
     this.firing = new Uint8Array(n);
-    this.losOk = new Uint8Array(n);
     this.botSkill = new Array(n).fill('rookie');
-    this.rules = { skill: 'rookie' };
-    this.closeIn = 0;
-    this.meBias = 1;
     this.rand = rng(0x5eed);
+    this.chaseArrays(n);
+    this.flyer = new BotFlyer(this, { DT, MAX: n });
+    this.flyer.reset();
     this.pops = new Int32Array(n);
     this.popped = new Int32Array(n);
     this.cuts = new Int32Array(n);
@@ -839,11 +927,6 @@ export class RibbonRoom {
     return i === ME || this.isBot[i] === 1 || this.now() - this.seenAt[i] < GONE_MS;
   }
 
-  /* Missiles never come at a ribbon bot. */
-  incoming() {
-    return -1;
-  }
-
   /*
    * The board's bot seats, [{ id, name, skill }], and whether this page is
    * the host that flies them. A bot this page starts flying starts where
@@ -884,7 +967,8 @@ export class RibbonRoom {
           this.vx[s] = 0; this.vy[s] = 0; this.vz[s] = 0;
           this.xPrev[s] = sp.x; this.yPrev[s] = sp.y; this.zPrev[s] = sp.z;
         }
-        this.target[s] = -1;
+        this.flyer.placed(s);
+        this.rTarget[s] = -1;
         if (!this.inRound) {
           this.inFight[s] = 1;
           this.alive[s] = 1;
@@ -902,41 +986,6 @@ export class RibbonRoom {
    * rounds. */
   botFlies(s) {
     return this.isBot[s] === 1 && (this.inRound ? this.live(s) : true);
-  }
-
-  /* One feed of a host's bot: a target with a ribbon to chase, then the
-   * dogfight's own flying, at the seat's skill. */
-  flyBot(i, now) {
-    const skill = this.botSkill[i];
-    this.rules.skill = skill;
-    this.ribbon.skill = skill;
-    let t = this.target[i];
-    if (t < 0 || !this.live(t) || this.rCount[t] <= this.firstLink || now >= this.retargetAt[i]) {
-      let best = -1;
-      let bestD = Infinity;
-      for (let j = 0; j < ROOM_SLOTS; j += 1) {
-        if (j === i || !this.live(j) || this.rCount[j] <= this.firstLink || (j === ME && !this.meFlying)) {
-          continue;
-        }
-        const dx = this.x[j] - this.x[i];
-        const dy = this.y[j] - this.y[i];
-        const dz = this.z[j] - this.z[i];
-        const d = dx * dx + dy * dy + dz * dz;
-        if (d < bestD) {
-          bestD = d;
-          best = j;
-        }
-      }
-      t = best;
-      this.target[i] = t;
-      this.retargetAt[i] = now + 1500 + Math.floor(this.rand() * 1000);
-    }
-    /* The dogfight's search never runs: its target is this one, until
-     * this asks again. */
-    const again = this.retargetAt[i];
-    this.retargetAt[i] = Infinity;
-    this.fly(i, now, false);
-    this.retargetAt[i] = again;
   }
 
   live(i) {
@@ -1192,7 +1241,7 @@ export class RibbonRoom {
     for (let i = 1; i < ROOM_SLOTS; i += 1) {
       if (this.isBot[i]) {
         if (this.botFlies(i)) {
-          this.flyBot(i, now);
+          this.chase(i, now, this.botSkill[i]);
         }
         continue;
       }
@@ -1322,8 +1371,8 @@ export class RibbonRoom {
   }
 }
 
-borrow(RibbonRoom.prototype, RibbonCut.prototype, ['linkLen', 'firstLink', 'share', 'anchor', 'layRibbon', 'stepRibbon', 'cutsBy', 'goal']);
-borrow(RibbonRoom.prototype, Dogfight.prototype, ['event', 'fly', 'lookAhead']);
+borrow(RibbonRoom.prototype, RibbonCut.prototype, ['linkLen', 'firstLink', 'share', 'anchor', 'layRibbon', 'stepRibbon', 'cutsBy', 'goal', 'chaseArrays', 'chase']);
+borrow(RibbonRoom.prototype, Dogfight.prototype, ['event']);
 
 /*
  * The squared distance between two segments, a + s e and b + t f with s

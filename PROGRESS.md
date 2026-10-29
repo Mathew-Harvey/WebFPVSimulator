@@ -72986,3 +72986,11 @@ The bug hunt thread saw together-shots' ribbon check "a bot cuts somebody's ribb
 ## 2026-10-29 | release | Goat rooms, drift bots and drift rooms to main
 
 - The owner, 14:34Z, "push to main", after the goat bots' +0.025 ms a frame inside a round was stated to him. Board 706d2c0 went to main first (npm test all passed), then the sim at 2d7d2ec1, with main's ada187db merged in (conflicts in PROGRESS.md and scripts/minigames-check.js, both sides kept). On the merged tree: driftroom-check and goats-check all passed, lint:boot 9 of 9, check:fresh 18 of 18. Not flown.
+
+## 2026-10-29 | sweep | Round three: the loading screen's last seconds, and the goat and drift rooms
+
+- The owner, 13:44:54Z: "go another round bug sweep". The goat and drift rooms branch (board 706d2c0, sim 0967468) was swept before it landed: board `npm test`, `goats-check`, `driftroom-check`, `drift-check`, `fresh-check`, `lint:preload`, both game self tests, `minigames-check` and `together-shots --only=goats,dogfight,ribbon` (76 of 76) all passed. Walking its goat round from the Mini games page found the bug below, which was this thread's own.
+- Fixed: the guard of this morning kept keys off the title while the world swapped, but the loading screen stays up through the new world's first frame, shader compiles, about 7 s in this container, after the swap has ended. An Enter in that time still chose the hidden title's Fly together under a solo round. The guard is the swap or the loading screen being up (a failed load keeps its keys). `minigames-check --only=load` now presses a key in that window: it failed before (1 sheet, screen paused) and passes after.
+- Checks after merging main 161b42a (goat and drift rooms): `check:minigames` all passed, `lint:input` 247 of 247 alone (a run inside a batch failed three keyboard hover lines that passed alone on this tree and on main, so a flake), `check:seat`, `check:tuneinvite`, `lint:boot`, `check:craft`, `check:fresh`, `lint:preload`, `check:goats`, `check:driftroom`, `check:drift`. `check:firstflight` failed its two C lines, the same two it fails on the tree of 2026-10-28.
+- Latency: none. One more boolean read per key and per frame.
+- Not flown.

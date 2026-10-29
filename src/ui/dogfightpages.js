@@ -33,8 +33,10 @@
  */
 
 import { normaliseRules, MAX_BOTS } from '../game/dogfight.js';
+import { normaliseRibbonRules } from '../game/ribbons.js';
 
 const RULES_KEY = 'webfpv.dogfight.rules.v1';
+const RIBBON_KEY = 'webfpv.ribbons.rules.v1';
 const ARMED_KEY = 'webfpv.dogfight.armed.v1';
 /* The overlay's quiet start, as askConfirm's: input already queued when
  * the page opened is not an answer. */
@@ -105,17 +107,17 @@ function css() {
   }
 }
 
-export function loadRules() {
+export function loadRules(key = RULES_KEY, normalise = normaliseRules) {
   try {
-    return normaliseRules(JSON.parse(localStorage.getItem(RULES_KEY) || 'null'));
+    return normalise(JSON.parse(localStorage.getItem(key) || 'null'));
   } catch (e) {
-    return normaliseRules(null);
+    return normalise(null);
   }
 }
 
-function saveRules(r) {
+function saveRules(r, key = RULES_KEY) {
   try {
-    localStorage.setItem(RULES_KEY, JSON.stringify(r));
+    localStorage.setItem(key, JSON.stringify(r));
   } catch (e) {
     /* Private window: the rules last the session. */
   }
@@ -226,6 +228,43 @@ const ROWS = [
   },
 ];
 
+/* Ribbon cutting's round (src/game/ribbons.js): the bots as the fight's,
+ * the round's clock, and how long everybody's ribbon is. */
+const RIBBON_ROWS = [
+  {
+    id: 'bots',
+    name: 'Bots',
+    small: 'Quads with ribbons that fly on their own',
+    options: ROWS[0].options,
+  },
+  {
+    id: 'skill',
+    name: 'Bot skill',
+    small: 'How well they chase a ribbon',
+    options: ROWS[1].options,
+  },
+  {
+    id: 'length',
+    name: 'Ribbons',
+    small: 'Long ones are easier to cut',
+    options: [{ v: 'short', label: 'Short' }, { v: 'normal', label: 'Normal' }, { v: 'long', label: 'Long' }],
+  },
+  {
+    id: 'round',
+    name: 'Round',
+    small: 'When the clock runs out',
+    options: [{ v: '2m', label: '2 minutes' }, { v: '4m', label: '4 minutes' }, { v: 'none', label: 'No clock' }],
+  },
+];
+
+function saysForRibbon(r) {
+  const who = r.bots === 0 ? 'Nobody else is flying yet, so this is a practice flight with your ribbon.'
+    : `${r.bots === 1 ? 'One bot' : `${r.bots} bots`} at ${r.skill === 'rookie' ? 'rookie' : (r.skill === 'ace' ? 'ace' : 'pilot')} level, each with a ribbon.`;
+  const end = r.bots === 0 ? ''
+    : { '2m': 'Last with a ribbon wins. If the clock runs out first, the longest ribbon wins.', '4m': 'Last with a ribbon wins. If the clock runs out first, the longest ribbon wins.', none: 'No clock: the last with a ribbon wins.' }[r.round];
+  return `${who} ${end}`.trim();
+}
+
 /* What the balloon says about the rules picked. */
 function saysFor(r) {
   const who = r.bots === 0 ? 'Nobody else is flying yet, so this is target practice.'
@@ -240,9 +279,46 @@ function saysFor(r) {
  * says Buttons was pressed, so Arm up comes next.
  */
 export function askFight(ui, kit, mapName) {
-  const rules = loadRules();
+  return askRules(ui, kit, mapName, {
+    kicker: 'Dogfight',
+    words: ['Set the', 'fight'],
+    label: `Set the fight on ${mapName}`,
+    rows: ROWS,
+    key: RULES_KEY,
+    normalise: normaliseRules,
+    says: saysFor,
+    how: 'Hit a quad to take its health. Empty is a pop, with confetti. Each pop is a point. A missile follows a quad once the box goes red.',
+    go: 'Fight!',
+    buttons: true,
+  });
+}
+
+/*
+ * SET THE RIBBONS, ribbon cutting's page, the same page with its own rows
+ * and no buttons to pick: nothing is fired. Resolves { rules } or null.
+ */
+export function askRibbon(ui, kit, mapName) {
+  return askRules(ui, kit, mapName, {
+    kicker: 'Ribbon cutting',
+    words: ['Set the', 'ribbons'],
+    label: `Set the ribbons on ${mapName}`,
+    rows: RIBBON_ROWS,
+    key: RIBBON_KEY,
+    normalise: normaliseRibbonRules,
+    says: saysForRibbon,
+    how: 'Every quad trails a ribbon. Fly through somebody else\'s to cut it. Keep yours away from them. Cut short, a ribbon is gone and so is its pilot. The last with a ribbon wins.',
+    go: 'Fly!',
+    buttons: false,
+  });
+}
+
+/* The setup page both games share: rows of chips, a balloon that says what
+ * they add up to, and Go, Back and, for the dogfight, Buttons. */
+function askRules(ui, kit, mapName, spec) {
+  const ROWS = spec.rows;
+  const rules = loadRules(spec.key, spec.normalise);
   return new Promise((resolve) => {
-    const p = page(ui, 'Dogfight', 'Set the', 'fight', `Set the fight on ${mapName}`);
+    const p = page(ui, spec.kicker, spec.words[0], spec.words[1], spec.label);
     const body = el('div', 'df-body');
     const rowsEl = el('div', 'df-rows');
     const side = el('div', 'df-side');
@@ -250,7 +326,7 @@ export function askFight(ui, kit, mapName) {
     const arena = el('div', 'df-card');
     arena.append(el('b', null, 'Arena'), document.createTextNode(mapName));
     const how = el('div', 'df-card');
-    how.append(el('b', null, 'How it works'), document.createTextNode('Hit a quad to take its health. Empty is a pop, with confetti. Each pop is a point. A missile follows a quad once the box goes red.'));
+    how.append(el('b', null, 'How it works'), document.createTextNode(spec.how));
     side.append(says, arena, how);
     let at = 0;
     const rowEls = ROWS.map((row, ri) => {
@@ -293,15 +369,19 @@ export function askFight(ui, kit, mapName) {
           r.style.opacity = rules.bots ? '' : '0.5';
         }
       });
-      says.textContent = saysFor(rules);
+      says.textContent = spec.says(rules);
     };
     body.append(rowsEl, side);
-    const go = btn('qp-btn qp-fly', 'Fight!');
+    const go = btn('qp-btn qp-fly', spec.go);
     const buttons = btn('qp-btn', 'Buttons');
     const back = btn('qp-btn', 'Back');
     const keys = el('span', 'qp-keys');
-    keys.innerHTML = '<kbd>↑</kbd> <kbd>↓</kbd> row · <kbd>←</kbd> <kbd>→</kbd> change · <kbd>Enter</kbd> fight · <kbd>Esc</kbd> back';
-    p.caption.append(go, buttons, back, keys);
+    keys.innerHTML = `<kbd>↑</kbd> <kbd>↓</kbd> row · <kbd>←</kbd> <kbd>→</kbd> change · <kbd>Enter</kbd> ${spec.buttons ? 'fight' : 'fly'} · <kbd>Esc</kbd> back`;
+    p.caption.append(go);
+    if (spec.buttons) {
+      p.caption.append(buttons);
+    }
+    p.caption.append(back, keys);
     const step = (d) => {
       const row = ROWS[at];
       const i = row.options.findIndex((o) => o.v === rules[row.id]);
@@ -311,8 +391,8 @@ export function askFight(ui, kit, mapName) {
     };
     let close = null;
     const answer = (wantButtons) => {
-      const r = normaliseRules(rules);
-      saveRules(r);
+      const r = spec.normalise(rules);
+      saveRules(r, spec.key);
       close({ rules: r, buttons: wantButtons });
     };
     close = show(ui, kit, p, body, (e) => {

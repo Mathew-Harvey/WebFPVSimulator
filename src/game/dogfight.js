@@ -283,6 +283,15 @@ export class Dogfight {
     }
     this.eventCount = 0;
     this.seen = { x: 0, y: 0, z: 0 };
+    /* A bot's goal (goal()), and how near it, in the aircraft's metres, a
+     * bot chasing to shoot breaks off and comes round again. */
+    this.gx = 0;
+    this.gy = 0;
+    this.gz = 0;
+    this.closeIn = 6;
+    /* How much nearer than they are the bots count the pilot when they
+     * choose whom to chase: under 1 is the pilot first. */
+    this.meBias = 0.75;
     this.reset(0);
   }
 
@@ -1090,7 +1099,7 @@ export class Dogfight {
         const front = d > 1e-6 ? (dx * this.fx[i] + dy * this.fy[i] + dz * this.fz[i]) / d : 0;
         let score = d * (1.4 - 0.5 * front);
         if (j === ME) {
-          score *= 0.75;
+          score *= this.meBias;
         }
         if (score < bestScore) {
           bestScore = score;
@@ -1130,16 +1139,17 @@ export class Dogfight {
       dy = 0.35;
       dz = mx * side;
     } else if (t >= 0) {
-      const tx = this.x[t] - this.x[i];
-      const ty = this.y[t] - this.y[i];
-      const tz = this.z[t] - this.z[i];
+      this.goal(i, t);
+      const tx = this.gx - this.x[i];
+      const ty = this.gy - this.y[i];
+      const tz = this.gz - this.z[i];
       dist = Math.sqrt(tx * tx + ty * ty + tz * tz);
       const tof = dist / (GUN.speed * k);
       dx = tx + this.vx[t] * tof * sk.lead;
       dy = ty + this.vy[t] * tof * sk.lead;
       dz = tz + this.vz[t] * tof * sk.lead;
       /* Too close: overshoot and come round again rather than sit on it. */
-      if (dist < 6 * k) {
+      if (dist < this.closeIn * k) {
         /* Two on the same spot have no line between them: straight on. */
         const near = dist > 1e-6 ? 0.3 / dist : 0;
         dx = this.fx[i] + tx * near;
@@ -1322,6 +1332,14 @@ export class Dogfight {
     az += (this.rand() * 2 - 1) * e;
     const em = Math.sqrt(ax * ax + ay * ay + az * az);
     this.pull(i, ax / em, ay / em, az / em, now);
+  }
+
+  /* Where a bot chasing pilot t flies to, into gx, gy, gz: the pilot
+   * itself. Ribbon cutting (src/game/ribbons.js) aims at the ribbon. */
+  goal(i, t) {
+    this.gx = this.x[t];
+    this.gy = this.y[t];
+    this.gz = this.z[t];
   }
 
   /* Something ahead within a second: turn up, or to a side, whichever of

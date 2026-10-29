@@ -2299,7 +2299,13 @@ export async function boot({ loading, bootStart, mapId }) {
    * the walls they see are read from the map's colliders once, when the
    * fight starts, into what the game calls its world (fightWorld).
    */
+  /* The modules of the game being flown, and every game's once fetched:
+   * the dogfight's, and ribbon cutting's (src/game/ribbons.js), which is the
+   * dogfight with ribbons for guns and runs through everything below. */
   let fightMods = null;
+  const fightLib = { dogfight: null, ribbon: null };
+  let fightKind = 'dogfight';
+  const fightHuds = { dogfight: null, ribbon: null };
   let fightLoading = false;
   let fightGame = null;
   let fightView = null;
@@ -2324,7 +2330,7 @@ export async function boot({ loading, bootStart, mapId }) {
   const fightExtra = { best: 0, newBest: false, nextMs: 0, kicker: 'Dogfight' };
 
   function fightBestKey() {
-    return `webfpv.dogfight.best.${fightKey}`;
+    return fightKind === 'ribbon' ? `webfpv.ribbons.best.${fightKey}` : `webfpv.dogfight.best.${fightKey}`;
   }
 
   function readFightBest() {
@@ -2587,8 +2593,9 @@ export async function boot({ loading, bootStart, mapId }) {
       }
       return;
     }
+    const kind = rules.game === 'ribbon' ? 'ribbon' : 'dogfight';
     const rulesKey = JSON.stringify(rules);
-    if (fightFor === view && fightGame) {
+    if (fightFor === view && fightGame && fightKind === kind) {
       if (rulesKey !== fightRulesKey) {
         fightRulesKey = rulesKey;
         fightGame.setRules(rules);
@@ -2598,12 +2605,21 @@ export async function boot({ loading, bootStart, mapId }) {
       }
       return;
     }
-    if (!fightMods) {
+    if (!fightLib[kind]) {
       if (!fightLoading) {
         fightLoading = true;
-        Promise.all([import('./game/dogfight.js'), import('./render/dogfight.js'), import('./ui/dogfighthud.js')])
-          .then(([game, render, hud]) => {
-            fightMods = { ...game, DogfightView: render.DogfightView, feedFraction: render.feedFraction, DogfightHud: hud.DogfightHud };
+        const want = kind === 'ribbon'
+          ? Promise.all([import('./game/ribbons.js'), import('./render/ribbons.js'), import('./ui/ribbonhud.js'), import('./game/dogfight.js'), import('./render/dogfight.js')])
+            .then(([game, render, hud, base, baseRender]) => ({
+              ...base, ...game, Game: game.RibbonCut, View: render.RibbonView, feedFraction: baseRender.feedFraction, Hud: hud.RibbonHud, kicker: 'Ribbon cutting',
+            }))
+          : Promise.all([import('./game/dogfight.js'), import('./render/dogfight.js'), import('./ui/dogfighthud.js')])
+            .then(([game, render, hud]) => ({
+              ...game, Game: game.Dogfight, View: render.DogfightView, feedFraction: render.feedFraction, Hud: hud.DogfightHud, kicker: 'Dogfight',
+            }));
+        want
+          .then((mods) => {
+            fightLib[kind] = mods;
           })
           .catch((e) => {
             console.warn('dogfight: the game did not load', e);
@@ -2617,19 +2633,28 @@ export async function boot({ loading, bootStart, mapId }) {
     if (fightGame) {
       fightOff();
     }
-    const { Dogfight, hashKey, DogfightView, DogfightHud } = fightMods;
+    fightKind = kind;
+    fightMods = fightLib[kind];
+    const {
+      Game, hashKey, View, Hud,
+    } = fightMods;
     fightWhoop = runAirframe === 'whoop65';
     fightKey = `${view.id}:${(view.egg && view.egg.key) || view.name || ''}:${fightWhoop ? 'whoop' : 'five'}`;
     fightRulesKey = rulesKey;
     const builtAt = performance.now();
     const world = fightWorld();
-    fightGame = new Dogfight(world, rules, hashKey(fightKey) ^ (Date.now() >>> 0));
+    fightGame = new Game(world, rules, hashKey(fightKey) ^ (Date.now() >>> 0));
     /* For the checks: what reading the map cost, once. */
     fightGame.buildMs = performance.now() - builtAt;
-    fightView = new DogfightView({ whoop: fightWhoop });
+    fightView = new View({ whoop: fightWhoop });
     fightView.attach(view.scene, shell.renderer, shell.camera, view.post && view.post.rtScene);
-    if (!fightHud) {
-      fightHud = new DogfightHud(ui.root, {
+    for (const other of Object.keys(fightHuds)) {
+      if (other !== kind && fightHuds[other]) {
+        fightHuds[other].setVisible(false);
+      }
+    }
+    if (!fightHuds[kind]) {
+      fightHuds[kind] = new Hud(ui.root, {
         input,
         onAgain: () => {
           if (fightGame) {
@@ -2640,11 +2665,15 @@ export async function boot({ loading, bootStart, mapId }) {
         onLeave: () => ui.act('fight-leave'),
       });
     }
+    fightHud = fightHuds[kind];
+    fightExtra.kicker = fightMods.kicker;
     fightFor = view;
     fightBest = readFightBest();
     fightRound = 0;
     fightNewRound();
-    input.weaponsLive = true;
+    /* Ribbons fire nothing: the gun and missile buttons stay what they
+     * were. */
+    input.weaponsLive = kind !== 'ribbon';
   }
 
   /* One step loop feed with the craft at state `st`. */

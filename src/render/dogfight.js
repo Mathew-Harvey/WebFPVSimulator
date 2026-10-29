@@ -318,9 +318,11 @@ export class DogfightView {
     /* The bots. */
     this.craft.begin();
     /* The bots flown on this page: in a room, a bot the host flies is
-     * drawn on the others' pages by the room, as a pilot is. */
+     * drawn on the others' pages by the room, as a pilot is. A ribbon
+     * cutting game has no puppets: its room bots are drawn by the room. */
+    const puppet = g.puppet;
     for (let i = 1; i < g.cap; i += 1) {
-      if (!g.isBot[i] || g.puppet[i] || !g.alive[i]) {
+      if (!g.isBot[i] || (puppet && puppet[i]) || !g.alive[i]) {
         continue;
       }
       const pose = this.poseOf(g, i, t);

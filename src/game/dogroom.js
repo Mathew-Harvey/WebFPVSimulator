@@ -98,6 +98,13 @@ export class DogfightRoom extends Dogfight {
     this.alive[ME] = 0;
   }
 
+  /* A round is the board's to start: nothing here after the first. */
+  reset(round) {
+    if (!this.idOf) {
+      super.reset(round);
+    }
+  }
+
   /* The round is the board's, not this page's. */
   get judged() {
     return false;

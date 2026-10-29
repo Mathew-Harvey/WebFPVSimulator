@@ -2305,10 +2305,18 @@ export async function boot({ loading, bootStart, mapId }) {
   let fightMods = null;
   const fightLib = { dogfight: null, ribbon: null };
   let fightKind = 'dogfight';
-  /* Whether the game is a ribbon cutting room's (RibbonRoom), which the
-   * room plays rather than the pilot's own rules. */
-  let fightInRoom = false;
+  /* The room game being played, 'ribbon' (RibbonRoom) or 'dogfight'
+   * (DogfightRoom), which the room plays rather than the pilot's own
+   * rules, or '' for the pilot's own. */
+  let fightInRoom = '';
   const ROOM_RIBBON_RULES = Object.freeze({ game: 'ribbon', room: true });
+  const ROOM_DOGFIGHT_RULES = Object.freeze({ game: 'dogfight', room: true });
+  /* What the room pump last gave a DogfightRoom of the bot seats. */
+  let fightSeats = null;
+  let fightBots = null;
+  const fightBotPose = (id, x, y, z, fx, fy, fz, ux, uy, uz) => {
+    fightBots.pose(id, x, y, z, fx, fy, fz, ux, uy, uz);
+  };
   const fightHuds = { dogfight: null, ribbon: null };
   let fightLoading = false;
   let fightGame = null;
@@ -2552,11 +2560,14 @@ export async function boot({ loading, bootStart, mapId }) {
   /* Once a frame, before anything reads the game: on, off, a new map or
    * new rules. */
   function syncDogfight() {
-    /* A ribbon cutting room on this world plays ribbons whatever the pilot
-     * was doing; any other room plays no game of this kind. */
-    const roomRibbon = Boolean(together && ui.roomInfo && together.ribbonRoom());
-    const rules = roomRibbon ? ROOM_RIBBON_RULES : ui.dogfight;
-    const want = Boolean(view) && Boolean(rules) && mapReady && !replayMode && (roomRibbon || !ui.roomInfo);
+    /* A ribbon cutting or dogfight room on this world plays its game
+     * whatever the pilot was doing; any other room plays no game of this
+     * kind. */
+    const inGame = together && ui.roomInfo ? together.gameRoom() : '';
+    const roomGame = inGame === 'ribbon' || inGame === 'dogfight' ? inGame : '';
+    const roomRibbon = roomGame === 'ribbon';
+    const rules = roomGame ? (roomRibbon ? ROOM_RIBBON_RULES : ROOM_DOGFIGHT_RULES) : ui.dogfight;
+    const want = Boolean(view) && Boolean(rules) && mapReady && !replayMode && (Boolean(roomGame) || !ui.roomInfo);
     if (!want) {
       if (fightGame) {
         fightOff();
@@ -2565,8 +2576,8 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     const kind = rules.game === 'ribbon' ? 'ribbon' : 'dogfight';
     const rulesKey = JSON.stringify(rules);
-    if (fightFor === view && fightGame && fightKind === kind && fightInRoom === roomRibbon) {
-      if (roomRibbon) {
+    if (fightFor === view && fightGame && fightKind === kind && fightInRoom === roomGame) {
+      if (roomGame) {
         return;
       }
       if (rulesKey !== fightRulesKey) {
@@ -2586,9 +2597,9 @@ export async function boot({ loading, bootStart, mapId }) {
             .then(([game, render, hud, base, baseRender]) => ({
               ...base, ...game, Game: game.RibbonCut, View: render.RibbonView, feedFraction: baseRender.feedFraction, Hud: hud.RibbonHud, kicker: 'Ribbon cutting',
             }))
-          : Promise.all([import('./game/dogfight.js'), import('./render/dogfight.js'), import('./ui/dogfighthud.js')])
-            .then(([game, render, hud]) => ({
-              ...game, Game: game.Dogfight, View: render.DogfightView, feedFraction: render.feedFraction, Hud: hud.DogfightHud, kicker: 'Dogfight',
+          : Promise.all([import('./game/dogfight.js'), import('./render/dogfight.js'), import('./ui/dogfighthud.js'), import('./game/dogroom.js')])
+            .then(([game, render, hud, room]) => ({
+              ...game, Game: game.Dogfight, View: render.DogfightView, feedFraction: render.feedFraction, Hud: hud.DogfightHud, kicker: 'Dogfight', DogfightRoom: room.DogfightRoom,
             }));
         want
           .then((mods) => {
@@ -2614,12 +2625,18 @@ export async function boot({ loading, bootStart, mapId }) {
     fightWhoop = runAirframe === 'whoop65';
     fightKey = `${view.id}:${(view.egg && view.egg.key) || view.name || ''}:${fightWhoop ? 'whoop' : 'five'}`;
     fightRulesKey = rulesKey;
-    fightInRoom = roomRibbon;
+    fightInRoom = roomGame;
+    fightSeats = null;
     const builtAt = performance.now();
     const world = fightWorld();
-    fightGame = roomRibbon
-      ? new fightMods.RibbonRoom(world)
-      : new Game(world, rules, hashKey(fightKey) ^ (Date.now() >>> 0));
+    const seed = hashKey(fightKey) ^ (Date.now() >>> 0);
+    if (roomRibbon) {
+      fightGame = new fightMods.RibbonRoom(world);
+    } else if (roomGame === 'dogfight') {
+      fightGame = new fightMods.DogfightRoom(world, { seed });
+    } else {
+      fightGame = new Game(world, rules, seed);
+    }
     /* For the checks: what reading the map cost, once. */
     fightGame.buildMs = performance.now() - builtAt;
     fightView = new View({ whoop: fightWhoop, slots: roomRibbon ? fightMods.ROOM_SLOTS : 0 });
@@ -2634,7 +2651,11 @@ export async function boot({ loading, bootStart, mapId }) {
         input,
         onAgain: () => {
           if (fightGame && fightGame.room) {
-            together.ribbonStart();
+            if (fightKind === 'ribbon') {
+              together.ribbonStart();
+            } else {
+              together.dogfightStart();
+            }
           } else if (fightGame) {
             fightNewRound();
           }
@@ -2659,6 +2680,12 @@ export async function boot({ loading, bootStart, mapId }) {
       if (last) {
         fightGame.heard(last.state, last.goLocal, last.endLocal);
       }
+    } else if (roomGame === 'dogfight') {
+      fightRoomSync();
+      const last = together.dogfightLast();
+      if (last) {
+        fightGame.heard(last, together.boardToLocal);
+      }
     }
     fightNewRound();
     /* Ribbons fire nothing: the gun and missile buttons stay what they
@@ -2670,6 +2697,10 @@ export async function boot({ loading, bootStart, mapId }) {
    * round and the cuts it believed in, and this page's cuts out to it. */
   function fightRoomSync() {
     if (!fightGame || !fightGame.room || !together) {
+      return;
+    }
+    if (fightKind === 'dogfight') {
+      dogfightRoomSync();
       return;
     }
     const who = together.ribbonWho();
@@ -2705,6 +2736,53 @@ export async function boot({ loading, bootStart, mapId }) {
     if (out) {
       for (const m of out) {
         together.sendRibbon(m);
+      }
+    }
+  }
+
+  /* The same, in a dogfight room (src/game/dogroom.js): who this page is,
+   * the bot seats and, on the host's page, their places out to the room;
+   * the board's round, the hits it believed and the guns and missiles it
+   * passed on; and this page's own hits, guns and launches out to it. */
+  function dogfightRoomSync() {
+    const g = fightGame;
+    const who = together.ribbonWho();
+    if (who) {
+      g.setYou(who.you, who.host);
+    }
+    const bots = together.roomBots();
+    if (bots) {
+      const seats = bots.seats();
+      if (seats !== fightSeats) {
+        fightSeats = seats;
+        g.setBots(seats);
+      }
+      if (bots.mine()) {
+        fightBots = bots;
+        g.eachFlown(fightBotPose);
+      }
+    }
+    const toLocal = together.boardToLocal;
+    const st = together.takeDogfight();
+    if (st) {
+      g.heard(st, toLocal);
+    }
+    const ins = together.takeDogfightIn();
+    if (ins) {
+      for (const m of ins) {
+        if (m.t === 'dfHit') {
+          g.heardHit(m, toLocal);
+        } else if (m.t === 'dfGun') {
+          g.heardGun(m);
+        } else if (m.t === 'dfLaunch') {
+          g.heardLaunch(m);
+        }
+      }
+    }
+    const out = g.takeOutbox();
+    if (out) {
+      for (const m of out) {
+        together.sendDogfight(m);
       }
     }
   }
@@ -2792,7 +2870,8 @@ export async function boot({ loading, bootStart, mapId }) {
         writeFightBest(mine);
       }
     }
-    if (g.over && g.sinceOverMs() >= RESULT_MS) {
+    /* A room's next round is its host's to start. */
+    if (g.over && g.sinceOverMs() >= RESULT_MS && !(g.room && fightKind === 'dogfight')) {
       fightNewRound();
     }
     const t = feedFraction(ahead);

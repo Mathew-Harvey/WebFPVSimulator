@@ -389,6 +389,14 @@ export class RoomLink {
         /* A ribbon cutting room's round, and a cut the board believed. */
         this.onEvent(m.t, m);
         break;
+      case 'dogfight':
+      case 'dfHit':
+      case 'dfGun':
+      case 'dfLaunch':
+        /* A dogfight room's round, a hit the board believed, and a gun or
+         * a launch passed on for drawing. */
+        this.onEvent(m.t, m);
+        break;
       case 'refused':
         /* A resume the board cannot honour is the end of this room for
          * this pilot, which the shell says differently from a refusal at

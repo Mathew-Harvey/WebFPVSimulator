@@ -1119,6 +1119,12 @@ export function createTogether(shell) {
         length: ribbonNow ? ribbonNow.state.length : 'normal',
         bots: session.link.bots.size,
       } : null,
+      dogfight: r.game === 'dogfight' ? {
+        phase: dogfightNow ? dogfightNow.state.phase : 'pit',
+        hits: dogfightNow ? dogfightNow.state.hits : 'arcade',
+        round: dogfightNow ? dogfightNow.state.round : '3m',
+        bots: session.link.bots.size,
+      } : null,
     });
   }
 
@@ -1360,8 +1366,8 @@ export function createTogether(shell) {
       map: entry.map,
       mapName: String(entry.name || 'A map').slice(0, 48),
       scale: entry.whoop ? 100 : 50,
-      /* A mini game the room plays, fixed when it opens: 'ribbon', or
-       * none. The board refuses a name it does not know. */
+      /* A mini game the room plays, fixed when it opens: 'ribbon',
+       * 'dogfight', or none. The board refuses a name it does not know. */
       game: entry.game || undefined,
     });
     sheetConnecting({ hosting: entry, step: 0 });
@@ -1724,6 +1730,19 @@ export function createTogether(shell) {
           ribbonCuts.push(data);
         }
         break;
+      case 'dogfight':
+        dogfightHeard(data.dogfight);
+        break;
+      case 'dfHit':
+      case 'dfGun':
+      case 'dfLaunch':
+        /* For the shell's game to take next frame; a page that has not
+         * drawn a frame for a while drops the oldest. */
+        dogfightIn.push(data);
+        if (dogfightIn.length > 256) {
+          dogfightIn.shift();
+        }
+        break;
       default:
         break;
     }
@@ -1772,6 +1791,69 @@ export function createTogether(shell) {
     return true;
   }
 
+  /*
+   * DOGFIGHT (src/game/dogroom.js DogfightRoom). As ribbon cutting's: the
+   * board's round, and the hits, guns and launches it passed on, kept for
+   * the shell to take once a frame.
+   */
+  let dogfightNow = null;
+  let dogfightIn = [];
+  function dogfightHeard(df) {
+    if (!df || !race) {
+      dogfightNow = null;
+      return;
+    }
+    dogfightNow = { state: df, taken: false };
+    infoForShell();
+  }
+
+  function dogfightRoom() {
+    const r = room();
+    return Boolean(r && r.game === 'dogfight');
+  }
+
+  /* The host's start: everybody here and every bot is in the round. */
+  function dogfightStart() {
+    if (!dogfightRoom() || !isHost()) {
+      return false;
+    }
+    const ph = dogfightNow ? dogfightNow.state.phase : 'pit';
+    if (ph !== 'pit' && ph !== 'results') {
+      return false;
+    }
+    if (session.link.pilots.size + session.link.bots.size < 2) {
+      toast('A dogfight needs two. Add a bot or send the link.', 'warn');
+      return true;
+    }
+    session.link.raceSend({ t: 'dfStart' });
+    return true;
+  }
+
+  /* The host's rules between rounds, one press a step round each list. */
+  const DF_LISTS = { hits: ['arcade', 'hard'], round: ['3m', '5m', 'first10', 'none'] };
+  function dogfightSet(field) {
+    if (!dogfightRoom() || !isHost() || !dogfightNow || !DF_LISTS[field]) {
+      return;
+    }
+    const order = DF_LISTS[field];
+    const at = order.indexOf(dogfightNow.state[field]);
+    session.link.raceSend({ t: 'dfSet', [field]: order[(at + 1) % order.length] });
+  }
+
+  /* One more bot of a skill each press, and none once the room is full. */
+  function roomBotsStep(skill = 'rookie') {
+    if (!bots || !bots.mine()) {
+      return;
+    }
+    const seats = bots.seats();
+    const full = seats.length >= BOTS_MAX || session.link.pilots.size + seats.length >= room().max;
+    if (full) {
+      for (const seat of seats) bots.drop(seat.id);
+    } else {
+      bots.add(skill);
+    }
+  }
+
   /* The host's ribbon length, round by round. */
   function ribbonLength() {
     if (!ribbonRoom() || !isHost() || !ribbonNow) {
@@ -1804,6 +1886,8 @@ export function createTogether(shell) {
     }
     ribbonCuts = [];
     ribbonHeard(data.ribbon);
+    dogfightIn = [];
+    dogfightHeard(data.dogfight);
     if (bots) bots.heard(data.bots);
     lastLink = 'good';
     paintChip();
@@ -2789,7 +2873,7 @@ export function createTogether(shell) {
         });
       };
       return scrimmed(h('div.page.fit.sheet.halftone', null,
-        h('div.page-head', null, h('div.grow', null, h('span.kicker', { text: entry.game === 'ribbon' ? `Host ribbon cutting on ${entry.name}` : `Host a room on ${entry.name}` }), lettered('OPEN YOUR ROOM', [INKS.cream, INKS.sakura], 50, 620)),
+        h('div.page-head', null, h('div.grow', null, h('span.kicker', { text: entry.game === 'ribbon' ? `Host ribbon cutting on ${entry.name}` : (entry.game === 'dogfight' ? `Host a dogfight on ${entry.name}` : `Host a room on ${entry.name}`) }), lettered('OPEN YOUR ROOM', [INKS.cream, INKS.sakura], 50, 620)),
           btn('Back to the maps', 'small ghost', () => back(), { 'data-k': 'cancel' })),
         h('div.rule'),
         h('div.page-body', null, h('div.tg-cols', null,
@@ -5425,7 +5509,7 @@ export function createTogether(shell) {
       offerWatch(now);
     }
     const r = room();
-    if (r && race && r.game === 'ribbon') {
+    if (r && race && (r.game === 'ribbon' || r.game === 'dogfight')) {
       /* The board's clock, for GO and the round's end. */
       race.ping(now);
     }
@@ -5508,9 +5592,15 @@ export function createTogether(shell) {
       }
       return false;
     }
-    /* G starts a ribbon round, for the host, from the air or the pause. */
+    /* G starts a ribbon or dogfight round, for the host, from the air or
+     * the pause. */
     if (code === 'KeyG' && ribbonRoom() && isHost() && (shell.flying() || shell.paused())) {
       if (ribbonStart()) {
+        return true;
+      }
+    }
+    if (code === 'KeyG' && dogfightRoom() && isHost() && (shell.flying() || shell.paused())) {
+      if (dogfightStart()) {
         return true;
       }
     }
@@ -5788,15 +5878,17 @@ export function createTogether(shell) {
     } else if (action === 'room-ribbon-bots') {
       /* One more bot each press, and none after the last: the roster page
        * does this properly once it is in. */
-      if (bots && bots.mine()) {
-        const seats = bots.seats();
-        const full = seats.length >= BOTS_MAX || session.link.pilots.size + seats.length >= room().max;
-        if (full) {
-          for (const seat of seats) bots.drop(seat.id);
-        } else {
-          bots.add('rookie');
-        }
+      roomBotsStep('rookie');
+    } else if (action === 'room-df-start') {
+      if (dogfightStart()) {
+        shell.resume();
       }
+    } else if (action === 'room-df-hits') {
+      dogfightSet('hits');
+    } else if (action === 'room-df-round') {
+      dogfightSet('round');
+    } else if (action === 'room-df-bots') {
+      roomBotsStep('pilot');
     }
   }
 
@@ -5897,6 +5989,42 @@ export function createTogether(shell) {
       }
     },
     ribbonStart,
+    /* A dogfight room on the world being flown: the shell plays
+     * DogfightRoom in it (src/main.js syncDogfight). */
+    dogfightRoom() {
+      return dogfightRoom() && sameWorld(room());
+    },
+    /* The board's round since the last ask, or null when nothing new. */
+    takeDogfight() {
+      const d = dogfightNow;
+      if (!d || d.taken) {
+        return null;
+      }
+      d.taken = true;
+      return d.state;
+    },
+    dogfightLast() {
+      return dogfightNow ? dogfightNow.state : null;
+    },
+    /* Hits, guns and launches the board passed on, oldest first. */
+    takeDogfightIn() {
+      if (!dogfightIn.length) {
+        return null;
+      }
+      const out = dogfightIn;
+      dogfightIn = [];
+      return out;
+    },
+    sendDogfight(msg) {
+      if (session && session.inRoom && dogfightRoom()) {
+        session.link.raceSend(msg);
+      }
+    },
+    /* A time on the board's clock on this page's. */
+    boardToLocal(ms) {
+      return race ? race.clock.toLocal(ms) : ms;
+    },
+    dogfightStart,
     /* The room's bot seats and their poses, for the games and the roster
      * page; null out of a room. */
     roomBots() {

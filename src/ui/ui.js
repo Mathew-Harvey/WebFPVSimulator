@@ -4535,6 +4535,55 @@ function ribbonRoomItems(info) {
   ];
 }
 
+/*
+ * A dogfight room's pause rows, as ribbon cutting's: the host starts a
+ * round, seats bots and sets the hits and the round between rounds.
+ */
+const DF_HITS_NAMES = { arcade: 'Arcade', hard: 'Hard' };
+const DF_ROUND_NAMES = {
+  '3m': '3 minutes', '5m': '5 minutes', first10: 'First to 10', none: 'No clock',
+};
+function dogfightRoomItems(info) {
+  const df = info.dogfight;
+  if (!df) {
+    return [];
+  }
+  const between = df.phase === 'pit' || df.phase === 'results';
+  if (!info.host) {
+    return [{
+      label: 'Dogfight',
+      value: between ? 'Waiting' : 'Round on',
+      action: 'noop',
+      note: 'The host starts each round. Everybody here when it starts is in it, and the bots too.',
+    }];
+  }
+  return [
+    {
+      label: between ? 'Start a dogfight round' : 'Round on',
+      action: between ? 'room-df-start' : 'noop',
+      note: between ? 'Everybody in the room and every bot. Or press G while flying.' : 'The next one can start when this one ends.',
+    },
+    {
+      label: 'Bots',
+      value: String(df.bots || 0),
+      action: 'room-df-bots',
+      note: 'Press for one more bot, and once the room is full, for none. Bots fly from your computer and give a seat to a friend who joins.',
+    },
+    {
+      label: 'Hits',
+      value: DF_HITS_NAMES[df.hits] || 'Arcade',
+      action: between ? 'room-df-hits' : 'noop',
+      note: 'Arcade: 100 health, back in 3 s. Hard: 60, back in 5 s. Changes between rounds.',
+    },
+    {
+      label: 'Round',
+      value: DF_ROUND_NAMES[df.round] || '3 minutes',
+      action: between ? 'room-df-round' : 'noop',
+      note: 'How a round ends. Changes between rounds.',
+    },
+  ];
+}
+
 function roomCraftItem(s, info) {
   const af = airframeById(s.airframe);
   if (info.host && info.freestyle) {
@@ -10934,6 +10983,7 @@ export class Ui {
         { label: 'Restart run', action: 'restart' },
         ...this.goatItems(),
         ...ribbonRoomItems(r),
+        ...dogfightRoomItems(r),
         {
           label: 'Room',
           value: `${r.code} · ${r.n} ${r.n === 1 ? 'pilot' : 'pilots'}`,
@@ -14606,6 +14656,18 @@ export class Ui {
    * for ribbons, then the host's room page, and a room that plays ribbon
    * cutting from the moment it opens. Where rooms are off it is solo.
    */
+  /* The dogfight with friends, for the Mini games menu: the room picker
+   * titled for a dogfight, then the host's room page, and a room that is a
+   * dogfight from the moment it opens. Where rooms are off it is solo. */
+  pickDogfightRoom() {
+    if (this.roomsOn && this.onFlyTogether) {
+      this.endFightPick();
+      this.pickRoomWorld('freestyle', { game: 'dogfight' });
+      return;
+    }
+    this.pickDogfight();
+  }
+
   pickRibbons({ room = false } = {}) {
     if (room && this.roomsOn && this.onFlyTogether) {
       this.endFightPick();
@@ -14754,6 +14816,7 @@ export class Ui {
           : ['Dogfight', 'Pick an arena', 'Any map works. Double click a map, or choose it and press Fight here.', 'Dogfight arena'])
         : move ? ['Change map', 'Pick the room\'s next map', 'Everybody votes to come with you or stay. Double click a map, or choose it and press Move the room here.', 'Moving the room']
         : this.hostPick.game === 'ribbon' ? ['Ribbon cutting room', 'Pick the map for your room', 'Any map works. Double click a map, or choose it and press Host a room here.', 'Hosting ribbon cutting']
+        : this.hostPick.game === 'dogfight' ? ['Dogfight room', 'Pick the arena for your room', 'Any map works. Double click a map, or choose it and press Host a room here.', 'Hosting a dogfight']
         : ['Host a room', 'Pick the map for your room', 'Double click a map, or choose it and press Host a room here.', 'Hosting a room'];
       const titleEl = this.hostBand.querySelector('.host-band-title');
       if (titleEl.dataset.words !== title) {

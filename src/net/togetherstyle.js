@@ -1065,7 +1065,7 @@ export const TOGETHER_CSS = `
  * empty seats, on the sheet's paper. */
 #tg .botroster { max-width: 760px; }
 #tg .botroster .rline { margin: 0; color: var(--ink); font-weight: 700; font-size: 14px; }
-#tg .botroster .rgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; max-height: 46vh; overflow-y: auto; padding: 2px 6px 8px 2px; }
+#tg .botroster .rgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(172px, 1fr)); gap: 10px; max-height: 46vh; overflow-y: auto; padding: 2px 6px 8px 2px; }
 #tg .botroster .rseat { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 4px 10px; padding: 8px 10px; background: #fff; border: 3px solid var(--ink); box-shadow: 4px 4px 0 var(--ink); color: var(--ink); min-width: 0; }
 #tg .botroster .rseat canvas { grid-row: span 2; border-radius: 50%; border: 2px solid var(--ink); }
 #tg .botroster .rseat b { font-weight: 900; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1074,7 +1074,8 @@ export const TOGETHER_CSS = `
 #tg .botroster .rseat.is-bot b { grid-column: 2 / -1; }
 #tg .botroster .rseat.is-empty { display: flex; flex-direction: column; justify-content: center; gap: 6px; background: transparent; border-style: dashed; border-color: #5d6b78; box-shadow: none; min-height: 72px; }
 #tg .botroster .rempty { font-size: 11px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; color: #5d6b78; }
-#tg .botroster .btn.small { padding: 5px 8px; font-size: 12px; min-height: 0; }
+#tg .botroster .btn.small { padding: 4px 6px; font-size: 11px; min-height: 0; min-width: 0; }
+#tg .botroster .rseat.is-bot .btn.small { justify-self: stretch; }
 #tg .swappic { flex: none; width: 120px; aspect-ratio: 16 / 10; border: 3px solid var(--ink); background: var(--cream) center / contain no-repeat; }
 @keyframes tg-vote-in { from { transform: scale(1.25); opacity: 0; } }
 @keyframes tg-vote-bar { from { transform: scaleX(1); } to { transform: scaleX(0); } }

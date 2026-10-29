@@ -87,7 +87,7 @@ import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './shar
 import { uploadWorld, setWorldFrame, setMover, setBoxHeight, kindOf, setVehicleClock, readVehicles, makeVehiclePoses, moverVelocityInPlant } from './game/plantworld.js';
 import { Chase, CHASE_EVERY, pays } from './game/chase.js';
 import { sincos } from './props/trig.js';
-import { setCraftAirframe, CRAFT_R, CRAFT_WORLD_R, CRAFT_V_UP, CRAFT_V_DOWN, craftVerticalHalf, craftVerticalOffset, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, TURTLE_EXIT_UPZ, turtleClearance, findRestSpot, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, CLIP_SPAWN_GRACE_MS, CrashJudge, putDullBounce, emptyWorldReport, foldWorldReport } from './game/collide.js';
+import { setCraftAirframe, CRAFT_R, CRAFT_WORLD_R, CRAFT_V_UP, CRAFT_V_DOWN, craftVerticalHalf, craftVerticalOffset, canPerch, heldStill, STUCK_SPEED, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, TURTLE_EXIT_UPZ, turtleClearance, findRestSpot, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, CLIP_SPAWN_GRACE_MS, CrashJudge, putDullBounce, emptyWorldReport, foldWorldReport } from './game/collide.js';
 import { Ui, formatTime, WEIGHT_STOCK, clampWeight, gravityScaleFor, loadSettings, pacingTimerOn } from './ui/ui.js';
 import { TAKEOFF, guideKind, stepOf, textOf } from './ui/firstflight.js';
 import {
@@ -5545,12 +5545,22 @@ export async function boot({ loading, bootStart, mapId }) {
    * base and flies off it on reverse thrust (onBase in src/game/collide.js
    * has the owner's words), so within 60 degrees of flat on its back it is
    * left where it is, as one on its belly is.
+   *
+   * A craft LEANING ON A SOLID past the perch's tilt and still is stuck too,
+   * since bug-6c405527: wedged at the foot of a wall at 52 degrees, which the
+   * 60 degree test never saw. heldStill in src/game/collide.js is the pose
+   * test, and besideSolid is the solid: within the craft's own swept radius,
+   * the reach recoverFrom has to be clear by to be a spot to set it down on.
+   * Asked only of a craft that has stopped, so a flight pays nothing for it.
    */
   const STUCK_MS = 1500;
   const STUCK_TURTLE_MS = 5000;
-  const STUCK_SPEED = 0.3;
-  const STUCK_RATE = 1.5;
   let stuckSinceMs = -1;
+  function besideSolid(st) {
+    return plantSpeed(st) < STUCK_SPEED
+      && Boolean(view.colliders)
+      && view.colliders.gapAt(pCurr.x, pCurr.y, pCurr.z, CRAFT_WORLD_R) < CRAFT_WORLD_R;
+  }
   function stuckTick() {
     const st = stateCurr;
     const still = mode === 'flight'
@@ -5561,10 +5571,7 @@ export async function boot({ loading, bootStart, mapId }) {
       && !turtleFlip.active
       && !turtleRecover
       && st
-      && plantUpZ(st) < TURTLE_EXIT_UPZ
-      && !(run3d && plantUpZ(st) <= -TURTLE_EXIT_UPZ)
-      && plantSpeed(st) < STUCK_SPEED
-      && plantRateMag(st) < STUCK_RATE;
+      && heldStill(plantUpZ(st), plantSpeed(st), plantRateMag(st), besideSolid(st), run3d);
     if (!still) {
       stuckSinceMs = -1;
       return;

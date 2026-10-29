@@ -34,6 +34,7 @@
     "check:plant:selftest": "node scripts/plant-golden.js --selftest",
     "check:motorkv": "node scripts/motor-kv-check.js",
     "check:crash": "node scripts/crash-check.js",
+    "check:wallpin": "node scripts/wallpin-check.js",
     "check:autoreset": "node scripts/autoreset-check.js",
     "check:gatesettings": "node scripts/gate-settings-check.js",
     "check:tuneload": "node scripts/tuneload-check.js",

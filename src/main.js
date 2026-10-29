@@ -2330,7 +2330,10 @@ export async function boot({ loading, bootStart, mapId }) {
   let fightHud = null;
   let fightFor = null;
   let fightRulesKey = '';
-  let fightScaleKey = '';
+  let fightScaleK = 0;
+  let fightRulesRef = null;
+  let fightRulesText = '';
+  let fightScaleCraft = '';
   let fightKey = '';
   let fightRound = 0;
   let fightBest = 0;
@@ -2582,15 +2585,23 @@ export async function boot({ loading, bootStart, mapId }) {
       return;
     }
     const kind = rules.game === 'ribbon' ? 'ribbon' : 'dogfight';
-    const rulesKey = JSON.stringify(rules);
+    /* The rules as text only when the object is a new one: a string a
+     * frame for as long as a fight lasts is garbage, and a collection is a
+     * hitch. */
+    if (rules !== fightRulesRef) {
+      fightRulesRef = rules;
+      fightRulesText = JSON.stringify(rules);
+    }
+    const rulesKey = fightRulesText;
     /* The fight is read in the aircraft's own metres, through the world
      * scale it was built at (fightWorld's k). A quad of another size on the
      * same map moves that scale without a new view: the host of a room
      * swapping everybody's quad, or the quad picker on a map already
      * loaded. The fight was left at the old size, bots, pellets and hit
      * reach three and a half times off, until it is built again here. */
-    const scaleKey = `${simLenToWorld(1)}:${runAirframe}`;
-    if (fightFor === view && fightGame && fightKind === kind && fightInRoom === roomGame && fightScaleKey === scaleKey) {
+    const scaleK = simLenToWorld(1);
+    if (fightFor === view && fightGame && fightKind === kind && fightInRoom === roomGame
+      && fightScaleK === scaleK && fightScaleCraft === runAirframe) {
       if (roomGame) {
         return;
       }
@@ -2637,7 +2648,8 @@ export async function boot({ loading, bootStart, mapId }) {
       Game, hashKey, View, Hud,
     } = fightMods;
     fightWhoop = runAirframe === 'whoop65';
-    fightScaleKey = scaleKey;
+    fightScaleK = scaleK;
+    fightScaleCraft = runAirframe;
     fightKey = `${view.id}:${(view.egg && view.egg.key) || view.name || ''}:${fightWhoop ? 'whoop' : 'five'}`;
     fightRulesKey = rulesKey;
     fightInRoom = roomGame;

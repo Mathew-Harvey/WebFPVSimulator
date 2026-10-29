@@ -56,7 +56,9 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { BOTS_MAX, botPilot, createRoomBots } from './roombots.js';
+import {
+  BOTS_MAX, BOT_SKILLS, botPilot, createRoomBots,
+} from './roombots.js';
 import { RoomSession } from './room.js';
 import { ROOM_MAX, STREAM_MAX, roomsUrl } from './link.js';
 import { RoomRace, RACE_LAPS_MAX } from './roomrace.js';
@@ -2044,6 +2046,93 @@ export function createTogether(shell) {
     });
   }
 
+  /*
+   * A MINI GAME'S ROOM, SET UP AS THE SOLO GAME IS. The host answered Set
+   * the fight (or Set the ribbons) before the room opened (ui.armRoomGame):
+   * the board takes the rules, the bots are seated at the skill picked,
+   * and the first round starts once the host is in the air with them, so
+   * hosting a dogfight is never a map with nothing in it. A room the host
+   * opened with no bots waits for a friend, as before.
+   */
+  let roundOwed = false;
+  let owedTimer = 0;
+  let owedUntil = 0;
+  function seatRoomRules(rules) {
+    const r = room();
+    if (!r || !isHost() || !bots) {
+      return;
+    }
+    if (r.game === 'dogfight') {
+      session.link.raceSend({ t: 'dfSet', hits: rules.hits, round: rules.round });
+    } else if (r.game === 'ribbon') {
+      session.link.raceSend({ t: 'rbSet', length: rules.length, round: rules.round });
+    } else if (r.game === 'goats') {
+      if (rules.round === '3m' || rules.round === '5m' || rules.round === 'all') {
+        session.link.raceSend({ t: 'gtSet', round: rules.round });
+      }
+    } else if (r.game !== 'drift') {
+      return;
+    }
+    if (BOT_SKILLS.includes(rules.skill)) {
+      rosterSkill = rules.skill;
+    }
+    const n = Math.min(Number(rules.bots) || 0, rosterFree());
+    if (n <= 0) {
+      return;
+    }
+    const adds = [];
+    for (let i = 0; i < n; i += 1) {
+      adds.push(bots.add(rosterSkill));
+    }
+    roundOwed = true;
+    owedUntil = 0;
+    Promise.all(adds).then(() => startOwedRound());
+  }
+
+  /* The owed first round, once the bots are seated and the host is flying
+   * with no sheet up. The seats and Start flying each call it, and while
+   * the world is still building it looks again every half second, for a
+   * minute at most. */
+  function startOwedRound() {
+    clearTimeout(owedTimer);
+    if (!roundOwed || !session || !isHost()) {
+      roundOwed = false;
+      return;
+    }
+    /* A sheet up (the share card, the first flight's lesson) is the host
+     * reading, which takes as long as it takes: the minute starts after. */
+    if (topName()) {
+      owedUntil = 0;
+      owedTimer = setTimeout(startOwedRound, 500);
+      return;
+    }
+    if (!owedUntil) {
+      owedUntil = performance.now() + 60000;
+    }
+    /* Goat herding starts on the map's herd and Drift Matsuri on its
+     * judge, which the shell hands over once the round is built. */
+    const unready = (goatsRoom() && !goatsHerd) || (driftRoom() && !driftCan);
+    if (!shell.flying() || bots.seats().length === 0 || unready) {
+      if (performance.now() < owedUntil) {
+        owedTimer = setTimeout(startOwedRound, 500);
+      } else {
+        roundOwed = false;
+      }
+      return;
+    }
+    roundOwed = false;
+    owedUntil = 0;
+    if (dogfightRoom()) {
+      dogfightStart();
+    } else if (ribbonRoom()) {
+      ribbonStart();
+    } else if (goatsRoom()) {
+      goatsStart();
+    } else if (driftRoom()) {
+      driftStart();
+    }
+  }
+
   /* The host's ribbon length, round by round. */
   function ribbonLength() {
     if (!ribbonRoom() || !isHost() || !ribbonNow) {
@@ -2133,6 +2222,9 @@ export function createTogether(shell) {
      * in the air yet, so it is said with the welcome rather than splashed. */
     const swapped = quadHeard(r, true);
     if (was && was.kind === 'host') {
+      if (was.entry && was.entry.rules) {
+        seatRoomRules(was.entry.rules);
+      }
       sheetShare({ first: true, entry: was.entry });
       return;
     }
@@ -3142,6 +3234,7 @@ export function createTogether(shell) {
       }
       /* The host's own first moment in their room says so, and says how
        * the others get in: nothing else on screen would. */
+      startOwedRound();
       if (first && r) {
         banner(me().avatar, 'hello', `${r.name} is open`,
           `You are hosting on ${r.mapName}. Room code ${r.code}. ${hands() === 'touch' ? 'Tap the room card' : 'Pause, then Room'} to invite more.`, 'mint');

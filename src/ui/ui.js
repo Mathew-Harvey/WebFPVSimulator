@@ -13493,8 +13493,15 @@ export class Ui {
         }
         /* A goat room is goat herding from the moment it opens: rounds,
          * bots and most goats wins (src/game/goatroom.js). A drift room
-         * is Drift Matsuri's, best reel wins (src/game/driftroom.js). */
-        this.onFlyTogether(id === 'goats' || id === 'drift' ? { ...world, game: id } : world);
+         * is Drift Matsuri's, best reel wins (src/game/driftroom.js).
+         * Each asks its solo page first, Set the herd or Set the shoot,
+         * and the room opens with those bots and starts the first round,
+         * as a dogfight room does (armRoomGame). */
+        if (id === 'goats' || id === 'drift') {
+          this.armRoomGame(world, entry, id, false);
+        } else {
+          this.onFlyTogether(world);
+        }
         return;
       }
     }
@@ -14815,6 +14822,16 @@ export class Ui {
       const world = this.roomWorldOf(entry);
       if (world && this.onFlyTogether) {
         const hp = this.hostPick;
+        /* A mini game's room is set up as the solo game is, whatever
+         * pressed it (a double click, Enter, the pad's A, the button):
+         * Set the fight or Set the ribbons, and Arm up, then the room,
+         * which seats the bots and starts the first round with them. The
+         * owner, 2026-10-29: "entering a mini game should be fool proof in
+         * solo or multi player modes". */
+        if (hp && !hp.move && (hp.game === 'dogfight' || hp.game === 'ribbon')) {
+          this.armRoomGame(world, entry, hp.game);
+          return;
+        }
         this.onFlyTogether(hp && hp.move ? { ...world, move: true } : hp && hp.game ? { ...world, game: hp.game } : world);
       }
       return;
@@ -14985,6 +15002,20 @@ export class Ui {
    * flown as the picker flies it. Back on either page leaves the pilot on
    * the arena picker with nothing changed. */
   async armFight(id, entry, ev) {
+    /* One page at a time: a second press while it is up (a double click
+     * then Enter, a pad's A pressed twice) is the same press. */
+    if (this.fightArming) {
+      return;
+    }
+    this.fightArming = true;
+    try {
+      await this.armFightPages(id, entry, ev);
+    } finally {
+      this.fightArming = false;
+    }
+  }
+
+  async armFightPages(id, entry, ev) {
     let pages;
     try {
       pages = await this.fightPages();
@@ -15011,6 +15042,41 @@ export class Ui {
     this.fightArenaName = name;
     this.fightArmed = true;
     this.pickerAction(id, entry, ev);
+  }
+
+  /* A mini game's room, set up before it opens: the solo pages, then the
+   * room with the rules (src/net/together.js host, which seats the bots,
+   * sets the board's rules and starts the first round). Back on a page
+   * leaves the pilot on the room picker. One at a time: a second press
+   * while a page is up is the same press. */
+  async armRoomGame(world, entry, game, picker = true) {
+    if (this.roomArming) {
+      return;
+    }
+    this.roomArming = true;
+    try {
+      const pages = await this.fightPages();
+      const kit = { letterHeading };
+      const name = world.name || entry.name || 'This map';
+      const ask = {
+        ribbon: pages.askRibbon, goats: pages.askGoats, drift: pages.askDrift,
+      }[game] || pages.askFight;
+      const got = await ask(this, kit, name);
+      if (!got || (picker && !this.hostPick)) {
+        return;
+      }
+      if (game === 'dogfight' && this.input && (got.buttons || !pages.armed())) {
+        const ok = await pages.askArm(this, kit, this.input);
+        if (!ok || !this.hostPick) {
+          return;
+        }
+      }
+      this.onFlyTogether({ ...world, game, rules: got.rules });
+    } catch (e) {
+      console.warn('dogfight: the pages did not load', e);
+    } finally {
+      this.roomArming = false;
+    }
   }
 
   /* The pause rows of a dogfight, and the results' Change the fight. */

@@ -194,15 +194,20 @@ export class BotBrain extends BotFlyer {
     for (let i = 0; i < n; i += 1) {
       this.p.push({ ...(PERSONAS[i] || PERSONAS[1]) });
     }
-    /* How the round is going for the pilot: up for pops, down for being
-     * popped, forgetting over about 45 s. */
-    this.mePerf = 0;
-    this.meBackAt = -Infinity;
+    /* How the round is going for each person flying (not the bots): up
+     * for pops, down for being popped, forgetting over about 45 s; and
+     * when each came back from their last pop. Slot 0 alone in a solo
+     * fight, everybody in a room. */
+    this.perf = new Float64Array(n);
+    this.backFrom = new Float64Array(n).fill(-Infinity);
   }
 
   /* Once a feed, before any bot flies: the pilot's round forgets. */
   tick() {
-    this.mePerf *= 1 - this.c.DT / 45;
+    const fade = 1 - this.c.DT / 45;
+    for (let j = 0; j < this.n; j += 1) {
+      this.perf[j] *= fade;
+    }
   }
 
   /* A fresh round: new nudges to every personality, the open air read
@@ -225,8 +230,8 @@ export class BotBrain extends BotFlyer {
       p.showoff = base.showoff;
       p.focus = base.focus;
     }
-    this.mePerf = 0;
-    this.meBackAt = -Infinity;
+    this.perf.fill(0);
+    this.backFrom.fill(-Infinity);
     this.known.fill(0);
     this.losOk.fill(0);
     this.losAt.fill(0);
@@ -284,11 +289,11 @@ export class BotBrain extends BotFlyer {
 
   onPop(to, by) {
     const g = this.g;
-    if (to === 0) {
-      this.mePerf -= 1;
+    if (!g.isBot[to]) {
+      this.perf[to] -= 1;
     }
-    if (by === 0 && to !== 0) {
-      this.mePerf += 1;
+    if (by >= 0 && !g.isBot[by] && to !== by) {
+      this.perf[by] += 1;
     }
     if (by > 0 && g.isBot[by] && g.rand() < this.p[by].showoff) {
       this.rollUntil[by] = g.clockMs + 450;
@@ -297,8 +302,8 @@ export class BotBrain extends BotFlyer {
   }
 
   onBack(i) {
-    if (i === 0) {
-      this.meBackAt = this.g.clockMs;
+    if (!this.g.isBot[i]) {
+      this.backFrom[i] = this.g.clockMs;
     }
   }
 
@@ -458,7 +463,7 @@ export class BotBrain extends BotFlyer {
     const g = this.g;
     const c = this.c;
     const w = g.world;
-    const sk = c.SKILLS[g.rules.skill];
+    const sk = c.SKILLS[g.skillOf(i)];
     const p = this.p[i];
     const vmax = w.cruise * sk.speed * 1.45 * w.k;
     this.perceive(i, now, sk);
@@ -622,6 +627,27 @@ export class BotBrain extends BotFlyer {
     }
   }
 
+  /* How many bots may be on person j at once: the skill's tokens, one
+   * more for a person winning, one fewer for one losing. */
+  tokensFor(j, sk) {
+    let tokens = sk.tokens;
+    if (this.perf[j] > 2) tokens += 1;
+    if (this.perf[j] < -2) tokens -= 1;
+    return tokens < 1 ? 1 : tokens;
+  }
+
+  /* How many bots other than i are attacking person j now. */
+  onPerson(i, j) {
+    const g = this.g;
+    let on = 0;
+    for (let b = 1; b < this.n; b += 1) {
+      if (b !== i && g.isBot[b] && g.alive[b] && g.target[b] === j && this.mode[b] === ATTACK) {
+        on += 1;
+      }
+    }
+    return on;
+  }
+
   /* Whom to fight: the best of the pilots it knows of, by how near, how
    * much in front, how hurt, who hit it last, the leader for BOLT, with
    * a little noise and a little loyalty to the one it has. The pilot gets
@@ -631,16 +657,6 @@ export class BotBrain extends BotFlyer {
     const g = this.g;
     const n = this.n;
     const k = g.world.k;
-    let tokens = sk.tokens;
-    if (this.mePerf > 2) tokens += 1;
-    if (this.mePerf < -2) tokens -= 1;
-    if (tokens < 1) tokens = 1;
-    let onMe = 0;
-    for (let j = 1; j < n; j += 1) {
-      if (j !== i && g.isBot[j] && g.alive[j] && g.target[j] === 0 && this.mode[j] === ATTACK) {
-        onMe += 1;
-      }
-    }
     let leader = -1;
     let most = 0;
     for (let j = 0; j < n; j += 1) {
@@ -673,12 +689,13 @@ export class BotBrain extends BotFlyer {
       if (p.style === LEADER && j === leader) {
         s *= 1.8;
       }
-      if (j === 0) {
+      if (!g.isBot[j]) {
+        /* A person: the one the bots are here for, but never mobbed. */
         s *= 1.3;
-        if (now - this.meBackAt < GRACE_MS) {
+        if (now - this.backFrom[j] < GRACE_MS) {
           s *= 0.1;
         }
-        if (g.target[i] !== 0 && onMe >= tokens) {
+        if (g.target[i] !== j && this.onPerson(i, j) >= this.tokensFor(j, sk)) {
           s *= 0.2;
         }
       }
@@ -1172,7 +1189,7 @@ export class BotBrain extends BotFlyer {
           want2 = 0;
         }
       }
-      if (t === 0 && this.mePerf < -2) want2 *= 0.5;
+      if (!g.isBot[t] && this.perf[t] < -2) want2 *= 0.5;
       if (g.rand() < want2 * 0.4) {
         g.launch(i, now);
       }
@@ -1200,8 +1217,8 @@ export class BotBrain extends BotFlyer {
     const cvz = this.kvz[q] - g.vz[i];
     const cross = Math.sqrt(cvx * cvx + cvy * cvy + cvz * cvz) / Math.max(d, 5 * k);
     let sigma = sk.aim * p.aim * (1 + settle) * (1 + Math.min(1.5, cross * 0.8));
-    if (t === 0) {
-      sigma *= Math.max(0.8, Math.min(1.35, 1 - this.mePerf * 0.07));
+    if (!g.isBot[t]) {
+      sigma *= Math.max(0.8, Math.min(1.35, 1 - this.perf[t] * 0.07));
     }
     let ax = lx + this.ex[i] * sigma;
     let ay = ly + this.ey[i] * sigma;

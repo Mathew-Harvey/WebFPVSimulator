@@ -315,11 +315,14 @@ export class Dogfight {
   /*
    * world: see the header. rules: normaliseRules. seed: the fight's.
    */
-  constructor(world, rules, seed) {
+  constructor(world, rules, seed, cap = MAX_PILOTS) {
     this.world = world;
     this.rules = normaliseRules(rules);
     this.seed = seed >>> 0;
-    const n = MAX_PILOTS;
+    /* How many slots: the pilot and seven bots alone, a room's pilots and
+     * bots in DogfightRoom (src/game/dogroom.js). */
+    this.cap = cap;
+    const n = cap;
     const f = () => new Float64Array(n);
     /* Pilots, struct of arrays. */
     this.x = f(); this.y = f(); this.z = f();
@@ -347,6 +350,13 @@ export class Dogfight {
     this.hot = new Uint8Array(n);
     this.firing = new Uint8Array(n);
     this.isBot = new Uint8Array(n);
+    /* Flown somewhere else: a room's other pilots, and its bots on any
+     * page but the host's. Never flown here, never judged here. */
+    this.puppet = new Uint8Array(n);
+    /* The slots in the fight, ascending, made once a feed (listFight), so
+     * a shot looks at those and not at every slot a room has. */
+    this.inList = new Int16Array(n);
+    this.inCount = 0;
     /* Score. */
     this.pops = new Int32Array(n);
     this.popped = new Int32Array(n);
@@ -391,13 +401,25 @@ export class Dogfight {
     this.eventCount = 0;
     this.seen = { x: 0, y: 0, z: 0 };
     this.brain = new BotBrain(this, {
-      GUN, MISSILE, SKILLS, HIT_R, DT, EVERY: DOGFIGHT_EVERY, MAX: MAX_PILOTS, MISSILES,
+      GUN, MISSILE, SKILLS, HIT_R, DT, EVERY: DOGFIGHT_EVERY, MAX: n, MISSILES,
     });
     this.reset(0);
   }
 
   get k() {
     return this.world.k;
+  }
+
+  /* The skill bot i flies at: one for all of them here, each its own in
+   * a room. */
+  skillOf() {
+    return this.rules.skill;
+  }
+
+  /* The round's clock and its end are this page's own here; a room's are
+   * the board's. */
+  get judged() {
+    return true;
   }
 
   /* Changing the rules mid fight starts a fresh round on them. */
@@ -424,7 +446,7 @@ export class Dogfight {
     this.mAlive.fill(0);
     this.havePrevMe = false;
     this.meFlying = false;
-    for (let i = 0; i < MAX_PILOTS; i += 1) {
+    for (let i = 0; i < this.cap; i += 1) {
       this.isBot[i] = i > 0 && i <= r.bots ? 1 : 0;
       this.inFight[i] = i === ME || this.isBot[i] ? 1 : 0;
       this.pops[i] = 0;
@@ -445,6 +467,7 @@ export class Dogfight {
       this.backAt[i] = 0;
       this.shieldUntil[i] = i === ME ? Infinity : SHIELD_MS;
     }
+    this.listFight();
     /* The brains, then where the bots start: the map's spawns, and when
      * it has few, the open air the brains found, so seven bots are not
      * handed two spots between them. */
@@ -463,7 +486,7 @@ export class Dogfight {
         return dx * dx + dz * dz > away * away;
       }).slice(0, 12 - sp.length));
     }
-    for (let i = 1; i < MAX_PILOTS; i += 1) {
+    for (let i = 1; i < this.cap; i += 1) {
       if (this.isBot[i]) {
         this.spawnBot(i, Math.floor(((i - 1) * this.spawnList.length) / MAX_BOTS));
       }
@@ -494,7 +517,8 @@ export class Dogfight {
       let best = -1;
       for (let k = 0; k < sp.length; k += 1) {
         let near = Infinity;
-        for (let j = 0; j < MAX_PILOTS; j += 1) {
+        for (let q = 0; q < this.inCount; q += 1) {
+          const j = this.inList[q];
           if (j === i || !this.alive[j]) {
             continue;
           }
@@ -549,7 +573,7 @@ export class Dogfight {
   }
 
   snapshot() {
-    for (let i = 0; i < MAX_PILOTS; i += 1) {
+    for (let i = 0; i < this.cap; i += 1) {
       this.xPrev[i] = this.x[i];
       this.yPrev[i] = this.y[i];
       this.zPrev[i] = this.z[i];
@@ -591,6 +615,17 @@ export class Dogfight {
     e.fromY = by >= 0 ? this.y[by] : y;
     e.fromZ = by >= 0 ? this.z[by] : z;
     return e;
+  }
+
+  listFight() {
+    let c = 0;
+    for (let i = 0; i < this.cap; i += 1) {
+      if (this.inFight[i]) {
+        this.inList[c] = i;
+        c += 1;
+      }
+    }
+    this.inCount = c;
   }
 
   /* Live: in the fight, not popped. Hittable: live and not shielded. */
@@ -637,20 +672,24 @@ export class Dogfight {
     const now = this.clockMs;
     this.meFlying = Boolean(me.flying);
     this.feedMe(me, teleported);
-    if (this.meFlying && this.startedMs < 0 && this.alive[ME]) {
+    this.listFight();
+    if (this.judged && this.meFlying && this.startedMs < 0 && this.alive[ME]) {
       this.startedMs = now;
     }
     if (this.meFlying && this.shieldUntil[ME] === Infinity && this.alive[ME]) {
       this.shieldUntil[ME] = now + SHIELD_MS;
     }
     /* Back from a pop. */
-    for (let i = 0; i < MAX_PILOTS; i += 1) {
+    for (let i = 0; i < this.cap; i += 1) {
       if (this.inFight[i] && !this.alive[i] && now >= this.backAt[i]) {
         this.whole(i);
         this.alive[i] = 1;
         if (i === ME) {
           /* Shielded until the craft is flying again, then SHIELD_MS. */
           this.shieldUntil[i] = Infinity;
+        } else if (this.puppet[i]) {
+          /* Back where its own page puts it. */
+          this.shieldUntil[i] = now + SHIELD_MS;
         } else {
           this.spawnBot(i, -1);
           this.shieldUntil[i] = now + SHIELD_MS;
@@ -660,7 +699,7 @@ export class Dogfight {
       }
     }
     /* Racks and heat. */
-    for (let i = 0; i < MAX_PILOTS; i += 1) {
+    for (let i = 0; i < this.cap; i += 1) {
       if (!this.inFight[i]) {
         continue;
       }
@@ -691,18 +730,18 @@ export class Dogfight {
       this.lockMs[ME] = 0;
     }
     this.brain.tick();
-    for (let i = 1; i < MAX_PILOTS; i += 1) {
-      if (this.isBot[i] && this.alive[i]) {
+    for (let i = 1; i < this.cap; i += 1) {
+      if (this.isBot[i] && !this.puppet[i] && this.alive[i]) {
         this.brain.fly(i, now, armed);
       }
     }
     this.stepPellets(now, armed);
     this.stepMissiles(now, armed);
     /* The round's end. */
-    if (armed) {
+    if (armed && this.judged) {
       let ended = this.roundMs > 0 && now - this.startedMs >= this.roundMs;
       if (this.popsToWin > 0) {
-        for (let i = 0; i < MAX_PILOTS; i += 1) {
+        for (let i = 0; i < this.cap; i += 1) {
           if (this.inFight[i] && this.pops[i] >= this.popsToWin) {
             ended = true;
           }
@@ -758,7 +797,8 @@ export class Dogfight {
     const reach = MISSILE.lockRange * k;
     let best = -1;
     let bestDot = LOCK_COS;
-    for (let j = 0; j < MAX_PILOTS; j += 1) {
+    for (let q = 0; q < this.inCount; q += 1) {
+      const j = this.inList[q];
       if (j === i || !this.hittable(j)) {
         continue;
       }
@@ -984,7 +1024,8 @@ export class Dogfight {
       let hitT = tEnd;
       if (armed) {
         const dd = dx * dx + dy * dy + dz * dz;
-        for (let j = 0; j < MAX_PILOTS; j += 1) {
+        for (let q = 0; q < this.inCount; q += 1) {
+          const j = this.inList[q];
           if (j === owner || !this.hittable(j)) {
             continue;
           }
@@ -1087,7 +1128,8 @@ export class Dogfight {
       /* A quad within the fuse. */
       let fused = false;
       if (armed) {
-        for (let j = 0; j < MAX_PILOTS; j += 1) {
+        for (let q = 0; q < this.inCount; q += 1) {
+          const j = this.inList[q];
           if (j === this.mOwner[s] || !this.hittable(j)) {
             continue;
           }
@@ -1133,7 +1175,8 @@ export class Dogfight {
     }
     const blast = MISSILE.blast * k;
     let caught = false;
-    for (let j = 0; j < MAX_PILOTS; j += 1) {
+    for (let q = 0; q < this.inCount; q += 1) {
+      const j = this.inList[q];
       if (j === owner || !this.hittable(j)) {
         continue;
       }
@@ -1197,7 +1240,7 @@ export class Dogfight {
    * per step. */
   standings() {
     const out = [];
-    for (let i = 0; i < MAX_PILOTS; i += 1) {
+    for (let i = 0; i < this.cap; i += 1) {
       if (!this.inFight[i]) {
         continue;
       }

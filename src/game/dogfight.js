@@ -179,7 +179,7 @@ const G = 9.81;
 
 /* mulberry32: integer arithmetic only, so the same seed gives the same
  * stream in every engine. */
-function rng(seed) {
+export function rng(seed) {
   let a = seed >>> 0;
   return () => {
     a = (a + 0x6d2b79f5) >>> 0;

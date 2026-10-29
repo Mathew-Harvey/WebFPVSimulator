@@ -4495,6 +4495,46 @@ function craftItem(s, midRun) {
  * room's own card for it (swapQuad in src/net/together.js), and the quad
  * changes here when the room has heard it.
  */
+/*
+ * A ribbon cutting room's pause rows: the host starts a round and sets the
+ * ribbons' length between rounds; everybody else is told who starts one.
+ */
+const RIBBON_LENGTH_NAMES = { short: 'Short', normal: 'Normal', long: 'Long' };
+function ribbonRoomItems(info) {
+  const rb = info.ribbon;
+  if (!rb) {
+    return [];
+  }
+  const between = rb.phase === 'pit' || rb.phase === 'results';
+  if (!info.host) {
+    return [{
+      label: 'Ribbon cutting',
+      value: between ? 'Waiting' : 'Round on',
+      action: 'noop',
+      note: 'The host starts each round. Everybody here when it starts gets a ribbon.',
+    }];
+  }
+  return [
+    {
+      label: between ? 'Start a ribbon round' : 'Round on',
+      action: between ? 'room-ribbon-start' : 'noop',
+      note: between ? 'Everybody in the room gets a ribbon. Or press G while flying.' : 'The next one can start when this one ends.',
+    },
+    {
+      label: 'Bots',
+      value: String(rb.bots || 0),
+      action: 'room-ribbon-bots',
+      note: 'Press for one more rookie bot, and once the room is full, for none. Bots fly from your computer and give a seat to a friend who joins.',
+    },
+    {
+      label: 'Ribbon length',
+      value: RIBBON_LENGTH_NAMES[rb.length] || 'Normal',
+      action: between ? 'room-ribbon-length' : 'noop',
+      note: 'Long ribbons are easier to cut. Changes between rounds.',
+    },
+  ];
+}
+
 function roomCraftItem(s, info) {
   const af = airframeById(s.airframe);
   if (info.host && info.freestyle) {
@@ -10893,6 +10933,7 @@ export class Ui {
         { label: 'Resume', action: 'resume', primary: true },
         { label: 'Restart run', action: 'restart' },
         ...this.goatItems(),
+        ...ribbonRoomItems(r),
         {
           label: 'Room',
           value: `${r.code} · ${r.n} ${r.n === 1 ? 'pilot' : 'pilots'}`,
@@ -10912,6 +10953,27 @@ export class Ui {
         { label: 'Settings', action: 'pilot', note: 'Your name, your radio, graphics and sound.' },
         { label: 'Leave room', action: 'room-leave', note: 'Fly on here, solo.' },
         { label: 'Quit to title', action: 'room-title', note: 'Leaves the room too.' },
+      ];
+    }
+    if (this.screen === 'paused' && this.dogfight && this.dogfight.game === 'ribbon') {
+      /* Ribbon cutting's pause: the dogfight's, with nothing to fire. */
+      return [
+        { label: 'Resume', action: 'resume', primary: true },
+        { label: 'Restart the round', action: 'restart' },
+        { label: 'Change the ribbons', action: 'fight-change', note: 'Bots, how good they are, how long the ribbons are and the round.' },
+        { label: 'Does it feel wrong?', section: true },
+        tuneItem(s, true),
+        flightModeItem(s, this.flightModeKey()),
+        {
+          label: 'Rates',
+          value: ratesShort(s.rates),
+          action: 'rates',
+          note: 'How far the sticks go, and the throttle limit. Changing them here leaves the quad where it is and the clock running.',
+        },
+        { label: 'Elsewhere', section: true },
+        { label: 'Settings', action: 'pilot', note: 'Your name, your radio, graphics and sound.' },
+        { label: 'Leave ribbon cutting', action: 'fight-leave', note: 'Fly on here with no ribbons and no bots.' },
+        { label: 'Quit to title', action: 'title' },
       ];
     }
     if (this.screen === 'paused' && this.dogfight) {
@@ -14352,7 +14414,7 @@ export class Ui {
   pickerActions(entry) {
     /* Picking a dogfight's arena: the one button fights there. */
     if (this.fightPick) {
-      return [{ id: this.screen === 'courses' ? 'card-fly' : 'fly', label: 'Fight here', primary: true }];
+      return [{ id: this.screen === 'courses' ? 'card-fly' : 'fly', label: this.fightPick.game === 'ribbon' ? 'Fly here' : 'Fight here', primary: true }];
     }
     /* Hosting: the one button is the room, so Enter and a double click
      * host this map. A map that lives only in this browser cannot be a
@@ -14419,7 +14481,8 @@ export class Ui {
     if (id === 'fly-together') {
       const world = this.roomWorldOf(entry);
       if (world && this.onFlyTogether) {
-        this.onFlyTogether(this.hostPick && this.hostPick.move ? { ...world, move: true } : world);
+        const hp = this.hostPick;
+        this.onFlyTogether(hp && hp.move ? { ...world, move: true } : hp && hp.game ? { ...world, game: hp.game } : world);
       }
       return;
     }
@@ -14515,9 +14578,9 @@ export class Ui {
    * gate's Dogfight panel, as Host a room opens it (pickRoomWorld). Any map
    * works, and the other shelves stay one tab away.
    */
-  pickDogfight() {
+  pickDogfight(game = 'dogfight') {
     this.endHostPick();
-    this.fightPick = { from: this.onGate() ? 'gate' : this.screen };
+    this.fightPick = { from: this.onGate() ? 'gate' : this.screen, game };
     this.fightArmed = false;
     if (this.onUiSound) {
       this.onUiSound('select');
@@ -14532,6 +14595,24 @@ export class Ui {
     }
     this.pickerShelfChosen('maps');
     this.paintHostPick();
+  }
+
+  /*
+   * RIBBON CUTTING (src/game/ribbons.js), the owner's ask of 2026-10-29:
+   * every quad trails a ribbon, cut the others', keep yours, the last with
+   * a ribbon wins. The entry point the Mini games menu calls: the
+   * dogfight's arena picker titled for ribbons, then Set the ribbons, then
+   * the map. `room` asks for the room version: the room picker titled
+   * for ribbons, then the host's room page, and a room that plays ribbon
+   * cutting from the moment it opens. Where rooms are off it is solo.
+   */
+  pickRibbons({ room = false } = {}) {
+    if (room && this.roomsOn && this.onFlyTogether) {
+      this.endFightPick();
+      this.pickRoomWorld('freestyle', { game: 'ribbon' });
+      return;
+    }
+    this.pickDogfight('ribbon');
   }
 
   endFightPick() {
@@ -14567,11 +14648,12 @@ export class Ui {
     }
     const kit = { letterHeading };
     const name = entry.name || entry.label || (entry.item && entry.item.map && entry.item.map.name) || 'This map';
-    const got = await pages.askFight(this, kit, name);
+    const ribbon = this.fightPick.game === 'ribbon';
+    const got = ribbon ? await pages.askRibbon(this, kit, name) : await pages.askFight(this, kit, name);
     if (!got || !this.fightPick) {
       return;
     }
-    if (this.input && (got.buttons || !pages.armed())) {
+    if (!ribbon && this.input && (got.buttons || !pages.armed())) {
       const ok = await pages.askArm(this, kit, this.input);
       if (!ok || !this.fightPick) {
         return;
@@ -14601,7 +14683,9 @@ export class Ui {
     }
     const kit = { letterHeading };
     if (action === 'fight-change') {
-      const got = await pages.askFight(this, kit, this.fightArenaName || 'This map');
+      const ribbon = Boolean(this.dogfight && this.dogfight.game === 'ribbon');
+      const ask = ribbon ? pages.askRibbon : pages.askFight;
+      const got = await ask(this, kit, this.fightArenaName || 'This map');
       if (got && this.dogfight) {
         this.dogfight = got.rules;
         if (this.onFight) {
@@ -14618,11 +14702,13 @@ export class Ui {
     }
   }
 
-  pickRoomWorld(way, { move = false } = {}) {
+  pickRoomWorld(way, { move = false, game = '' } = {}) {
     const shelf = { freestyle: 'maps', '5inch': 'five', whoop: 'whoop' }[way] || 'maps';
     /* move: the host of a room taking it to another map, from the pause
      * menu, which is where the pilot goes back to. */
-    this.hostPick = { way, move, from: this.onGate() ? 'gate' : this.screen };
+    this.hostPick = {
+      way, move, game: move ? '' : game, from: this.onGate() ? 'gate' : this.screen,
+    };
     if (isCardScreen(this.screen) && this.pickerShelf() === shelf) {
       this.paintHostPick();
       return;
@@ -14661,9 +14747,13 @@ export class Ui {
     const hero = this.pickerHost ? this.pickerHost.querySelector('.wp-hero') : null;
     if (on) {
       const move = Boolean(this.hostPick && this.hostPick.move);
+      const ribbon = Boolean(this.fightPick && this.fightPick.game === 'ribbon');
       const [kick, title, line, tab] = !this.hostPick
-        ? ['Dogfight', 'Pick an arena', 'Any map works. Double click a map, or choose it and press Fight here.', 'Dogfight arena']
+        ? (ribbon
+          ? ['Ribbon cutting', 'Pick a map', 'Any map works. Double click a map, or choose it and press Fly here.', 'Ribbon cutting']
+          : ['Dogfight', 'Pick an arena', 'Any map works. Double click a map, or choose it and press Fight here.', 'Dogfight arena'])
         : move ? ['Change map', 'Pick the room\'s next map', 'Everybody votes to come with you or stay. Double click a map, or choose it and press Move the room here.', 'Moving the room']
+        : this.hostPick.game === 'ribbon' ? ['Ribbon cutting room', 'Pick the map for your room', 'Any map works. Double click a map, or choose it and press Host a room here.', 'Hosting ribbon cutting']
         : ['Host a room', 'Pick the map for your room', 'Double click a map, or choose it and press Host a room here.', 'Hosting a room'];
       const titleEl = this.hostBand.querySelector('.host-band-title');
       if (titleEl.dataset.words !== title) {
@@ -19618,7 +19708,7 @@ export class Ui {
      * in the radio's voice, which has no pointer to double click with, nor
      * the phone's, where a double tap is the browser's to interpret. */
     if (this.fightPick && isCardScreen(this.screen) && !pad) {
-      out.push({ keys: ['Double click'], text: 'Fight here' });
+      out.push({ keys: ['Double click'], text: this.fightPick.game === 'ribbon' ? 'Fly here' : 'Fight here' });
     } else if (this.hostPick && isCardScreen(this.screen) && !pad) {
       out.push({ keys: ['Double click'], text: this.hostPick.move ? 'Move here' : 'Host here' });
     } else if (this.screen === 'courses' && !pad) {
@@ -20586,6 +20676,14 @@ export class Ui {
      * together.js's (main.js routes them). */
     if (action === 'gate-dogfight') {
       this.pickDogfight();
+      return;
+    }
+    if (action === 'gate-ribbon') {
+      this.pickRibbons();
+      return;
+    }
+    if (action === 'gate-ribbon-room') {
+      this.pickRibbons({ room: true });
       return;
     }
     if (action === 'gate-solo' || action === 'gate-together') {

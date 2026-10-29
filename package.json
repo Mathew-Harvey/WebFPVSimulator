@@ -91,6 +91,7 @@
     "ghost:selftest": "node scripts/ghost-selftest.js",
     "net:selftest": "node scripts/net-selftest.js",
     "dogfight:selftest": "node scripts/dogfight-selftest.js",
+    "ribbons:selftest": "node scripts/ribbons-selftest.js",
     "contact:selftest": "node scripts/contact-selftest.js",
     "score:selftest": "node scripts/score-selftest.js",
     "lapclock:selftest": "node scripts/lapclock-selftest.js",

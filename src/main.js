@@ -2299,7 +2299,17 @@ export async function boot({ loading, bootStart, mapId }) {
    * the walls they see are read from the map's colliders once, when the
    * fight starts, into what the game calls its world (fightWorld).
    */
+  /* The modules of the game being flown, and every game's once fetched:
+   * the dogfight's, and ribbon cutting's (src/game/ribbons.js), which is the
+   * dogfight with ribbons for guns and runs through everything below. */
   let fightMods = null;
+  const fightLib = { dogfight: null, ribbon: null };
+  let fightKind = 'dogfight';
+  /* Whether the game is a ribbon cutting room's (RibbonRoom), which the
+   * room plays rather than the pilot's own rules. */
+  let fightInRoom = false;
+  const ROOM_RIBBON_RULES = Object.freeze({ game: 'ribbon', room: true });
+  const fightHuds = { dogfight: null, ribbon: null };
   let fightLoading = false;
   let fightGame = null;
   let fightView = null;
@@ -2326,7 +2336,7 @@ export async function boot({ loading, bootStart, mapId }) {
   };
 
   function fightBestKey() {
-    return `webfpv.dogfight.best.${fightKey}`;
+    return fightKind === 'ribbon' ? `webfpv.ribbons.best.${fightKey}` : `webfpv.dogfight.best.${fightKey}`;
   }
 
   function readFightBest() {
@@ -2542,16 +2552,23 @@ export async function boot({ loading, bootStart, mapId }) {
   /* Once a frame, before anything reads the game: on, off, a new map or
    * new rules. */
   function syncDogfight() {
-    const rules = ui.dogfight;
-    const want = Boolean(view) && Boolean(rules) && mapReady && !replayMode && !ui.roomInfo;
+    /* A ribbon cutting room on this world plays ribbons whatever the pilot
+     * was doing; any other room plays no game of this kind. */
+    const roomRibbon = Boolean(together && ui.roomInfo && together.ribbonRoom());
+    const rules = roomRibbon ? ROOM_RIBBON_RULES : ui.dogfight;
+    const want = Boolean(view) && Boolean(rules) && mapReady && !replayMode && (roomRibbon || !ui.roomInfo);
     if (!want) {
       if (fightGame) {
         fightOff();
       }
       return;
     }
+    const kind = rules.game === 'ribbon' ? 'ribbon' : 'dogfight';
     const rulesKey = JSON.stringify(rules);
-    if (fightFor === view && fightGame) {
+    if (fightFor === view && fightGame && fightKind === kind && fightInRoom === roomRibbon) {
+      if (roomRibbon) {
+        return;
+      }
       if (rulesKey !== fightRulesKey) {
         fightRulesKey = rulesKey;
         fightGame.setRules(rules);
@@ -2561,12 +2578,21 @@ export async function boot({ loading, bootStart, mapId }) {
       }
       return;
     }
-    if (!fightMods) {
+    if (!fightLib[kind]) {
       if (!fightLoading) {
         fightLoading = true;
-        Promise.all([import('./game/dogfight.js'), import('./render/dogfight.js'), import('./ui/dogfighthud.js')])
-          .then(([game, render, hud]) => {
-            fightMods = { ...game, DogfightView: render.DogfightView, feedFraction: render.feedFraction, DogfightHud: hud.DogfightHud };
+        const want = kind === 'ribbon'
+          ? Promise.all([import('./game/ribbons.js'), import('./render/ribbons.js'), import('./ui/ribbonhud.js'), import('./game/dogfight.js'), import('./render/dogfight.js')])
+            .then(([game, render, hud, base, baseRender]) => ({
+              ...base, ...game, Game: game.RibbonCut, View: render.RibbonView, feedFraction: baseRender.feedFraction, Hud: hud.RibbonHud, kicker: 'Ribbon cutting',
+            }))
+          : Promise.all([import('./game/dogfight.js'), import('./render/dogfight.js'), import('./ui/dogfighthud.js')])
+            .then(([game, render, hud]) => ({
+              ...game, Game: game.Dogfight, View: render.DogfightView, feedFraction: render.feedFraction, Hud: hud.DogfightHud, kicker: 'Dogfight',
+            }));
+        want
+          .then((mods) => {
+            fightLib[kind] = mods;
           })
           .catch((e) => {
             console.warn('dogfight: the game did not load', e);
@@ -2580,34 +2606,107 @@ export async function boot({ loading, bootStart, mapId }) {
     if (fightGame) {
       fightOff();
     }
-    const { Dogfight, hashKey, DogfightView, DogfightHud } = fightMods;
+    fightKind = kind;
+    fightMods = fightLib[kind];
+    const {
+      Game, hashKey, View, Hud,
+    } = fightMods;
     fightWhoop = runAirframe === 'whoop65';
     fightKey = `${view.id}:${(view.egg && view.egg.key) || view.name || ''}:${fightWhoop ? 'whoop' : 'five'}`;
     fightRulesKey = rulesKey;
+    fightInRoom = roomRibbon;
     const builtAt = performance.now();
     const world = fightWorld();
-    fightGame = new Dogfight(world, rules, hashKey(fightKey) ^ (Date.now() >>> 0));
+    fightGame = roomRibbon
+      ? new fightMods.RibbonRoom(world)
+      : new Game(world, rules, hashKey(fightKey) ^ (Date.now() >>> 0));
     /* For the checks: what reading the map cost, once. */
     fightGame.buildMs = performance.now() - builtAt;
-    fightView = new DogfightView({ whoop: fightWhoop });
+    fightView = new View({ whoop: fightWhoop, slots: roomRibbon ? fightMods.ROOM_SLOTS : 0 });
     fightView.attach(view.scene, shell.renderer, shell.camera, view.post && view.post.rtScene);
-    if (!fightHud) {
-      fightHud = new DogfightHud(ui.root, {
+    for (const other of Object.keys(fightHuds)) {
+      if (other !== kind && fightHuds[other]) {
+        fightHuds[other].setVisible(false);
+      }
+    }
+    if (!fightHuds[kind]) {
+      fightHuds[kind] = new Hud(ui.root, {
         input,
         onAgain: () => {
-          if (fightGame) {
+          if (fightGame && fightGame.room) {
+            together.ribbonStart();
+          } else if (fightGame) {
             fightNewRound();
+          }
+        },
+        onFlyOn: () => {
+          if (fightGame && fightGame.room) {
+            fightGame.reset();
           }
         },
         onChange: () => ui.act('fight-change'),
         onLeave: () => ui.act('fight-leave'),
       });
     }
+    fightHud = fightHuds[kind];
+    fightExtra.kicker = fightMods.kicker;
     fightFor = view;
     fightBest = readFightBest();
     fightRound = 0;
+    if (roomRibbon) {
+      const last = together.ribbonLast();
+      fightRoomSync();
+      if (last) {
+        fightGame.heard(last.state, last.goLocal, last.endLocal);
+      }
+    }
     fightNewRound();
-    input.weaponsLive = true;
+    /* Ribbons fire nothing: the gun and missile buttons stay what they
+     * were. */
+    input.weaponsLive = kind !== 'ribbon';
+  }
+
+  /* Once a frame in a ribbon cutting room: who this page is, the board's
+   * round and the cuts it believed in, and this page's cuts out to it. */
+  function fightRoomSync() {
+    if (!fightGame || !fightGame.room || !together) {
+      return;
+    }
+    const who = together.ribbonWho();
+    if (who) {
+      fightGame.setYou(who.you, who.host, who.avatar);
+    }
+    /* The host's bots: the seats, and their places out to the room when
+     * this page is the one flying them (src/net/roombots.js). */
+    const bots = together.roomBots();
+    if (bots) {
+      const g = fightGame;
+      const mine = bots.mine();
+      g.setBots(bots.seats(), mine);
+      if (mine) {
+        for (let s = 1; s < fightMods.MAX_PILOTS; s += 1) {
+          if (g.botFlies(s)) {
+            bots.pose(g.idOf[s], g.x[s], g.y[s], g.z[s], g.fx[s], g.fy[s], g.fz[s], g.ux[s], g.uy[s], g.uz[s]);
+          }
+        }
+      }
+    }
+    const rb = together.takeRibbon();
+    if (rb) {
+      fightGame.heard(rb.state, rb.goLocal, rb.endLocal);
+    }
+    const cuts = together.takeRibbonCuts();
+    if (cuts) {
+      for (const c of cuts) {
+        fightGame.applyCut(c);
+      }
+    }
+    const out = fightGame.takeOutbox();
+    if (out) {
+      for (const m of out) {
+        together.sendRibbon(m);
+      }
+    }
   }
 
   /* One step loop feed with the craft at state `st`. */
@@ -2684,7 +2783,7 @@ export async function boot({ loading, bootStart, mapId }) {
       resetCraft();
       fightTeleported = true;
     }
-    if (g.over && !fightSaved) {
+    if (g.over && !fightSaved && !g.room) {
       fightSaved = true;
       const mine = g.pops[ME];
       if (mine > fightBest) {
@@ -3908,6 +4007,10 @@ export async function boot({ loading, bootStart, mapId }) {
   const ovKeepAt = { x: 0, y: 0, z: 0 };
   let ovKeepSeen = false;
   const mpDraw = (id, pose, pilot) => {
+    /* A ribbon cutting room's game draws every pilot's ribbon from here. */
+    if (fightGame && fightGame.room) {
+      fightGame.remote(id, pose, pilot);
+    }
     const dx = pose.px - mpHx;
     const dy = pose.py - mpHy;
     const dz = pose.pz - mpHz;
@@ -12099,6 +12202,7 @@ export async function boot({ loading, bootStart, mapId }) {
         }
       }
       syncDogfight();
+      fightRoomSync();
       if (fightGame) {
         if (mode === 'title' || (mode === 'flight' && balloonIdle)) {
           fightFrame(fightIdleTick(dt), dt, nowWall);
@@ -13193,6 +13297,8 @@ export async function boot({ loading, bootStart, mapId }) {
   /* Flying together, for scripts/together-shots.js: what is on screen and
    * the room it is in, or null before anything asked for a room. */
   window.__together = () => (together ? together.debugState() : null);
+  /* For scripts/together-shots.js: the room's bot seats (src/net/roombots.js). */
+  window.__roomBots = () => (together && together.roomBots ? together.roomBots() : null);
   /* For scripts/together-shots.js: the watching camera as it is now, and
    * what one of its frames costs, timed riding behind the pilot watched on
    * the real map's colliders with a camera of its own. Harness only. */

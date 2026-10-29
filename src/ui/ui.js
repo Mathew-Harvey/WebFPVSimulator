@@ -13272,7 +13272,15 @@ export class Ui {
         const cls = `turn-${this.gateTurn}`;
         this.gateTurn = '';
         grid.classList.add(cls);
-        grid.addEventListener('animationend', () => grid.classList.remove(cls), { once: true });
+        /* The names are measured on screen, and mid turn the page is
+         * swung about its spine: a name lettered then is fitted to where
+         * the swing had it, which on a phone held sideways clipped one
+         * name and shrank another to a speck. So they are lettered again
+         * once the page is flat. */
+        grid.addEventListener('animationend', () => {
+          grid.classList.remove(cls);
+          this.letterGateNames();
+        }, { once: true });
       }
     }
     this.markCards();

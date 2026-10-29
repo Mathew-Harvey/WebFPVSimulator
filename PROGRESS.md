@@ -72889,3 +72889,9 @@ The bug hunt thread saw together-shots' ribbon check "a bot cuts somebody's ribb
 - Latency: no change in flight. A sheet built when opened, menus only.
 - Checks, this turn: `node scripts/minigames-check.js` all passed, with a new `menu` scene (every panel alone, dogfight and ribbons with friends, Escape back to the page on that panel, goat herding flown and quit to the page). `together-shots --only=ribbon,dogfight` all passed against board main a0186f8, its bot steps now through the roster sheet; a second `--only=ribbon` run failed only "a bot cuts somebody's ribbon", the flake noted above. lint:nouns pass. Not run: npm run verify (no physics, plant, ABI or build change). Not flown.
 - Still owed, and said so: goat herding and Drift Matsuri have no bots or round yet, so With friends on them is a free flight room on that map and the roster sheet is not offered there.
+
+## 2026-10-29 | ui | Mini games: the page's names on a phone held sideways
+
+- Found by the check thread (relayed by the coordinator, 09:02Z): on a phone held sideways (844 by 390, touch) the Mini games page clipped RIBBON CUTTING at its panel's edge and drew Drift Matsuri's name as a speck. Cause: the names are lettered on screen from their measured boxes, and they were measured during the page turn, when the page is swung about its spine, so each was fitted to where the swing had it. They are lettered again when the turn's animation ends (`renderTitleCards` in src/ui/ui.js). Every gate page turns, so every page gets this, and a name already right paints nothing (letterHeading's key).
+- Latency: none in flight. One more lettering pass on a menu, after a page turn.
+- Checks: a shot at 844 by 390 with touch before and after (/mnt/project-files/mini-games/shots/landscape-before.png and landscape-after.png), every name's fitted width 137 px after, against 55 to 174 before. Not run: npm run verify (menus only). Not flown.

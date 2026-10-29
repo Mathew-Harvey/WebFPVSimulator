@@ -224,6 +224,20 @@ export const MAPS = [
     buildMs: MAP_BUILD_MS.drift,
     load: () => import('./drift/index.js'),
   },
+  /*
+   * QUAD BALL, on the owner's ask of 29 October 2026: "rocket league but
+   * with quads". One arena, two goals, a big ball (src/maps/ball/,
+   * src/game/quadball.js). Built by the built map's pipeline and flown on
+   * the five inch at life size; off the board like the houses.
+   */
+  {
+    id: 'ball',
+    name: 'Quad Ball',
+    mode: 'freestyle',
+    note: 'A floodlit arena with a goal at each end and a ball the size of a car. Push it into the other goal.',
+    buildMs: MAP_BUILD_MS.ball,
+    load: () => import('./ball/index.js'),
+  },
 ];
 
 /* The house's document id (src/maps/house/yard.js), here so the stamps can
@@ -246,6 +260,9 @@ export const SUNNY_DOC_ID = 'trk-5a77f1e1';
 
 /* Drift Matsuri's (src/maps/drift/yard.js), the same way. */
 export const DRIFT_DOC_ID = 'trk-d81f7a75';
+
+/* Quad Ball's (src/maps/ball/arena.js), the same way. */
+export const BALL_DOC_ID = 'trk-ba11b0a1';
 
 export function mapById(id) {
   return MAPS.find((m) => m.id === id) ?? MAPS[0];

@@ -109,6 +109,7 @@ const WORLDS = {
   goats: { name: '90%er goat herding', thumb: 'goats' },
   sunny: { name: 'Sunnyfield', thumb: 'sunny' },
   drift: { name: 'Drift Matsuri', thumb: 'drift' },
+  ball: { name: 'Quad Ball', thumb: 'ball' },
   built: { name: 'Hibari Yard', thumb: 'yard' },
 };
 

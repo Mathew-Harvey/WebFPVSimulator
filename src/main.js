@@ -2312,7 +2312,7 @@ export async function boot({ loading, bootStart, mapId }) {
    * dogfight with ribbons for guns and runs through everything below. */
   let fightMods = null;
   const fightLib = {
-    dogfight: null, ribbon: null, goats: null, drift: null,
+    dogfight: null, ribbon: null, goats: null, drift: null, ball: null,
   };
   let fightKind = 'dogfight';
   /* The room game being played, 'ribbon' (RibbonRoom) or 'dogfight'
@@ -2330,7 +2330,7 @@ export async function boot({ loading, bootStart, mapId }) {
     fightBots.pose(id, x, y, z, fx, fy, fz, ux, uy, uz);
   };
   const fightHuds = {
-    dogfight: null, ribbon: null, goats: null, drift: null,
+    dogfight: null, ribbon: null, goats: null, drift: null, ball: null,
   };
   let fightLoading = false;
   let fightGame = null;
@@ -2362,7 +2362,7 @@ export async function boot({ loading, bootStart, mapId }) {
   };
 
   function fightBestKey() {
-    if (fightKind === 'goats' || fightKind === 'drift') {
+    if (fightKind === 'goats' || fightKind === 'drift' || fightKind === 'ball') {
       return `webfpv.${fightKind}.best.${fightKey}`;
     }
     return fightKind === 'ribbon' ? `webfpv.ribbons.best.${fightKey}` : `webfpv.dogfight.best.${fightKey}`;
@@ -2404,9 +2404,11 @@ export async function boot({ loading, bootStart, mapId }) {
   function fightWorld() {
     const c = view.colliders;
     const k = simLenToWorld(1);
-    const cx = startX;
-    const cz = startZ;
-    const cy = startY;
+    /* Quad Ball is read from the middle of its arena, whoever starts where. */
+    const arena = view.ballGame ? view.ballGame.arena : null;
+    const cx = arena ? 0 : startX;
+    const cz = arena ? 0 : startZ;
+    const cy = arena ? (arena.floor || 0) + 2 : startY;
     const solid = Boolean(c && c.built && c.fax);
     /* How far the map's solids go from the spawn, and how high. */
     let far = 0;
@@ -2428,8 +2430,8 @@ export async function boot({ loading, bootStart, mapId }) {
         }
       }
     }
-    const radius = Math.max(40 * k, Math.min(150 * k, far * 0.85));
-    const top = Math.max(12 * k, Math.min(60 * k, topY - cy + 4 * k));
+    const radius = arena ? Math.hypot(arena.hx + arena.gd, arena.hz) + 4 : Math.max(40 * k, Math.min(150 * k, far * 0.85));
+    const top = arena ? arena.ceil : Math.max(12 * k, Math.min(60 * k, topY - cy + 4 * k));
     /* The ground, sampled from just above the spawn's height so a deck or
      * a floor indoors is the floor and not the street under it. */
     const half = radius + 30 * k;
@@ -2552,6 +2554,7 @@ export async function boot({ loading, bootStart, mapId }) {
       floorAt: floorOf,
       blocked,
       inside,
+      arena,
       grid: grid.data,
     };
   }
@@ -2601,14 +2604,16 @@ export async function boot({ loading, bootStart, mapId }) {
     const herdable = !rules || rules.game !== 'goats' || Boolean(view && view.goatGame);
     /* Drift Matsuri's is the drift map's, its judge and its cars. */
     const filmable = !rules || rules.game !== 'drift' || Boolean(view && view.filmGame);
-    const want = Boolean(view) && Boolean(rules) && herdable && filmable && mapReady && !replayMode && (Boolean(roomGame) || !ui.roomInfo);
+    /* Quad Ball's match is the arena map's, and nowhere else. */
+    const playable = !rules || rules.game !== 'ball' || Boolean(view && view.ballGame);
+    const want = Boolean(view) && Boolean(rules) && herdable && filmable && playable && mapReady && !replayMode && (Boolean(roomGame) || !ui.roomInfo);
     if (!want) {
       if (fightGame) {
         fightOff();
       }
       return;
     }
-    const kind = rules.game === 'ribbon' || rules.game === 'goats' || rules.game === 'drift' ? rules.game : 'dogfight';
+    const kind = rules.game === 'ribbon' || rules.game === 'goats' || rules.game === 'drift' || rules.game === 'ball' ? rules.game : 'dogfight';
     /* The rules as text only when the object is a new one: a string a
      * frame for as long as a fight lasts is garbage, and a collection is a
      * hitch. */
@@ -2645,6 +2650,11 @@ export async function boot({ loading, bootStart, mapId }) {
           ? Promise.all([import('./game/driftround.js'), import('./ui/drifthud.js'), import('./game/dogfight.js'), import('./render/dogfight.js'), import('./game/driftroom.js')])
             .then(([game, hud, base, render, room]) => ({
               ...base, ...game, Game: game.DriftRound, View: render.DogfightView, feedFraction: render.feedFraction, Hud: hud.DriftHud, kicker: 'Drift Matsuri', DriftRoom: room.DriftRoom,
+            }))
+          : kind === 'ball'
+          ? Promise.all([import('./game/quadball.js'), import('./ui/ballhud.js'), import('./game/dogfight.js'), import('./render/quadball.js'), import('./render/dogfight.js')])
+            .then(([game, hud, base, render, baseRender]) => ({
+              ...base, ...game, Game: game.BallRound, View: render.BallView, feedFraction: baseRender.feedFraction, Hud: hud.BallHud, kicker: 'Quad Ball',
             }))
           : kind === 'goats'
           ? Promise.all([import('./game/goatround.js'), import('./ui/herdhud.js'), import('./game/dogfight.js'), import('./render/dogfight.js'), import('./game/goatroom.js')])
@@ -2703,6 +2713,8 @@ export async function boot({ loading, bootStart, mapId }) {
       fightGame = new Game(world, rules, seed, view.goatGame);
     } else if (kind === 'drift') {
       fightGame = new Game(world, rules, seed, { film: view.filmGame.film, poses: () => carCurr });
+    } else if (kind === 'ball') {
+      fightGame = new Game(world, rules, seed, view.ballGame);
     } else {
       fightGame = new Game(world, rules, seed);
     }

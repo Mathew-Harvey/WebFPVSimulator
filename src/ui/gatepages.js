@@ -153,6 +153,16 @@ export const GATE_GAMES = [
     action: 'gate-drift',
     room: 'gate-drift-room',
   },
+  {
+    id: 'mg-ball',
+    label: 'Quad Ball',
+    kicker: 'New!',
+    art: 'assets/gate/ball.jpg',
+    caption: 'Rocket League with quads. Push the big ball into their goal.',
+    chips: ['Bots', 'Friends', 'Quad Ball arena'],
+    action: 'gate-ball',
+    room: 'gate-ball-room',
+  },
 ];
 
 /*

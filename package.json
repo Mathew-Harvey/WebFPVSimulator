@@ -29,6 +29,7 @@
     "lint:preload": "node scripts/gen-preload.js --check",
     "gen:preload": "node scripts/gen-preload.js",
     "check:drift": "node scripts/drift-check.js",
+    "check:moto": "node scripts/moto-check.js",
     "check:wall": "node scripts/wall-check.js",
     "check:plant": "node scripts/plant-golden.js",
     "check:plant:selftest": "node scripts/plant-golden.js --selftest",

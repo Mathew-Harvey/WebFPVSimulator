@@ -98,7 +98,7 @@ export const GATE_SIDES = [
     label: 'Mini games',
     kicker: 'Play',
     art: 'assets/gate/dogfight.jpg',
-    caption: 'Dogfights, ribbon cutting, goat herding and drift filming.',
+    caption: 'Dogfights, ribbon cutting, goat herding, drift filming and motocross chasing.',
     action: 'gate-games',
   },
 ];
@@ -152,6 +152,16 @@ export const GATE_GAMES = [
     chips: ['Bots', 'Friends', 'Drift Matsuri'],
     action: 'gate-drift',
     room: 'gate-drift-room',
+  },
+  {
+    id: 'mg-moto',
+    label: 'Ridgeline MX',
+    kicker: 'Chase the pack',
+    art: 'assets/gate/moto.jpg',
+    caption: 'Chase the dirt bikes round a motocross track and film the whips. Best reel wins.',
+    chips: ['Bots', 'Friends', 'Ridgeline MX'],
+    action: 'gate-moto',
+    room: 'gate-moto-room',
   },
 ];
 

@@ -1813,7 +1813,7 @@ export async function boot({ loading, bootStart, mapId }) {
     filmCam.p = st[11];
     filmCam.q = st[12];
     filmCam.r = st[13];
-    film.step(clock, filmCam, carFeed, carTouched || chaseCrashed);
+    film.step(clock, filmCam, view.filmGame.posed ? view.filmGame.posed(carFeed) : carFeed, carTouched || chaseCrashed);
   }
 
   /*
@@ -1869,7 +1869,7 @@ export async function boot({ loading, bootStart, mapId }) {
     filmCam.p = 0;
     filmCam.q = 0;
     filmCam.r = 0;
-    game.film.step(simTimeMs, filmCam, carCurr, false);
+    game.film.step(simTimeMs, filmCam, game.posed ? game.posed(carCurr) : carCurr, false);
   }
   window.__filmRig = (r) => {
     filmRig = r ? { along: -5, side: 0, up: 1.6, lead: 0, ...r } : null;
@@ -1887,6 +1887,10 @@ export async function boot({ loading, bootStart, mapId }) {
 
   const FILM_BEST_KEY = 'webfpv.drift.best.v1';
   let filmBest = -1;
+  /* Which map's best is in filmBest: Drift Matsuri keeps the key it always
+   * had, Ridgeline MX its own. */
+  let filmBestFor = '';
+  const filmBestKey = () => (view.id === 'drift' ? FILM_BEST_KEY : `webfpv.${view.id}.best.v1`);
   function filmFrame() {
     const game = view && view.filmGame;
     /* A dogfight or ribbon cutting on the map is the game being played:
@@ -1901,14 +1905,16 @@ export async function boot({ loading, bootStart, mapId }) {
       game.film.drainEvents();
       return;
     }
-    if (filmBest < 0) {
+    if (filmBest < 0 || filmBestFor !== view.id) {
       filmBest = 0;
+      filmBestFor = view.id;
       try {
-        filmBest = Number(localStorage.getItem(FILM_BEST_KEY)) || 0;
+        filmBest = Number(localStorage.getItem(filmBestKey())) || 0;
       } catch {
         filmBest = 0;
       }
       ui.filmHud.setBest(filmBest);
+      ui.filmHud.setWords(game.words || null);
     }
     const film = game.film;
     film.setLens(Math.tan((shell.camera.fov * Math.PI) / 360), shell.camera.aspect);
@@ -1919,7 +1925,7 @@ export async function boot({ loading, bootStart, mapId }) {
           e.newBest = true;
           filmBest = e.summary.score;
           try {
-            localStorage.setItem(FILM_BEST_KEY, String(filmBest));
+            localStorage.setItem(filmBestKey(), String(filmBest));
           } catch {
             /* A private window keeps it for the session only. */
           }
@@ -2698,11 +2704,11 @@ export async function boot({ loading, bootStart, mapId }) {
     } else if (roomGame === 'goats') {
       fightGame = new fightMods.GoatRoom(world, { seed, pen: view.goatGame });
     } else if (roomGame === 'drift') {
-      fightGame = new fightMods.DriftRoom(world, { seed, pen: { film: view.filmGame.film, poses: () => carCurr } });
+      fightGame = new fightMods.DriftRoom(world, { seed, pen: { film: view.filmGame.film, poses: () => (view.filmGame.posed ? view.filmGame.posed(carCurr) : carCurr) } });
     } else if (kind === 'goats') {
       fightGame = new Game(world, rules, seed, view.goatGame);
     } else if (kind === 'drift') {
-      fightGame = new Game(world, rules, seed, { film: view.filmGame.film, poses: () => carCurr });
+      fightGame = new Game(world, rules, seed, { film: view.filmGame.film, poses: () => (view.filmGame.posed ? view.filmGame.posed(carCurr) : carCurr) });
     } else {
       fightGame = new Game(world, rules, seed);
     }
@@ -2746,7 +2752,7 @@ export async function boot({ loading, bootStart, mapId }) {
       });
     }
     fightHud = fightHuds[kind];
-    fightExtra.kicker = fightMods.kicker;
+    fightExtra.kicker = fightKind === 'drift' && view && view.filmGame && view.filmGame.kicker ? view.filmGame.kicker : fightMods.kicker;
     fightFor = view;
     fightBest = readFightBest();
     fightRound = 0;
@@ -9104,9 +9110,9 @@ export async function boot({ loading, bootStart, mapId }) {
       return;
     }
     /* Nor for Drift Matsuri: DRIFT_OFF_BOARD in src/ui/ui.js. */
-    if (view.id === 'drift') {
+    if (view.id === 'drift' || view.id === 'moto') {
       notice = {
-        text: 'The board keeps no runs for Drift Matsuri, so its runs stay here.',
+        text: `The board keeps no runs for ${view.id === 'moto' ? 'Ridgeline MX' : 'Drift Matsuri'}, so its runs stay here.`,
         untilMs: performance.now() + 4200,
       };
       return;
@@ -13155,7 +13161,7 @@ export async function boot({ loading, bootStart, mapId }) {
         : '\nThe green gate starts your lap';
       if (race.freestyle && view.filmGame) {
         /* Drift Matsuri: the take is the game, and it starts in the air. */
-        second = '\nYou are the camera. Film the drift battles for a minute.';
+        second = view.filmGame.words ? view.filmGame.words.tip : '\nYou are the camera. Film the drift battles for a minute.';
       } else if (race.freestyle && view.goatGame) {
         /* The goat map: the herd is the game and it has a clock, so the
          * freestyle promise of none is not true of it (goathud.js). */
@@ -15368,6 +15374,17 @@ export async function boot({ loading, bootStart, mapId }) {
   window.__animTo = (step) => {
     view.updateAnim(step);
     return view.stats ? (view.stats().trainOffset ?? null) : null;
+  };
+  /*
+   * Put the lap clock at `ms`, so a capture can have the bikes of Ridgeline
+   * MX or the cars of Drift Matsuri where it needs them instead of waiting
+   * a lap at two frames a second. The next frame draws the traffic there.
+   * Harness only; nothing in the shell reads it.
+   */
+  window.__lapTo = (ms) => {
+    simTimeMs = Math.max(0, Math.round(ms));
+    carClockRead = -1;
+    return simTimeMs;
   };
   /* The active map's scene graph, for measurement. tests/lib/checks.js walks
    * it to assert that reference objects measure what this project claims they

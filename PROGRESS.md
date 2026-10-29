@@ -72986,8 +72986,8 @@ The bug hunt thread saw together-shots' ribbon check "a bot cuts somebody's ribb
 ## 2026-10-29 | release | Goat rooms, drift bots and drift rooms to main
 
 - The owner, 14:34Z, "push to main", after the goat bots' +0.025 ms a frame inside a round was stated to him. Board 706d2c0 went to main first (npm test all passed), then the sim at 2d7d2ec1, with main's ada187db merged in (conflicts in PROGRESS.md and scripts/minigames-check.js, both sides kept). On the merged tree: driftroom-check and goats-check all passed, lint:boot 9 of 9, check:fresh 18 of 18. Not flown.
-## 2026-10-29 | maps | A small Konex Drone logo hidden in every map
 
+## 2026-10-29 | maps | A small Konex Drone logo hidden in every map
 
 - The owner's ask (14:36Z): they promised Konex Drone (Albert, Spain) a small logo hidden in every map, some in hard to reach spots, for their community's find-the-logos challenge. Sign style unchanged: a patron sign, not findable, no stamp, no achievement.
 - Which maps carried a `konexdrone` sign before this turn, read from the code and, for the chooser's maps, by running the chooser in Node: Nick Burns' house (garage, `house/supporters.js`), Heads' house (side gate fence, `heads/logos.js`), the goat map (it is Heads' house, so the same sign), Joshua Bardwell's house (west end, `bardwell/logos.js`), the town (patron spot 2, the pool hall's north wall, `city/places/index.js`, so the project memory line "not the town" was out of date), Sunnyfield (one of its eight billboards, 6.4 m), Hibari Yard (the chooser's seen sign, on the footbridge's sign) and Drift Matsuri (the chooser found no wall and laid it on the paving, 12 m, by the pads). Thomas More's Shop had none: it turns the chooser off and hangs four partners by hand.

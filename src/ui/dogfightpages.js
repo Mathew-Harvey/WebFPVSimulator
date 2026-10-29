@@ -35,10 +35,12 @@
 import { normaliseRules, MAX_BOTS } from '../game/dogfight.js';
 import { normaliseRibbonRules } from '../game/ribbons.js';
 import { normaliseGoatRules } from '../game/goatround.js';
+import { normaliseDriftRules } from '../game/driftround.js';
 
 const RULES_KEY = 'webfpv.dogfight.rules.v1';
 const RIBBON_KEY = 'webfpv.ribbons.rules.v1';
 const GOATS_KEY = 'webfpv.goats.rules.v1';
+const DRIFT_KEY = 'webfpv.drift.rules.v1';
 const ARMED_KEY = 'webfpv.dogfight.armed.v1';
 /* The overlay's quiet start, as askConfirm's: input already queued when
  * the page opened is not an answer. */
@@ -282,6 +284,29 @@ const GOAT_ROWS = [
   },
 ];
 
+/* Drift Matsuri's round (src/game/driftround.js): the bots that film too,
+ * and how well. The take is the map's own, a minute long. */
+const DRIFT_ROWS = [
+  {
+    id: 'bots',
+    name: 'Bots',
+    small: 'Camera quads filming too',
+    options: ROWS[0].options,
+  },
+  {
+    id: 'skill',
+    name: 'Bot skill',
+    small: 'How well they film',
+    options: ROWS[1].options,
+  },
+];
+
+function saysForDrift(r) {
+  const who = r.bots === 0 ? 'Just you and the cars: a take to beat your best.'
+    : `${r.bots === 1 ? 'One bot' : `${r.bots} bots`} at ${r.skill === 'rookie' ? 'rookie' : (r.skill === 'ace' ? 'ace' : 'pilot')} level, filming too.`;
+  return `${who} Everybody films one minute. The best reel wins.`;
+}
+
 function saysForGoats(r) {
   const who = r.bots === 0 ? 'Just you and the goats.'
     : `${r.bots === 1 ? 'One bot' : `${r.bots} bots`} at ${r.skill === 'rookie' ? 'rookie' : (r.skill === 'ace' ? 'ace' : 'pilot')} level, herding too.`;
@@ -359,6 +384,25 @@ export function askGoats(ui, kit, mapName) {
     says: saysForGoats,
     how: "Fly low behind a goat and it runs away from you. Push it into Heads' garage. Every goat is whoever pushed it in last, so steal them at the door.",
     go: 'Herd!',
+    buttons: false,
+  });
+}
+
+/*
+ * SET THE SHOOT, Drift Matsuri's page: the same page with its own rows and
+ * no buttons to pick. Resolves { rules } or null.
+ */
+export function askDrift(ui, kit, mapName) {
+  return askRules(ui, kit, mapName, {
+    kicker: 'Drift Matsuri',
+    words: ['Set the', 'shoot'],
+    label: `Set the shoot on ${mapName}`,
+    rows: DRIFT_ROWS,
+    key: DRIFT_KEY,
+    normalise: normaliseDriftRules,
+    says: saysForDrift,
+    how: 'Film the drift battles for one minute. Close, smooth, the car in the middle of the picture, both cars of a battle, and the clipping zones all score. The best reel wins.',
+    go: 'Roll!',
     buttons: false,
   });
 }

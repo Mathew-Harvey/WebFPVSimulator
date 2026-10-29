@@ -7,7 +7,7 @@
  * a round ending and the next one starting, leaving, a restart, a quad of
  * another size, and the results table's buttons.
  *
- *   node scripts/minigames-check.js [--only=menu,load,yard,herd,goats,drift,dogfight,ribbon,scale]
+ *   node scripts/minigames-check.js [--only=menu,load,yard,herd,driftbots,goats,drift,dogfight,ribbon,scale]
  *
  * Minutes of wall clock on a software rasteriser. Written for the bug hunt
  * of 2026-10-29 ("Across all games before we push to main, please do a bug
@@ -421,11 +421,60 @@ async function sceneLoadKeys() {
   }
 }
 
+/*
+ * Drift Matsuri with bots (src/game/driftround.js): the owner's ask of
+ * 2026-10-29, bots in every mini game, and best reel wins. The round is
+ * built on the map's judge, the viewfinder stays up under the round's
+ * HUD, the bots go to the cars and score their own takes on the map's
+ * judge, and the end of the take ends the round with a table.
+ */
+async function sceneDriftBots() {
+  console.log('driftbots: Drift Matsuri with bots');
+  const { page, ev, until } = await flying('drift');
+  try {
+    await ev("window.__ui.dogfight = { game: 'drift', bots: 3, skill: 'ace' }; return 1;");
+    check('the round is built on the map\'s judge', await until(`${G} return Boolean(g && g.film && g.driftRules && g.driftRules.bots === 3);`, 30000));
+    check('nothing is fired in Drift Matsuri', await ev('return window.__input.weaponsLive === false'));
+    await ev('window.__stick(0, 0, 0, 0.62); return 1;');
+    check('taking off starts the round', await until(`${G} return g.startedMs >= 0;`, 20000));
+    check('the viewfinder stays up under the round\'s HUD', await until("return !document.querySelector('.df-hud').classList.contains('is-off') && !document.querySelector('.film-hud').classList.contains('is-off')", 5000));
+    /* Twenty seconds of the round's own clock: the bots on their cars. */
+    await until(`${G} return g.clockMs - g.startedMs > 20000;`, 400000);
+    const near = await ev(`${G} const P = g.pen.poses(); const out = []; for (let i = 1; i <= 3; i += 1) { const c = g.dCar[i]; if (c < 0) { out.push(-1); continue; } const p = P[g.film.cars[c].slot]; out.push(Math.hypot(p.x - g.x[i], p.z - g.z[i])); } return out;`);
+    check('every bot is on a car', near.every((d) => d >= 0 && d < 20), near.map((d) => d.toFixed(1)).join(' '));
+    const scores = await ev(`${G} return [1, 2, 3].map((i) => g.pops[i]);`);
+    check('and films it: each bot\'s take scores on the map\'s judge', scores.every((x) => x > 0), scores.join(' '));
+    const finite = await ev(`${G} for (let i = 0; i < g.cap; i += 1) { if (!Number.isFinite(g.x[i] + g.y[i] + g.z[i])) return false; } return true;`);
+    check('every slot is somewhere real', finite);
+    /* The end of the take, without waiting the rest of the minute. */
+    await ev(`${G} g.takeFrom -= 61000; window.__filmCut(); return 1;`);
+    const ended = await until(`${G} return g.over;`, 10000);
+    check('the end of every take ends the round', ended, ended ? '' : JSON.stringify(await ev(`${G} return { screen: window.__ui.screen, mode: window.__mode, now: g.clockMs, over: g.over, started: g.startedMs, from: g.takeFrom, clock: g.clockMs, film: g.film.done, films: g.films.map((f) => (f ? f.done : null)), fight: [...g.inFight], bots: [...g.isBot] };`)));
+    check('and the table is up', await until("return !document.querySelector('.df-result').classList.contains('is-off')", 3000));
+    const table = await ev("return document.querySelector('.df-result').textContent");
+    check('with every take\'s reel and grade', /REEL/.test(table) && /GRADE/.test(table), table.slice(0, 160));
+    const top = await ev(`${G} const r = g.standings(); return r.length === 4 && r[0].reel >= r[1].reel && (g.winner < 0 || g.winner === r[0].slot);`);
+    check('the best reel is first, and the winner', top);
+    await ev("[...document.querySelectorAll('.df-result .df-btn')].find((b) => b.textContent === 'Again').click(); return 1;");
+    check('Again starts a fresh take', await until(`${G} return !g.over && g.pops[1] === 0 && !g.film.done;`, 5000));
+    await ev("window.__ui.act('pause'); window.__ui.show('paused'); return 1;");
+    const rows = await ev("return window.__ui.items().map((i) => i.label).join(',')");
+    check('the pause has the round\'s rows', rows.includes('Change the round') && rows.includes('Leave the round'), rows);
+    await ev("window.__ui.act('fight-leave'); return 1;");
+    check('leaving ends the round', await until('return window.__dogfight() === null', 5000));
+    const errs = pageErrors(page);
+    check('no errors on the page', errs.length === 0, errs.slice(0, 3).join(' | '));
+  } finally {
+    await page.close();
+  }
+}
+
 try {
   if (wanted('menu')) await sceneMenu();
   if (wanted('load')) await sceneLoadKeys();
   if (wanted('yard')) await sceneYard();
   if (wanted('herd')) await sceneHerd();
+  if (wanted('driftbots')) await sceneDriftBots();
   if (wanted('goats')) await sceneMapGame('goats', 'goat-hud');
   if (wanted('drift')) await sceneMapGame('drift', 'film-hud');
   if (wanted('dogfight')) await sceneDogfight();

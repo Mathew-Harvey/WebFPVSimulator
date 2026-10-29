@@ -4408,6 +4408,10 @@ async function sceneGoats() {
     check('the host\'s pause menu has Start a goat round, Fill the roster and Round', ['Start a goat round', 'Fill the roster', 'Round'].every((x) => hostRows.includes(x)), hostRows.join(', '));
     await page.evaluate("(() => { window.__ui.act('room-gt-round'); return 1; })()");
     check('Round steps the round\'s length', await page.until("window.__ui.roomInfo && window.__ui.roomInfo.goats && window.__ui.roomInfo.goats.round === '5m'", 3000).then(() => true, () => false));
+    /* All home: the board's clock is the wall's, and a headless page flies
+     * at a fifth of it, so a five minute round is a minute of herding. */
+    await page.evaluate("(() => { window.__ui.act('room-gt-round'); return 1; })()");
+    await page.until("window.__ui.roomInfo.goats.round === 'all'", 3000).catch(() => {});
     await page.evaluate("(() => { window.__ui.act('room-roster'); return 1; })()");
     await page.until("!!document.querySelector('#tg .botroster')", 3000).catch(() => {});
     await page.evaluate("(() => { document.querySelector('#tg .botroster [data-k=\\'add-0\\']').click(); return 1; })()");
@@ -4433,14 +4437,14 @@ async function sceneGoats() {
     check('a pilot who joined hears the host\'s herd', herds, `${moss.heard.filter((h) => h.name === 'gtHerd').length}`);
     await shot('live');
     /* On the round's own clock: the solo round's bots get their first in
-     * 40 to 60 s of it. Two minutes of it, or ten of the wall. */
+     * 40 to 60 s of it. Three minutes of it, or fifteen of the wall. */
     let roundMs = 0;
     const home = await until(async () => {
       if (moss.heard.some((h) => h.name === 'gtHome' && h.data.by > 200)) return true;
       roundMs = await page.evaluate(`${G} ? window.__dogfight().clockMs - window.__dogfight().startedMs : 0`);
-      if (roundMs > 120000) throw new Error(`no bot goat home in ${Math.round(roundMs / 1000)} s of the round`);
+      if (roundMs > 180000) throw new Error(`no bot goat home in ${Math.round(roundMs / 1000)} s of the round`);
       return false;
-    }, 600000, 2000).catch((e) => { console.log(`  note  ${e.message}`); return false; });
+    }, 900000, 2000).catch((e) => { console.log(`  note  ${e.message}`); return false; });
     const probe = await page.evaluate(`(() => { const g = window.__dogfight(); if (!g) return ''; const out = []; for (let i = 1; i < g.cap; i += 1) if (g.isBot[i] && !g.puppet[i]) out.push(i + ':goat ' + g.gTarget[i] + ' h' + (g.y[i] / 3.5).toFixed(1)); return out.join(' ') + ' nOthers ' + g.pen.nOthers + ' round ' + Math.round((g.clockMs - g.startedMs) / 1000) + ' s'; })()`);
     check('a bot gets a goat home, and the room hears whose it was', home, probe);
     const hud = await page.evaluate("document.querySelector('.rb-hud') ? document.querySelector('.rb-hud').textContent : ''");

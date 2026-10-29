@@ -11083,6 +11083,27 @@ export class Ui {
         { label: 'Quit to title', action: 'room-title', note: 'Leaves the room too.' },
       ];
     }
+    if (this.screen === 'paused' && this.dogfight && this.dogfight.game === 'drift') {
+      /* A Drift Matsuri round's pause: goat herding's, with a take. */
+      return [
+        { label: 'Resume', action: 'resume', primary: true },
+        { label: 'Restart the round', action: 'restart' },
+        { label: 'Change the round', action: 'fight-change', note: 'Bots, and how well they film.' },
+        { label: 'Does it feel wrong?', section: true },
+        tuneItem(s, true),
+        flightModeItem(s, this.flightModeKey()),
+        {
+          label: 'Rates',
+          value: ratesShort(s.rates),
+          action: 'rates',
+          note: 'How far the sticks go, and the throttle limit. Changing them here leaves the quad where it is and the clock running.',
+        },
+        { label: 'Elsewhere', section: true },
+        { label: 'Settings', action: 'pilot', note: 'Your name, your radio, graphics and sound.' },
+        { label: 'Leave the round', action: 'fight-leave', note: 'Film on here alone, with no bots.' },
+        { label: 'Quit to title', action: 'title' },
+      ];
+    }
     if (this.screen === 'paused' && this.dogfight && this.dogfight.game === 'goats') {
       /* A goat herding round's pause: the ribbons', with goats. */
       return [
@@ -13444,8 +13465,8 @@ export class Ui {
     }
     /* Goat herding alone is a round with bots (src/game/goatround.js):
      * Set the herd first, as a dogfight's arena has Set the fight. */
-    if (id === 'goats') {
-      this.fightPick = { from: 'gate', game: 'goats' };
+    if (id === 'goats' || id === 'drift') {
+      this.fightPick = { from: 'gate', game: id };
       this.fightArmed = false;
     }
     this.pickerAction('fly', entry);
@@ -14939,8 +14960,8 @@ export class Ui {
     const kit = { letterHeading };
     const name = entry.name || entry.label || (entry.item && entry.item.map && entry.item.map.name) || 'This map';
     const game = this.fightPick.game;
-    const quiet = game === 'ribbon' || game === 'goats';
-    const ask = { ribbon: pages.askRibbon, goats: pages.askGoats }[game] || pages.askFight;
+    const quiet = game === 'ribbon' || game === 'goats' || game === 'drift';
+    const ask = { ribbon: pages.askRibbon, goats: pages.askGoats, drift: pages.askDrift }[game] || pages.askFight;
     const got = await ask(this, kit, name);
     if (!got || !this.fightPick) {
       return;
@@ -14976,7 +14997,7 @@ export class Ui {
     const kit = { letterHeading };
     if (action === 'fight-change') {
       const game = this.dogfight ? this.dogfight.game : '';
-      const ask = { ribbon: pages.askRibbon, goats: pages.askGoats }[game] || pages.askFight;
+      const ask = { ribbon: pages.askRibbon, goats: pages.askGoats, drift: pages.askDrift }[game] || pages.askFight;
       const got = await ask(this, kit, this.fightArenaName || 'This map');
       if (got && this.dogfight) {
         this.dogfight = got.rules;
@@ -15042,9 +15063,12 @@ export class Ui {
       const move = Boolean(this.hostPick && this.hostPick.move);
       const ribbon = Boolean(this.fightPick && this.fightPick.game === 'ribbon');
       const goats = Boolean(this.fightPick && this.fightPick.game === 'goats');
+      const drift = Boolean(this.fightPick && this.fightPick.game === 'drift');
       const [kick, title, line, tab] = !this.hostPick
         ? (goats
           ? ['Goat herding', 'The goats are out', 'Set the herd, then fly.', 'Goat herding']
+          : drift
+          ? ['Drift Matsuri', 'The cars are out', 'Set the shoot, then fly.', 'Drift Matsuri']
           : ribbon
           ? ['Ribbon cutting', 'Pick a map', 'Any map works. Double click a map, or choose it and press Fly here.', 'Ribbon cutting']
           : ['Dogfight', 'Pick an arena', 'Any map works. Double click a map, or choose it and press Fight here.', 'Dogfight arena'])

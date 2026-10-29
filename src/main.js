@@ -1891,11 +1891,13 @@ export async function boot({ loading, bootStart, mapId }) {
     const game = view && view.filmGame;
     /* A dogfight or ribbon cutting on the map is the game being played:
      * the take's HUD sat over the fight's, two games on one screen. */
-    ui.filmHud.setVisible(Boolean(game) && !fightGame && !replayMode && (ui.screen === 'flight' || ui.screen === 'paused'));
+    /* A Drift Matsuri round is this game with bots: its viewfinder stays. */
+    const filming = !fightGame || fightKind === 'drift';
+    ui.filmHud.setVisible(Boolean(game) && filming && !replayMode && (ui.screen === 'flight' || ui.screen === 'paused'));
     if (!game) {
       return;
     }
-    if (fightGame) {
+    if (!filming) {
       game.film.drainEvents();
       return;
     }
@@ -2309,7 +2311,9 @@ export async function boot({ loading, bootStart, mapId }) {
    * the dogfight's, and ribbon cutting's (src/game/ribbons.js), which is the
    * dogfight with ribbons for guns and runs through everything below. */
   let fightMods = null;
-  const fightLib = { dogfight: null, ribbon: null, goats: null };
+  const fightLib = {
+    dogfight: null, ribbon: null, goats: null, drift: null,
+  };
   let fightKind = 'dogfight';
   /* The room game being played, 'ribbon' (RibbonRoom) or 'dogfight'
    * (DogfightRoom), which the room plays rather than the pilot's own
@@ -2324,7 +2328,9 @@ export async function boot({ loading, bootStart, mapId }) {
   const fightBotPose = (id, x, y, z, fx, fy, fz, ux, uy, uz) => {
     fightBots.pose(id, x, y, z, fx, fy, fz, ux, uy, uz);
   };
-  const fightHuds = { dogfight: null, ribbon: null, goats: null };
+  const fightHuds = {
+    dogfight: null, ribbon: null, goats: null, drift: null,
+  };
   let fightLoading = false;
   let fightGame = null;
   let fightView = null;
@@ -2355,8 +2361,8 @@ export async function boot({ loading, bootStart, mapId }) {
   };
 
   function fightBestKey() {
-    if (fightKind === 'goats') {
-      return `webfpv.goats.best.${fightKey}`;
+    if (fightKind === 'goats' || fightKind === 'drift') {
+      return `webfpv.${fightKind}.best.${fightKey}`;
     }
     return fightKind === 'ribbon' ? `webfpv.ribbons.best.${fightKey}` : `webfpv.dogfight.best.${fightKey}`;
   }
@@ -2591,14 +2597,16 @@ export async function boot({ loading, bootStart, mapId }) {
       : ui.dogfight;
     /* Goat herding's round is the goat map's, and nowhere else. */
     const herdable = !rules || rules.game !== 'goats' || Boolean(view && view.goatGame);
-    const want = Boolean(view) && Boolean(rules) && herdable && mapReady && !replayMode && (Boolean(roomGame) || !ui.roomInfo);
+    /* Drift Matsuri's is the drift map's, its judge and its cars. */
+    const filmable = !rules || rules.game !== 'drift' || Boolean(view && view.filmGame);
+    const want = Boolean(view) && Boolean(rules) && herdable && filmable && mapReady && !replayMode && (Boolean(roomGame) || !ui.roomInfo);
     if (!want) {
       if (fightGame) {
         fightOff();
       }
       return;
     }
-    const kind = rules.game === 'ribbon' || rules.game === 'goats' ? rules.game : 'dogfight';
+    const kind = rules.game === 'ribbon' || rules.game === 'goats' || rules.game === 'drift' ? rules.game : 'dogfight';
     /* The rules as text only when the object is a new one: a string a
      * frame for as long as a fight lasts is garbage, and a collection is a
      * hitch. */
@@ -2631,7 +2639,12 @@ export async function boot({ loading, bootStart, mapId }) {
     if (!fightLib[kind]) {
       if (!fightLoading) {
         fightLoading = true;
-        const want = kind === 'goats'
+        const want = kind === 'drift'
+          ? Promise.all([import('./game/driftround.js'), import('./ui/drifthud.js'), import('./game/dogfight.js'), import('./render/dogfight.js')])
+            .then(([game, hud, base, render]) => ({
+              ...base, ...game, Game: game.DriftRound, View: render.DogfightView, feedFraction: render.feedFraction, Hud: hud.DriftHud, kicker: 'Drift Matsuri',
+            }))
+          : kind === 'goats'
           ? Promise.all([import('./game/goatround.js'), import('./ui/herdhud.js'), import('./game/dogfight.js'), import('./render/dogfight.js'), import('./game/goatroom.js')])
             .then(([game, hud, base, render, room]) => ({
               ...base, ...game, Game: game.GoatRound, View: render.DogfightView, feedFraction: render.feedFraction, Hud: hud.HerdHud, kicker: 'Goat herding', GoatRoom: room.GoatRoom,
@@ -2684,6 +2697,8 @@ export async function boot({ loading, bootStart, mapId }) {
       fightGame = new fightMods.GoatRoom(world, { seed, pen: view.goatGame });
     } else if (kind === 'goats') {
       fightGame = new Game(world, rules, seed, view.goatGame);
+    } else if (kind === 'drift') {
+      fightGame = new Game(world, rules, seed, { film: view.filmGame.film, poses: () => carCurr });
     } else {
       fightGame = new Game(world, rules, seed);
     }

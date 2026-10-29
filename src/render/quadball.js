@@ -7,7 +7,11 @@
  *
  * COST. Two draw calls over the dogfight's: the ball (320 triangles, one
  * material, vertex colours) and its shadow disc. The ball is posed from the
- * game's last two feeds and nothing is allocated a frame.
+ * game's last two feeds and nothing is allocated a frame. The goal's
+ * fireworks and the ball's trail are the dogfight's confetti and puffs,
+ * which are one instanced draw each already, so they add no call: a goal
+ * spends seven bursts of them over two seconds, and a fast ball one puff
+ * every few frames.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -37,6 +41,14 @@ const INKC = 0x23283c;
 /* The avatars' livery numbers (1 based) for the two teams. */
 const TEAM_LIVERY = [1, 9];
 const TEAM_HEX = [PINK, MINT];
+const GOLD = 0xffd45c;
+/* A goal's fireworks: how many bursts, over how long, how many pieces each. */
+const BURSTS = 7;
+const BURST_SPAN_MS = 2000;
+const BURST_PIECES = 30;
+/* A ball faster than this, aircraft metres a second, leaves a trail. */
+const TRAIL_SPEED = 20;
+const TRAIL_EVERY_MS = 55;
 
 function ballGeometry() {
   const g = new THREE.IcosahedronGeometry(1, 2).toNonIndexed();
@@ -96,6 +108,22 @@ export class BallView extends DogfightView {
     this.up = new THREE.Vector3(0, 1, 0);
     this.vel = new THREE.Vector3();
     this.lastMs = 0;
+    this.fwAt = new Float64Array(BURSTS).fill(-1);
+    this.fwX = new Float64Array(BURSTS);
+    this.fwY = new Float64Array(BURSTS);
+    this.fwZ = new Float64Array(BURSTS);
+    this.fwHex = new Int32Array(BURSTS);
+    this.trailAt = 0;
+    this.seed = 12345;
+    /* A piece of confetti is a hand's width in the dogfight; over an arena it
+     * has to be the size of a person to be seen from across the pitch. */
+    this.pieceScale = 12;
+  }
+
+  /* A small integer random for the fireworks' places. */
+  rand() {
+    this.seed = (Math.imul(this.seed, 1103515245) + 12345) >>> 0;
+    return this.seed / 4294967296;
   }
 
   /* The team's colour on every quad: the pilot's own livery is theirs to
@@ -127,6 +155,17 @@ export class BallView extends DogfightView {
       this.confetti(e.x, e.y, e.z, hex, 90, k, nowMs, 12);
       this.confetti(e.x, e.y + 2 * k, e.z, CREAM, 40, k, nowMs, 9);
       this.puff(e.x, e.y, e.z, 4 * k, 900, nowMs, hex);
+      /* Fireworks over the end the goal was scored at, a few at a time. */
+      const A = g.arena || { hx: 55, hz: 26 };
+      const dir = e.to === 0 ? 1 : -1;
+      const mix = [hex, CREAM, GOLD, hex, 0xffffff, GOLD, hex];
+      for (let i = 0; i < BURSTS; i += 1) {
+        this.fwAt[i] = nowMs + 150 + (i * BURST_SPAN_MS) / BURSTS + this.rand() * 120;
+        this.fwX[i] = dir * (A.hx * (0.35 + this.rand() * 0.6));
+        this.fwY[i] = (26 + this.rand() * 16) * k;
+        this.fwZ[i] = (this.rand() * 2 - 1) * A.hz * 0.85;
+        this.fwHex[i] = mix[i % mix.length];
+      }
       return;
     }
     if (e.type === 'touch') {
@@ -171,6 +210,19 @@ export class BallView extends DogfightView {
     this.shade.position.set(x, floor + 0.07, z);
     this.shade.scale.set(s, 1, s);
     this.shadowMat.opacity = 0.38 * Math.max(0.25, 1 - h / (20 * k));
+    /* A trail behind a fast ball, in the colour of the team that last hit it. */
+    if (sp > TRAIL_SPEED * k && nowMs - this.trailAt > TRAIL_EVERY_MS && g.lastTouchTeam >= 0) {
+      this.trailAt = nowMs;
+      this.puff(x, y, z, R * 0.7, 320, nowMs, TEAM_HEX[g.lastTouchTeam]);
+    }
+    /* The fireworks of the last goal, due bursts fired. */
+    for (let i = 0; i < BURSTS; i += 1) {
+      if (this.fwAt[i] >= 0 && nowMs >= this.fwAt[i]) {
+        this.fwAt[i] = -1;
+        this.confetti(this.fwX[i], this.fwY[i], this.fwZ[i], this.fwHex[i], BURST_PIECES, k, nowMs, 11);
+        this.puff(this.fwX[i], this.fwY[i], this.fwZ[i], 2.2 * k, 500, nowMs, this.fwHex[i]);
+      }
+    }
     this.group.visible = true;
   }
 }

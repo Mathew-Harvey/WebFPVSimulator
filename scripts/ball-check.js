@@ -103,6 +103,15 @@ async function main() {
     const rs = await ev('return window.__renderStats();');
     console.log(`  info  overview frame: ${rs.calls} draw calls, ${rs.triangles} triangles`);
     await shot('overview');
+    /* A goal, for the fireworks: the ball put in front of the east goal. */
+    await ev('window.__setCam(-10, 6, 0, 45, 30, 0); return 1;');
+    await ev(`${G} const b = g.ball; b.x = 44; b.y = 3; b.z = 0; b.vx = 30; b.vy = 0; b.vz = 0; return 1;`);
+    check('a goal is scored', await until(`${G} return g.teamScore[0] + g.teamScore[1] > 0;`, 20000));
+    for (let i = 0; i < 6; i += 1) {
+      await sleep(300);
+      await shot(`goal-fireworks${i}`);
+    }
+    await ev('window.__setCam(-62, 30, -52, 0, 4, 0); return 1;');
     if (SHOTS) {
       /* The gate card's picture: the same view with the page's own
        * furniture hidden, scaled to 448 high and cropped to 720 wide by

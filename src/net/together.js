@@ -56,7 +56,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { BOTS_MAX, createRoomBots } from './roombots.js';
+import { BOTS_MAX, botPilot, createRoomBots } from './roombots.js';
 import { RoomSession } from './room.js';
 import { ROOM_MAX, STREAM_MAX, roomsUrl } from './link.js';
 import { RoomRace, RACE_LAPS_MAX } from './roomrace.js';
@@ -1488,6 +1488,7 @@ export function createTogether(shell) {
         infoForShell();
         refresh('room');
         refresh('share');
+        refresh('botRoster');
         break;
       case 'left': {
         if (shell.forget) shell.forget(data.id);
@@ -1506,6 +1507,7 @@ export function createTogether(shell) {
         infoForShell();
         refresh('room');
         refresh('share');
+        refresh('botRoster');
         /* A card about a pilot who has gone has nothing left to act on. */
         if ((topName() === 'confirm' || topName() === 'report') && aboutId === data.id) {
           pop();
@@ -1724,6 +1726,7 @@ export function createTogether(shell) {
       case 'bots':
         if (bots) bots.heard(data.bots);
         infoForShell();
+        refresh('botRoster');
         break;
       case 'rbCut':
         if (ribbonCuts.length < 64) {
@@ -1840,18 +1843,74 @@ export function createTogether(shell) {
     session.link.raceSend({ t: 'dfSet', [field]: order[(at + 1) % order.length] });
   }
 
-  /* One more bot of a skill each press, and none once the room is full. */
-  function roomBotsStep(skill = 'rookie') {
+  /*
+   * FILL THE ROSTER, the room's seats on one sheet (the owner, 2026-10-29
+   * 04:51Z: "multiplayer you can fill the roster with bots if you like").
+   * The pilots in the room, the bots this page flies with their skill, and
+   * an empty seat for each one still free, each with + Add a bot. A friend
+   * who joins a full room takes the newest bot's seat on the board's side
+   * (src/net/roombots.js), and the sheet is painted again from 'joined',
+   * 'left' and 'bots'. The host's only; anybody else has nothing to set.
+   */
+  const SKILL_NAMES = { rookie: 'Rookie', pilot: 'Pilot', ace: 'Ace' };
+  let rosterSkill = 'pilot';
+
+  function rosterFree() {
+    const r = room();
+    if (!r || !bots) {
+      return 0;
+    }
+    const seats = bots.seats().length;
+    return Math.max(0, Math.min(BOTS_MAX - seats, r.max - session.link.pilots.size - seats));
+  }
+
+  function rosterFill() {
+    for (let i = rosterFree(); i > 0; i -= 1) {
+      bots.add(rosterSkill);
+    }
+  }
+
+  function nextSkill(s) {
+    const order = ['rookie', 'pilot', 'ace'];
+    return order[(order.indexOf(s) + 1) % order.length];
+  }
+
+  function sheetRoster() {
     if (!bots || !bots.mine()) {
       return;
     }
-    const seats = bots.seats();
-    const full = seats.length >= BOTS_MAX || session.link.pilots.size + seats.length >= room().max;
-    if (full) {
-      for (const seat of seats) bots.drop(seat.id);
-    } else {
-      bots.add(skill);
-    }
+    const under = stack.length ? stack[stack.length - 1].render : null;
+    open('botRoster', () => {
+      const pilotsHere = pilotsList();
+      const seats = bots.seats();
+      const free = rosterFree();
+      const seat = (kids, cls = '') => h(`div.rseat${cls}`, null, kids);
+      return h('div', null, under ? under() : null, h('div.modal-back', null, h('div.modal.sheet.sakura.halftone.botroster', null,
+        lettered('FILL THE ROSTER', [INKS.cream, INKS.amber], 38, 500),
+        h('p.rline', { text: 'Your friends, and bots in the empty seats. A friend who joins a full room takes a bot\'s seat.' }),
+        h('div.rgrid', null,
+          pilotsHere.map((pl) => seat([face(pl.avatar, 'calm', 44), h('b', { text: pl.handle }), h('span', { text: pl.id === session.you ? 'You, host' : 'Friend' })])),
+          seats.map((s) => seat([
+            face(botPilot(s).avatar, 'calm', 44),
+            h('b', { text: s.name }),
+            btn(SKILL_NAMES[s.skill] || 'Pilot', 'ghost.small', () => bots.skill(s.id, nextSkill(s.skill)), { 'data-k': `skill-${s.id}`, title: 'How good this bot is' }),
+            btn('Drop', 'ghost.small', () => bots.drop(s.id), { 'data-k': `drop-${s.id}` }),
+          ], '.is-bot')),
+          Array.from({ length: Math.min(free, 8) }, (_, i) => seat([
+            h('span.rempty', { text: 'Empty seat' }),
+            btn('+ Add a bot', 'small', () => bots.add(rosterSkill), { 'data-k': `add-${i}` }),
+          ], '.is-empty'))),
+        h('div.btnrow', null,
+          btn(`New bots: ${SKILL_NAMES[rosterSkill]}`, 'ghost', () => {
+            rosterSkill = nextSkill(rosterSkill);
+            refresh('botRoster');
+          }, { 'data-k': 'newskill' }),
+          free ? btn('Fill every seat with bots', 'amber', () => rosterFill(), { 'data-k': 'fill' }) : null,
+          seats.length ? btn('No bots', 'ghost', () => {
+            for (const s of seats) bots.drop(s.id);
+          }, { 'data-k': 'none' }) : null,
+          btn('Done', 'ghost', () => back(), { 'data-k': 'done', 'data-autofocus': true })))));
+    });
   }
 
   /* The host's ribbon length, round by round. */
@@ -5875,10 +5934,8 @@ export function createTogether(shell) {
       }
     } else if (action === 'room-ribbon-length') {
       ribbonLength();
-    } else if (action === 'room-ribbon-bots') {
-      /* One more bot each press, and none after the last: the roster page
-       * does this properly once it is in. */
-      roomBotsStep('rookie');
+    } else if (action === 'room-ribbon-bots' || action === 'room-df-bots' || action === 'room-roster') {
+      sheetRoster();
     } else if (action === 'room-df-start') {
       if (dogfightStart()) {
         shell.resume();
@@ -5887,8 +5944,6 @@ export function createTogether(shell) {
       dogfightSet('hits');
     } else if (action === 'room-df-round') {
       dogfightSet('round');
-    } else if (action === 'room-df-bots') {
-      roomBotsStep('pilot');
     }
   }
 

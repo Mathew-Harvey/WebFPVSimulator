@@ -4521,10 +4521,10 @@ function ribbonRoomItems(info) {
       note: between ? 'Everybody in the room gets a ribbon. Or press G while flying.' : 'The next one can start when this one ends.',
     },
     {
-      label: 'Bots',
-      value: String(rb.bots || 0),
-      action: 'room-ribbon-bots',
-      note: 'Press for one more rookie bot, and once the room is full, for none. Bots fly from your computer and give a seat to a friend who joins.',
+      label: 'Fill the roster',
+      value: `${rb.bots || 0} bots`,
+      action: 'room-roster',
+      note: 'Your friends and the empty seats, and bots to fill them. Bots fly from your computer and give a seat to a friend who joins.',
     },
     {
       label: 'Ribbon length',
@@ -4564,10 +4564,10 @@ function dogfightRoomItems(info) {
       note: between ? 'Everybody in the room and every bot. Or press G while flying.' : 'The next one can start when this one ends.',
     },
     {
-      label: 'Bots',
-      value: String(df.bots || 0),
-      action: 'room-df-bots',
-      note: 'Press for one more bot, and once the room is full, for none. Bots fly from your computer and give a seat to a friend who joins.',
+      label: 'Fill the roster',
+      value: `${df.bots || 0} bots`,
+      action: 'room-roster',
+      note: 'Your friends and the empty seats, and bots to fill them. Bots fly from your computer and give a seat to a friend who joins.',
     },
     {
       label: 'Hits',
@@ -5650,6 +5650,7 @@ export class Ui {
     this.gameFriends = false;
     this.gameLast = '';
     this.gameReturn = false;
+    this.mapGamePick = false;
     /*
      * HOSTING, BETWEEN "HOST A ROOM" AND THE ROOM. A room is hosted on a
      * map, so Host a room opens the map picker, and while it does the
@@ -13328,6 +13329,23 @@ export class Ui {
       this.settings.airframeAsked = true;
     }
     this.pickerShelfChosen('maps');
+    this.mapGamePick = true;
+    /* The picker is fetched on its first visit (mountPicker), so the very
+     * first game played from the page waits for it, on the map cards. */
+    if (!this.pickerLib) {
+      if (this.pickerLoading) {
+        this.pickerLoading.then(() => {
+          if (this.pickerLib && isCardScreen(this.screen)) {
+            this.playMapGameOn(id, room);
+          }
+        });
+      }
+      return;
+    }
+    this.playMapGameOn(id, room);
+  }
+
+  playMapGameOn(id, room) {
     const entry = this.pickerEntries().find((e) => e.item && e.item.action === `map:${id}`);
     if (!entry) {
       return;
@@ -14755,6 +14773,7 @@ export class Ui {
    */
   pickDogfight(game = 'dogfight') {
     this.endHostPick();
+    this.mapGamePick = false;
     this.fightPick = { from: this.onGate() ? 'gate' : this.screen, game };
     this.fightArmed = false;
     if (this.onUiSound) {
@@ -14891,6 +14910,7 @@ export class Ui {
 
   pickRoomWorld(way, { move = false, game = '' } = {}) {
     const shelf = { freestyle: 'maps', '5inch': 'five', whoop: 'whoop' }[way] || 'maps';
+    this.mapGamePick = false;
     /* move: the host of a room taking it to another map, from the pause
      * menu, which is where the pilot goes back to. */
     this.hostPick = {
@@ -20493,6 +20513,8 @@ export class Ui {
   }
 
   flown() {
+    /* In the air, so Back from a later picker is the picker's own again. */
+    this.mapGamePick = false;
     /* Before the early return: this is the one place every door to the air
      * passes through once per launch, and a pilot who has flown before is
      * exactly who meets a kind of place for the first time here. */
@@ -20583,6 +20605,26 @@ export class Ui {
         this.renderMenu();
       }
       return;
+    }
+    /* Goat herding or Drift Matsuri, opened from the Mini games page: the
+     * map cards they were played from are the picker's, so Back from there
+     * is the page, as it is from a dogfight's arena. */
+    if (this.mapGamePick && isCardScreen(this.screen)) {
+      this.mapGamePick = false;
+      if (this.onUiSound) {
+        this.onUiSound('back');
+      }
+      if (this.roomsOn) {
+        this.mode = null;
+        this.craftGate = true;
+        this.gatePage = 'games';
+        this.gameReturn = false;
+        this.gateTurn = 'back';
+        this.show('title');
+        this.setCursor(this.titleStop());
+        this.renderMenu();
+        return;
+      }
     }
     if (this.hostPick && this.hostPick.move && isCardScreen(this.screen)) {
       this.endMovePick();
@@ -21732,12 +21774,23 @@ export class Ui {
      * does. It used to fight on behind the title, the bots shooting each
      * other over the menus, and a Fly from there was back in it, score
      * and all, where the pilot had chosen to stop. */
+    const fromGame = action === 'title' && (from === 'paused' || from === 'flight' || from === 'results')
+      && this.roomsOn && this.gatePage === 'games' && Boolean(this.dogfight || this.gameLast);
     if (action === 'title' && this.dogfight && (from === 'paused' || from === 'flight' || from === 'results')) {
       this.dogfight = null;
       this.fightArmed = false;
     }
     if (action === 'title' || action === 'paused') {
       this.show(action);
+    }
+    /* Quit to title from a mini game played from the Mini games page is
+     * back on that page, on its panel, rather than on the menu of the way
+     * the game happened to seat. */
+    if (fromGame) {
+      this.mode = null;
+      this.craftGate = true;
+      this.setCursor(this.titleStop());
+      this.renderMenu();
     }
     /* Freestyle reaches the air through here rather than through the launch
      * card, so this is the other end of the same event. See flown(). */

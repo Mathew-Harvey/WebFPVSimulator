@@ -7,7 +7,7 @@
  * a round ending and the next one starting, leaving, a restart, a quad of
  * another size, and the results table's buttons.
  *
- *   node scripts/minigames-check.js [--only=load,goats,drift,dogfight,ribbon,scale]
+ *   node scripts/minigames-check.js [--only=menu,load,goats,drift,dogfight,ribbon,scale]
  *
  * Minutes of wall clock on a software rasteriser. Written for the bug hunt
  * of 2026-10-29 ("Across all games before we push to main, please do a bug
@@ -206,6 +206,78 @@ async function sceneMapGame(map, hud) {
 }
 
 /*
+ * THE MINI GAMES PAGE's ways in and back (the owner, 2026-10-29: "Make
+ * sure all the menu systems are complete"). Every panel, alone and with
+ * friends where a page can host without a board, opens its game's way in,
+ * and Escape from there walks back to the page on that panel, never to the
+ * plain title menu. Goat herding's flight, quit to title, is back on the
+ * page too.
+ */
+async function sceneMenu() {
+  console.log('menu: the Mini games page');
+  const page = await openPage({ root: ROOT, width: 1280, height: 720, url: '/index.html' });
+  const ev = async (body) => {
+    const r = await page.cdp.send('Runtime.evaluate', {
+      expression: `(async()=>{${body}})()`, awaitPromise: true, returnByValue: true,
+    }, page.sessionId);
+    if (r.exceptionDetails) {
+      throw new Error(JSON.stringify(r.exceptionDetails).slice(0, 900));
+    }
+    return r.result.value;
+  };
+  const until = async (body, ms = 20000) => {
+    const end = Date.now() + ms;
+    while (Date.now() < end) {
+      if (await ev(body)) {
+        return true;
+      }
+      await sleep(200);
+    }
+    return false;
+  };
+  const onPage = (card) => `const u = window.__ui; return u.screen === 'title' && u.onGate() && u.gatePageNow() === 'games' && (u.items()[u.cursor] || {}).card === '${card}';`;
+  try {
+    check('the title is up', await until("return Boolean(window.__ui && window.__ui.screen === 'title' && window.__ui.onGate())", 120000));
+    check('the cover has Mini games', await ev("return window.__ui.items().some((i) => i.card === 'games')"));
+    await ev("window.__ui.act('gate-games'); return 1;");
+    check('Mini games turns to its page', await until("return window.__ui.gatePageNow() === 'games'", 5000));
+    const cards = await ev("return window.__ui.items().map((i) => i.card).join(',')");
+    check('with the switch and four games', cards === 'mg-switch,mg-dogfight,mg-ribbon,mg-goats,mg-drift', cards);
+    const play = async (card, friends) => {
+      await ev(`const u = window.__ui; if (Boolean(u.gameFriends) !== ${friends}) u.act('mg-friends'); u.setCursor(u.items().findIndex((i) => i.card === '${card}')); u.select(); return 1;`);
+    };
+    for (const [card, friends, open, escs] of [
+      ['mg-dogfight', false, "Boolean(window.__ui.fightPick && window.__ui.fightPick.game === 'dogfight')", 1],
+      ['mg-ribbon', false, "Boolean(window.__ui.fightPick && window.__ui.fightPick.game === 'ribbon')", 1],
+      ['mg-goats', false, "Boolean(document.querySelector('.qp-page'))", 2],
+      ['mg-drift', false, "Boolean(document.querySelector('.qp-page'))", 2],
+      ['mg-dogfight', true, "Boolean(window.__ui.hostPick && window.__ui.hostPick.game === 'dogfight')", 1],
+      ['mg-ribbon', true, "Boolean(window.__ui.hostPick && window.__ui.hostPick.game === 'ribbon')", 1],
+    ]) {
+      const name = `${card.slice(3)}${friends ? ' with friends' : ''}`;
+      await play(card, friends);
+      check(`${name} opens its way in`, await until(`return ${open}`, 30000));
+      for (let i = 0; i < escs; i += 1) {
+        await sleep(500);
+        await page.tap('Escape');
+      }
+      check(`and Escape${escs > 1 ? ' twice' : ''} is back on the page, on ${name}`, await until(onPage(card), 5000));
+    }
+    await play('mg-goats', false);
+    await until("return Boolean(document.querySelector('.qp-page'))", 30000);
+    await sleep(450);
+    await page.tap('Enter');
+    check('goat herding flies from the page', await until("return window.__ui.screen === 'flight'", 150000));
+    await ev("window.__ui.act('pause'); window.__ui.show('paused'); window.__ui.act('title'); return 1;");
+    check('and quit to title is back on the page, on goat herding', await until(onPage('mg-goats'), 5000));
+    const errs = pageErrors(page);
+    check('no errors on the page', errs.length === 0, errs.slice(0, 3).join(' | '));
+  } finally {
+    await page.close();
+  }
+}
+
+/*
  * A key pressed while the world is building. The quad picker's Fly starts
  * the map's load, and the loading screen covers the title, but the title
  * was still taking keys behind it: a second Enter (a pad's A pressed twice,
@@ -265,6 +337,7 @@ async function sceneLoadKeys() {
 }
 
 try {
+  if (wanted('menu')) await sceneMenu();
   if (wanted('load')) await sceneLoadKeys();
   if (wanted('goats')) await sceneMapGame('goats', 'goat-hud');
   if (wanted('drift')) await sceneMapGame('drift', 'film-hud');

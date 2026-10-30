@@ -73218,3 +73218,4 @@ The bug hunt thread saw together-shots' ribbon check "a bot cuts somebody's ribb
 - Not changed: the bot name tags and the ball's distance label overlap at kickoff, where the bots sit under the ball. Seen in the shot, small, left.
 - Latency: no render change. Physics a little cheaper (one grip fewer a step at rest). Proxy only: overview frame 36 draw calls, 160393 triangles.
 - Checks run: `ball-selftest` 57 of 57, `ball-check` all passed, `ball-door-check` all passed, `firstflight-check` 41 of 41, `firstflight-selftest` 67 of 67, `net:selftest` all passed. Not run: `npm run verify` (no plant, ABI or build). Not flown.
+- To main: the owner, 2026-10-30 14:16Z, "push to main", after the five fixes, the latency line (no render change, physics slightly cheaper) and the checks run were put to him. Main had not moved from d3315cd3, so it fast forwards. Not flown. The quad feeling the ball and room spin and reset still wait on his word.

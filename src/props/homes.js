@@ -187,6 +187,16 @@ export const MATERIALS = {
   drNoboriRed: { c: 0xd8333d, tint: 0x6e2f52 },
   drTyre: { c: 0x2f2e34, tint: 0x24222e },
   drSkin: { c: 0xebc6a2, tint: 0x8a6a7a },
+  /* Quad Ball (src/maps/ball/): the pitch, its lines and the two teams'
+   * walls, sakura pink and mint, the backs of the goals lit. */
+  qbPitch: { c: 0x7fa07c, tint: 0x4c6a6a },
+  qbPitchB: { c: 0x8db78a, tint: 0x56787a },
+  qbLine: { c: 0xf3ead4, tint: 0xd8cfc0, noCast: true },
+  qbBand: { c: 0x3a3f58, tint: 0x2a2e45, noCast: true },
+  qbSakura: { c: 0xf2a6bd, tint: 0x9a6a8a },
+  qbMint: { c: 0x8fe0b8, tint: 0x5a8a8a },
+  qbSakuraGlow: { f: 0xffc0d4, noCast: true },
+  qbMintGlow: { f: 0xb8ffd8, noCast: true },
   /* Ridgeline MX (src/maps/moto/): the packed dirt of the mounds and the
    * track, the darker dirt of the berms, hay, the team tents' colours and
    * the bikes' and riders' paint. Every other colour it draws is one of

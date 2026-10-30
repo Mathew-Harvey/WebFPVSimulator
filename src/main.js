@@ -87,7 +87,7 @@ import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './shar
 import { uploadWorld, setWorldFrame, setMover, setBoxHeight, kindOf, setVehicleClock, readVehicles, makeVehiclePoses, moverVelocityInPlant } from './game/plantworld.js';
 import { Chase, CHASE_EVERY, pays } from './game/chase.js';
 import { sincos } from './props/trig.js';
-import { setCraftAirframe, CRAFT_R, CRAFT_WORLD_R, CRAFT_V_UP, CRAFT_V_DOWN, craftVerticalHalf, craftVerticalOffset, canPerch, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, TURTLE_EXIT_UPZ, turtleClearance, findRestSpot, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, CLIP_SPAWN_GRACE_MS, CrashJudge, putDullBounce, emptyWorldReport, foldWorldReport } from './game/collide.js';
+import { setCraftAirframe, CRAFT_R, CRAFT_WORLD_R, CRAFT_V_UP, CRAFT_V_DOWN, craftVerticalHalf, craftVerticalOffset, canPerch, heldStill, STUCK_SPEED, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, TURTLE_EXIT_UPZ, turtleClearance, findRestSpot, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, CLIP_SPAWN_GRACE_MS, CrashJudge, putDullBounce, emptyWorldReport, foldWorldReport } from './game/collide.js';
 import { Ui, formatTime, WEIGHT_STOCK, clampWeight, gravityScaleFor, loadSettings, pacingTimerOn } from './ui/ui.js';
 import { TAKEOFF, guideKind, stepOf, textOf } from './ui/firstflight.js';
 import {
@@ -2320,7 +2320,7 @@ export async function boot({ loading, bootStart, mapId }) {
    * dogfight with ribbons for guns and runs through everything below. */
   let fightMods = null;
   const fightLib = {
-    dogfight: null, ribbon: null, goats: null, drift: null,
+    dogfight: null, ribbon: null, goats: null, drift: null, ball: null,
   };
   let fightKind = 'dogfight';
   /* The room game being played, 'ribbon' (RibbonRoom) or 'dogfight'
@@ -2331,6 +2331,7 @@ export async function boot({ loading, bootStart, mapId }) {
   const ROOM_DOGFIGHT_RULES = Object.freeze({ game: 'dogfight', room: true });
   const ROOM_GOATS_RULES = Object.freeze({ game: 'goats', room: true });
   const ROOM_DRIFT_RULES = Object.freeze({ game: 'drift', room: true });
+  const ROOM_BALL_RULES = Object.freeze({ game: 'ball', room: true });
   /* What the room pump last gave a DogfightRoom of the bot seats. */
   let fightSeats = null;
   let fightBots = null;
@@ -2338,7 +2339,7 @@ export async function boot({ loading, bootStart, mapId }) {
     fightBots.pose(id, x, y, z, fx, fy, fz, ux, uy, uz);
   };
   const fightHuds = {
-    dogfight: null, ribbon: null, goats: null, drift: null,
+    dogfight: null, ribbon: null, goats: null, drift: null, ball: null,
   };
   let fightLoading = false;
   let fightGame = null;
@@ -2370,7 +2371,7 @@ export async function boot({ loading, bootStart, mapId }) {
   };
 
   function fightBestKey() {
-    if (fightKind === 'goats' || fightKind === 'drift') {
+    if (fightKind === 'goats' || fightKind === 'drift' || fightKind === 'ball') {
       return `webfpv.${fightKind}.best.${fightKey}`;
     }
     return fightKind === 'ribbon' ? `webfpv.ribbons.best.${fightKey}` : `webfpv.dogfight.best.${fightKey}`;
@@ -2412,9 +2413,11 @@ export async function boot({ loading, bootStart, mapId }) {
   function fightWorld() {
     const c = view.colliders;
     const k = simLenToWorld(1);
-    const cx = startX;
-    const cz = startZ;
-    const cy = startY;
+    /* Quad Ball is read from the middle of its arena, whoever starts where. */
+    const arena = view.ballGame ? view.ballGame.arena : null;
+    const cx = arena ? 0 : startX;
+    const cz = arena ? 0 : startZ;
+    const cy = arena ? (arena.floor || 0) + 2 : startY;
     const solid = Boolean(c && c.built && c.fax);
     /* How far the map's solids go from the spawn, and how high. */
     let far = 0;
@@ -2436,8 +2439,8 @@ export async function boot({ loading, bootStart, mapId }) {
         }
       }
     }
-    const radius = Math.max(40 * k, Math.min(150 * k, far * 0.85));
-    const top = Math.max(12 * k, Math.min(60 * k, topY - cy + 4 * k));
+    const radius = arena ? Math.hypot(arena.hx + arena.gd, arena.hz) + 4 : Math.max(40 * k, Math.min(150 * k, far * 0.85));
+    const top = arena ? arena.ceil : Math.max(12 * k, Math.min(60 * k, topY - cy + 4 * k));
     /* The ground, sampled from just above the spawn's height so a deck or
      * a floor indoors is the floor and not the street under it. */
     const half = radius + 30 * k;
@@ -2560,6 +2563,7 @@ export async function boot({ loading, bootStart, mapId }) {
       floorAt: floorOf,
       blocked,
       inside,
+      arena,
       grid: grid.data,
     };
   }
@@ -2600,23 +2604,25 @@ export async function boot({ loading, bootStart, mapId }) {
      * whatever the pilot was doing; any other room plays no game of this
      * kind. */
     const inGame = together && ui.roomInfo ? together.gameRoom() : '';
-    const roomGame = inGame === 'ribbon' || inGame === 'dogfight' || inGame === 'goats' || inGame === 'drift' ? inGame : '';
+    const roomGame = inGame === 'ribbon' || inGame === 'dogfight' || inGame === 'goats' || inGame === 'drift' || inGame === 'ball' ? inGame : '';
     const roomRibbon = roomGame === 'ribbon';
     const rules = roomGame
-      ? ({ ribbon: ROOM_RIBBON_RULES, dogfight: ROOM_DOGFIGHT_RULES, goats: ROOM_GOATS_RULES, drift: ROOM_DRIFT_RULES })[roomGame]
+      ? ({ ribbon: ROOM_RIBBON_RULES, dogfight: ROOM_DOGFIGHT_RULES, goats: ROOM_GOATS_RULES, drift: ROOM_DRIFT_RULES, ball: ROOM_BALL_RULES })[roomGame]
       : ui.dogfight;
     /* Goat herding's round is the goat map's, and nowhere else. */
     const herdable = !rules || rules.game !== 'goats' || Boolean(view && view.goatGame);
     /* Drift Matsuri's is the drift map's, its judge and its cars. */
     const filmable = !rules || rules.game !== 'drift' || Boolean(view && view.filmGame);
-    const want = Boolean(view) && Boolean(rules) && herdable && filmable && mapReady && !replayMode && (Boolean(roomGame) || !ui.roomInfo);
+    /* Quad Ball's match is the arena map's, and nowhere else. */
+    const playable = !rules || rules.game !== 'ball' || Boolean(view && view.ballGame);
+    const want = Boolean(view) && Boolean(rules) && herdable && filmable && playable && mapReady && !replayMode && (Boolean(roomGame) || !ui.roomInfo);
     if (!want) {
       if (fightGame) {
         fightOff();
       }
       return;
     }
-    const kind = rules.game === 'ribbon' || rules.game === 'goats' || rules.game === 'drift' ? rules.game : 'dogfight';
+    const kind = rules.game === 'ribbon' || rules.game === 'goats' || rules.game === 'drift' || rules.game === 'ball' ? rules.game : 'dogfight';
     /* The rules as text only when the object is a new one: a string a
      * frame for as long as a fight lasts is garbage, and a collection is a
      * hitch. */
@@ -2653,6 +2659,11 @@ export async function boot({ loading, bootStart, mapId }) {
           ? Promise.all([import('./game/driftround.js'), import('./ui/drifthud.js'), import('./game/dogfight.js'), import('./render/dogfight.js'), import('./game/driftroom.js')])
             .then(([game, hud, base, render, room]) => ({
               ...base, ...game, Game: game.DriftRound, View: render.DogfightView, feedFraction: render.feedFraction, Hud: hud.DriftHud, kicker: 'Drift Matsuri', DriftRoom: room.DriftRoom,
+            }))
+          : kind === 'ball'
+          ? Promise.all([import('./game/quadball.js'), import('./ui/ballhud.js'), import('./game/dogfight.js'), import('./render/quadball.js'), import('./render/dogfight.js'), import('./game/ballroom.js')])
+            .then(([game, hud, base, render, baseRender, room]) => ({
+              ...base, ...game, Game: game.BallRound, View: render.BallView, feedFraction: baseRender.feedFraction, Hud: hud.BallHud, kicker: 'Quad Ball', BallRoom: room.BallRoom,
             }))
           : kind === 'goats'
           ? Promise.all([import('./game/goatround.js'), import('./ui/herdhud.js'), import('./game/dogfight.js'), import('./render/dogfight.js'), import('./game/goatroom.js')])
@@ -2707,10 +2718,14 @@ export async function boot({ loading, bootStart, mapId }) {
       fightGame = new fightMods.GoatRoom(world, { seed, pen: view.goatGame });
     } else if (roomGame === 'drift') {
       fightGame = new fightMods.DriftRoom(world, { seed, pen: { film: view.filmGame.film, poses: () => (view.filmGame.posed ? view.filmGame.posed(carCurr) : carCurr) } });
+    } else if (roomGame === 'ball') {
+      fightGame = new fightMods.BallRoom(world, { seed, pen: view.ballGame });
     } else if (kind === 'goats') {
       fightGame = new Game(world, rules, seed, view.goatGame);
     } else if (kind === 'drift') {
       fightGame = new Game(world, rules, seed, { film: view.filmGame.film, poses: () => (view.filmGame.posed ? view.filmGame.posed(carCurr) : carCurr) });
+    } else if (kind === 'ball') {
+      fightGame = new Game(world, rules, seed, view.ballGame);
     } else {
       fightGame = new Game(world, rules, seed);
     }
@@ -2737,6 +2752,8 @@ export async function boot({ loading, bootStart, mapId }) {
               together.goatsStart();
             } else if (fightKind === 'drift') {
               together.driftStart();
+            } else if (fightKind === 'ball') {
+              together.ballStart();
             } else {
               together.dogfightStart();
             }
@@ -2782,6 +2799,12 @@ export async function boot({ loading, bootStart, mapId }) {
       if (last) {
         fightGame.heard(last, together.boardToLocal);
       }
+    } else if (roomGame === 'ball') {
+      fightRoomSync();
+      const last = together.ballLast();
+      if (last) {
+        fightGame.heard(last, together.boardToLocal);
+      }
     }
     fightNewRound();
     /* Ribbons and goats fire nothing: the gun and missile buttons stay
@@ -2805,6 +2828,10 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     if (fightKind === 'drift') {
       driftRoomSync();
+      return;
+    }
+    if (fightKind === 'ball') {
+      ballRoomSync();
       return;
     }
     const who = together.ribbonWho();
@@ -2932,6 +2959,50 @@ export async function boot({ loading, bootStart, mapId }) {
     if (out) {
       for (const m of out) {
         together.sendGoats(m);
+      }
+    }
+  }
+
+  /* The same, in a Quad Ball room (src/game/ballroom.js): who this page
+   * is, the bot seats and their places, the board's round with its teams
+   * and score, the goals it counted and the host's ball on everybody
+   * else's page, and on the host's page its ball and its goals out. */
+  function ballRoomSync() {
+    const g = fightGame;
+    const who = together.ribbonWho();
+    if (who) {
+      g.setYou(who.you, who.host);
+    }
+    const bots = together.roomBots();
+    if (bots) {
+      const seats = bots.seats();
+      if (seats !== fightSeats) {
+        fightSeats = seats;
+        g.setBots(seats);
+      }
+      if (bots.mine()) {
+        fightBots = bots;
+        g.eachFlown(fightBotPose);
+      }
+    }
+    const st = together.takeBall();
+    if (st) {
+      g.heard(st, together.boardToLocal);
+    }
+    const ins = together.takeBallIn();
+    if (ins) {
+      for (const m of ins) {
+        if (m.t === 'blGoal') {
+          g.heardGoal(m, together.boardToLocal);
+        } else if (m.t === 'blBall') {
+          g.heardBall(m);
+        }
+      }
+    }
+    const out = g.takeOutbox();
+    if (out) {
+      for (const m of out) {
+        together.sendBall(m);
       }
     }
   }
@@ -6352,12 +6423,22 @@ export async function boot({ loading, bootStart, mapId }) {
    * base and flies off it on reverse thrust (onBase in src/game/collide.js
    * has the owner's words), so within 60 degrees of flat on its back it is
    * left where it is, as one on its belly is.
+   *
+   * A craft LEANING ON A SOLID past the perch's tilt and still is stuck too,
+   * since bug-6c405527: wedged at the foot of a wall at 52 degrees, which the
+   * 60 degree test never saw. heldStill in src/game/collide.js is the pose
+   * test, and besideSolid is the solid: within the craft's own swept radius,
+   * the reach recoverFrom has to be clear by to be a spot to set it down on.
+   * Asked only of a craft that has stopped, so a flight pays nothing for it.
    */
   const STUCK_MS = 1500;
   const STUCK_TURTLE_MS = 5000;
-  const STUCK_SPEED = 0.3;
-  const STUCK_RATE = 1.5;
   let stuckSinceMs = -1;
+  function besideSolid(st) {
+    return plantSpeed(st) < STUCK_SPEED
+      && Boolean(view.colliders)
+      && view.colliders.gapAt(pCurr.x, pCurr.y, pCurr.z, CRAFT_WORLD_R) < CRAFT_WORLD_R;
+  }
   function stuckTick() {
     const st = stateCurr;
     const still = mode === 'flight'
@@ -6368,10 +6449,7 @@ export async function boot({ loading, bootStart, mapId }) {
       && !turtleFlip.active
       && !turtleRecover
       && st
-      && plantUpZ(st) < TURTLE_EXIT_UPZ
-      && !(run3d && plantUpZ(st) <= -TURTLE_EXIT_UPZ)
-      && plantSpeed(st) < STUCK_SPEED
-      && plantRateMag(st) < STUCK_RATE;
+      && heldStill(plantUpZ(st), plantSpeed(st), plantRateMag(st), besideSolid(st), run3d);
     if (!still) {
       stuckSinceMs = -1;
       return;

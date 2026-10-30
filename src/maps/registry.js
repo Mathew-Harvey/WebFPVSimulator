@@ -225,6 +225,20 @@ export const MAPS = [
     load: () => import('./drift/index.js'),
   },
   /*
+   * QUAD BALL, on the owner's ask of 29 October 2026: "rocket league but
+   * with quads". One arena, two goals, a big ball (src/maps/ball/,
+   * src/game/quadball.js). Built by the built map's pipeline and flown on
+   * the five inch at life size; off the board like the houses.
+   */
+  {
+    id: 'ball',
+    name: 'Quad Ball',
+    mode: 'freestyle',
+    note: 'A floodlit arena with a goal at each end and a ball the size of a car. Push it into the other goal.',
+    buildMs: MAP_BUILD_MS.ball,
+    load: () => import('./ball/index.js'),
+  },
+  /*
    * RIDGELINE MX, on the owner's ask of 29 October 2026 ("motor cross cam
    * chase, the bikes should rip, rail, whip and just look like IRL, all
    * single and multi player"): a motocross track on a ridge, with a pack of
@@ -264,6 +278,8 @@ export const SUNNY_DOC_ID = 'trk-5a77f1e1';
 /* Drift Matsuri's (src/maps/drift/yard.js), the same way. */
 export const DRIFT_DOC_ID = 'trk-d81f7a75';
 
+/* Quad Ball's (src/maps/ball/arena.js), the same way. */
+export const BALL_DOC_ID = 'trk-ba11b0a1';
 /* Ridgeline MX's (src/maps/moto/yard.js), the same way. */
 export const MOTO_DOC_ID = 'trk-3c07e5a1';
 

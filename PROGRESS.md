@@ -24121,9 +24121,9 @@ between commits is no longer watched by anything, which wants a figure
 re-measured against the fixture now committed beside the test.
 
 
-================================================================================
+=========================================================================
 2026-08-30  A SCORE FOR THE FREESTYLE CITY
-================================================================================
+=========================================================================
 
 The owner asked for a Tony Hawk's Pro Skater scoring system in Freestyle,
 attached a spreadsheet naming every trick and what it is worth, and said to
@@ -24349,9 +24349,9 @@ attempt that did not complete. It would come from the same place as the
 obstacle work, since most abandoned tricks are abandoned around something.
 
 
-================================================================================
+=========================================================================
 2026-08-30  THE SCORE, SELF VERIFIED, AND THE THREE THINGS THAT WERE WRONG
-================================================================================
+=========================================================================
 
 Asked to self verify: prove it is robust, prove it works, prove it rewards
 stringing tricks together. Everything below was measured this turn, and three
@@ -24570,9 +24570,9 @@ dist/sim.wasm, which is a different thing from building it, and it is the
 part of verify's territory that can actually see this work.
 
 
-================================================================================
+=========================================================================
 2026-08-30  THE OBSTACLE TRICKS: A SPLIT-S, AN IMMELMANN, A POWERLOOP, AN ORBIT
-================================================================================
+=========================================================================
 
 The owner named five tricks and asked how the system would ever capture them:
 a Split-S, an Immelmann, a Powerloop, an Orbit, and an inverted Orbit. It is
@@ -24781,10 +24781,10 @@ detection, and it is the next thing worth doing: it is what makes a run
 about the whole town rather than about one good rail.
 
 
-================================================================================
+=========================================================================
 2026-08-30  THE FOUR TRICKS FLY, AND THE ADVERSARIAL PASS FOUND FIVE WAYS THE
             RECOGNISER WAS WRONG
-================================================================================
+=========================================================================
 
 The owner asked, plainly: a Split-S, an Immelmann, an Orbit, an inverted
 Orbit, are they captured? The honest answer at the time was that only the
@@ -25042,10 +25042,10 @@ pitch MAGNITUDE, so a nose-down half loop matches the same way a nose-up one
 does. It wants a direction.
 
 
-================================================================================
+=========================================================================
 2026-09-02  THE REVIEW'S FINDINGS, FIXED, AND TWO CHECKS THAT WOULD HAVE CAUGHT
             THEM
-================================================================================
+=========================================================================
 
 Owner ask: work through the review in the landing repo's docs/review-2026-09.md,
 fix the issues, run the tests, add tests that do something useful.
@@ -47612,8 +47612,7 @@ timeline. Two things came up:
   merge-tree and diffing it against what was committed. That change was
   carried into the next commit, 07b14c9 (now 82d8e39), so no commit's code
   changed meaning.
-- The second, c9270d0, left a `>>>>>>> origin/main` marker and a stray rule
-  at the end of PROGRESS.md. The rebased tree equals 54dc7c3's in every
+- The second, c9270d0, left a `  at the end of PROGRESS.md. The rebased tree equals 54dc7c3's in every
   file except those lines, which are gone.
 
 main then moved during the turn, to 2df3020 (#19, the Support row), and the
@@ -73012,6 +73011,17 @@ The bug hunt thread saw together-shots' ribbon check "a bot cuts somebody's ribb
 - Latency: none. One more boolean read per key and per frame.
 - Not flown.
 
+## 2026-10-29: minified deploy and a lighter town on Low (thread "Shrink heavy maps with meshoptimizer")
+
+- The ask: the owner said "Yep" to a meshoptimizer pass on the heaviest maps. Measured first, and the premise was weak: every map's geometry is built in JavaScript at load, there is no .glb in the repository, so EXT_meshopt_compression and gltfpack have nothing to compress, and baking a map into a glb would ship more bytes than the code that makes it. A cold town load is about 4.2 MB gzipped over 262 files, mostly the simulator's own unminified source (ui.js 299 KB, main.js 227 KB, scene.js 108 KB); three.js comes from the CDN and is not the owner's bandwidth. Simplifying the town's 14 biggest merged meshes (564k triangles) at 10 cm keeps 89 percent, at 25 cm 73 percent, 60 cm 45 percent, because the buildings are hard edged.
+- The owner's pick on the decision card, 23:50Z: "Minify own JS at deploy". Then, 23:50Z: "once minified, then do b" (b is the meshopt cleanup of the town on Low). The owner's words cover the build change below. What it could break is listed so the next session can see it: a deploy now runs one build step and a file that does not parse fails the deploy instead of shipping; Render must have Node and reach the npm registry for esbuild (it does for the board).
+- Change 1, `scripts/minify.js` and `render.yaml` buildCommand: whitespace and dead syntax out of src, configs and tests/lib/simmod.js on the host's copy only, names kept, a one line GPL notice kept at the head of every file. `--out DIR` makes a minified copy for testing; `--in-place` refuses to run unless RENDER is set. esbuild 0.25.9 (MIT) is installed by the buildCommand with --no-save, so it is not a dependency of the repository and is never shipped. Result: 14.5 MB of JavaScript becomes 6.1 MB raw; the cold town load goes from 4.2 to 2.4 MB gzipped. A mangler would save 7 percent more and make a bug ticket's stack unreadable, so it is not used.
+- Change 2, the town on Low only (the same `fogBands` gate): `loadSimplifier` in `src/maps/city/bake.js` simplifies the banded buckets, the town wide opaque non casting ones, before they are banded. meshoptimizer 1.3.0 simplifier (MIT, 67 KB WASM) vendored at `src/maps/city/vendored/meshopt_simplifier.js` with its licence, fetched by a dynamic import only on that path, 15 cm absolute error, normal and colour weighted, LockBorder, no Prune.
+- What went wrong: the first version had no LockBorder and erased the road's centre line and edge lines (a marking is a strip a few centimetres off the tarmac, so a 15 cm error folds it into the road). Found only by looking at a street view against main, 2.78 percent of pixels changed; the triangle counts had looked fine. With LockBorder the same view differs in 0.08 percent. A second slip: simplifyWithAttributes returns a pair, and the first run threw and dropped the map to the default one, which my own first measurement then read as a 20 call map. The pictures are what caught the first, the console the second.
+- Latency, the project's rule: no change to input, physics or the frame loop. Drawn triangles on Low, six parked views of the town (headless SwiftShader, so counts, not GPU ms): 517,842 to 475,616, 470,097 to 427,699, 352,503 to 324,830, 369,857 to 341,701, 509,817 to 467,591, 351,139 to 323,466, so 7.5 to 8.2 percent fewer, same draw calls (377, 280, 230, 377, 433, 207). Cost: the simplifier runs once at load, 0.5 to 1.0 s in this container's CPU rasteriser world stage, on Low only; no per frame cost. The minify step cuts download only. Not measured: real GPU time. Fly it: the town on Low, look at road markings and kerbs from altitude and at street level, and Input to screen against the live site.
+- Checks run: `lint:quality` 71 of 71, `lint:frame` 34, `lint:preload` up to date, `check:world-town`, and the minified tree served and loaded for the town, Hibari house, goats, drift and sunny with no page errors and identical triangle counts to the unminified tree. Not run: `npm run verify`, `lint:shell`, a real Render build (the buildCommand has not run there), WebGL 1, a flight on real hardware.
+- Not done, and the numbers say why: Medium and High are untouched (the depth ink draws past the fog, so simplifying there is visible), and vertex cache and overdraw reordering was not added because nothing here can measure it without a GPU.
+
 ## 2026-10-29 | mini games | Ridgeline MX, the motocross chase cam (draft)
 
 - The owner's ask (15:30Z): "motor cross cam chase, the bikes should rip, rail, whip and just link IRL; all single and multi player". The other half of that message, Rocket League with quads, is another thread's.
@@ -73054,3 +73064,51 @@ The bug hunt thread saw together-shots' ribbon check "a bot cuts somebody's ribb
 - Also changed: the card's labels follow the map, so Ridgeline MX reads Riders in shot, Pack in frame and In the roost where Drift Matsuri keeps Cars in shot, Battle in frame and In the smoke.
 - Latency: none; one click handler on a card that is hidden in flight.
 - Checks: `check:moto` 17 of 17, `check:drift` 29 of 29, `lint:preload`, the headless touch repro above. Not run: `npm run verify`, `check:minigames`. Pushed to main as a live fix on the owner's report.
+
+## 2026-10-29 | crash | A craft wedged at the foot of a wall is set down (bug-6c405527, branch)
+
+- Ask: the scheduled bug board run, "pull all bug tickets from the webfpv bug board ... if you can reproduce, then find the root cause, and fix it, then write tests to ensure the bug never happens again". Read with the token the run carries, read only, nothing written to the board. Open at 2026-10-29: 1 `wrong`, 1 `other`, 211 `feel` and 137 `tune`, nothing open in `crash`, `blocking` or `visual` (the listing caps at 200 a query, so it was read a kind and an airframe at a time). Feel and tune are surveys, as in the sweep of 2026-10-28; their typed notes were read for defects too. Branch, not main.
+- bug-6c405527, "Wall Sticking", a five inch on the keyboard in acro on a built map: "Whenever I hit a wall, i sometimes glitch in and get stuck, forcing me to start over". The craft probe: 0.1 m up, upZ 0.62 (52 degrees over), 0 m/s, not landed, sticks centred, throttle at the keyboard's hover, no set down. Reproduced twice. Through the real plant (`scripts/lib/flightrig.js`): settled 0.8 m up and 2 m from a wall, a 120 ms nose down tap and let go at hover ends at y 0.09, upZ 0.619, 0 m/s, 0.10 m off the face, at spawn yaws 0 and 180, the ticket's numbers. In the shell (the town, crash-check's shopfront, three flights): every one came to rest beside the solid at up.y 0.73 to 0.95, not landed, and none was set down in four seconds.
+- Root cause: stuckTick only counted a still craft as stuck past 60 degrees (upZ under TURTLE_EXIT_UPZ). A craft leaning on a wall between the perch tilt and 60 degrees was neither landed (canPerch wants 25 degrees or less and ground contact) nor stuck, so nothing ever set it down. And it cannot be flown out: wedged in the corner of the wall and the ground, pitching either way drives a blade into one of the two faces and the thrust presses it into the wall. Full pitch back with full throttle for a second moves it 1 to 5 mm. The note of 2026-10-11 that "a pilot pulls back" holds at 2.5 m up the shopfront, not here.
+- Fix: `heldStill` in src/game/collide.js is the pose half of stuckTick now: the old test unchanged, plus still, beside a solid and past the perch tilt (upZ under 0.9063, cos 25 degrees). Beside is a solid within the craft's swept radius (`gapAt`, the reach recoverFrom already uses), not the plant's contact report, because a wedged craft rests on the ground's two contacts and meets the wall only now and then: 336 of 2000 steps, once nothing for 544 ms while still. A contact memory of 500 ms was tried first and broke on that gap. The ground is left out on purpose: the ground plane tilts with the terrain, and a craft resting on a steep hillside takes off again. STUCK_SPEED and STUCK_RATE moved to collide.js with it, same values. No plant, ABI or build change: this is the shell's recovery, and it touches the plant only where X would.
+- Tests: new `npm run check:wallpin` (`scripts/wallpin-check.js`). Node, about half a second: eleven cases of the rule as numbers (the ticket's pose; an upright craft against a ceiling, a hover, a 3D craft on its back stay free), and the crash flown through the plant at two spawn yaws: wedged in the band, the old test longest 80 and 368 ms (never set down), heldStill 3968 and 3184 ms (set down). With the new clause removed it fails 4. With `--shell`, a few minutes: the same tap in the real page three times, held to crash-check's own stuck guard read with heldStill. With the fix the shell set each down at 1504 to 1507 ms of the test and showed "Stuck"; with main.js's old test put back it fails 3 of 3, left 4.9 to 6.9 s with no set down. `crash-check`'s stuck measure now calls heldStill too (its SCENARIOS, WALL and EAST are untouched, so the town fixture and world golden are not).
+- Checks this turn: `check:wallpin` 21 of 21, `check:wallpin --shell` 28 of 28, `check:clip` 2632 of 2632, `check:crash` 0 guards failed, targets as on the base run within browser jitter (none moved between met and not). `check:crash` on the base, earlier: 1 guard failed, "with the hand still on the sticks it stays in the air: 132 of 133 frames", a flake the next run passed. `check:wall` on the base: 1 failed, "below the knee the rebound is the law's own saturated value", plant side and untouched here. Not run: `npm run verify` (no physics, plant, ABI or build change). Not flown.
+- Found and not fixed, the owner's call: `check:autoreset` failed 1 of 4 after the fix ("on, 1 s": ends 0.4 m from the wall, landed false), and on the base 1 of 4 in one run of two ("on, 1 s, paused in the wait", the same position). Same family: a craft resting against a wall reads as "in the air, touching nothing" on a frame with no contact step, and autoResetTick disarms a bounce whose craft is upright there. Proposed: ask besideSolid there as well as lastSolidHits. Not done, because it changes how auto reset treats a pilot flying away from a wall.
+- Read and left: bug-44ddf2c4 (keyboard customisation: a feature request). In the feel notes: bug-8d992f5d (a Joy-Con's self centring stick holds the throttle at half, the decision of bug-5328aa13), bug-dd5675a0 (a Radiomaster Pocket on Windows with no mapping and travel that reached every axis), bug-2e97c1bb ("Can't see", Android, nothing to go on), bug-a2c7e45c (climbs when stopping at 0.97 g: the keyboard hover already follows the weight, read as feel).
+- Latency: none in flight. besideSolid is asked only of a craft under 0.3 m/s, after every cheaper test in stuckTick, and is one broadphase query.
+- What went wrong: the first rig run looked like a craft through a 1.5 m wall at 15 m/s; it had drifted off the wall's end in z. The first version of the rule asked the contact report and failed its own test until the flicker was measured.
+
+## 2026-10-30 | crash | The wall pin fix to main on the owner's word, and its ticket closed
+
+- The owner, about 00:05Z on 2026-10-30: "push to main", then "close the ticket", for the bug-6c405527 fix above (d431970). Main had moved 72 commits (Ridgeline MX, the hidden Konex Drone logos, the mini game hosting and the sweeps); PROGRESS.md was the only conflict, main's side kept first. Main changed src/main.js by about 900 lines and left src/game/collide.js, scripts/crash-check.js, the rig and src/native alone; stuckTick and besideSolid came through the merge as written.
+- Checks on the merged tree: `check:wallpin` 21 of 21, `check:wallpin --shell` 28 of 28 (each of the three wedges set down at 1500 to 1516 ms of stuckTick's test, "Stuck" on screen), `check:clip` 2632 of 2632, `node --check src/main.js`. Not run: `npm run verify` (no physics, plant, ABI or build change), `check:crash` and `check:autoreset` (run on the branch yesterday, recorded above). Not flown.
+- Board: bug-6c405527 marked fixed with a one line resolution, at the owner's word. Nothing else on the board was written.
+
+## 2026-10-29 | game | Quad Ball: rocket league with quads, alone with bots and in rooms
+
+- The owner's ask (15:30Z): "rocket league but with quads", single and multiplayer, bots in it. This thread builds it; the motocross chase cam is a parallel thread, so the Mini games page, ui.js and main.js are touched by both and each side merges often.
+- The place: `ball`, "Quad Ball" on the freestyle row, a floodlit arena of 110 by 52 m with a goal pocket at each end (`src/maps/ball/`, built by the built map's pipeline, `map.ballGame.arena`). Pink defends the west, mint the east.
+- The game, alone: `BallRound` (src/game/quadball.js) is the dogfight with a ball for a target. Slots, spawns, bots' flying and the world are the dogfight's; nothing is fired. The ball is a game object: gravity, drag, rolling, bounces (`arenaStep`, pure, no trigonometry). A quad that meets it pushes it along the line between them, harder the faster it closes, and is not shoved back: the plant is untouched. A goal never resets the pilot, only the ball and the bots, held for a countdown. Set the match asks A side (1v1, 2v2, 3v3), Bot skill and Match (3 minutes, 5 minutes, first to 5; level at the clock is a golden goal). Bots take roles: the nearest attacks (lines up on the far side of the ball from the goal it wants, then flies through it), the next supports upfield and across, the last stays back and clears when the ball is near its goal. HUD (src/ui/ballhud.js): score box, clock, YOU ARE PINK, a ring and edge arrows for the ball and their goal, team chevrons, countdown, GOAL, table. View (src/render/quadball.js): a panelled ball with a shadow and roll, team liveries, confetti.
+- In a room: `BallRoom` (src/game/ballroom.js) is the dogfight room's slots with the ball. The host's page is the ball's authority: every page steps the ball against the quads it draws, so a hit lands the moment it happens, and every page is pulled to the host's ball (`blBall`, six integers, about 15 a second while live, one every half second while it sits). Only the host calls a goal (`blGoal`); the board counts it, keeps the score and the rows, deals the teams and says the next kickoff, so every page holds the ball for the same moment. Board branch claude/project-thread-d7asuz (src/rooms.js `ballMessage`, ball rows, `ballCheck`: first to 5, golden goal). Host pause rows: Start a match (or G), Fill the roster, Match. Hosting follows the foolproof path: Set the match first, then the room opens with the bots and the first match starts once the host is flying.
+- Gate card on the Mini games page: `mg-ball`, with a picture taken from the arena by `ball-check --shots`. A hidden Konex Drone sign is hung by hand on the outside of the north wall (the owner's promise of one in every map).
+- Latency: no change on any other map or without a match. In a match: two more draw calls (the ball and its shadow, the HUD is DOM as the herd's is), and a feed that costs 6.5 microseconds in Node with six slots (BallRound, 3v3 ace; no browser frame timing is possible here, the container has no GPU, so this is a proxy only). In a room the host sends about 15 messages of six integers a second (under 1.5 kB/s) while the ball is live. The board's game message budget (600 per ten seconds) holds it, and the board refuses more than 25 balls a second. No input path change. A rise needs the owner's word and this is below the noise, but no frame was timed in a browser.
+- Checks run this turn: `node scripts/ball-selftest.js` 31 of 31 (arena bounce, goal, hit, bot matches 1v1 to 3v3, same seed twice, and a host and a guest joined by a board in a few lines: teams dealt, goals called once, never before the kickoff, a guest sends nothing, both pages hold the score and the kickoff, the guest's ball stays within 2.5 m of the host's on average, the board ends the match on both); `node scripts/ball-check.js` 12 of 12 in headless Chromium (the shell, the arena, a solo match, HUD, take off, countdown, live, no page errors); `lint:preload` up to date (407 served); `lint:frame` 34 of 34. Board `npm test` all passed (new ball block, about 25 checks).
+- Not run: `npm run verify` (no physics, plant, ABI or build change), `lint:shell` (fails 8 the same as on origin/main, in this container), `together-shots` and `minigames-check` for a ball room (they need the board and a second page; the room is proved in Node only, never in a browser, never with a second person), `check:minigames` against the new gate card. Nobody has flown it, felt the ball's hit strength, or looked at the hidden sign.
+- What went wrong: a getter named `live` shadowed the dogfight's `live(i)`, so the first headless run threw (renamed `inPlay`); `goalPending` was read before it was set; the first pictures flew to 150 m (the shots use a fixed camera now); a stamps.js import order mismatch aborted a patch script.
+
+## 2026-10-29 | maps | Quad Ball arena art pass: a stadium with a crowd
+
+- The owner, 22:48Z: "Make the arena spectacular, work to increase the graphical detail and such, AAA quality please."
+- What it is now (`src/maps/ball/arena.js`): the walls are solid to 11 m and a see-through cage of light bars (pink in the west, mint in the east) carries on to the ball's ceiling, so a pilot sees the crowd through it. Stepped stands all round (nine tiers along the sides, six behind the goals) with about 3300 people of two boxes each, west stands leaning pink and east leaning mint, a lit lip on every riser, and fins of light on the backs. Mown stripes on the pitch, the team's goal area painted in its colour, the ball's own pattern at the centre. Goals with neon round the mouth and a lattice of light for a net. A ribbon of lit boards along the foot of the walls. A pixel art ball on a big screen over each end stand. Floodlight towers with lattice and lamp banks. Gate card picture retaken. The hidden Konex Drone sign moved to the back of the east end stand, because the old spot is now inside the stand.
+- Gameplay: the solid wall is 11 m, not 24 m. A quad can now fly through the cage above 11 m and out of the arena, which it could already do over the old wall (the ball still stays in). Nothing in the game's rules or the plant changed; the ball's walls and ceiling are the same numbers.
+- Latency, proxy only (no GPU in this container): the cost is static. Overview frame in headless: 35 draw calls and 45k triangles before, 38 and 143k after. Of the new calls, two are new materials (the second mown stripe tone, and the kit's lit batch for the crowd, cage, boards and nets) and one more is counted in that view. Nothing is added per frame, no new light, no transparent batch, no per frame work in the game. The crowd, the cage and the boards are all merged at build, so a frame pays for their triangles and not their number. The extra triangles are the risk on a weak GPU, and the world takes longer to build once (not timed here). A rise, so it needs the owner's word; if it is too much, the heads and the back rows of the crowd are the first to go (about 40k triangles).
+- Checks run: `ball-check` (12 of 12, with a frame stats line), `ball-selftest` 31 of 31, `lint:preload`, `lint:boot`. Not run: any frame timing on a real GPU, the Low preset, `lint:shell`, `npm run verify`. Not flown: the cage and stands from a pilot's seat for a whole match, or the screens from the far end.
+- Tried and dropped: a dusk scene (floodlit evening). The sun and the dimmed unlit materials left the pitch and ball murky, which costs readability; noon stays.
+- Round two, the owner 23:09Z "Keep going, the map needs to be wow": a canopy over the back rows of the side stands (a slab on columns, lit underneath, trimmed pink and mint, flags along its edge), a tiled plaza and a row of box trees round the stands, and a pastel city of about 250 boxes beyond the plot for a skyline, all in the same unlit batch, so no new material. Headless overview frame: 37 draw calls and 160k triangles (was 38 and 143k after round one, 35 and 45k before the art pass); the city is about 3k of those. Same rise as stated above, now a little more triangles and nothing per frame. He asked for more detail, but the rise is still waiting on his word to merge. Not run on a real GPU or the Low preset. Gate card retaken. Checks: `ball-check` 12 of 12.
+- Round three, the owner 23:49Z "keep going": goal fireworks (`src/render/quadball.js`): seven bursts of 30 pieces over two seconds from over the end the goal was scored at, in the team's colour, cream and gold, plus a puff each; a trail of puffs behind a fast ball in the colour of the team that touched it last. Both use the dogfight view's confetti and puff pools, which are one instanced draw each already, so no draw call is added, and the cost is only while a goal is being celebrated. The confetti piece was a hand's width (6 cm), invisible from across an arena, so `DogfightView` now reads a `pieceScale` (default 1, so no other game changes) and Quad Ball sets it to 12 (about 70 cm). Not seen working at speed: the headless page draws about two frames a second and the pieces move 50 ms a frame at most, so the check shows only a few specks of the bursts. A real frame rate is what will show it. `ball-check` now scores a goal and takes six pictures after it (12 of 12 plus the goal line, all passed).
+
+## 2026-10-30 | release | Quad Ball to main
+
+- The owner, 2026-10-29 23:59Z: "push to main", after the latency effect was stated to him (a rise: headless overview frame 35 draw calls and 45k triangles before the art pass, 37 and 160k after; static, nothing per frame; no GPU timing). Board 93b7b97 went to main first (fast-forward, `npm test` all passed). Then the sim, with main's Ridgeline MX (19c5bb6) and 35eeba4 (minify, town meshopt) merged in; conflicts in the registry, gate cards, stamps, preload lists, homes materials, package scripts, ui.js and main.js were all two maps added side by side, both kept, and the generated preload files regenerated.
+- On the merged tree: `ball-selftest` 31 of 31, `ball-check` 12 of 12 plus the goal, `check:moto` 17 of 17, `check:fresh` 18 of 18, `lint:preload`, `lint:boot` 9 of 9, `minigames-check --only=menu,load` after updating its card list to six games and walking Quad Ball's way in. Two runs of the `load` scene failed once each (the round did not start by 150 s, 1 sheet open) while the machine was busy with other runs; the same scene passed alone on this tree and on origin/main. A flake of a slow headless page, not proved otherwise. Not run: the full `npm run verify`, a ball room in a browser, any GPU timing.
+- Not flown.

@@ -360,7 +360,7 @@ export class DogfightView {
     /* Confetti. */
     const dt = Math.min(dtMs, 50) / 1000;
     let top = n;
-    const flat = 0.06 * k;
+    const flat = 0.06 * k * (this.pieceScale || 1);
     for (let c = 0; c < CONFETTI; c += 1) {
       const age = nowMs - this.cBorn[c];
       const idx = PELLETS + c;

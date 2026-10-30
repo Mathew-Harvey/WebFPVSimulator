@@ -68,6 +68,7 @@ import { fileURLToPath } from 'node:url';
 
 import { openPage } from '../tests/lib/page.js';
 import { PILOT } from './lib/pilot.js';
+import { heldStill, CRAFT_WORLD_R } from '../src/game/collide.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -327,10 +328,13 @@ function measure(S, rows) {
     }
   }
   /*
-   * HOW LONG THE CRAFT WAS LEFT STUCK: the longest stretch it sat still
-   * (under 0.3 m/s) and not upright (up.y under 0.5), neither landed nor in
-   * turtle, and separately the longest turtle wait. The sim clock restarts
-   * at a set down, so a step backwards in `ms` ends a stretch.
+   * HOW LONG THE CRAFT WAS LEFT STUCK: the longest stretch stuckTick's own
+   * test, heldStill, held while the craft was not landed, outside turtle,
+   * and separately the longest turtle wait. That is still (under 0.3 m/s and
+   * 1.5 rad/s) and not upright (up.y under 0.5), or still, beside a solid
+   * and past the perch tilt (bug-6c405527). Beside is the shell's own reach,
+   * a solid within the craft's swept radius. The sim clock restarts at a
+   * set down, so a step backwards in `ms` ends a stretch.
    */
   m.stuckMs = 0;
   m.turtleMs = 0;
@@ -339,7 +343,7 @@ function measure(S, rows) {
   for (let i = 1; i < rows.length; i += 1) {
     const r = rows[i];
     const d = r.ms - rows[i - 1].ms;
-    const still = r.spd < 0.3 && r.upY < 0.5 && !r.landed;
+    const still = !r.landed && heldStill(r.upY, r.spd, r.rate, r.gap < CRAFT_WORLD_R, false);
     runStuck = still && !r.turtle && d >= 0 ? runStuck + d : 0;
     runTurtle = still && r.turtle && d >= 0 ? runTurtle + d : 0;
     m.stuckMs = Math.max(m.stuckMs, runStuck);
@@ -516,8 +520,9 @@ async function main() {
       guard(m.maxInside <= 0.01, 'the centre never goes inside a solid', `deepest ${r3(m.maxInside)} m`);
       guard(m.unframed === 0 && m.worstJump <= 0.10, 'no frame moves further than its speed allows',
         `worst excess ${r3(m.worstJump)} m${m.unframed ? `, but ${m.unframed} rows carry no frame count and were not scored` : ''}`);
-      /* stuckTick sets a craft down after 1.5 s still and not upright, 5 s
-       * in turtle; half a second on each is frame granularity. */
+      /* stuckTick sets a craft down after 1.5 s still and not upright or
+       * leaning on a solid, 5 s in turtle; half a second on each is frame
+       * granularity. */
       guard(m.stuckMs <= 2000 && m.turtleMs <= 5500, 'never left stuck: set down after 1.5 s still and not upright',
         `longest ${m.stuckMs} ms stuck, ${m.turtleMs} ms in turtle, ${m.setDowns} set down${m.setDowns === 1 ? '' : 's'}`);
       /* A crash is a dull bounce: the only set down left is stuckTick's,

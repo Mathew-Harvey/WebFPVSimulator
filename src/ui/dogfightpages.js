@@ -36,11 +36,13 @@ import { normaliseRules, MAX_BOTS } from '../game/dogfight.js';
 import { normaliseRibbonRules } from '../game/ribbons.js';
 import { normaliseGoatRules } from '../game/goatround.js';
 import { normaliseDriftRules } from '../game/driftround.js';
+import { normaliseBallRules } from '../game/quadball.js';
 
 const RULES_KEY = 'webfpv.dogfight.rules.v1';
 const RIBBON_KEY = 'webfpv.ribbons.rules.v1';
 const GOATS_KEY = 'webfpv.goats.rules.v1';
 const DRIFT_KEY = 'webfpv.drift.rules.v1';
+const BALL_KEY = 'webfpv.ball.rules.v1';
 const ARMED_KEY = 'webfpv.dogfight.armed.v1';
 /* The overlay's quiet start, as askConfirm's: input already queued when
  * the page opened is not an answer. */
@@ -301,6 +303,38 @@ const DRIFT_ROWS = [
   },
 ];
 
+/* Quad Ball's match (src/game/quadball.js): how many a side, how well the
+ * bots play, and when it ends. The pilot and the bots they are given fill
+ * the first side. */
+const BALL_ROWS = [
+  {
+    id: 'size',
+    name: 'A side',
+    small: 'You and bots against bots',
+    options: [{ v: 1, label: '1 v 1' }, { v: 2, label: '2 v 2' }, { v: 3, label: '3 v 3' }],
+  },
+  {
+    id: 'skill',
+    name: 'Bot skill',
+    small: 'How well they play',
+    options: ROWS[1].options,
+  },
+  {
+    id: 'round',
+    name: 'Match',
+    small: 'When it ends',
+    options: [{ v: '3m', label: '3 minutes' }, { v: '5m', label: '5 minutes' }, { v: 'first5', label: 'First to 5' }],
+  },
+];
+
+function saysForBall(r) {
+  const side = r.size === 1 ? 'One on one' : `${r.size} a side`;
+  const lvl = r.skill === 'rookie' ? 'rookie' : (r.skill === 'ace' ? 'ace' : 'pilot');
+  const end = { '3m': 'Most goals in three minutes wins.', '5m': 'Most goals in five minutes wins.', first5: 'First to five goals wins.' }[r.round];
+  const tie = r.round === 'first5' ? '' : ' Level at the whistle is a golden goal.';
+  return `${side}, you and the bots at ${lvl} level. Push the ball into the other goal. ${end}${tie}`;
+}
+
 function saysForDrift(r) {
   const who = r.bots === 0 ? 'Just you and the cars: a take to beat your best.'
     : `${r.bots === 1 ? 'One bot' : `${r.bots} bots`} at ${r.skill === 'rookie' ? 'rookie' : (r.skill === 'ace' ? 'ace' : 'pilot')} level, filming too.`;
@@ -384,6 +418,25 @@ export function askGoats(ui, kit, mapName) {
     says: saysForGoats,
     how: "Fly low behind a goat and it runs away from you. Push it into Heads' garage. Every goat is whoever pushed it in last, so steal them at the door.",
     go: 'Herd!',
+    buttons: false,
+  });
+}
+
+/*
+ * SET THE MATCH, Quad Ball's page: the same page with its own rows and no
+ * buttons to pick. Resolves { rules } or null.
+ */
+export function askBall(ui, kit, mapName) {
+  return askRules(ui, kit, mapName, {
+    kicker: 'Quad Ball',
+    words: ['Set the', 'match'],
+    label: `Set the match on ${mapName}`,
+    rows: BALL_ROWS,
+    key: BALL_KEY,
+    normalise: normaliseBallRules,
+    says: saysForBall,
+    how: 'Fly into the ball to hit it. The harder you fly at it the harder it goes. Pink defends the west goal and attacks the east one; mint is the other way round. After a goal everybody gets a few seconds to fly back for the kickoff.',
+    go: 'Kick off!',
     buttons: false,
   });
 }

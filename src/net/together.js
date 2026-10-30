@@ -1136,6 +1136,11 @@ export function createTogether(shell) {
         phase: driftNow ? driftNow.state.phase : 'pit',
         bots: session.link.bots.size,
       } : null,
+      ball: r.game === 'ball' ? {
+        phase: ballNow ? ballNow.state.phase : 'pit',
+        round: ballNow ? ballNow.state.round : '3m',
+        bots: session.link.bots.size,
+      } : null,
     });
   }
 
@@ -1767,6 +1772,18 @@ export function createTogether(shell) {
       case 'drift':
         driftHeard(data.drift);
         break;
+      case 'ball':
+        ballHeard(data.ball);
+        break;
+      case 'blGoal':
+      case 'blBall':
+        /* The host's ball, and a goal the board counted. A page that has
+         * not drawn a frame for a while drops the oldest. */
+        ballIn.push(data);
+        if (ballIn.length > 256) {
+          ballIn.shift();
+        }
+        break;
       case 'drReel':
         driftIn.push(data);
         if (driftIn.length > 256) {
@@ -1923,6 +1940,55 @@ export function createTogether(shell) {
   }
 
   /*
+   * QUAD BALL (src/game/ballroom.js BallRoom). As the goats': the board's
+   * round (teams, score, the next kickoff), and the host's ball and the
+   * goals it counted, kept for the shell to take once a frame.
+   */
+  let ballNow = null;
+  let ballIn = [];
+  function ballHeard(bl) {
+    if (!bl || !race) {
+      ballNow = null;
+      return;
+    }
+    ballNow = { state: bl, taken: false };
+    infoForShell();
+  }
+
+  function ballRoom() {
+    const r = room();
+    return Boolean(r && r.game === 'ball');
+  }
+
+  /* The host's start: the board deals everybody here and every bot into
+   * pink and mint, and the ball is held for the kickoff. */
+  function ballStart() {
+    if (!ballRoom() || !isHost()) {
+      return false;
+    }
+    const ph = ballNow ? ballNow.state.phase : 'pit';
+    if (ph !== 'pit' && ph !== 'results') {
+      return false;
+    }
+    if (session.link.pilots.size + session.link.bots.size < 2) {
+      toast('Quad Ball needs two. Add a bot or send the link.', 'warn');
+      return true;
+    }
+    session.link.raceSend({ t: 'blStart' });
+    return true;
+  }
+
+  /* The host's match length between matches, one press a step. */
+  function ballRound() {
+    if (!ballRoom() || !isHost() || !ballNow) {
+      return;
+    }
+    const order = ['3m', '5m', 'first5'];
+    const at = order.indexOf(ballNow.state.round);
+    session.link.raceSend({ t: 'blSet', round: order[(at + 1) % order.length] });
+  }
+
+  /*
    * DRIFT MATSURI (src/game/driftroom.js DriftRoom). As the goats': the
    * board's round and the takes' scores it passed on, kept for the shell
    * to take once a frame. Every page judges its own take.
@@ -2070,6 +2136,10 @@ export function createTogether(shell) {
       if (rules.round === '3m' || rules.round === '5m' || rules.round === 'all') {
         session.link.raceSend({ t: 'gtSet', round: rules.round });
       }
+    } else if (r.game === 'ball') {
+      if (rules.round === '3m' || rules.round === '5m' || rules.round === 'first5') {
+        session.link.raceSend({ t: 'blSet', round: rules.round });
+      }
     } else if (r.game !== 'drift') {
       return;
     }
@@ -2130,6 +2200,8 @@ export function createTogether(shell) {
       goatsStart();
     } else if (driftRoom()) {
       driftStart();
+    } else if (ballRoom()) {
+      ballStart();
     }
   }
 
@@ -2171,6 +2243,8 @@ export function createTogether(shell) {
     goatsHeard(data.goats);
     driftIn = [];
     driftHeard(data.drift);
+    ballIn = [];
+    ballHeard(data.ball);
     if (bots) bots.heard(data.bots);
     lastLink = 'good';
     paintChip();
@@ -5896,6 +5970,11 @@ export function createTogether(shell) {
         return true;
       }
     }
+    if (code === 'KeyG' && ballRoom() && isHost() && (shell.flying() || shell.paused())) {
+      if (ballStart()) {
+        return true;
+      }
+    }
     if (code === 'KeyG' && driftRoom() && isHost() && (shell.flying() || shell.paused())) {
       if (driftStart()) {
         return true;
@@ -6184,6 +6263,12 @@ export function createTogether(shell) {
       }
     } else if (action === 'room-gt-round') {
       goatsRound();
+    } else if (action === 'room-bl-start') {
+      if (ballStart()) {
+        shell.resume();
+      }
+    } else if (action === 'room-bl-round') {
+      ballRound();
     } else if (action === 'room-dr-start') {
       if (driftStart()) {
         shell.resume();
@@ -6364,6 +6449,32 @@ export function createTogether(shell) {
       goatsHerd = n;
     },
     goatsStart,
+    /* A Quad Ball room's, as the goats'. */
+    takeBall() {
+      const d = ballNow;
+      if (!d || d.taken) {
+        return null;
+      }
+      d.taken = true;
+      return d.state;
+    },
+    ballLast() {
+      return ballNow ? ballNow.state : null;
+    },
+    takeBallIn() {
+      if (!ballIn.length) {
+        return null;
+      }
+      const out = ballIn;
+      ballIn = [];
+      return out;
+    },
+    sendBall(msg) {
+      if (session && session.inRoom && ballRoom()) {
+        session.link.raceSend(msg);
+      }
+    },
+    ballStart,
     /* A Drift Matsuri room's, as the goats'. */
     takeDrift() {
       const d = driftNow;

@@ -1182,6 +1182,7 @@
       .film-best { font-size: 12px; letter-spacing: 0.08em; color: var(--cream); }
       .film-card {
         position: absolute; left: 50%; top: 18%; transform: translateX(-50%) rotate(-1.5deg);
+        pointer-events: auto; cursor: pointer;
         min-width: 260px; padding: 14px 22px 16px; display: flex; flex-direction: column; gap: 3px;
         background: #f6efdc; color: #0b1116; border: 3px solid #0b1116; box-shadow: 7px 8px 0 #0b1116;
         background-image: repeating-linear-gradient(-45deg, #0b1116 0 14px, #f6efdc 14px 28px);
@@ -1204,7 +1205,7 @@
       .film-card-label { letter-spacing: 0.08em; text-transform: uppercase; font-size: 12px; font-weight: 700; }
       .film-card-value { font-weight: 800; font-variant-numeric: tabular-nums; }
       .film-card-best { margin-top: 6px; font-weight: 800; color: #d8333d; }
-      .film-card-next { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.75; }
+      .film-card-next { font-size: 12px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; text-align: center; margin-top: 6px; padding: 6px 10px; border: 2px solid #0b1116; background: #0b1116; color: #f6efdc; }
       @media (max-height: 560px) {
         .film-slate { top: calc(clamp(22px, 3.4vw, 44px) + 26px); }
         .film-bars { display: none; }

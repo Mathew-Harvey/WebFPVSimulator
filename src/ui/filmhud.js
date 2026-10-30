@@ -136,6 +136,16 @@ export class FilmHud {
 
     this.calls = el('div', 'chase-calls film-calls');
     this.card = el('div', 'film-card is-off');
+    /* The card is a button: a tap or a click anywhere on it starts another
+     * take (main.js sets onReset to the flight reset), as R does. A phone
+     * has no R, and the card is most of its screen. */
+    this.onReset = null;
+    this.card.addEventListener('click', () => {
+      this.card.classList.add('is-off');
+      if (this.onReset) {
+        this.onReset();
+      }
+    });
 
     this.root.append(this.finder, this.rec, this.slate, this.calls, this.card);
     root.append(this.root);
@@ -318,12 +328,12 @@ export class FilmHud {
       line('Frame', pct(s.frame)),
       line('Close', pct(s.close)),
       line('Steady', pct(s.smooth)),
-      line('Cars in shot', `${pct(s.inShot)}%`),
-      line('Battle in frame', `${s.tandemS} s`),
+      line(this.words && this.words.inShot ? this.words.inShot : 'Cars in shot', `${pct(s.inShot)}%`),
+      line(this.words && this.words.tandem ? this.words.tandem : 'Battle in frame', `${s.tandemS} s`),
       line('Money shots', String(s.money)),
-      line('In the smoke', String(s.smoke)),
+      line(this.words && this.words.smokeLabel ? this.words.smokeLabel : 'In the smoke', String(s.smoke)),
       el('div', 'film-card-best', newBest ? 'Best take yet!' : (this.bestScore > 0 ? `Best take ${this.bestScore}` : '')),
-      el('div', 'film-card-next', 'Reset for another take'),
+      el('div', 'film-card-next', 'Tap for another take'),
     );
     this.card.classList.remove('is-off');
   }

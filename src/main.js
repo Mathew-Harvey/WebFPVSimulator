@@ -1878,6 +1878,8 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     return view && view.filmGame ? view.filmGame.film.view() : null;
   };
+  /* The take's card is a button for a pilot with no R key. */
+  ui.filmHud.onReset = () => reset();
   window.__filmCut = () => {
     if (view && view.filmGame && view.filmGame.film.running) {
       view.filmGame.film.finish(simTimeMs, 'cut');

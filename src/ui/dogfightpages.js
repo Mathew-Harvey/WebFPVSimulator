@@ -392,16 +392,19 @@ export function askGoats(ui, kit, mapName) {
  * SET THE SHOOT, Drift Matsuri's page: the same page with its own rows and
  * no buttons to pick. Resolves { rules } or null.
  */
-export function askDrift(ui, kit, mapName) {
+export function askDrift(ui, kit, mapName, action = '') {
+  const moto = action === 'map:moto';
   return askRules(ui, kit, mapName, {
-    kicker: 'Drift Matsuri',
-    words: ['Set the', 'shoot'],
-    label: `Set the shoot on ${mapName}`,
+    kicker: moto ? 'Ridgeline MX' : 'Drift Matsuri',
+    words: moto ? ['Set the', 'chase'] : ['Set the', 'shoot'],
+    label: moto ? `Set the chase on ${mapName}` : `Set the shoot on ${mapName}`,
     rows: DRIFT_ROWS,
     key: DRIFT_KEY,
     normalise: normaliseDriftRules,
     says: saysForDrift,
-    how: 'Film the drift battles for one minute. Close, smooth, the car in the middle of the picture, both cars of a battle, and the clipping zones all score. The best reel wins.',
+    how: moto
+      ? 'Chase the riders for one minute. Close, smooth, the bike in the middle of the picture, a whip or a big jump, and the clipping zones all score. The best reel wins.'
+      : 'Film the drift battles for one minute. Close, smooth, the car in the middle of the picture, both cars of a battle, and the clipping zones all score. The best reel wins.',
     go: 'Roll!',
     buttons: false,
   });

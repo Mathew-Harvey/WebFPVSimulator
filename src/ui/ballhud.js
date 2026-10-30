@@ -135,6 +135,11 @@ export class BallHud extends DogfightHud {
     if (e.type === 'go' || e.type === 'overtime') {
       return 'select';
     }
+    /* Your own touch is heard: a thud for a nudge, a crack for a hard hit.
+     * Another pilot's is not, so a crowded pitch is not a wall of noise. */
+    if (e.type === 'touch' && e.by === ME) {
+      return e.big ? 'clip' : 'land';
+    }
     return null;
   }
 

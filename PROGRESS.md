@@ -73167,3 +73167,10 @@ The bug hunt thread saw together-shots' ribbon check "a bot cuts somebody's ribb
 - Checks run: `scripts/ball-selftest.js` 53 of 53 (14 new: energy never created at a contact, skid grips into a roll, glancing wall spin, settling, post, crossbar and middle goal, a 400 launch fuzz for finite/inside/under cap, a soft touch), `scripts/ball-check.js` all passed. Not run: `npm run verify` (no plant, ABI or build change), a two page room, any flown feel. Not flown.
 - Went wrong: the first draft of the post test started the ball 15 m from the wall and read zero, and the old "touch is the pilot's" check raced the bot for the ball once the hit lofted it, so it now reads who touched first.
 - To main: the owner, 2026-10-30 13:24Z, "Push to maim" (main), after the latency line (no render change, about 60 flops per ball tick) and the checks run were put to him. An empty merge-base against an old ref was a shallow clone, not replaced history (0 commits ahead after `git fetch --unshallow`). Main had not moved from b140223, so it fast forwards. Not flown.
+
+## 2026-10-30 | feature | Quad Ball polish, round one: you hear your own touches
+
+- The owner, 2026-10-30 13:27Z: "Do a full polish, imagine this game is a stand alone game, we want AAA game play, physics, graphics etc". That is wider than one turn, so this round is the one change that costs nothing: the pilot's own touch of the ball plays a sound (`land` for a nudge, `clip` for a hard hit) from `BallHud.event` in `src/ui/ballhud.js`. Other pilots' touches stay silent.
+- Latency: no render, physics or input change; one audio cue on a touch event, already deduped to 120 ms. Proxy only.
+- Checks run: `ball-selftest` 53 of 53, `ball-check` all passed. Not heard in a browser: the cues are the existing ones, picked by ear-less reasoning. Not flown.
+- Further candidates are put to the owner in the thread, not started: wall bounce sounds, ball landing marker, goal replay, a smarter bot, stadium look at flat cost.

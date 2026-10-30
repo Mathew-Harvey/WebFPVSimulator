@@ -3162,6 +3162,43 @@ export function createTogether(shell) {
    * entry: the picker's chosen map, as ui.js describes it for a room: {
    * map, name, way, thumb, whoop, fly() }. Fly together from the picker.
    */
+  /*
+   * QUAD BALL'S QUICK MATCH, the owner's ask of 2026-10-30: kick off with
+   * bots, and real pilots who also asked for a quick match take a bot's
+   * seat. No queue lives anywhere: a quick match is a listed Quad Ball room
+   * (preset chat, made up names, no addresses, as every listed room is), so
+   * the pilot joins the first open one on this map, and with none opens
+   * their own for the next pilot to find. The bots are seated by the room's
+   * rules as in any Quad Ball room (seatRoomRules).
+   */
+  function quickBall(entry) {
+    gate(async () => {
+      sheetConnecting({ hosting: entry, step: 0 });
+      flowSeq += 1;
+      const mine = flowSeq;
+      const got = await fetchJson(`/api/rooms?way=${encodeURIComponent(entry.way)}`);
+      if (mine !== flowSeq || topName() !== 'connecting') {
+        return;
+      }
+      const open = got.ok && got.body && Array.isArray(got.body.rooms)
+        ? got.body.rooms.filter((r) => r.game === 'ball' && r.map === entry.map && !r.lock && r.n < r.max)
+        : [];
+      if (open.length) {
+        joinFlow(open[0].code, '', { pressed: true });
+        return;
+      }
+      const size = entry.rules && Number(entry.rules.size) > 0 ? Number(entry.rules.size) : 2;
+      host(entry, {
+        name: 'Quick match', listed: true, schoolSafe: false, streamer: false, typedChat: false, hide: true, max: Math.max(2, Math.min(6, size * 2)), tags: [],
+      });
+    });
+  }
+
+  /* A friend's code typed on Quad Ball's door. */
+  function joinCode(code) {
+    gate(() => joinFlow(code, '', { pressed: true }));
+  }
+
   function openHost(entry) {
     if (entry && entry.move) {
       proposeMove(entry);
@@ -6291,6 +6328,8 @@ export function createTogether(shell) {
     },
     openLobby,
     openHost,
+    quickBall,
+    joinCode,
     fromGate,
     startFromAddress,
     act,

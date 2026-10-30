@@ -19,6 +19,7 @@
     "lint:presets": "node scripts/preset-lint.js",
     "lint:catalog": "node scripts/fc-catalog-lint.js",
     "lint:partners": "node scripts/partners.js --check",
+    "check:balldoor": "node scripts/ball-door-check.js",
     "lint:shell": "node scripts/shell-check.js",
     "lint:input": "node scripts/input-check.js",
     "lint:quality": "node scripts/quality-check.js",

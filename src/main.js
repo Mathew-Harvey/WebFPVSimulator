@@ -4597,6 +4597,12 @@ export async function boot({ loading, bootStart, mapId }) {
     ui.onFlyTogether = (entry) => {
       loadTogether().then((t) => t && t.openHost(entry));
     };
+    ui.onQuickBall = (entry) => {
+      loadTogether().then((t) => t && t.quickBall(entry));
+    };
+    ui.onJoinCode = (code) => {
+      loadTogether().then((t) => t && t.joinCode(code));
+    };
     ui.onRooms = (way) => {
       loadTogether().then((t) => t && t.openLobby(way));
     };

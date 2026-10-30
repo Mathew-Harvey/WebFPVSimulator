@@ -86,4 +86,7 @@ export const MAP_BUILD_MS = {
   /* Quad Ball (src/maps/ball/): a plain arena, a few dozen boxes. An
    * estimate until it is measured. */
   ball: 900,
+  /* Ridgeline MX (src/maps/moto/): a plot of trees, a track of mounds and
+   * berms and ten bikes. An estimate until it is measured. */
+  moto: 2400,
 };

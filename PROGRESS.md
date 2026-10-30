@@ -73012,6 +73012,41 @@ The bug hunt thread saw together-shots' ribbon check "a bot cuts somebody's ribb
 - Latency: none. One more boolean read per key and per frame.
 - Not flown.
 
+## 2026-10-29 | mini games | Ridgeline MX, the motocross chase cam (draft)
+
+- The owner's ask (15:30Z): "motor cross cam chase, the bikes should rip, rail, whip and just link IRL; all single and multi player". The other half of that message, Rocket League with quads, is another thread's.
+- What it is: Drift Matsuri's film game on a motocross track. Ten AI dirt bikes in three packs run a 870 m circuit on three parallel lines, the pilot flies the camera quad and films them for a minute, best reel wins. New map `moto` (`src/maps/moto/`): `circuit.js` the course, mounds, berms, tower and paddock; `profile.js` the jumps (tables, doubles, whoops) and the per bike style (clean, whip, scrub); `ride.js` the bike's hop, pitch, lean and tail from its distance; `traffic.js` the bikes as module movers; `bikes.js` the geometry, instanced wheels and roost; `yard.js` the document, start pad on the tower roof.
+- No physics model, module ABI or build change, so no owner approval was needed: a bike is an ordinary mover on a flat line (as a car is), and the air, the lean and the whip are render and judge overlays computed from `pose.distance`, integer hashes and polynomial trig, no `Math.sin`. The judge is fed the DRAWN pose (`filmGame.posed`), so framing a bike in the air or with its tail out scores as it looks.
+- Solo, bots and rooms reuse Drift Matsuri's round and room, game kind `drift` on the wire, so the board needs no change. The Mini games page has a fifth card (`mg-moto`, actions `gate-moto` and `gate-moto-room`); `playMapGame('moto')` maps to the `drift` game on map `moto`. Words are per map: `map.filmGame.words` for the HUD calls (Find the pack, In the roost, Find a rider), `askDrift` takes the map action for its own page and how text. Film best is kept per map (`webfpv.moto.best.v1`); Drift Matsuri keeps its key.
+- Known compromises: the module pulls away at a fixed 2.5 m/s/s, so launches out of a bend are mild and the course has no bend under 14 m/s; the solid box stays on the ground under an airborne bike (a quad flying through the gap above a jump meets the box). Card art is a placeholder frame at 720 by 448.
+- Latency: no change to the flight loop or input path. The map costs only while it is the map: boot preload adds the moto module list (48 modules) to the preload table, fetched only when the map is chosen. Ten bikes at about 500 tris each, instanced wheels. Not measured on a low end machine.
+- Checks run this turn: `check:moto` 17 of 17 (new), `check:drift` 29 of 29, `lint:preload` up to date, `lint:nouns` pass, headless shots of the map, the pack from behind, a whip, the roost and the film HUD scoring. `lint:shell` reports the overflow and fold findings it reports on main. Not run: `lint:catalog` (vendor/betaflight not checked out here), `npm run verify`.
+- What went wrong: `npm ci` has no lockfile to read, not needed; early test cameras sat inside a mound; the ruts first drew too dark and heavy (now thin ribbons, not re-shot); the first HUD said "Film the drift battles" until the words hook was added.
+
+## 2026-10-29 | maps | Ridgeline MX: detail and graphics pass
+
+- The owner, 22:47Z: "Now do a full detail and graphics pass, AAA quality is the goal". Read as: the most visible weaknesses of the map and the bikes at no frame cost, per the latency rule, not new systems.
+- Found by shooting it from the pilot's views: mounds were the track's own colour, so from low they read as thin bars; the track was flat; the riders were blocky white figures; the roost was big opaque blobs.
+- Changed, all in `src/maps/moto/`: mounds drawn as a dark clay body with a groomed track coloured top and a dark lip band, so a jump reads from the air and from the ground; the inside line of every bend scoured in the rut colour; low braking ripples before the bends that follow a straight; bikes rebuilt with helmet, peak, goggles, shoulders, elbows out, knee and boot detail, gold forks, a disc, a silencer, a rear shock, side number boards and handguards; riders' kit colours chosen to contrast their bikes; the roost smaller, paler, shorter lived and more frequent (a puff every 64 ms, 0.85 s life, 260 max).
+- Tried and dropped: tyre walls on the outsides of the bends. They cost 22 draw calls and 59k triangles (every chunk they touch adds a draw per material), so they are out. Hay at the hairpin and the last corner stays.
+- Latency: draw calls 181 before this pass, 170 after; triangles 503,693 before, 494,402 after, measured by `__renderStats` on the map at the pad, headless. Bikes are about 1000 triangles each instead of 500, more than paid for by the mounds' fewer chunks. The roost writes at most 260 puffs, as before. Per frame CPU unchanged.
+- Checks run: `check:moto` 17 of 17, `lint:preload`, `check:drift` 29 of 29, headless shots of the pack, a whip, a jump and the overview. Not run: `npm run verify`, a low end machine, `check:minigames` again (no page or routing change in this pass).
+- What went wrong: aiming the shot camera at a moving bike needed a helper that reads the bike's matrix after the clock moves, so most of the first shots missed the bikes. The tyre walls were drawn before their cost was measured.
+- Not flown.
+
+## 2026-10-29 | maps | Ridgeline MX: set dressing to the other maps' level
+
+- The owner, 23:08Z: "Keep going, borderlands fidelity of the game set is the goal, maintain our art style". Read as: bring Ridgeline MX up to the dressing density of Drift Matsuri and Sunnyfield, in the same Gem look (no new shader, no new ink, no new material), not a new style. Drift Matsuri draws 192 calls and 1.15M triangles and Sunnyfield 102 and 0.81M at the pad, headless; Ridgeline MX was well under both.
+- Added in `src/maps/moto/`: a chequered finish arch over the start line (legs and beam solid, the beam 5.6 m up so a quad can fly under), bunting on poles down both sides of the start straight, five marshals' huts with flags by the big jumps, ninety dirt clods along the track edges. All from materials the map already used (metal, white, mxOrange, mxBlue, mxRed, mxHay, drTyre, mxDirtDark), so no new draw call per material.
+- Latency: measured with the camera parked at one point and three samples each, the figures held: draw calls 271 before and 271 after, triangles 660,566 before and 673,070 after (+1.9 percent). An unparked pad view reads 170 to 202 calls from run to run in this container depending on what the frame holds, so those numbers are not used. Not measured on a low end machine.
+- Checks run: `check:moto` 17 of 17, `lint:preload` up to date, headless shots of the arch, the bunting, the huts and the overview.
+- What went wrong: the first draw call comparison was taken at the pad without a parked camera, so the number moved by 30 from run to run; the pass 2 note above reads "181 to 170" from that kind of sample and its triangle figures are the sturdier half. Bunting first used six flag colours; three is enough.
+- Not flown.
+
+- Pass 3 (owner, 23:49Z, "keep going"): advertising boards along both sides of the start straight, six metres a panel in the team colours with a white stripe, solid at their 0.95 m height, from the existing materials. Parked camera: draw calls 271 before and after, triangles 673,070 to 676,910 (+0.6 percent). The grey wall past the field's edge is the built map's horizon backdrop shared by every built map, so it is left alone here; a pilot at the pad or on the track does not see it. `check:moto` 17 of 17. Not flown.
+
+- The owner, 23:59Z, "push to main, the game is filming like the drifting one". Latency effect as stated in the PR and the passes above (parked camera draw calls 271 flat, triangles +2.5 percent over pass 2, none in the flight loop); his word covers the rise. Fetched first: origin/main had nothing new, so a fast forward. Not flown by me.
+
 ## 2026-10-29 | game | Quad Ball: rocket league with quads, alone with bots and in rooms
 
 - The owner's ask (15:30Z): "rocket league but with quads", single and multiplayer, bots in it. This thread builds it; the motocross chase cam is a parallel thread, so the Mini games page, ui.js and main.js are touched by both and each side merges often.

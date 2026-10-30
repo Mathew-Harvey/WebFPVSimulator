@@ -197,6 +197,18 @@ export const MATERIALS = {
   qbMint: { c: 0x8fe0b8, tint: 0x5a8a8a },
   qbSakuraGlow: { f: 0xffc0d4, noCast: true },
   qbMintGlow: { f: 0xb8ffd8, noCast: true },
+  /* Ridgeline MX (src/maps/moto/): the packed dirt of the mounds and the
+   * track, the darker dirt of the berms, hay, the team tents' colours and
+   * the bikes' and riders' paint. Every other colour it draws is one of
+   * the town's. */
+  mxDirt: { c: 0xa8744a, tint: 0x6a4a5e },
+  mxDirtDark: { c: 0x82583a, tint: 0x553f52 },
+  mxTrack: { c: 0xb98a5c, tint: 0x75556a },
+  mxHay: { c: 0xdcbc58, tint: 0x8a7458 },
+  mxOrange: { c: 0xf0721e, tint: 0x80482e },
+  mxBlue: { c: 0x2f6fd0, tint: 0x2e4a7a },
+  mxGreen: { c: 0x2f9a4c, tint: 0x2e5a4a },
+  mxRed: { c: 0xd8333d, tint: 0x6e2f52 },
 };
 
 /*

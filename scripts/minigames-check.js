@@ -296,7 +296,7 @@ async function sceneMenu() {
     await ev("window.__ui.act('gate-games'); return 1;");
     check('Mini games turns to its page', await until("return window.__ui.gatePageNow() === 'games'", 5000));
     const cards = await ev("return window.__ui.items().map((i) => i.card).join(',')");
-    check('with the switch and four games', cards === 'mg-switch,mg-dogfight,mg-ribbon,mg-goats,mg-drift', cards);
+    check('with the switch and six games', cards === 'mg-switch,mg-dogfight,mg-ribbon,mg-goats,mg-drift,mg-ball,mg-moto', cards);
     const play = async (card, friends) => {
       await ev(`const u = window.__ui; if (Boolean(u.gameFriends) !== ${friends}) u.act('mg-friends'); u.setCursor(u.items().findIndex((i) => i.card === '${card}')); u.select(); return 1;`);
     };
@@ -305,6 +305,8 @@ async function sceneMenu() {
       ['mg-ribbon', false, "Boolean(window.__ui.fightPick && window.__ui.fightPick.game === 'ribbon')", 1],
       ['mg-goats', false, "Boolean(document.querySelector('.qp-page'))", 2],
       ['mg-drift', false, "Boolean(document.querySelector('.qp-page'))", 2],
+      ['mg-ball', false, "Boolean(document.querySelector('.qp-page'))", 2],
+      ['mg-moto', false, "Boolean(document.querySelector('.qp-page'))", 2],
       ['mg-dogfight', true, "Boolean(window.__ui.hostPick && window.__ui.hostPick.game === 'dogfight')", 1],
       ['mg-ribbon', true, "Boolean(window.__ui.hostPick && window.__ui.hostPick.game === 'ribbon')", 1],
     ]) {

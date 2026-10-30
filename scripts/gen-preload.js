@@ -96,6 +96,7 @@ const MAP_ROOTS = {
   sunny: 'src/maps/sunny/index.js',
   drift: 'src/maps/drift/index.js',
   ball: 'src/maps/ball/index.js',
+  moto: 'src/maps/moto/index.js',
 };
 
 /* three@0.160.0's add-ons, and what each imports besides 'three'. Read off

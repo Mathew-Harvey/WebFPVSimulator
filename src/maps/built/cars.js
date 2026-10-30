@@ -325,9 +325,14 @@ function glowGeometry(THREE, L, lamps) {
  * The drift smoke: a pool of puffs and the one batch that draws them. See
  * the header.
  */
-class Smoke {
-  constructor(THREE, look) {
-    const N = SMOKE_MAX;
+export class Smoke {
+  /* opts: max puffs, life in s, fill and shade paint, and the material's
+   * name: Ridgeline MX's bikes throw dirt with the same cloud (src/maps/
+   * moto/bikes.js). */
+  constructor(THREE, look, opts = {}) {
+    const N = opts.max ?? SMOKE_MAX;
+    this.max = N;
+    this.life = opts.life ?? SMOKE_LIFE;
     this.t0 = new Float64Array(N).fill(-1);
     this.x = new Float32Array(N);
     this.y = new Float32Array(N);
@@ -382,17 +387,17 @@ class Smoke {
       uniforms: {
         ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog),
         uMap: { value: this.texture },
-        uFill: { value: dim(SMOKE_FILL) },
-        uShade: { value: dim(SMOKE_SHADE) },
+        uFill: { value: dim(opts.fill ?? SMOKE_FILL) },
+        uShade: { value: dim(opts.shade ?? SMOKE_SHADE) },
         uInk: { value: new THREE.Color(T && T.ink != null ? T.ink : PAL.ink) },
       },
       vertexShader: SMOKE_VERTEX,
       fragmentShader: SMOKE_FRAGMENT,
       fog: true,
     });
-    this.material.name = 'driftSmoke';
+    this.material.name = opts.name ?? 'driftSmoke';
     this.mesh = new THREE.Mesh(geo, this.material);
-    this.mesh.name = 'driftSmoke';
+    this.mesh.name = opts.name ?? 'driftSmoke';
     this.mesh.frustumCulled = false;
     this.mesh.castShadow = false;
     this.mesh.receiveShadow = false;
@@ -441,7 +446,7 @@ class Smoke {
       const back = car.axleRear;
       const across = side * car.track * 0.5;
       const i = this.next;
-      this.next = (i + 1) % SMOKE_MAX;
+      this.next = (i + 1) % this.max;
       this.t0[i] = step;
       this.x[i] = p.x + p.hx * back - p.hz * across;
       this.y[i] = p.y + 0.2;
@@ -458,17 +463,34 @@ class Smoke {
     }
   }
 
+  /* One puff put down by hand, for a caller with its own reasons: at
+   * (x, y, z) with the velocity it carries (vx, vz), size a half width in
+   * metres, and h1..h3 in [0, 1) for its spread. */
+  put(step, x, y, z, vx, vz, size, h1, h2, h3) {
+    const i = this.next;
+    this.next = (i + 1) % this.max;
+    this.t0[i] = step;
+    this.x[i] = x;
+    this.y[i] = y;
+    this.z[i] = z;
+    this.vx[i] = vx * PUFF_CARRY + (h1 - 0.5) * 1.4;
+    this.vz[i] = vz * PUFF_CARRY + (h2 - 0.5) * 1.4;
+    this.size[i] = size * (0.85 + 0.3 * h3);
+    this.turn[i] = (h1 - 0.5) * 0.9;
+    this.spin[i] = (h2 - 0.5) * 0.8;
+  }
+
   /* Every puff at clock `now`, ms, into the batch's buffers. */
   draw(now) {
     const C = this.centre.array;
     const P = this.puff.array;
     let live = 0;
-    for (let i = 0; i < SMOKE_MAX; i += 1) {
+    for (let i = 0; i < this.max; i += 1) {
       const t0 = this.t0[i];
       const age = (now - t0) * 0.001;
       const b3 = i * 12;
       const b4 = i * 16;
-      if (t0 < 0 || !(age >= 0) || age >= SMOKE_LIFE) {
+      if (t0 < 0 || !(age >= 0) || age >= this.life) {
         if (P[b4] !== 0) {
           for (let v = 0; v < 4; v += 1) {
             P[b4 + v * 4] = 0;
@@ -477,11 +499,11 @@ class Smoke {
         continue;
       }
       live += 1;
-      const u = age / SMOKE_LIFE;
+      const u = age / this.life;
       const grow = 1 - (1 - u) * (1 - u);
       const half = this.size[i] * (1 + PUFF_GROW * grow);
       /* It leaves with its share of the car's speed and slows to a stop. */
-      const carried = SMOKE_LIFE * (u - 0.5 * u * u);
+      const carried = this.life * (u - 0.5 * u * u);
       const x = this.x[i] + this.vx[i] * carried;
       const y = this.y[i] + PUFF_RISE * grow + half * 0.35;
       const z = this.z[i] + this.vz[i] * carried;

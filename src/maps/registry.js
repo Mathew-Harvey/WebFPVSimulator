@@ -238,6 +238,23 @@ export const MAPS = [
     buildMs: MAP_BUILD_MS.ball,
     load: () => import('./ball/index.js'),
   },
+  /*
+   * RIDGELINE MX, on the owner's ask of 29 October 2026 ("motor cross cam
+   * chase, the bikes should rip, rail, whip and just look like IRL, all
+   * single and multi player"): a motocross track on a ridge, with a pack of
+   * bikes racing it, and the mini game of Drift Matsuri, the pilot the
+   * camera (src/maps/moto/, src/game/film.js). Built by the built map's
+   * pipeline and flown on the five inch at life size; off the board like
+   * the houses.
+   */
+  {
+    id: 'moto',
+    name: 'Ridgeline MX',
+    mode: 'freestyle',
+    note: 'A motocross track on a ridge. Ten bikes rip it: berms, whoops, tabletops and doubles, tails out and whips off every lip. You are the camera. Chase the pack, keep a rider in the middle of the shot, and catch the whips.',
+    buildMs: MAP_BUILD_MS.moto,
+    load: () => import('./moto/index.js'),
+  },
 ];
 
 /* The house's document id (src/maps/house/yard.js), here so the stamps can
@@ -263,6 +280,8 @@ export const DRIFT_DOC_ID = 'trk-d81f7a75';
 
 /* Quad Ball's (src/maps/ball/arena.js), the same way. */
 export const BALL_DOC_ID = 'trk-ba11b0a1';
+/* Ridgeline MX's (src/maps/moto/yard.js), the same way. */
+export const MOTO_DOC_ID = 'trk-3c07e5a1';
 
 export function mapById(id) {
   return MAPS.find((m) => m.id === id) ?? MAPS[0];

@@ -14915,11 +14915,18 @@ export class Ui {
          * for, is still Quad Ball: a room on it with no ball is an empty
          * stadium. Same pages as the mini games page (owner, 2026-10-30). */
         if (!(hp && hp.move) && !(hp && hp.game) && entry.item && entry.item.action === 'map:ball') {
-          this.armRoomGame(world, entry, 'ball', Boolean(hp));
+          this.ballDoor(id, entry, ev, Boolean(hp));
           return;
         }
         this.onFlyTogether(hp && hp.move ? { ...world, move: true } : hp && hp.game ? { ...world, game: hp.game } : world);
       }
+      return;
+    }
+    /* Quad Ball, picked on the solo or the multiplayer map selector, opens
+     * its own door first: bots, friends or quick match (ballDoor). */
+    if ((id === 'fly' || id === 'card-fly') && !this.fightPick && !this.ballDooring
+      && entry && entry.item && entry.item.action === 'map:ball') {
+      this.ballDoor(id, entry, ev);
       return;
     }
     /* A dogfight's arena: Set the fight and Arm up first, then on as any
@@ -15130,6 +15137,56 @@ export class Ui {
     this.fightArenaName = name;
     this.fightArmed = true;
     this.pickerAction(id, entry, ev);
+  }
+
+  /*
+   * QUAD BALL'S DOOR (src/ui/dogfightpages.js askBallHow), the owner's ask
+   * of 2026-10-30 ("if on the solo or multiplayer map selector I select
+   * quad ball, this menu system should apply"). Bots flies the solo match;
+   * making a game opens a room with its rules; a code joins a friend's;
+   * quick match opens or joins a listed room (together.js quickBall).
+   * Back on any page leaves the pilot on the map cards.
+   */
+  async ballDoor(id, entry, ev, picker = false) {
+    if (this.ballDooring) {
+      return;
+    }
+    this.ballDooring = true;
+    try {
+      const pages = await this.fightPages();
+      const kit = { letterHeading };
+      const world = this.roomsOn && this.onFlyTogether ? this.roomWorldOf(entry) : null;
+      const name = (world && world.name) || entry.name || 'Quad Ball';
+      const how = await pages.askBallHow(this, kit, name, { rooms: Boolean(world) });
+      if (!how || (picker && !this.hostPick)) {
+        return;
+      }
+      if (how.how === 'join') {
+        if (this.onJoinCode) {
+          this.onJoinCode(how.code);
+        }
+        return;
+      }
+      const got = await pages.askBall(this, kit, name, '', how.how);
+      if (!got || (picker && !this.hostPick)) {
+        return;
+      }
+      if (how.how === 'make') {
+        this.onFlyTogether({ ...world, game: 'ball', rules: got.rules });
+      } else if (how.how === 'quick') {
+        this.onQuickBall({ ...world, game: 'ball', rules: got.rules });
+      } else {
+        this.fightPick = { from: this.onGate() ? 'gate' : this.screen, game: 'ball', map: 'ball' };
+        this.dogfight = got.rules;
+        this.fightArenaName = name;
+        this.fightArmed = true;
+        this.pickerAction(id === 'fly-together' ? 'fly' : id, entry, ev);
+      }
+    } catch (e) {
+      console.warn('quad ball: the pages did not load', e);
+    } finally {
+      this.ballDooring = false;
+    }
   }
 
   /* A mini game's room, set up before it opens: the solo pages, then the

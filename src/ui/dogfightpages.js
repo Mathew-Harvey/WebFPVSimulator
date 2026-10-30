@@ -79,6 +79,22 @@ const CSS = `
 .df-lamp { width: 30px; height: 30px; border-radius: 50%; border: 3px solid var(--ink-line); background: #d8d0bb; flex: none; }
 .df-lamp.is-on { background: var(--mint); box-shadow: 0 0 14px var(--mint); }
 .df-listen { padding: 10px 12px; background: var(--ink-line); color: var(--amber); font: 900 15px/1.3 var(--ui-font); letter-spacing: .04em; }
+.df-door { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; padding: 16px 20px; min-height: 0; overflow: auto; }
+.df-doorcard { position: relative; display: flex; flex-direction: column; justify-content: flex-end; gap: 8px; min-height: 250px; padding: 14px; background: var(--qp-paper-2); border-top-width: 14px; border: 4px solid var(--ink-line); box-shadow: 6px 6px 0 var(--ink-line); cursor: pointer; }
+.df-doorcard:nth-child(1) { border-top-color: #8fe0ff; }
+.df-doorcard:nth-child(2) { border-top-color: var(--amber); }
+.df-doorcard:nth-child(3) { border-top-color: var(--bail, #ff7d96); }
+.df-doorcard.is-at { box-shadow: 0 0 0 5px var(--amber), 8px 8px 0 5px var(--ink-line); }
+.df-doorcard h3 { margin: 0; font: 900 28px/1 var(--ui-font); font-style: italic; letter-spacing: .03em; color: var(--ink-line); }
+.df-doorcard p { margin: 0; padding: 8px 10px; background: #fff; border: 3px solid var(--ink-line); font: 700 14px/1.3 var(--ui-font); }
+.df-doorcard .df-tag { margin-bottom: auto; align-self: flex-start; padding: 5px 8px; font: 800 11px/1 var(--ui-font); letter-spacing: .14em; text-transform: uppercase; background: var(--ink-line); color: var(--sakura); }
+.df-doorcard .df-chips { gap: 8px; }
+.df-code { box-sizing: border-box; width: 100%; padding: 9px 10px; font: 900 22px/1 ui-monospace, Menlo, Consolas, monospace; letter-spacing: .18em; text-transform: uppercase; border: 3px solid var(--ink-line); background: #fff; color: var(--ink-line); }
+.df-code.is-bad { background: #ffe4e0; }
+@media (max-width: 860px) {
+  .df-door { grid-template-columns: 1fr; }
+  .df-doorcard { min-height: 0; }
+}
 @media (max-width: 860px) {
   .df-page .df-body { grid-template-columns: 1fr; }
   .df-side { display: none; }
@@ -423,12 +439,135 @@ export function askGoats(ui, kit, mapName) {
 }
 
 /*
+ * QUAD BALL'S DOOR, drawn in the owner's mockup of 2026-10-30
+ * (/mnt/project-files/quad-ball/setup-mockup): three ways in, before any
+ * setting. Bots only plays at once. With friends makes a private game
+ * (Set the match, then the room's code) or joins one by its code. Quick
+ * match kicks off with bots and lets real pilots take a bot's seat. Only
+ * the first one is offered without rooms. Resolves { how: 'bots' | 'make' |
+ * 'join' | 'quick', code } or null.
+ */
+export function askBallHow(ui, kit, mapName, { rooms = false } = {}) {
+  if (!rooms) {
+    return Promise.resolve({ how: 'bots' });
+  }
+  return new Promise((resolve) => {
+    const p = page(ui, 'Quad Ball', 'How do you', 'want to play?', `Quad Ball on ${mapName}`);
+    const body = el('div', 'df-door');
+    const code = el('input', 'df-code');
+    code.maxLength = 7;
+    code.placeholder = 'CODE';
+    code.setAttribute('aria-label', 'A friend\'s game code');
+    code.autocomplete = 'off';
+    code.spellcheck = false;
+    const mk = (tag, name, line, ...extra) => {
+      const c = el('div', 'df-doorcard');
+      c.tabIndex = 0;
+      c.append(el('span', 'df-tag', tag), el('h3', null, name), el('p', null, line), ...extra);
+      body.append(c);
+      return c;
+    };
+    const go = (how) => close({ how, code: code.value });
+    const bots = mk('Just you', 'Play with bots', 'Pick your side and the bots fill every other seat. Starts in seconds, nobody to wait for.');
+    const row = el('div', 'df-chips');
+    const make = btn('df-chip is-on', 'Make a game');
+    const join = btn('df-chip', 'Join');
+    row.append(make, join);
+    const friends = mk('With friends', 'Play with friends', 'Make a private game and send the code, or type a friend\'s code. Empty seats fill with bots.', row, code);
+    const quick = mk('Real pilots', 'Quick match', 'Kick off now with bots. Real pilots who want a game take a bot\'s seat at a kickoff. Preset chat and made up names only.');
+    const cards = [bots, friends, quick];
+    let at = 0;
+    const paint = () => cards.forEach((c, i) => c.classList.toggle('is-at', i === at));
+    const pick = (i) => {
+      at = i;
+      paint();
+    };
+    const choose = () => {
+      if (at === 0) {
+        go('bots');
+      } else if (at === 2) {
+        go('quick');
+      } else if (document.activeElement === code || code.value) {
+        const c = code.value.trim();
+        if (!/^[A-Za-z0-9-]{4,7}$/.test(c)) {
+          code.classList.add('is-bad');
+          code.focus();
+          return;
+        }
+        go('join');
+      } else {
+        go('make');
+      }
+    };
+    bots.addEventListener('click', () => go('bots'));
+    quick.addEventListener('click', () => go('quick'));
+    friends.addEventListener('click', () => pick(1));
+    make.addEventListener('click', (e) => {
+      e.stopPropagation();
+      code.value = '';
+      go('make');
+    });
+    join.addEventListener('click', (e) => {
+      e.stopPropagation();
+      pick(1);
+      code.focus();
+      if (code.value) {
+        choose();
+      }
+    });
+    code.addEventListener('input', () => {
+      code.value = code.value.toUpperCase();
+      code.classList.remove('is-bad');
+    });
+    code.addEventListener('focus', () => pick(1));
+    const goBtn = btn('qp-btn qp-fly', 'Choose');
+    const back = btn('qp-btn', 'Back');
+    const keys = el('span', 'qp-keys');
+    keys.innerHTML = '<kbd>\u2190</kbd> <kbd>\u2192</kbd> pick \u00b7 <kbd>Enter</kbd> choose \u00b7 <kbd>Esc</kbd> back';
+    p.caption.append(goBtn, back, keys);
+    const close = show(ui, kit, p, body, (e) => {
+      if (document.activeElement === code) {
+        if (e.key === 'Enter') {
+          choose();
+          return true;
+        }
+        if (e.key === 'Escape') {
+          code.blur();
+          return true;
+        }
+        return false;
+      }
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        pick((at + (e.key === 'ArrowRight' ? 1 : 2)) % 3);
+        return true;
+      }
+      if (e.key === 'Enter') {
+        if (e.target === back) {
+          return false;
+        }
+        choose();
+        return true;
+      }
+      if (e.key === 'Escape') {
+        close(null);
+        return true;
+      }
+      return false;
+    }, resolve);
+    goBtn.addEventListener('click', choose);
+    back.addEventListener('click', () => close(null));
+    paint();
+    goBtn.focus();
+  });
+}
+
+/*
  * SET THE MATCH, Quad Ball's page: the same page with its own rows and no
  * buttons to pick. Resolves { rules } or null.
  */
-export function askBall(ui, kit, mapName) {
+export function askBall(ui, kit, mapName, action = '', how = 'bots') {
   return askRules(ui, kit, mapName, {
-    kicker: 'Quad Ball',
+    kicker: how === 'make' ? 'Quad Ball, private game' : (how === 'quick' ? 'Quad Ball, quick match' : 'Quad Ball'),
     words: ['Set the', 'match'],
     label: `Set the match on ${mapName}`,
     rows: BALL_ROWS,
@@ -436,7 +575,7 @@ export function askBall(ui, kit, mapName) {
     normalise: normaliseBallRules,
     says: saysForBall,
     how: 'Fly into the ball to hit it. The harder you fly at it the harder it goes. Pink defends the west goal and attacks the east one; mint is the other way round. After a goal everybody gets a few seconds to fly back for the kickoff.',
-    go: 'Kick off!',
+    go: how === 'make' ? 'Make the game' : 'Kick off!',
     buttons: false,
   });
 }

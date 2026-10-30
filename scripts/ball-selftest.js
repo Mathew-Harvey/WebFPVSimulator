@@ -288,6 +288,33 @@ console.log('a soft touch');
   check(top > 0.5 && top < 6, 'a quad at 3 m/s nudges the ball and does not punt it', `${top}`);
 }
 
+console.log('a bounce is heard');
+{
+  const g = new BallRound(world(), { practice: true }, 3);
+  const me = {
+    x: -30, y: 1.6, z: 0, fx: 1, fy: 0, fz: 0, ux: 0, uy: 1, uz: 0, flying: true, gun: false, missile: false,
+  };
+  for (let i = 0; i < KICK_MS / 10 + 20; i += 1) {
+    g.step(me, i === 0);
+  }
+  g.ball.x = 0; g.ball.y = 12; g.ball.z = 0; g.ball.vx = 0; g.ball.vy = -10; g.ball.vz = 0;
+  let heard = 0;
+  let big = 0;
+  for (let i = 0; i < 400; i += 1) {
+    g.step(me, false);
+    for (let n = 0; n < g.eventCount; n += 1) {
+      if (g.events[n].type === 'bounce') {
+        heard += 1;
+        big += g.events[n].big ? 1 : 0;
+      }
+    }
+    /* The shell drains the events each frame. */
+    g.eventCount = 0;
+  }
+  check(heard >= 2 && big >= 1, 'a dropped ball is heard to bounce, the first hard', `${heard} ${big}`);
+  check(heard < 12, 'and a settling ball is not a rattle', `${heard}`);
+}
+
 console.log('practice');
 {
   /* The arena flown with no match: the pilot and the ball, no bots, no

@@ -215,6 +215,9 @@ function bounce(b, R, k, nx, ny, nz, e, mu) {
     return 0;
   }
   const sp = -vn;
+  if (sp > b.hit) {
+    b.hit = sp;
+  }
   const soft = BALL.soft * k;
   const ee = sp >= soft ? e : e * (sp / soft);
   const jn = sp * (1 + ee);
@@ -243,6 +246,8 @@ export function arenaStep(b, R, k, A, dt) {
     b.wy = 0;
     b.wz = 0;
   }
+  /* The hardest impact this step, for the sound: 0 when it touched nothing. */
+  b.hit = 0;
   b.vy -= BALL.gravity * k * dt;
   const drag = 1 - BALL.drag * dt;
   b.vx *= drag;
@@ -714,6 +719,15 @@ export class BallRound extends Dogfight {
     this.lastTouchTeam = this.team[i];
   }
 
+  /* The ball's knock on the grass or a wall, as an event: heard and shown,
+   * 150 ms apart so a roll over a seam is one sound and not a rattle. */
+  bounced(b, k, now) {
+    if (b.hit > 3 * k && now - (this.bounceAt || -1e9) > 150) {
+      this.bounceAt = now;
+      this.event('bounce', -1, -1, 0, '', b.x, b.y, b.z, b.hit > 12 * k);
+    }
+  }
+
   /* A goal for the team on the side the ball went into. */
   goal(side, now) {
     const A = this.arena;
@@ -812,6 +826,7 @@ export class BallRound extends Dogfight {
         }
       }
       const side = arenaStep(b, R, k, this.arena, DT);
+      this.bounced(b, k, now);
       if (side !== 0) {
         this.goalPending = true;
         this.goal(side, now);

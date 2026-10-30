@@ -326,6 +326,7 @@ export class BallRoom extends DogfightRoom {
         }
       }
       const side = arenaStep(b, this.bR, this.world.k, this.arena, DT);
+      this.bounced(b, this.world.k, now);
       if (side !== 0) {
         b.vx = 0;
         b.vy = 0;
@@ -391,7 +392,7 @@ export class BallRoom extends DogfightRoom {
 /* BallRound's play, shared: the bots, the ball's meeting, the kickoff and
  * the table. */
 for (const k of [
-  'setup', 'playBot', 'pickRole', 'rankOf', 'meet', 'kickoff', 'countdownS', 'dirOf', 'afterGoal', 'standings', 'bR', 'inPlay',
+  'setup', 'bounced', 'playBot', 'pickRole', 'rankOf', 'meet', 'kickoff', 'countdownS', 'dirOf', 'afterGoal', 'standings', 'bR', 'inPlay',
 ]) {
   Object.defineProperty(BallRoom.prototype, k, Object.getOwnPropertyDescriptor(BallRound.prototype, k));
 }

@@ -73174,3 +73174,10 @@ The bug hunt thread saw together-shots' ribbon check "a bot cuts somebody's ribb
 - Latency: no render, physics or input change; one audio cue on a touch event, already deduped to 120 ms. Proxy only.
 - Checks run: `ball-selftest` 53 of 53, `ball-check` all passed. Not heard in a browser: the cues are the existing ones, picked by ear-less reasoning. Not flown.
 - Further candidates are put to the owner in the thread, not started: wall bounce sounds, ball landing marker, goal replay, a smarter bot, stadium look at flat cost.
+
+## 2026-10-30 | feature | Quad Ball polish, round two: bounce sounds, landing marker
+
+- The owner, 2026-10-30 13:37Z, tapped "Feel: sounds and landing marker" on the card asking which polish to build next.
+- `arenaStep` records the hardest impact of the step (`b.hit`); `BallRound.bounced` (shared with `BallRoom`) turns it into a `bounce` event, 150 ms apart, big above 12 m/s. `BallHud.event` plays `land` for a big one within 45 m of the pilot; the view puffs dust for it. The HUD draws an amber ellipse where the ball comes down (straight line under gravity, clamped to the pitch) when it is more than 3 m up, on the HUD's own 2D canvas.
+- Latency: no draw call or triangle added (the marker is a canvas stroke, the dust is the existing puff pool). Headless overview frame 36 draw calls, 160393 triangles, as before. One ellipse per frame while the ball is airborne. Proxy only, no GPU timing.
+- Checks run: `ball-selftest` 55 of 55 (2 new, a dropped ball bounces audibly and settles without a rattle), `ball-check` all passed. Not heard, not flown. The marker ignores drag and spin, so it is a few tenths of a metre early on a long fall.

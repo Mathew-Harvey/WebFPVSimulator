@@ -175,6 +175,12 @@ export class BallView extends DogfightView {
       }
       return;
     }
+    if (e.type === 'bounce') {
+      if (e.big) {
+        this.puff(e.x, Math.max(e.y - 1.2 * k, 0.2), e.z, 0.8 * k, 300, nowMs);
+      }
+      return;
+    }
     super.event(e, g, nowMs);
   }
 

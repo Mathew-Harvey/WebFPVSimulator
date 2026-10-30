@@ -31,6 +31,9 @@ import { paintCall, INKS } from './lettering.js';
 import { DogfightHud, nameOf } from './dogfighthud.js';
 import { MAX_PILOTS, ME } from '../game/dogfight.js';
 import { TEAM_NAMES } from '../maps/ball/arena.js';
+import { BALL } from '../game/quadball.js';
+
+const BALL_G = BALL.gravity;
 
 const INK = '#0b1116';
 const AMBER = '#ffd45c';
@@ -74,6 +77,7 @@ export class BallHud extends DogfightHud {
     this.callAt = -1e9;
     this.callOn = false;
     this.ballP = { x: 0, y: 0, behind: false };
+    this.landP = { x: 0, y: 0, behind: false };
     this.goalP = { x: 0, y: 0, behind: false };
   }
 
@@ -134,6 +138,11 @@ export class BallHud extends DogfightHud {
     }
     if (e.type === 'go' || e.type === 'overtime') {
       return 'select';
+    }
+    /* A hard knock of the ball is heard when it is near you. */
+    if (e.type === 'bounce' && e.big) {
+      const d = Math.hypot(e.x - g.x[ME], e.z - g.z[ME]);
+      return d < 45 * g.k ? 'land' : null;
     }
     /* Your own touch is heard: a thud for a nudge, a crack for a hard hit.
      * Another pilot's is not, so a crowded pitch is not a wall of noise. */
@@ -226,6 +235,30 @@ export class BallHud extends DogfightHud {
       }
     } else {
       this.edgeArrow(ctx, bp, AMBER, 'BALL', true);
+    }
+    /* Where the ball will come down, flat on the pitch: the straight line
+     * under gravity, from this frame's height and speed. It is drawn on
+     * this canvas, so it costs no draw call. */
+    const floor = g.arena.floor || 0;
+    const R = g.bR;
+    const hh = by - R - floor;
+    if (hh > 3 * k) {
+      const gg = BALL_G * k;
+      const tt = (g.ball.vy + Math.sqrt(g.ball.vy * g.ball.vy + 2 * gg * hh)) / gg;
+      const lx = Math.max(-g.arena.hx, Math.min(g.arena.hx, bx + g.ball.vx * tt));
+      const lz = Math.max(-g.arena.hz, Math.min(g.arena.hz, bz + g.ball.vz * tt));
+      const lp = this.project(lx, floor + 0.1, lz, camera, this.landP);
+      if (!lp.behind && lp.x > 8 && lp.x < this.w - 8 && lp.y > 8 && lp.y < this.h - 8) {
+        const lr = Math.max(8, Math.min(40, (60 * k) / Math.max(Math.hypot(lx - mx, lz - mz, 4 * k), 0.1) * 6));
+        this.mark(lp.x, lp.y, lr * 1.4);
+        ctx.strokeStyle = AMBER;
+        ctx.globalAlpha = 0.75;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.ellipse(lp.x, lp.y, lr, lr * 0.4, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
     }
     /* The goal you attack, off screen only: an arrow in your colour. */
     const gx = (mine === 0 ? 1 : -1) * g.arena.hx;

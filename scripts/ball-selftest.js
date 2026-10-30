@@ -315,6 +315,27 @@ console.log('a bounce is heard');
   check(heard < 12, 'and a settling ball is not a rattle', `${heard}`);
 }
 
+console.log('a stalled ball');
+{
+  const g = new BallRound(world(), { practice: true }, 3);
+  const me = {
+    x: -30, y: 1.6, z: 0, fx: 1, fy: 0, fz: 0, ux: 0, uy: 1, uz: 0, flying: true, gun: false, missile: false,
+  };
+  for (let i = 0; i < KICK_MS / 10 + 20; i += 1) {
+    g.step(me, i === 0);
+  }
+  g.ball.x = ARENA.hx - 1.6; g.ball.y = 1.5; g.ball.z = ARENA.hz - 1.6; g.ball.vx = 0; g.ball.vy = 0; g.ball.vz = 0;
+  let reset = 0;
+  for (let i = 0; i < 700; i += 1) {
+    g.step(me, false);
+    for (let n = 0; n < g.eventCount; n += 1) {
+      reset += g.events[n].type === 'reset' ? 1 : 0;
+    }
+    g.eventCount = 0;
+  }
+  check(reset === 1 && Math.abs(g.ball.x) < 1, 'a ball dead in a corner for five seconds goes back to the middle', `${reset} ${g.ball.x}`);
+}
+
 console.log('practice');
 {
   /* The arena flown with no match: the pilot and the ball, no bots, no

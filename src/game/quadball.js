@@ -96,6 +96,8 @@ export const BALL = {
  * the table before the next round. */
 export const KICK_MS = 3500;
 export const GOAL_MS = 3200;
+/* A ball that has not moved for this long, ms, is put back at the middle. */
+export const STALL_MS = 5000;
 
 /* Rounds: 'ms' the clock, 'goals' the target, 0 for none. */
 export const BALL_ROUNDS = {
@@ -599,6 +601,17 @@ export class BallRound extends Dogfight {
           gy = by;
           gz = bz;
           speed = 0;
+          /* Not yet behind the ball: the straight line to the lining-up
+           * spot goes through it, and a touch from the wrong side is a
+           * touch toward our own goal. Swing wide round it instead. */
+          const fx = this.x[i] - px;
+          const fz = this.z[i] - pz;
+          if (fx * hx + fz * hz > 0) {
+            const side = fx * -hz + fz * hx >= 0 ? 1 : -1;
+            const wide = this.bR + 2 * k;
+            gx = bx + -hz * side * wide;
+            gz = bz + hx * side * wide;
+          }
         }
       } else if (role === 1) {
         /* Support: upfield of the ball and across from it. */
@@ -728,6 +741,20 @@ export class BallRound extends Dogfight {
     }
   }
 
+  /* Whether the ball has lain still, in play, for STALL_MS. */
+  stuck(b, k) {
+    if (b.vx * b.vx + b.vy * b.vy + b.vz * b.vz > (0.4 * k) * (0.4 * k)) {
+      this.stillMs = 0;
+      return false;
+    }
+    this.stillMs = (this.stillMs || 0) + DOGFIGHT_EVERY;
+    if (this.stillMs < STALL_MS) {
+      return false;
+    }
+    this.stillMs = 0;
+    return true;
+  }
+
   /* A goal for the team on the side the ball went into. */
   goal(side, now) {
     const A = this.arena;
@@ -827,6 +854,14 @@ export class BallRound extends Dogfight {
       }
       const side = arenaStep(b, R, k, this.arena, DT);
       this.bounced(b, k, now);
+      if (side === 0 && this.stuck(b, k)) {
+        /* A ball pinned in a corner or dead on the floor with nobody able
+         * to move it: back to the middle with a count, as a stalled ball
+         * is in every ball game. */
+        this.event('reset', -1, -1, 0, '', b.x, b.y, b.z);
+        this.kickoff(false);
+        return;
+      }
       if (side !== 0) {
         this.goalPending = true;
         this.goal(side, now);

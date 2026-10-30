@@ -67,7 +67,7 @@ import { makeRig, buildWorld, V } from './lib/flightrig.js';
 import { deriveObstacles } from '../src/game/obstacles.js';
 import {
   heldStill, STUCK_LEAN_UPZ, STUCK_SPEED, STUCK_RATE, TURTLE_EXIT_UPZ, LAND_TILT_MAX_DEG,
-  CRAFT_WORLD_R,
+  CRAFT_WORLD_R, makeStillMeter, stillMeterStep,
 } from '../src/game/collide.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -143,7 +143,10 @@ const HOVER = 0.345;
  * on this rig (wall-check has the measurement). Then stuckTick's own view of
  * it, a frame at a time: beside a solid is besideSolid's question, a solid
  * within the craft's swept radius of its centre, and the clock runs while
- * the test holds, by the old test and by heldStill.
+ * the test holds, by the old test and by heldStill. Both read the speed and
+ * the rate as stuckTick does since bug-243d42f7, through a still meter fed
+ * the plant's state once a frame (stillMeterStep in src/game/collide.js), so
+ * the two differ by the pose rule and nothing else.
  */
 async function wedge(spawnYaw, after) {
   const rig = await makeRig({
@@ -154,13 +157,14 @@ async function wedge(spawnYaw, after) {
   rig.settle(V(FACE_X - 2, 0.8, 0), Math.atan2(1, 0), 2.6);
   rig.hold(120, 0, -0.5, 0, HOVER);
   const run = { old: 0, now: 0, oldMax: 0, nowMax: 0 };
+  const meter = makeStillMeter();
   for (let ms = FRAME_MS; ms <= WATCH_MS; ms += FRAME_MS) {
     rig.hold(FRAME_MS, after[0], after[1], after[2], after[3]);
     const st = rig.state();
     const c = rig.craft();
     const upz = c.upZ;
-    const speed = Math.hypot(st[4], st[5], st[6]);
-    const rate = Math.hypot(st[11], st[12], st[13]);
+    stillMeterStep(meter, rig.simMs(), st[1], st[2], st[3], st[7], st[8], st[9], st[10]);
+    const { speed, rate } = meter;
     const onSolid = world.colliders.gapAt(c.p.x, c.p.y, c.p.z, CRAFT_WORLD_R) < CRAFT_WORLD_R;
     const oldStill = upz < TURTLE_EXIT_UPZ && speed < STUCK_SPEED && rate < STUCK_RATE;
     run.old = oldStill ? run.old + FRAME_MS : 0;
@@ -265,6 +269,8 @@ async function shell() {
             rows.push({
               ms: window.__stickPath().moduleMs, upY: c.up ? c.up.y : 1, spd: c.speed, landed: c.landed,
               rate: c.rates ? Math.hypot(c.rates.p, c.rates.q, c.rates.r) : 0,
+              /* Infinity does not survive JSON, and null would read as 0. */
+              held: [c.held.speed, c.held.rate].map((v) => (Number.isFinite(v) ? v : 1e9)),
               gap: window.__nearSolid(c.worldX, c.worldY, c.worldZ, 1) ?? 9, banner: c.banner,
             });
             window.__stick(...sticks);
@@ -288,7 +294,7 @@ async function shell() {
           downs += 1;
         }
         const beside = r.gap < CRAFT_WORLD_R;
-        const test = !r.landed && heldStill(r.upY, r.spd, r.rate, beside, false);
+        const test = !r.landed && heldStill(r.upY, r.held[0], r.held[1], beside, false);
         held = test && d >= 0 ? held + d : 0;
         longest = Math.max(longest, held);
         if (!wedged && test && r.upY >= TURTLE_EXIT_UPZ) {

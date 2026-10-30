@@ -56,10 +56,11 @@
 import { loadSim, SIM_OK } from '../../tests/lib/simmod.js';
 import { simPosToThree, threePosToSim, threeDirToSim } from '../../src/render/frame.js';
 import {
-  Colliders, GROUND_MU, GROUND_E, GRAZE_SPEED_MAX,
+  Colliders, CrashJudge, putDullBounce, GROUND_MU, GROUND_E, GRAZE_SPEED_MAX,
 } from '../../src/game/collide.js';
 import { uploadWorld, setWorldFrame } from '../../src/game/plantworld.js';
 import { TrickDetector } from '../../src/game/trickdetect.js';
+import { sincos } from '../../src/props/trig.js';
 
 /* The shell's own numbers, and they have to stay the shell's. */
 const SPAWN_ALT = 0.045;
@@ -245,11 +246,27 @@ export function seqPath(...parts) {
  *   field       an ObstacleField for the recogniser, or null
  *   groundY     world height of the flat ground plane
  *   cell        battery cell voltage
+ *   bounce      true for the shell's crash judge and dull bounce, below
+ *
+ * THE DULL BOUNCE, opt in with `bounce: true`. Since 2026-10-16 the shell's
+ * step loop asks src/game/collide.js's CrashJudge about every step and, on a
+ * crash or a knock, puts putDullBounce on the module there, and the flight
+ * goes on from that state (A CRASH IS A DULL BOUNCE in src/main.js). This rig
+ * was older than that and never did, so a craft held against a solid here
+ * rested where the shell's buzzed: a whoop wedged between a mattress and a
+ * wall sat still in this rig and rattled for ever in the page (bug-243d42f7,
+ * scripts/bedslot-check.js). Off by default, because every check written on
+ * this rig before it measured the plant without the bounce and its numbers
+ * are pinned to that. The judge is seated with the spawn's turn as
+ * seatWorldFrame seats the shell's, a frame is one hold() call, the perch is
+ * always allowed (no takeoff, no turtle here) and the ground the bounce reads
+ * is the rig's level plane. scripts/bounce-check.js does the same on its own
+ * loop.
  */
 export async function makeRig(opts) {
   const {
     wasmBytes, diffText, colliders = null, field = null,
-    spawn = V(0, 0, 0), spawnYaw = 0, groundY = 0, cell = 4.0,
+    spawn = V(0, 0, 0), spawnYaw = 0, groundY = 0, cell = 4.0, bounce = false,
   } = opts;
 
   const sim = await loadSim(wasmBytes);
@@ -325,8 +342,15 @@ export async function makeRig(opts) {
   const track = [];
   let lastTapSimMs = -1e9;
   const stats = {
-    contacts: 0, frame: 0, props: 0, closingMax: 0, deepest: 0,
+    contacts: 0, frame: 0, props: 0, closingMax: 0, deepest: 0, crashes: 0, knocks: 0,
   };
+  /* See THE DULL BOUNCE above makeRig. */
+  const judge = bounce ? new CrashJudge() : null;
+  const turn = sincos(spawnYaw);
+  const bounceOut = new Float64Array(3);
+  if (judge) {
+    judge.seat(turn.c, turn.s);
+  }
   /* The world, handed to the plant exactly as the shell hands it: the same
    * upload and the same frame, so what this rig flies is what a pilot does. */
   uploadWorld(sim, colliders);
@@ -369,6 +393,7 @@ export async function makeRig(opts) {
       rcNext += RC_PERIOD;
     }
     raiseGround();
+    const before = st;
     sim.step(1);
     stepIdx += 1;
     st = sim.readState().state;
@@ -411,6 +436,19 @@ export async function makeRig(opts) {
         det.bump(rep[1]);
       }
     }
+    /* The shell's judge and bounce, after everything that reads the step,
+     * as its step loop has them. */
+    if (judge) {
+      const crashed = judge.step(before, st, sim.e.sim_ground_contacts(), rep, stepIdx, true);
+      if (crashed || judge.knock(rep, st)) {
+        const n = worldDirToSim(V(0, 1, 0));
+        if (putDullBounce(sim, crashed ? judge.stepKind : 'solid', before, st, rep, n.x, n.y, n.z,
+          turn.c, turn.s, bounceOut, !crashed)) {
+          st = sim.readState().state;
+          stats[crashed ? 'crashes' : 'knocks'] += 1;
+        }
+      }
+    }
   }
 
   function stick(r, p, y, thr) {
@@ -418,6 +456,9 @@ export async function makeRig(opts) {
   }
 
   function hold(ms, r = 0, p = 0, y = 0, thr = 0.5) {
+    if (judge) {
+      judge.beginFrame();
+    }
     stick(r, p, y, thr);
     for (let i = 0; i < ms; i += 1) {
       stepOne();

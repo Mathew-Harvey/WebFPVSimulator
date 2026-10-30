@@ -3305,6 +3305,87 @@ export function heldStill(upz, speed, rateMag, onSolid, threeD) {
 }
 
 /*
+ * STILL IS WHERE IT IS, NOT HOW FAST THE MODULE SAYS IT IS GOING, since
+ * 2026-10-30, bug-243d42f7: "Got stuck between a bed and a wall", a whoop in
+ * Nick Burns' house. Its report had the craft on its side (upZ -0.13) in the
+ * 10.5 cm slot between bedroom 4's mattress and the back wall, at 0 m/s, not
+ * landed, the sticks centred, and no set down in the last two minutes.
+ *
+ * stuckTick read heldStill's speed and rate off the plant's state, the
+ * velocity and body rates the last step left. A craft rattling between two
+ * faces is never still by those. The shell's knock (solidContactKnock, then
+ * putDullBounce) writes a craft that touches a solid off it at DULL_OUT_MIN,
+ * which is 0.3 m/s and so exactly STUCK_SPEED. The hull is 7.1 cm thick and
+ * 18.8 cm across, and tipped as it lies it spans all but about 3 mm of the
+ * slot, so it reaches the other face inside a frame and is knocked back.
+ * Measured through the real plant with the knock (scripts/bedslot-check.js):
+ * 180 to 270 knocks in five seconds, the speed 0.300 m/s on a frame in
+ * every few and the rate up to 1.87 rad/s, so the 1.5 s clock never ran
+ * past 0.42 s, while the craft never left the slot. It went nowhere and was
+ * never still, so it was never set down. The page did the same: 6 s and no
+ * set down, hands off or working the sticks.
+ *
+ * So stillness is measured as where the craft got to: its displacement and
+ * its turn over at least STILL_WINDOW_MS of sim time, divided by the time.
+ * For a craft really moving that is its speed and its rate, as before. For
+ * one rattling in place it is the rattle's net, which is nothing. The
+ * window is long against a knock's period and short against STUCK_MS, so
+ * a craft coming to rest starts the clock a tenth of a second later than it
+ * did and one that moves off stops it within the same tenth.
+ *
+ * The turn is 2 |sin(angle / 2)| over the window, the vector part of the
+ * relative quaternion: square roots and products only, so the comparison
+ * is the same on every engine. It reads a little under the angle, 0.1
+ * percent at STUCK_RATE over the window, and it is blind to a whole turn
+ * inside one window, 63 rad/s, which is nearly twice the 1998 deg/s
+ * Betaflight clamps a setpoint at (configs/rates.js), held on the spot for
+ * 1.5 s.
+ *
+ * Fed once a frame with the plant's own state: t is the sim clock in ms,
+ * (x, y, z) the position and (qw, qx, qy, qz) the attitude, both in the
+ * plant's frame, as heldStill's speed always was. A clock that goes back (a
+ * set down, a reset) starts it over, and until a window has passed it reads
+ * Infinity, which is not still.
+ */
+export const STILL_WINDOW_MS = 100;
+
+export function makeStillMeter() {
+  return {
+    t: -1, x: 0, y: 0, z: 0, qw: 1, qx: 0, qy: 0, qz: 0, speed: Infinity, rate: Infinity,
+  };
+}
+
+export function stillMeterStep(m, t, x, y, z, qw, qx, qy, qz) {
+  const dt = t - m.t;
+  if (m.t < 0 || dt < 0) {
+    m.speed = Infinity;
+    m.rate = Infinity;
+  } else if (dt < STILL_WINDOW_MS) {
+    return m;
+  } else {
+    const dx = x - m.x;
+    const dy = y - m.y;
+    const dz = z - m.z;
+    /* The vector part of conj(q then) times q now. */
+    const rx = m.qw * qx - m.qx * qw - m.qy * qz + m.qz * qy;
+    const ry = m.qw * qy - m.qy * qw - m.qz * qx + m.qx * qz;
+    const rz = m.qw * qz - m.qz * qw - m.qx * qy + m.qy * qx;
+    const perS = 1000 / dt;
+    m.speed = Math.sqrt(dx * dx + dy * dy + dz * dz) * perS;
+    m.rate = 2 * Math.sqrt(rx * rx + ry * ry + rz * rz) * perS;
+  }
+  m.t = t;
+  m.x = x;
+  m.y = y;
+  m.z = z;
+  m.qw = qw;
+  m.qx = qx;
+  m.qy = qy;
+  m.qz = qz;
+  return m;
+}
+
+/*
  * THE HALO AND THE HOP ARE LENGTHS ABOUT THE AIRCRAFT, the same argument
  * DIRT_SPAN makes a hundred lines up, and for the same reason: both were
  * flat five inch numbers applied to a machine a third of the size.

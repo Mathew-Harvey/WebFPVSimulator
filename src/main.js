@@ -87,7 +87,7 @@ import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './shar
 import { uploadWorld, setWorldFrame, setMover, setBoxHeight, kindOf, setVehicleClock, readVehicles, makeVehiclePoses, moverVelocityInPlant } from './game/plantworld.js';
 import { Chase, CHASE_EVERY, pays } from './game/chase.js';
 import { sincos } from './props/trig.js';
-import { setCraftAirframe, CRAFT_R, CRAFT_WORLD_R, CRAFT_V_UP, CRAFT_V_DOWN, craftVerticalHalf, craftVerticalOffset, canPerch, heldStill, STUCK_SPEED, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, TURTLE_EXIT_UPZ, turtleClearance, findRestSpot, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, CLIP_SPAWN_GRACE_MS, CrashJudge, putDullBounce, emptyWorldReport, foldWorldReport } from './game/collide.js';
+import { setCraftAirframe, CRAFT_R, CRAFT_WORLD_R, CRAFT_V_UP, CRAFT_V_DOWN, craftVerticalHalf, craftVerticalOffset, canPerch, heldStill, STUCK_SPEED, makeStillMeter, stillMeterStep, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, TURTLE_EXIT_UPZ, turtleClearance, findRestSpot, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, CLIP_SPAWN_GRACE_MS, CrashJudge, putDullBounce, emptyWorldReport, foldWorldReport } from './game/collide.js';
 import { Ui, formatTime, WEIGHT_STOCK, clampWeight, gravityScaleFor, loadSettings, pacingTimerOn } from './ui/ui.js';
 import { TAKEOFF, guideKind, stepOf, textOf } from './ui/firstflight.js';
 import {
@@ -6357,17 +6357,29 @@ export async function boot({ loading, bootStart, mapId }) {
    * test, and besideSolid is the solid: within the craft's own swept radius,
    * the reach recoverFrom has to be clear by to be a spot to set it down on.
    * Asked only of a craft that has stopped, so a flight pays nothing for it.
+   *
+   * STILL IS WHERE IT GOT TO, since bug-243d42f7: a whoop wedged between a
+   * mattress and a wall was knocked from face to face at 0.3 m/s, which is
+   * STUCK_SPEED, and so was never still by the speed the plant reported,
+   * while it never left the slot. stillMeter reads the speed and the
+   * rate as the displacement and the turn over a tenth of a second of sim
+   * time (stillMeterStep in src/game/collide.js has the measurement), and is
+   * fed every frame whatever else holds, so it is current when asked.
    */
   const STUCK_MS = 1500;
   const STUCK_TURTLE_MS = 5000;
   let stuckSinceMs = -1;
-  function besideSolid(st) {
-    return plantSpeed(st) < STUCK_SPEED
+  const stillMeter = makeStillMeter();
+  function besideSolid() {
+    return stillMeter.speed < STUCK_SPEED
       && Boolean(view.colliders)
       && view.colliders.gapAt(pCurr.x, pCurr.y, pCurr.z, CRAFT_WORLD_R) < CRAFT_WORLD_R;
   }
   function stuckTick() {
     const st = stateCurr;
+    if (st) {
+      stillMeterStep(stillMeter, simTimeMs, st[1], st[2], st[3], st[7], st[8], st[9], st[10]);
+    }
     const still = mode === 'flight'
       && ui.screen === 'flight'
       && !poseLock
@@ -6376,7 +6388,7 @@ export async function boot({ loading, bootStart, mapId }) {
       && !turtleFlip.active
       && !turtleRecover
       && st
-      && heldStill(plantUpZ(st), plantSpeed(st), plantRateMag(st), besideSolid(st), run3d);
+      && heldStill(plantUpZ(st), stillMeter.speed, stillMeter.rate, besideSolid(), run3d);
     if (!still) {
       stuckSinceMs = -1;
       return;
@@ -14531,6 +14543,10 @@ export async function boot({ loading, bootStart, mapId }) {
     rates: stateCurr
       ? { p: stateCurr[11], q: stateCurr[12], r: stateCurr[13] }
       : null,
+    /* The speed and the rate stuckTick's test reads, which are not the two
+     * above: see stillMeter. Infinity before a window has passed, which a
+     * capture's JSON carries as null, and null is not still. */
+    held: { speed: stillMeter.speed, rate: stillMeter.rate },
     descentRate: lastDescent,
     tiltDeg: lastTiltDeg,
     lastHitKind,
@@ -14938,6 +14954,13 @@ export async function boot({ loading, bootStart, mapId }) {
       speed: st ? r1(plantSpeed(st)) : null,
       at: [r1(shell.quad.position.x), r1(shell.quad.position.y), r1(shell.quad.position.z)],
       stillS: stuckSinceMs >= 0 ? r1((simTimeMs - stuckSinceMs) / 1000) : 0,
+      /* What stuckTick reads as the speed and the rate (stillMeter), which
+       * `speed` above is not: bug-243d42f7 read 0 m/s there while the knock
+       * had it at 0.3 a frame in every few. Null before the first window.
+       * stillS is 0 on a report filed from the pause menu, because stuckTick
+       * clears its clock off the flight screen; this is not, because the
+       * meter runs on the sim clock, which a pause stops. */
+      held: Number.isFinite(stillMeter.speed) ? [r2(stillMeter.speed), r2(stillMeter.rate)] : null,
       setDowns: {
         n: recent.length,
         lastAgoS: last ? Math.round((now - last.atMs) / 1000) : null,

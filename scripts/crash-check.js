@@ -205,6 +205,10 @@ function flyScenario(S) {
         spd: c.speed,
         upY: c.up ? c.up.y : 1,
         rate: c.rates ? Math.hypot(c.rates.p, c.rates.q, c.rates.r) : 0,
+        /* What stuckTick's test reads (stillMeter in src/main.js). Infinity
+         * until a window has passed, which does not survive JSON, and null
+         * would read as 0. */
+        held: [c.held.speed, c.held.rate].map((v) => (Number.isFinite(v) ? v : 1e9)),
         crashed: c.crashed, kind: c.clipCrashKind, landed: c.landed,
         turtle: Boolean(c.turtleWait || c.turtleParked || c.turtleFlip),
         inside: inside(...p),
@@ -334,7 +338,11 @@ function measure(S, rows) {
    * 1.5 rad/s) and not upright (up.y under 0.5), or still, beside a solid
    * and past the perch tilt (bug-6c405527). Beside is the shell's own reach,
    * a solid within the craft's swept radius. The sim clock restarts at a
-   * set down, so a step backwards in `ms` ends a stretch.
+   * set down, so a step backwards in `ms` ends a stretch. Still is the
+   * shell's stillMeter, the speed and the rate stuckTick reads, since
+   * bug-243d42f7: the plant's own speed of a craft the knock rattles
+   * between two faces is 0.3 m/s a frame in every few, so a guard reading
+   * it saw no stuck craft where the page left one for good.
    */
   m.stuckMs = 0;
   m.turtleMs = 0;
@@ -343,7 +351,7 @@ function measure(S, rows) {
   for (let i = 1; i < rows.length; i += 1) {
     const r = rows[i];
     const d = r.ms - rows[i - 1].ms;
-    const still = !r.landed && heldStill(r.upY, r.spd, r.rate, r.gap < CRAFT_WORLD_R, false);
+    const still = !r.landed && heldStill(r.upY, r.held[0], r.held[1], r.gap < CRAFT_WORLD_R, false);
     runStuck = still && !r.turtle && d >= 0 ? runStuck + d : 0;
     runTurtle = still && r.turtle && d >= 0 ? runTurtle + d : 0;
     m.stuckMs = Math.max(m.stuckMs, runStuck);
@@ -409,7 +417,7 @@ function measure(S, rows) {
  */
 function jumpControls() {
   const row = (fr, ms, p, spd) => ({
-    phase: 'fly', fr, ms, p, v: [spd, 0, 0], spd, upY: 1, rate: 0, crashed: false, kind: '',
+    phase: 'fly', fr, ms, p, v: [spd, 0, 0], spd, upY: 1, rate: 0, held: [spd, 0], crashed: false, kind: '',
     landed: spd === 0, turtle: false, inside: 0, gap: 9, fault: false,
   });
   const AT = [5.479, 2.273, 29.312];

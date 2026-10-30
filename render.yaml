@@ -31,11 +31,17 @@ services:
     name: webfpvsimulator
     runtime: static
 
-    # There is no build. This is the assertion that stands in for one: both
-    # files are fetched at boot and a deploy missing either of them serves a
-    # page that dies on a 404 with nothing in the log. Fail here instead,
-    # where it says which file.
-    buildCommand: "test -f dist/sim.wasm && test -f tests/lib/simmod.js"
+    # The assertion first: both files are fetched at boot and a deploy
+    # missing either of them serves a page that dies on a 404 with nothing in
+    # the log. Fail here instead, where it says which file.
+    #
+    # Then the one build step, scripts/minify.js: whitespace and dead syntax
+    # out of src, configs and tests/lib/simmod.js, on the host's copy only,
+    # names untouched. The headline cost of a visit is these files, 4.2 MB
+    # gzipped for a cold town load against 2.4 MB minified. esbuild is
+    # installed for this step alone, pinned, and never shipped. A file it
+    # cannot parse fails the deploy rather than reaching a visitor.
+    buildCommand: "test -f dist/sim.wasm && test -f tests/lib/simmod.js && npm install --no-save --no-package-lock esbuild@0.25.9 && node scripts/minify.js --in-place"
 
     # The whole tree, because the page reaches across it at boot:
     # ../dist/sim.wasm, ./maps/city/... and ../tests/lib/simmod.js, which

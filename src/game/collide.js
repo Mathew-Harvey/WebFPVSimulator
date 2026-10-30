@@ -3252,6 +3252,59 @@ export const TURTLE_WAIT_RATE = 1.0;
 export const TURTLE_FLIP_MS = 380;
 
 /*
+ * HELD STILL BY SOMETHING, the pose half of stuckTick in src/main.js, which
+ * sets a craft down nearby once this has been true for STUCK_MS of sim time.
+ * Still is under STUCK_SPEED and STUCK_RATE, as it always was there.
+ *
+ * Past 60 degrees from level (TURTLE_EXIT_UPZ) still is the whole test,
+ * because a craft that far over cannot hold still in the air: if it is
+ * still, something is holding it. In 3D, within 60 degrees of flat on its
+ * back is its other base and is left alone, as one on its belly is.
+ *
+ * LEANING ON A SOLID, since 2026-10-29, bug-6c405527: "Whenever I hit a wall,
+ * i sometimes glitch in and get stuck, forcing me to start over". Its report
+ * had the craft 0.1 m up at the foot of a wall, 52 degrees over (upZ 0.62),
+ * at 0 m/s, not landed, the sticks centred and the keyboard holding hover.
+ * The 60 degree test never saw it, so nothing set it down, and nothing the
+ * pilot could do got it out: flown through the real plant into a wall from
+ * a low hover, the craft wedges in the corner of the wall and the ground,
+ * where pitching either way drives a blade into one of the two faces and the
+ * thrust presses it into the wall. Full pitch back with full throttle for a
+ * second moves it under 5 mm (scripts/wallpin-check.js). Past the perch's own
+ * tilt a craft cannot hold still in the air either, so the same argument
+ * holds from LAND_TILT_MAX_DEG, but only beside a solid: that is what is
+ * holding it. It keeps an upright craft pressed to a ceiling or a wall out of
+ * this, which a pilot flies away from, and a craft resting on a steep
+ * hillside, which the ground plane tilts under and which takes off again.
+ *
+ * BESIDE, NOT TOUCHING. onSolid is a solid within the craft's own swept
+ * radius of its centre, the same reach the shell's set down spot has to be
+ * clear by, and not the plant's contact report. A wedged craft rests on the
+ * ground's two contacts and meets the wall only now and then: measured on
+ * that crash, 336 of 2000 steps, and once nothing for 544 ms while it sat
+ * still against it. Asked by contact, the clock broke on every gap.
+ *
+ * STUCK_LEAN_UPZ is cos(LAND_TILT_MAX_DEG) written as a number, so the test
+ * is the same comparison on every engine; wallpin-check holds the two
+ * together.
+ */
+export const STUCK_SPEED = 0.3;   /* m/s */
+export const STUCK_RATE = 1.5;    /* rad/s */
+export const STUCK_LEAN_UPZ = 0.9063;
+
+export function heldStill(upz, speed, rateMag, onSolid, threeD) {
+  if (!(speed < STUCK_SPEED) || !(rateMag < STUCK_RATE)) {
+    return false;
+  }
+  /* How upright it is on a base it can fly from: in 3D either face is one. */
+  const base = threeD ? Math.abs(upz) : upz;
+  if (base < TURTLE_EXIT_UPZ) {
+    return true;
+  }
+  return Boolean(onSolid) && base < STUCK_LEAN_UPZ;
+}
+
+/*
  * THE HALO AND THE HOP ARE LENGTHS ABOUT THE AIRCRAFT, the same argument
  * DIRT_SPAN makes a hundred lines up, and for the same reason: both were
  * flat five inch numbers applied to a machine a third of the size.

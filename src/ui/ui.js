@@ -14911,6 +14911,13 @@ export class Ui {
           this.armRoomGame(world, entry, hp.game);
           return;
         }
+        /* The Quad Ball arena hosted from its map card, with no game asked
+         * for, is still Quad Ball: a room on it with no ball is an empty
+         * stadium. Same pages as the mini games page (owner, 2026-10-30). */
+        if (!(hp && hp.move) && !(hp && hp.game) && entry.item && entry.item.action === 'map:ball') {
+          this.armRoomGame(world, entry, 'ball', Boolean(hp));
+          return;
+        }
         this.onFlyTogether(hp && hp.move ? { ...world, move: true } : hp && hp.game ? { ...world, game: hp.game } : world);
       }
       return;

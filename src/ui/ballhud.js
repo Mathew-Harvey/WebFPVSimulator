@@ -250,7 +250,7 @@ export class BallHud extends DogfightHud {
       this.scoreMe.textContent = score;
     }
     const ms = g.roundMs ? g.leftMs() : -1;
-    const clock = g.overtime ? 'OVERTIME' : (ms >= 0 ? clockText(ms) : `FIRST TO ${g.goalsToWin}`);
+    const clock = g.overtime ? 'OVERTIME' : (ms >= 0 ? clockText(ms) : (g.ballRules.practice ? 'PRACTICE' : `FIRST TO ${g.goalsToWin}`));
     if (L.clock !== clock) {
       L.clock = clock;
       this.scoreClock.textContent = clock;
@@ -274,6 +274,8 @@ export class BallHud extends DogfightHud {
           ? 'Press G or the pause menu to start the match. Push the ball into their goal.'
           : 'The host starts each match. Push the ball into their goal.';
       }
+    } else if (!g.over && g.startedMs < 0 && g.ballRules.practice) {
+      banner = 'Take off to kick off. Just you and the ball: no clock, no bots. Hit it into the east goal.';
     } else if (!g.over && g.startedMs < 0) {
       const n = g.ballRules.size;
       banner = `Take off to kick off. ${n} a side, you are ${TEAM_NAMES[mine]}. Hit the ball into the ${mine === 0 ? 'east' : 'west'} goal.`;

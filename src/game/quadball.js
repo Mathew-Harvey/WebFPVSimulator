@@ -85,6 +85,8 @@ export const GOAL_MS = 3200;
 
 /* Rounds: 'ms' the clock, 'goals' the target, 0 for none. */
 export const BALL_ROUNDS = {
+  /* Practice: no clock and no target, the ball only kicked off again. */
+  free: { ms: 0, goals: 0 },
   '3m': { ms: 180000, goals: 0 },
   '5m': { ms: 300000, goals: 0 },
   first5: { ms: 0, goals: 5 },
@@ -113,18 +115,23 @@ export const BALL_BOTS = {
 export function normaliseBallRules(raw) {
   const r = raw && typeof raw === 'object' ? raw : {};
   const has = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+  /* Practice is the arena flown as freestyle: the pilot and the ball and
+   * nobody else, no clock. It is never asked for by a page, only by the
+   * shell when the map is flown without a match (src/main.js). */
+  const practice = r.practice === true;
   return {
     game: 'ball',
-    size: BALL_SIZES.includes(r.size) ? r.size : 2,
+    practice,
+    size: practice ? 1 : (BALL_SIZES.includes(r.size) ? r.size : 2),
     skill: has(SKILLS, r.skill) ? r.skill : 'rookie',
-    round: has(BALL_ROUNDS, r.round) ? r.round : '3m',
+    round: practice ? 'free' : (has(BALL_ROUNDS, r.round) && r.round !== 'free' ? r.round : '3m'),
   };
 }
 
 /* The dogfight underneath: 2v2 is the pilot and three bots. */
 function underneath(r) {
   return {
-    bots: Math.min(MAX_BOTS, r.size * 2 - 1), skill: r.skill, round: 'none', hits: 'arcade',
+    bots: r.practice ? 0 : Math.min(MAX_BOTS, r.size * 2 - 1), skill: r.skill, round: 'none', hits: 'arcade',
   };
 }
 

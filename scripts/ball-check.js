@@ -84,8 +84,17 @@ async function main() {
     await answerQuadPicker(page, 60000).catch(() => {});
     await until("return window.__ui.screen === 'flight'", 20000);
     await shot('arena');
+    /* FREESTYLE: the arena flown from the map picker with no match asked
+     * for has the ball and nobody else (owner, 2026-10-30: "no ball to
+     * punt around"), and the pilot stands ON the pitch, not in it. */
+    check('flown with no match, the ball is there anyway', await until('return Boolean(window.__dogfight())', 30000));
+    check('as practice: the pilot and no bots', await ev(`${G} return g.ballRules.practice === true && g.inFight.reduce((a, v) => a + v, 0) === 1 && g.roundMs === 0;`));
+    check('the ball is held at the middle of the pitch', await ev(`${G} return Math.abs(g.ball.x) < 0.01 && g.ball.y > 2;`));
+    const stand = await ev('const q = window.__ground(); return { y: q.y, surf: q.surf, rest: q.rest };');
+    check('the pitch is the floor: 6 cm up', Math.abs(stand.surf - 0.06) < 0.005, JSON.stringify(stand));
+    check('the five inch rests on it, not in it', stand.y >= stand.surf + stand.rest * 0.9, JSON.stringify(stand));
     await ev("window.__ui.dogfight = { game: 'ball', size: 2, skill: 'pilot', round: '3m' }; return 1;");
-    check('the match is built once its modules land', await until('return Boolean(window.__dogfight())', 30000));
+    check('the match replaces the practice', await until(`${G} return Boolean(g) && g.ballRules.practice === false && g.ballRules.size === 2;`, 30000));
     check('it is Quad Ball', await ev(`${G} return g.ballRules.size === 2 && g.inFight.reduce((a, v) => a + v, 0) === 4;`));
     check('the arena came from the map', await ev(`${G} return g.arena && g.arena.hx === 55;`));
     check('the HUD is up', await until("const h = document.querySelector('.df-hud'); return Boolean(h) && !h.classList.contains('is-off');", 10000));
@@ -131,7 +140,9 @@ async function main() {
     const errs = page.errors.filter((e) => !/api\/|ERR_CONNECTION_REFUSED|Failed to load resource/.test(e));
     check('no page errors', errs.length === 0, errs.slice(0, 2).join(' | '));
     await ev("window.__ui.act('pause'); window.__ui.act('fight-leave'); return 1;");
-    check('leaving ends the match', await until('return window.__dogfight() === null', 5000));
+    /* Leaving a match lands on the arena as freestyle has it: the ball and
+     * the pilot, not an empty stadium. */
+    check('leaving ends the match, back to practice', await until(`${G} return Boolean(g) && g.ballRules.practice === true;`, 5000));
   } finally {
     await page.close();
   }

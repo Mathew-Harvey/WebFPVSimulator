@@ -2637,22 +2637,26 @@
       .gate-card-mp-find { grid-area: find; }
       .gate-card-mp-code { grid-area: code; }
       .gate-card-mp-pilot { grid-area: pilot; }
-      /* The mini games page: the switch across the top, then the dogfight
-         two rows tall beside ribbons and goats, and the drift strip under
-         them, as the mockup set it. */
+      /* The mini games page: the switch across the top, then the six games
+         in two rows of three. Every card needs a name here: one without
+         lands in an implicit row, and Quad Ball and Ridgeline MX were
+         there for a day, squashed to a line nobody could see (2026-10-30,
+         scripts/minigames-check.js reads the boxes, not the list). */
       .gate-page-games .gate-grid {
         grid-template-columns: repeat(12, minmax(0, 1fr));
         grid-template-rows: auto repeat(2, minmax(0, 1fr));
         grid-template-areas:
           "sw sw sw sw sw sw sw sw sw sw sw sw"
-          "dog dog dog dog dog rib rib rib rib goat goat goat"
-          "dog dog dog dog dog drift drift drift drift drift drift drift";
+          "dog dog dog dog rib rib rib rib goat goat goat goat"
+          "drift drift drift drift ball ball ball ball moto moto moto moto";
       }
       .gate-card-mg-switch { grid-area: sw; }
       .gate-card-mg-dogfight { grid-area: dog; }
       .gate-card-mg-ribbon { grid-area: rib; }
       .gate-card-mg-goats { grid-area: goat; }
       .gate-card-mg-drift { grid-area: drift; }
+      .gate-card-mg-ball { grid-area: ball; }
+      .gate-card-mg-moto { grid-area: moto; }
       .gate-card.gate-card-mg-switch {
         align-items: center; gap: 0;
         padding: 0; background: var(--gc-ink); box-shadow: 5px 5px 0 var(--gc-ink);
@@ -2677,8 +2681,10 @@
       .gate-chip.is-bots { background: var(--mint); }
       .gate-chip.is-friends { background: var(--gc-ink); color: var(--cream); border-color: var(--cream); }
       .gp-ribbon { right: 3%; top: 4%; width: 46%; max-width: 300px; }
-      .gate-card-mg-dogfight .gp-dog { left: 8%; top: 18%; width: 70%; }
-      .gate-card-mg-dogfight .gp-dog-sfx, .gate-card-games .gp-dog-sfx { top: 12%; }
+      /* In a card a third of the page wide, the quad rides the right half,
+         clear of the title and caption on the left. */
+      .gate-card-mg-dogfight .gp-dog { left: auto; right: 4%; top: 6%; width: 46%; }
+      .gate-card-mg-dogfight .gp-dog-sfx, .gate-card-games .gp-dog-sfx { top: 12%; left: 52%; }
       .gate-card {
         position: relative;
         min-width: 0;

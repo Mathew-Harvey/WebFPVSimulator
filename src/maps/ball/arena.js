@@ -124,6 +124,15 @@ export function ballLayout() {
    * plinth that runs out under the stands. */
   P.box('concreteDark', -FIELD_W / 2 + 1, 0, -FIELD_D / 2 + 1, FIELD_W / 2 - 1, 0.03, FIELD_D / 2 - 1, { solid: false, cast: false, name: 'plinth' });
   P.box('qbPitch', -A.hx - A.gd, 0.03, -A.hz, A.hx + A.gd, 0.05, A.hz, { solid: false, cast: false, name: 'pitch' });
+  /* The ground a quad stands on. The layers above are drawn and not solid,
+   * and the last of them tops out at 6 cm: a five inch rests with its
+   * centre at 3 cm and a whoop at 1 cm, so a pilot lifted off the pad
+   * half sunk in the turf (owner, 2026-10-30). One solid slab, undrawn,
+   * level with the top layer, puts the floor the plant and the shell read
+   * where the pitch is drawn. */
+  P.box('concreteDark', -FIELD_W / 2 + 1, 0, -FIELD_D / 2 + 1, FIELD_W / 2 - 1, 0.06, FIELD_D / 2 - 1, {
+    draw: false, cast: false, name: 'floor',
+  });
   /* Mown stripes: every other band across the length. */
   const bands = 18;
   const bw = (2 * (A.hx + A.gd)) / bands;

@@ -297,6 +297,29 @@ async function sceneMenu() {
     check('Mini games turns to its page', await until("return window.__ui.gatePageNow() === 'games'", 5000));
     const cards = await ev("return window.__ui.items().map((i) => i.card).join(',')");
     check('with the switch and six games', cards === 'mg-switch,mg-dogfight,mg-ribbon,mg-goats,mg-drift,mg-ball,mg-moto', cards);
+    /* The list above is the page's model, which the grid can hide a card
+     * from: Quad Ball and Ridgeline MX were in it for a day with no grid
+     * area, and sat in an implicit row nobody could see (2026-10-30). So
+     * the cards are read where they are drawn: every one has a real size
+     * and lies inside the window, at the two sizes a pilot has. */
+    const drawn = `const out = []; for (const e of document.querySelectorAll('.gate-card')) { const m = [...e.classList].map((c) => /^gate-card-(mg-[a-z]+)$/.exec(c)).find(Boolean); if (!m) continue; const r = e.getBoundingClientRect(); out.push(m[1] + ':' + (r.width >= 120 && r.height >= 30 && r.left >= -1 && r.top >= -1 && r.right <= innerWidth + 2 && r.bottom <= innerHeight + 2 ? 'ok' : 'hidden ' + [r.left, r.top, r.right, r.bottom].map(Math.round).join('/'))); } return out.join(' ');`;
+    const wanted = 'mg-switch,mg-dogfight,mg-ribbon,mg-goats,mg-drift,mg-ball,mg-moto'.split(',');
+    for (const [w, h] of [[1280, 720], [1024, 600]]) {
+      await page.cdp.send('Emulation.setDeviceMetricsOverride', {
+        width: w, height: h, deviceScaleFactor: 1, mobile: false,
+      }, page.sessionId);
+      /* The page turn has to be over: mid turn the cards are tilted and
+       * their boxes are wider than the window. */
+      await sleep(800);
+      let got = await ev(drawn);
+      for (let t = 0; t < 16 && !wanted.every((id) => got.includes(`${id}:ok`)); t += 1) {
+        await sleep(500);
+        got = await ev(drawn);
+      }
+      check(`all seven cards are drawn inside the window at ${w}x${h}`, wanted.every((id) => got.includes(`${id}:ok`)), got);
+    }
+    await page.cdp.send('Emulation.clearDeviceMetricsOverride', {}, page.sessionId);
+    await sleep(300);
     const play = async (card, friends) => {
       await ev(`const u = window.__ui; if (Boolean(u.gameFriends) !== ${friends}) u.act('mg-friends'); u.setCursor(u.items().findIndex((i) => i.card === '${card}')); u.select(); return 1;`);
     };

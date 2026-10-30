@@ -2332,6 +2332,11 @@ export async function boot({ loading, bootStart, mapId }) {
   const ROOM_GOATS_RULES = Object.freeze({ game: 'goats', room: true });
   const ROOM_DRIFT_RULES = Object.freeze({ game: 'drift', room: true });
   const ROOM_BALL_RULES = Object.freeze({ game: 'ball', room: true });
+  /* The arena flown from the map picker with no match asked for: the ball,
+   * kicked off, and nobody else (src/game/quadball.js, practice). Owner,
+   * 2026-10-30: "when i choose freestyle and chose the quad ball map as a
+   * place to fly there is no ball to punt around". */
+  const FREE_BALL_RULES = Object.freeze({ game: 'ball', practice: true });
   /* What the room pump last gave a DogfightRoom of the bot seats. */
   let fightSeats = null;
   let fightBots = null;
@@ -2608,7 +2613,7 @@ export async function boot({ loading, bootStart, mapId }) {
     const roomRibbon = roomGame === 'ribbon';
     const rules = roomGame
       ? ({ ribbon: ROOM_RIBBON_RULES, dogfight: ROOM_DOGFIGHT_RULES, goats: ROOM_GOATS_RULES, drift: ROOM_DRIFT_RULES, ball: ROOM_BALL_RULES })[roomGame]
-      : ui.dogfight;
+      : (ui.dogfight || (view && view.ballGame && !ui.roomInfo ? FREE_BALL_RULES : null));
     /* Goat herding's round is the goat map's, and nowhere else. */
     const herdable = !rules || rules.game !== 'goats' || Boolean(view && view.goatGame);
     /* Drift Matsuri's is the drift map's, its judge and its cars. */

@@ -139,6 +139,36 @@ console.log('a hit');
   check(g.touches[ME] >= 1 && g.lastTouch === ME, 'the touch is the pilot\'s', `${g.touches[ME]}`);
 }
 
+console.log('practice');
+{
+  /* The arena flown with no match: the pilot and the ball, no bots, no
+   * clock. It is how the map plays from the picker (src/main.js). */
+  const r = normaliseBallRules({ practice: true, size: 3, round: '5m' });
+  check(r.practice === true && r.size === 1 && r.round === 'free', 'practice rules ignore the size and the round');
+  check(normaliseBallRules({ round: 'free' }).round === '3m', 'a match cannot ask for the practice clock');
+  const g = new BallRound(world(), { practice: true }, 3);
+  check(g.inFight.reduce((a, v) => a + v, 0) === 1 && g.team[ME] === 0, 'the pilot is alone, on pink');
+  check(g.roundMs === 0 && g.goalsToWin === 0, 'with no clock and no target');
+  const me = (x) => ({
+    x, y: 1.6, z: 0, fx: 1, fy: 0, fz: 0, ux: 0, uy: 1, uz: 0, flying: true, gun: false, missile: false,
+  });
+  for (let i = 0; i < KICK_MS / 10 + 20; i += 1) {
+    g.step(me(-30), i === 0);
+  }
+  check(g.inPlay, 'the ball goes live after taking off');
+  const before = g.teamScore[0] + g.teamScore[1];
+  g.ball.x = 44; g.ball.y = 3; g.ball.z = 0; g.ball.vx = 30; g.ball.vy = 0; g.ball.vz = 0;
+  for (let i = 0; i < 2000; i += 1) {
+    g.step(me(-30), false);
+  }
+  check(g.teamScore[0] + g.teamScore[1] === before + 1, 'a goal counts once', `${g.teamScore[0]}-${g.teamScore[1]}`);
+  check(!g.over && Math.abs(g.ball.x) < ARENA.hx, 'and the match goes on, the ball kicked off again', `over ${g.over} x ${g.ball.x}`);
+  for (let i = 0; i < 60000; i += 1) {
+    g.step(me(-30), false);
+  }
+  check(!g.over, 'ten minutes later it has not ended');
+}
+
 console.log('a bots\' match');
 function match(seed, size, skill) {
   const g = new BallRound(world(), { size, skill, round: '3m' }, seed);

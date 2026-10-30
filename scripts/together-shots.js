@@ -4592,7 +4592,11 @@ async function sceneQuickBall() {
   console.log('\nquickball: two pilots meet in a Quad Ball quick match');
   const G = 'window.__dogfight && window.__dogfight()';
   const quick = async (page) => {
-    await page.evaluate("(() => { window.__ui.pickerShelfChosen('maps'); return 1; })()");
+    /* Through the cover's Fly solo and its Freestyle maps, as a pilot
+     * reaches the cards: the gate answered, then the shelf. A shelf opened
+     * straight off the cover leaves the gate up, and the room's flight
+     * into the stadium then waits on the cover for an answer. */
+    await page.evaluate("(() => { const u = window.__ui; if (u.onGate()) { u.craftGate = false; u.settings.airframeAsked = true; } u.pickerShelfChosen('maps'); return 1; })()");
     await page.until('window.__ui.pickerLib', 60000);
     await wait(600);
     await page.evaluate("(() => { const u = window.__ui; u.pickerAction('fly', u.pickerEntries().find((e) => e.item && e.item.action === 'map:ball')); return 1; })()");

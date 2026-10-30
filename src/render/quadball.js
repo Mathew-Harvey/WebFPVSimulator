@@ -191,17 +191,20 @@ export class BallView extends DogfightView {
     const z = p.z * u + b.z * t;
     this.ball.position.set(x, y, z);
     this.ball.scale.setScalar(R);
-    /* Roll: turn about up x velocity at the speed a rolling ball would. */
+    /* Spin: the physics' own, so a ball rolls when it rolls, skids when it
+     * skids and turns in the air as it was hit. A guest's ball is spun by
+     * its own copy of the arena, not the host's, so a hit made on another
+     * page shows a plain ball until it touches something. */
     const dt = Math.min(dtMs, 50) / 1000;
     this.vel.set(b.vx, b.vy, b.vz);
     const sp = this.vel.length();
-    if (sp > 0.05 && dt > 0) {
-      this.axis.crossVectors(this.up, this.vel).normalize();
-      if (this.axis.lengthSq() > 0.5) {
-        this.turn.setFromAxisAngle(this.axis, (sp / R) * dt);
-        this.spin.premultiply(this.turn);
-        this.ball.quaternion.copy(this.spin);
-      }
+    this.axis.set(b.wx || 0, b.wy || 0, b.wz || 0);
+    const w = this.axis.length();
+    if (w > 0.02 && dt > 0) {
+      this.axis.multiplyScalar(1 / w);
+      this.turn.setFromAxisAngle(this.axis, w * dt);
+      this.spin.premultiply(this.turn);
+      this.ball.quaternion.copy(this.spin);
     }
     /* The shadow on the floor, smaller and fainter the higher it is. */
     const floor = (g.arena && g.arena.floor) || 0;

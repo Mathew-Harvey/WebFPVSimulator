@@ -330,6 +330,9 @@ export class BallRoom extends DogfightRoom {
         b.vx = 0;
         b.vy = 0;
         b.vz = 0;
+        b.wx = 0;
+        b.wy = 0;
+        b.wz = 0;
         this.goalWait = true;
         this.goalWaitAt = now;
         if (this.host && !this.over) {
@@ -352,6 +355,9 @@ export class BallRoom extends DogfightRoom {
       this.ball.vx = 0;
       this.ball.vy = 0;
       this.ball.vz = 0;
+      this.ball.wx = 0;
+      this.ball.wy = 0;
+      this.ball.wz = 0;
     }
   }
 

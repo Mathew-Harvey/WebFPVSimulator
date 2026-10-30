@@ -107,6 +107,131 @@ console.log('arena');
   check(side === 0, 'a ball over the lintel is not a goal', `${side}`);
 }
 
+console.log('ball physics');
+{
+  const R = 1.5;
+  const ke = (b) => 0.5 * (b.vx * b.vx + b.vy * b.vy + b.vz * b.vz)
+    + 0.2 * R * R * ((b.wx || 0) ** 2 + (b.wy || 0) ** 2 + (b.wz || 0) ** 2);
+  /* Energy: no contact makes any (gravity off, one tick on each surface). */
+  const flat = { ...ARENA };
+  let worst = 0;
+  const probes = [
+    { x: 0, y: R - 0.01, z: 0, vx: 9, vy: -14, vz: 4, wx: 3, wy: 1, wz: -8 },
+    { x: 0, y: 8, z: ARENA.hz - R + 0.01, vx: 12, vy: 2, vz: 15, wx: 0, wy: 5, wz: 0 },
+    { x: ARENA.hx - R + 0.01, y: 8, z: ARENA.gw + 3, vx: 25, vy: -1, vz: 3, wx: 6, wy: 0, wz: 2 },
+    { x: ARENA.hx - R * 0.5, y: ARENA.gh - 1, z: 2, vx: 20, vy: 5, vz: 0, wx: 0, wy: 0, wz: 0 },
+  ];
+  for (const p0 of probes) {
+    const b = { ...p0 };
+    const before = ke(b);
+    arenaStep(b, R, 1, flat, 0.0001);
+    worst = Math.max(worst, ke(b) - before);
+  }
+  check(worst < 0.01, 'a contact never makes energy', `${worst}`);
+}
+{
+  /* A ball landing on a skid grips and rolls: it ends rolling, not sliding. */
+  const b = ball({ y: 1.7, vx: 14, vy: -6 });
+  for (let i = 0; i < 700; i += 1) {
+    arenaStep(b, 1.5, 1, ARENA, 0.01);
+  }
+  const slip = Math.abs(b.vx + 1.5 * b.wz);
+  check(b.y < 1.51 && slip < 0.6, 'a skidding landing grips and rolls', `slip ${slip}, vx ${b.vx}, wz ${b.wz}`);
+  check(b.vx > 0 && b.vx < 14, 'and slows', `${b.vx}`);
+}
+{
+  /* A glance off the side wall spins the ball and keeps most of the run. */
+  const b = ball({ y: 6, z: ARENA.hz - 4, vz: 12, vx: 15 });
+  for (let i = 0; i < 80; i += 1) {
+    arenaStep(b, 1.5, 1, ARENA, 0.01);
+  }
+  check(b.vz < 0 && Math.hypot(b.wx, b.wy, b.wz) > 1, 'a glancing wall hit leaves spin', `${b.vz} ${Math.hypot(b.wx, b.wy, b.wz)}`);
+  check(b.vx > 8, 'and most of the run along the wall', `${b.vx}`);
+}
+{
+  /* A dropped ball comes to rest in a few seconds and does not chatter. */
+  const b = ball({ y: 9 });
+  let still = -1;
+  for (let i = 0; i < 2000; i += 1) {
+    arenaStep(b, 1.5, 1, ARENA, 0.01);
+    if (still < 0 && b.vy === 0 && b.y < 1.51) {
+      still = i;
+    }
+  }
+  check(still > 0 && still < 600, 'a dropped ball settles within six seconds', `${still}`);
+  check(b.y >= 1.5 - 1e-9 && b.y < 1.51, 'and rests on the floor', `${b.y}`);
+}
+{
+  /* The posts: straight at one from the pitch comes back, and is no goal. */
+  const R = 1.5;
+  let side = 0;
+  const b = ball({ x: 52, y: 3, z: ARENA.gw + 0.4, vx: 30 });
+  for (let i = 0; i < 100; i += 1) {
+    side = arenaStep(b, R, 1, ARENA, 0.01) || side;
+  }
+  check(side === 0 && b.vx < 0, 'a ball at the outside of a post bounces back', `${side} ${b.vx}`);
+  /* Clipping the inside of it is deflected into the goal's own side. */
+  const c = ball({ x: 52.5, y: 3, z: ARENA.gw - 0.5, vx: 30 });
+  let hit = 0;
+  let minX = 99;
+  for (let i = 0; i < 6; i += 1) {
+    hit = arenaStep(c, R, 1, ARENA, 0.01) || hit;
+    minX = Math.min(minX, c.vz);
+  }
+  check(c.vz < -1, 'a ball scraping the inside of a post is turned in, off it', `${c.vz} ${hit} ${minX}`);
+  /* The crossbar. */
+  const d = ball({ x: 52, y: ARENA.gh + 0.2, z: 0, vx: 30 });
+  let over = 0;
+  for (let i = 0; i < 120; i += 1) {
+    over = arenaStep(d, R, 1, ARENA, 0.01) || over;
+  }
+  check(over === 0, 'a ball on the crossbar is no goal', `${over}`);
+  const e = ball({ x: 52.5, y: ARENA.gh - 1.0, z: 0, vx: 30, vy: 4 });
+  let down = 99;
+  for (let i = 0; i < 12; i += 1) {
+    arenaStep(e, R, 1, ARENA, 0.01);
+    down = Math.min(down, e.vy);
+  }
+  check(down < -2, 'a ball under the bar is knocked down by it', `${down}`);
+  /* And dead centre is a goal still. */
+  const f = ball({ x: 40, y: 4, z: 0, vx: 30 });
+  let g = 0;
+  for (let i = 0; i < 100 && !g; i += 1) {
+    g = arenaStep(f, R, 1, ARENA, 0.01);
+  }
+  check(g === 1, 'a ball down the middle is still a goal', `${g}`);
+}
+{
+  /* Fuzz: thousands of launches stay finite, inside the arena and under
+   * the speed cap. A seeded generator, no Math.random. */
+  let seed = 12345;
+  const rnd = () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  let bad = '';
+  for (let n = 0; n < 400 && !bad; n += 1) {
+    const b = ball({
+      x: (rnd() - 0.5) * 100, y: 2 + rnd() * 15, z: (rnd() - 0.5) * 40,
+      vx: (rnd() - 0.5) * 80, vy: (rnd() - 0.5) * 60, vz: (rnd() - 0.5) * 80,
+      wx: (rnd() - 0.5) * 40, wy: (rnd() - 0.5) * 40, wz: (rnd() - 0.5) * 40,
+    });
+    for (let i = 0; i < 1500 && !bad; i += 1) {
+      const side = arenaStep(b, 1.5, 1, ARENA, 0.01);
+      if (side) {
+        b.x = 0; b.y = 8; b.z = 0;
+      }
+      const sp = Math.hypot(b.vx, b.vy, b.vz);
+      if (![b.x, b.y, b.z, b.vx, b.vy, b.vz, b.wx, b.wy, b.wz].every(Number.isFinite)
+        || sp > BALL.top + 1e-6 || b.y < 1.5 - 1e-9 || Math.abs(b.z) > ARENA.hz
+        || Math.abs(b.x) > ARENA.hx + ARENA.gd) {
+        bad = `launch ${n} step ${i}: ${JSON.stringify(b)}`;
+      }
+    }
+  }
+  check(bad === '', 'four hundred wild launches stay finite, inside, and under the cap', bad);
+}
+
 console.log('rules');
 {
   const r = normaliseBallRules({ size: 9, skill: 'x', round: 'y' });
@@ -130,13 +255,37 @@ console.log('a hit');
   g.ball.x = 0; g.ball.y = 1.6; g.ball.z = 0; g.ball.vx = 0; g.ball.vy = 0; g.ball.vz = 0;
   let x = -8;
   let top = 0;
+  let first = -2;
   for (let i = 0; i < 80; i += 1) {
     x += 0.2;
     g.step(me(x), false);
     top = Math.max(top, g.ball.vx);
+    if (first === -2 && g.touches[ME] >= 1) {
+      first = g.lastTouch;
+    }
   }
   check(top > 20, 'a quad at 20 m/s sends the ball away faster than that', `${top}`);
-  check(g.touches[ME] >= 1 && g.lastTouch === ME, 'the touch is the pilot\'s', `${g.touches[ME]}`);
+  check(g.touches[ME] >= 1 && first === ME, 'the touch is the pilot\'s', `${g.touches[ME]}`);
+}
+
+console.log('a soft touch');
+{
+  const g = new BallRound(world(), { size: 1 }, 7);
+  const me = (x) => ({
+    x, y: 1.6, z: 0, fx: 1, fy: 0, fz: 0, ux: 0, uy: 1, uz: 0, flying: true, gun: false, missile: false,
+  });
+  for (let i = 0; i < KICK_MS / 10 + 20; i += 1) {
+    g.step(me(-30), i === 0);
+  }
+  g.ball.x = 0; g.ball.y = 1.6; g.ball.z = 0; g.ball.vx = 0; g.ball.vy = 0; g.ball.vz = 0;
+  let x = -2.5;
+  let top = 0;
+  for (let i = 0; i < 80; i += 1) {
+    x += 0.03;
+    g.step(me(x), false);
+    top = Math.max(top, g.ball.vx);
+  }
+  check(top > 0.5 && top < 6, 'a quad at 3 m/s nudges the ball and does not punt it', `${top}`);
 }
 
 console.log('practice');

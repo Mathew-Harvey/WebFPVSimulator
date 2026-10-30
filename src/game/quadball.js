@@ -76,6 +76,20 @@ export const BALL = {
   push: 1.55,
   carry: 0.18,
   top: 46,
+  /* Surface grip: the share of a bounce's normal impulse a surface can give
+   * back sideways, which is what turns a skid into a roll and a glance into
+   * spin. The grass, the walls, and a quad's frame. */
+  muFloor: 0.5,
+  muWall: 0.28,
+  muQuad: 0.3,
+  /* Below this impact speed (metres a second, at scale 1) a bounce is
+   * cushioned toward dead, so the ball settles and does not chatter. */
+  soft: 4,
+  /* Spin lost to the air and to the pivot on the grass, per second. */
+  spinDrag: 0.15,
+  pivot: 1.2,
+  /* A hit's normal is tilted up by this much, so a low touch lifts. */
+  lift: 0.2,
 };
 
 /* How long, ms: the kickoff countdown, the pause for a goal, the pause on
@@ -153,16 +167,91 @@ export function kickoffSpot(A, t, r, k, out) {
 }
 
 /*
- * ONE STEP OF THE BALL against the arena, pure. b: { x, y, z, vx, vy, vz }.
- * R the ball's radius, k the scale, A the arena. Returns 0, or -1 when the
- * ball is wholly in the west goal, +1 in the east.
+ * FRICTION AT A CONTACT, pure. The ball is a solid sphere (I = 2/5 R^2, unit
+ * mass). n points from the surface to the ball's centre, jn is the normal
+ * impulse that was just given, (ux, uy, uz) is the surface's own velocity.
+ * The point of the ball on the surface slides at its velocity less the
+ * surface's; Coulomb friction takes it toward zero, no more than mu * jn,
+ * and the impulse that does it also spins the ball.
+ */
+export function grip(b, R, nx, ny, nz, jn, mu, ux = 0, uy = 0, uz = 0) {
+  const wx = b.wx || 0;
+  const wy = b.wy || 0;
+  const wz = b.wz || 0;
+  let cx = b.vx - ux - R * (wy * nz - wz * ny);
+  let cy = b.vy - uy - R * (wz * nx - wx * nz);
+  let cz = b.vz - uz - R * (wx * ny - wy * nx);
+  const cn = cx * nx + cy * ny + cz * nz;
+  cx -= cn * nx;
+  cy -= cn * ny;
+  cz -= cn * nz;
+  const tm = Math.hypot(cx, cy, cz);
+  if (tm < 1e-9) {
+    return;
+  }
+  /* 2/7 of the slip stops it: a sphere that is also free to spin. */
+  const j = Math.min(tm * (2 / 7), mu * jn) / tm;
+  const sx = -cx * j;
+  const sy = -cy * j;
+  const sz = -cz * j;
+  b.vx += sx;
+  b.vy += sy;
+  b.vz += sz;
+  const f = 2.5 / R;
+  b.wx = wx - f * (ny * sz - nz * sy);
+  b.wy = wy - f * (nz * sx - nx * sz);
+  b.wz = wz - f * (nx * sy - ny * sx);
+}
+
+/*
+ * A BOUNCE off a fixed surface with normal n (toward the ball), restitution
+ * e and grip mu. A hard impact bounces by e; a soft one is cushioned, so a
+ * ball dropped from low settles in a few hops and not a hundred. Returns the
+ * impact speed, 0 for a ball already leaving.
+ */
+function bounce(b, R, k, nx, ny, nz, e, mu) {
+  const vn = b.vx * nx + b.vy * ny + b.vz * nz;
+  if (vn >= 0) {
+    return 0;
+  }
+  const sp = -vn;
+  const soft = BALL.soft * k;
+  const ee = sp >= soft ? e : e * (sp / soft);
+  const jn = sp * (1 + ee);
+  b.vx += nx * jn;
+  b.vy += ny * jn;
+  b.vz += nz * jn;
+  grip(b, R, nx, ny, nz, jn, mu);
+  return sp;
+}
+
+/*
+ * ONE STEP OF THE BALL against the arena, pure. b: { x, y, z, vx, vy, vz }
+ * and, when it has them, wx, wy, wz, its spin in radians a second (a ball
+ * without them gets them). R the ball's radius, k the scale, A the arena.
+ * Returns 0, or -1 when the ball is wholly in the west goal, +1 in the east.
+ *
+ * Every surface is a bounce with grip (above), so a ball landing skidding
+ * grabs and rolls on, a ball kissed off the wall comes away spinning, and
+ * the spin changes the next bounce: the three things a real ball does that
+ * a bare reflection does not. The goal mouth's posts and crossbar are edges
+ * the ball strikes round, not a gap in the wall that clips.
  */
 export function arenaStep(b, R, k, A, dt) {
+  if (b.wx === undefined) {
+    b.wx = 0;
+    b.wy = 0;
+    b.wz = 0;
+  }
   b.vy -= BALL.gravity * k * dt;
   const drag = 1 - BALL.drag * dt;
   b.vx *= drag;
   b.vy *= drag;
   b.vz *= drag;
+  const sd = 1 - BALL.spinDrag * dt;
+  b.wx *= sd;
+  b.wy *= sd;
+  b.wz *= sd;
   b.x += b.vx * dt;
   b.y += b.vy * dt;
   b.z += b.vz * dt;
@@ -177,60 +266,83 @@ export function arenaStep(b, R, k, A, dt) {
   }
   const ax = Math.abs(b.x);
   const sx = b.x < 0 ? -1 : 1;
-  /* Whether the ball is lined up with a goal mouth, with a little give. */
-  const mouth = Math.abs(b.z) <= A.gw - R * 0.55 && b.y <= A.gh - R * 0.55;
+  const sz = b.z < 0 ? -1 : 1;
   const pocket = ax > A.hx;
   /* The floor. */
   const floor = A.floor || 0;
   if (b.y < floor + R) {
     b.y = floor + R;
-    if (b.vy < 0) {
-      b.vy = -b.vy * BALL.floor;
-      if (b.vy < 1.4 * k) {
-        b.vy = 0;
-      }
+    bounce(b, R, k, 0, 1, 0, BALL.floor, BALL.muFloor);
+    if (b.vy < 1.0 * k) {
+      b.vy = 0;
     }
-    if (b.vy === 0) {
-      const f = 1 - BALL.roll * dt;
-      b.vx *= f;
-      b.vz *= f;
+  }
+  if (b.vy === 0 && b.y <= floor + R + 1e-9) {
+    /* On the grass: gravity presses it, so the grass still grips, and a
+     * roll loses a little to the blades, spin and speed together so a roll
+     * stays a roll. */
+    grip(b, R, 0, 1, 0, BALL.gravity * k * dt, BALL.muFloor);
+    const f = 1 - BALL.roll * dt;
+    b.vx *= f;
+    b.vz *= f;
+    b.wx *= f;
+    b.wz *= f;
+    b.wy *= 1 - BALL.pivot * dt;
+    if (b.vx * b.vx + b.vz * b.vz < (0.04 * k) * (0.04 * k)) {
+      b.vx = 0;
+      b.vz = 0;
     }
   }
   /* The ceiling: the arena's, or the pocket's roof. */
   const top = (pocket ? A.gh : A.ceil) - R;
   if (b.y > top) {
     b.y = top;
-    if (b.vy > 0) {
-      b.vy = -b.vy * BALL.roof;
-    }
+    bounce(b, R, k, 0, -1, 0, BALL.roof, BALL.muWall);
   }
   /* The sides: the arena's, or the pocket's narrower ones. */
   const zl = (pocket ? A.gw : A.hz) - R;
   if (b.z > zl) {
     b.z = zl;
-    if (b.vz > 0) {
-      b.vz = -b.vz * BALL.wall;
-    }
+    bounce(b, R, k, 0, 0, -1, BALL.wall, BALL.muWall);
   } else if (b.z < -zl) {
     b.z = -zl;
-    if (b.vz < 0) {
-      b.vz = -b.vz * BALL.wall;
-    }
+    bounce(b, R, k, 0, 0, 1, BALL.wall, BALL.muWall);
   }
-  /* The end walls, unless the ball is lined up with the mouth. */
-  if (ax > A.hx - R && !pocket && !mouth) {
+  /* The end walls, where the centre is outside the mouth. */
+  const inMouth = Math.abs(b.z) < A.gw && b.y < A.gh;
+  if (ax > A.hx - R && ax <= A.hx && !inMouth) {
     b.x = sx * (A.hx - R);
-    if (b.vx * sx > 0) {
-      b.vx = -b.vx * BALL.wall;
+    bounce(b, R, k, -sx, 0, 0, BALL.wall, BALL.muWall);
+  } else if (!pocket && ax > A.hx - R && inMouth) {
+    /* The posts and the crossbar, edges at the end wall's face. ex, ez, ey are the
+     * ball's offset from the edge, ex negative toward the pitch. */
+    const ex = ax - A.hx;
+    const ez = A.gw - Math.abs(b.z);
+    const ey = b.y - A.gh;
+    for (let pass = 0; pass < 2; pass += 1) {
+      const d = pass === 0 ? Math.hypot(ex, ez) : Math.hypot(ex, ey);
+      if (d >= R || d < 1e-9) {
+        continue;
+      }
+      const gx = ex / d;
+      /* Out along the edge's normal to a radius, then bounce off it. */
+      b.x = sx * (A.hx + gx * R);
+      if (pass === 0) {
+        const gz = -ez / d;
+        b.z = sz * (A.gw + gz * R);
+        bounce(b, R, k, sx * gx, 0, sz * gz, BALL.wall, BALL.muWall);
+      } else {
+        const gy = ey / d;
+        b.y = A.gh + gy * R;
+        bounce(b, R, k, sx * gx, gy, 0, BALL.wall, BALL.muWall);
+      }
     }
   }
   /* The back of the pocket. */
   const back = A.hx + A.gd - R;
   if (ax > back) {
     b.x = sx * back;
-    if (b.vx * sx > 0) {
-      b.vx = -b.vx * BALL.wall;
-    }
+    bounce(b, R, k, -sx, 0, 0, BALL.wall, BALL.muWall);
   }
   return Math.abs(b.x) > A.hx + R * 0.9 && b.y <= A.gh ? sx : 0;
 }
@@ -259,7 +371,7 @@ export class BallRound extends Dogfight {
     this.teamScore = new Int32Array(2);
     this.flyer = new BotFlyer(this, { DT, MAX: n });
     this.ball = {
-      x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0,
+      x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, wx: 0, wy: 0, wz: 0,
     };
     this.ballPrev = { x: 0, y: 0, z: 0 };
     this.touchAt = new Float64Array(n);
@@ -350,6 +462,9 @@ export class BallRound extends Dogfight {
     b.vx = 0;
     b.vy = 0;
     b.vz = 0;
+    b.wx = 0;
+    b.wy = 0;
+    b.wz = 0;
     this.ballPrev.x = b.x;
     this.ballPrev.y = b.y;
     this.ballPrev.z = b.z;
@@ -560,9 +675,9 @@ export class BallRound extends Dogfight {
       return;
     }
     const d = Math.sqrt(d2) || 1e-6;
-    const nx = dx / d;
-    const ny = dy / d;
-    const nz = dz / d;
+    let nx = dx / d;
+    let ny = dy / d;
+    let nz = dz / d;
     const rel = (this.vx[i] - b.vx) * nx + (this.vy[i] - b.vy) * ny + (this.vz[i] - b.vz) * nz;
     b.x = this.x[i] + nx * reach;
     b.y = this.y[i] + ny * reach;
@@ -570,10 +685,26 @@ export class BallRound extends Dogfight {
     if (rel <= 0) {
       return;
     }
-    const j = rel * BALL.push;
-    b.vx += nx * j + this.vx[i] * BALL.carry;
-    b.vy += ny * j + this.vy[i] * BALL.carry;
-    b.vz += nz * j + this.vz[i] * BALL.carry;
+    /* A light touch cushions: the ball is trapped and dribbled, not
+     * punted. A hard one gives the full bounce. */
+    const soft = BALL.soft * k * 1.5;
+    const e = BALL.push - 1;
+    const j = rel * (1 + (rel >= soft ? e : e * (rel / soft)));
+    /* The push leans up a little, as a boot under a ball does. */
+    const ln = BALL.lift * (rel >= soft ? 1 : rel / soft);
+    const nl = Math.hypot(nx, ny + ln, nz);
+    nx /= nl;
+    ny = (ny + ln) / nl;
+    nz /= nl;
+    b.vx += nx * j;
+    b.vy += ny * j;
+    b.vz += nz * j;
+    /* The frame drags across the ball's skin: it carries it a little and
+     * puts spin on it, from a glancing hit. */
+    grip(b, R, dx / d, dy / d, dz / d, j, BALL.muQuad, this.vx[i], this.vy[i], this.vz[i]);
+    b.vx += this.vx[i] * BALL.carry;
+    b.vy += this.vy[i] * BALL.carry;
+    b.vz += this.vz[i] * BALL.carry;
     if (now - this.touchAt[i] > 120) {
       this.touches[i] += 1;
       this.event('touch', i, -1, 0, '', b.x, b.y, b.z, rel > 14 * k);
@@ -605,6 +736,9 @@ export class BallRound extends Dogfight {
     this.ball.vx = 0;
     this.ball.vy = 0;
     this.ball.vz = 0;
+    this.ball.wx = 0;
+    this.ball.wy = 0;
+    this.ball.wz = 0;
     this.lastTouch = -1;
     this.lastTouchTeam = -1;
     if (this.overtime || (this.goalsToWin > 0 && this.teamScore[scorer] >= this.goalsToWin)) {
@@ -687,6 +821,9 @@ export class BallRound extends Dogfight {
       this.ball.vx = 0;
       this.ball.vy = 0;
       this.ball.vz = 0;
+      this.ball.wx = 0;
+      this.ball.wy = 0;
+      this.ball.wz = 0;
     }
     if (this.over) {
       return;

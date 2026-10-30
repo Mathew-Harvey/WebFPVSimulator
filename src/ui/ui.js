@@ -10012,7 +10012,7 @@ export class Ui {
         },
         { label: 'Support', action: 'support', note: PATREON_NOTE },
         { label: 'Buy Mat a battery ($5)', action: 'tip', note: TIP_NOTE },
-        ...(wishlistAllowed() ? [{ label: 'Wishlist on Steam', action: 'wishlist', note: STEAM_NOTE }] : []),
+        ...(wishlistAllowed() ? [{ label: 'Wishlist on Steam', action: 'wishlist', note: STEAM_NOTE, rowClass: 'row-steam' }] : []),
         { label: 'Instagram', action: 'instagram', note: INSTAGRAM_NOTE },
         {
           label: 'FPV wiki',

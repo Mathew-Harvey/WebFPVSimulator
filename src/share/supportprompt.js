@@ -35,8 +35,8 @@
  */
 
 import { counting, eventsUrl } from './stats.js';
-import { COFFEE_TIER_URL, steamUrl } from './patreon.js';
-import { wishlistAllowed } from '../steam/edition.js';
+import { COFFEE_TIER_URL, PATREON_MARK, markSvg, wishlistAnchor } from './patreon.js';
+import { batteryIcon, supportArt } from '../ui/gatepages.js';
 
 const SUPPORT_PROMPT_KEY = 'webfpv.support.prompt.v1';
 const SUPPORT_DISABLED_KEY = 'webfpv.support.disabled.v1';
@@ -139,6 +139,16 @@ function recordPromptClick(trigger, target) {
  * it there is no Settings button: the builder has no settings room to
  * open, and a button that only closed the prompt said otherwise. Returns
  * the prompt, on the body, or null when it is not to be shown.
+ *
+ * A MANGA PANEL, NOT A BOX (the owner, 2026-10-30: "totally integrated into
+ * the theme, like a proper manga cartoon panel call out with art and
+ * everything"). It lands on the gate, so it is drawn as one more panel of
+ * that page: a frame in the ink line leaning the way the gate's cards
+ * lean, a burst with the quad and its cup of coffee in it (gatepages.js
+ * draws them, so it is the same hand), the message in a narration box
+ * hung over the panel's edge, and buttons cut like the gate's Back button,
+ * each in its own colour: Patreon's coral, the battery's amber, Steam's
+ * navy. The words are the owner's, unchanged.
  */
 export function showSupportPrompt(trigger, { onSettings = null } = {}) {
   if (!canShowPrompt() || !document.body) {
@@ -152,6 +162,23 @@ export function showSupportPrompt(trigger, { onSettings = null } = {}) {
   prompt.setAttribute('role', 'dialog');
   prompt.setAttribute('aria-label', 'Support WebFPV');
 
+  /* The frame leans; this leans back, so the words stand up straight. */
+  const inner = document.createElement('div');
+  inner.className = 'support-prompt-in';
+
+  const art = document.createElement('div');
+  art.className = 'support-prompt-art';
+  const kicker = document.createElement('span');
+  kicker.className = 'support-prompt-kicker';
+  kicker.textContent = 'From the dev';
+  art.innerHTML = supportArt();
+  art.prepend(kicker);
+  /* The shout is drawn, so a screen reader is told it in words. */
+  const shout = document.createElement('span');
+  shout.className = 'sr-only';
+  shout.textContent = 'Keep it flying!';
+  art.append(shout);
+
   const message = document.createElement('p');
   message.className = 'support-prompt-message';
   message.textContent = 'I build WebFPV in my spare time. If you\'re enjoying it, buy me a $1 coffee on Patreon or a one-off battery to help keep it free.';
@@ -164,7 +191,9 @@ export function showSupportPrompt(trigger, { onSettings = null } = {}) {
   patreonBtn.target = '_blank';
   patreonBtn.rel = 'noopener noreferrer';
   patreonBtn.className = 'support-prompt-btn support-prompt-btn-primary';
-  patreonBtn.textContent = 'Buy Mat a coffee $1/mo';
+  const patreonWord = document.createElement('span');
+  patreonWord.textContent = 'Buy Mat a coffee $1/mo';
+  patreonBtn.append(markSvg(PATREON_MARK, '#0b1116'), patreonWord);
   patreonBtn.addEventListener('click', () => {
     recordPromptClick(trigger, 'patreon');
   });
@@ -173,23 +202,18 @@ export function showSupportPrompt(trigger, { onSettings = null } = {}) {
   tipBtn.href = tagged(TIP_URL, { utm_source: 'sim-prompt', client_reference_id: `prompt-${trigger}`, ref: 'sim-prompt' });
   tipBtn.target = '_blank';
   tipBtn.rel = 'noopener noreferrer';
-  tipBtn.className = 'support-prompt-btn';
-  tipBtn.textContent = 'One-off $5';
+  tipBtn.className = 'support-prompt-btn support-prompt-btn-tip';
+  const tipWord = document.createElement('span');
+  tipWord.textContent = 'One-off $5';
+  tipBtn.innerHTML = batteryIcon();
+  tipBtn.append(tipWord);
   tipBtn.addEventListener('click', () => {
     recordPromptClick(trigger, 'tip');
   });
 
-  /* A third, quiet button: the post-flight prompt is the one moment a pilot
-   * is already being asked for something, and it is never shown in flight. */
-  let wishBtn = null;
-  if (wishlistAllowed()) {
-    wishBtn = document.createElement('a');
-    wishBtn.href = steamUrl('prompt');
-    wishBtn.target = '_blank';
-    wishBtn.rel = 'noopener noreferrer';
-    wishBtn.className = 'support-prompt-btn';
-    wishBtn.textContent = 'Wishlist on Steam';
-  }
+  /* Wishlist on Steam, the sticker the title wears, on its own line under
+   * the two that pay for the sim. Null in the Steam edition. */
+  const wishBtn = wishlistAnchor('prompt', 'support-prompt-steam');
 
   let settingsBtn = null;
   if (typeof onSettings === 'function') {
@@ -207,19 +231,22 @@ export function showSupportPrompt(trigger, { onSettings = null } = {}) {
   closeBtn.type = 'button';
   closeBtn.className = 'support-prompt-close';
   closeBtn.setAttribute('aria-label', 'Close');
-  closeBtn.textContent = '×';
+  closeBtn.textContent = '\u00d7';
   closeBtn.addEventListener('click', () => {
     prompt.remove();
   });
 
   actions.append(patreonBtn, tipBtn);
+  const foot = document.createElement('div');
+  foot.className = 'support-prompt-foot';
   if (wishBtn) {
-    actions.append(wishBtn);
+    foot.append(wishBtn);
   }
   if (settingsBtn) {
-    actions.append(settingsBtn);
+    foot.append(settingsBtn);
   }
-  prompt.append(closeBtn, message, actions);
+  inner.append(art, message, actions, foot);
+  prompt.append(inner, closeBtn);
   document.body.append(prompt);
 
   return prompt;

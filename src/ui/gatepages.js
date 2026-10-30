@@ -578,6 +578,51 @@ export function quadMark(livery, rot = 24) {
   return svg('0 0 120 104', streaks(60, 52, -90 + rot, 40, 5, 22, 17) + quad(60, 52, 0.92, rot, livery), 'gp-quadmark');
 }
 
+/*
+ * THE SUPPORT PROMPT'S PANEL (src/share/supportprompt.js), drawn in the
+ * same hand as the gate it lands on: a quad crossing the frame with a
+ * paper cup of coffee swinging under it on a line, its speed lines, and
+ * the panel's shout lettered on the left. The burst and the dot tone
+ * behind it are the panel's CSS, as the gate's burst panels' are. Static
+ * markup, built once when the prompt is shown after a flight.
+ */
+function coffee(x, y, rot) {
+  return `<g transform="translate(${x} ${y}) rotate(${rot})">`
+    + `<path d="M-13 6 L13 6 L9.5 38 L-9.5 38 Z" fill="${INK}" transform="translate(3 4)"/>`
+    + `<path d="M-13 6 L13 6 L9.5 38 L-9.5 38 Z" fill="#fff" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>`
+    + `<path d="M-11.9 14 L11.9 14 L10.7 27 L-10.7 27 Z" fill="${MINT}" stroke="${INK}" stroke-width="2.2" stroke-linejoin="round"/>`
+    + `<rect x="-16" y="0" width="32" height="8" rx="3" fill="${CREAM}" stroke="${INK}" stroke-width="3"/>`
+    + `<rect x="-8" y="-4" width="16" height="5" rx="2" fill="${CREAM}" stroke="${INK}" stroke-width="2.4"/>`
+    + `<path d="M-6 17 L-5 24" stroke="#fff" stroke-width="2.4" stroke-linecap="round" opacity="0.7"/>`
+    + '</g>';
+}
+
+export function supportArt() {
+  const qx = 366;
+  const qy = 56;
+  /* The cup trails the quad, so it hangs back along the line it flew. */
+  const cx = 330;
+  const cy = 96;
+  return svg('0 0 480 165',
+    streaks(qx, qy, -16, 140, 9, 26, 61)
+    + `<path d="M${qx - 4} ${qy + 6} L${cx} ${cy + 1}" stroke="${INK}" stroke-width="2.4" stroke-linecap="round"/>`
+    + `<path d="M${cx - 30} ${cy + 16} l-18 3 M${cx - 28} ${cy + 28} l-24 4 M${cx - 26} ${cy + 40} l-14 2" stroke="${INK}" stroke-width="2.6" stroke-linecap="round" opacity="0.7"/>`
+    + coffee(cx, cy, 16)
+    + quad(qx, qy, 1, 74, AMBER)
+    + sfx(20, 78, 'KEEP IT', 34, -7)
+    + sfx(30, 126, 'FLYING!', 46, -7, AMBER),
+    'sp-art-svg');
+}
+
+/* The small drawings the prompt's buttons carry beside their words. */
+export function batteryIcon() {
+  return svg('0 0 24 24',
+    `<rect x="2" y="6" width="18" height="13" rx="2" fill="${SLATE}" stroke="${INK}" stroke-width="2"/>`
+    + `<rect x="20" y="10" width="2.5" height="5" rx="1" fill="${INK}"/>`
+    + `<path d="M12.5 7.5 L7.5 13.5 L11 13.5 L9.5 18 L14.5 11.5 L11 11.5 Z" fill="${AMBER}" stroke="${INK}" stroke-width="1.4" stroke-linejoin="round"/>`,
+    'sp-icon');
+}
+
 /* The drawings for one panel, as elements ready to append. */
 export function sceneFor(id, doc = document) {
   const make = SCENES[id];

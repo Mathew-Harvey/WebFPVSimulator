@@ -3512,105 +3512,209 @@
       a.patreon svg { width: 14px; height: 14px; display: block; }
       a.patreon:hover { box-shadow: inset 0 0 0 1px #FF424D; color: var(--cream); }
       a.patreon[hidden] { display: none; }
-      /* Wishlist on Steam, the chip beside Patreon on the title. Text only,
-         in the product palette, with Steam's blue as the hover line. */
+      /*
+       * WISHLIST ON STEAM. One sticker wherever it goes (wishlistAnchor in
+       * src/share/patreon.js): Steam's navy in two hard cel tones, their
+       * mark in white and never leaned (it is counter skewed, because a
+       * logo is shown unaltered), the words in the shell's heavy italic
+       * capitals, an ink rule and a hard ink shadow, cut like the gate's
+       * Back button. So it is this page's furniture in Steam's colours.
+       * Steam's light blue is the edge a pointer or focus gives it.
+       */
       a.steam-wishlist {
-        display: inline-flex; align-items: center;
-        height: 28px; padding: 0 11px; border-radius: 3px;
-        background: rgba(16, 22, 17, 0.72);
-        box-shadow: inset 0 0 0 1px rgba(244, 236, 214, 0.16);
-        color: var(--cream);
-        font: 600 12px/1 var(--ui-font); letter-spacing: 0.02em;
-        text-decoration: none; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.65);
+        display: inline-flex; align-items: center; gap: 7px;
+        height: 28px; padding: 0 12px 0 9px; box-sizing: border-box;
+        background: linear-gradient(180deg, #2a475e 0 48%, #1b2838 48% 100%);
+        border: 2.5px solid var(--ink-line);
+        box-shadow: 3px 3px 0 var(--ink-line);
+        color: #fff;
+        font: italic 900 11.5px/1 var(--ui-font); letter-spacing: 0.06em;
+        text-transform: uppercase; text-decoration: none;
+        text-shadow: 1px 1px 0 var(--ink-line);
+        transform: skewX(-8deg);
+        transition: transform 0.12s ease, box-shadow 0.12s ease;
         pointer-events: auto; flex: 0 0 auto; white-space: nowrap;
       }
-      a.steam-wishlist:hover { box-shadow: inset 0 0 0 1px #66C0F4; }
-      a.steam-wishlist:focus-visible { outline: 2px solid #66C0F4; outline-offset: 2px; }
+      a.steam-wishlist svg { width: 16px; height: 16px; display: block; flex: none; transform: skewX(8deg); }
+      a.steam-wishlist:hover, a.steam-wishlist:focus-visible {
+        transform: skewX(-8deg) translate(-2px, -2px);
+        box-shadow: 0 0 0 2px #66c0f4, 5px 5px 0 2px var(--ink-line);
+      }
+      a.steam-wishlist:focus-visible { outline: none; }
+      /* The About room's row: Steam's mark before the words, white, and the
+         cursor's bar in Steam's light blue when it is on this row. */
+      .row-steam .row-label { display: inline-flex; align-items: center; gap: 0.5em; }
+      .row-steam .row-label::before {
+        content: ""; flex: none; width: 0.95em; height: 0.95em;
+        background: #fff;
+        -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M11.979 0C5.678 0 .511 4.86.022 11.037l6.432 2.658c.545-.371 1.203-.59 1.912-.59.063 0 .125.004.188.006l2.861-4.142V8.91c0-2.495 2.028-4.524 4.524-4.524 2.494 0 4.524 2.031 4.524 4.527s-2.03 4.525-4.524 4.525h-.105l-4.076 2.911c0 .052.004.105.004.159 0 1.875-1.515 3.396-3.39 3.396-1.635 0-3.016-1.173-3.331-2.727L.436 15.27C1.862 20.307 6.486 24 11.979 24c6.627 0 11.999-5.373 11.999-12S18.605 0 11.979 0zM7.54 18.21l-1.473-.61c.262.543.714.999 1.314 1.25 1.297.539 2.793-.076 3.332-1.375.263-.63.264-1.319.005-1.949s-.75-1.121-1.377-1.383c-.624-.26-1.29-.249-1.878-.03l1.523.63c.956.4 1.409 1.5 1.009 2.455-.397.957-1.497 1.41-2.454 1.012H7.54zm11.415-9.303c0-1.662-1.353-3.015-3.015-3.015-1.665 0-3.015 1.353-3.015 3.015 0 1.665 1.35 3.015 3.015 3.015 1.663 0 3.015-1.35 3.015-3.015zm-5.273-.005c0-1.252 1.013-2.266 2.265-2.266 1.249 0 2.266 1.014 2.266 2.266 0 1.251-1.017 2.265-2.266 2.265-1.253 0-2.265-1.014-2.265-2.265z'/%3E%3C/svg%3E") center / contain no-repeat;
+        mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M11.979 0C5.678 0 .511 4.86.022 11.037l6.432 2.658c.545-.371 1.203-.59 1.912-.59.063 0 .125.004.188.006l2.861-4.142V8.91c0-2.495 2.028-4.524 4.524-4.524 2.494 0 4.524 2.031 4.524 4.527s-2.03 4.525-4.524 4.525h-.105l-4.076 2.911c0 .052.004.105.004.159 0 1.875-1.515 3.396-3.39 3.396-1.635 0-3.016-1.173-3.331-2.727L.436 15.27C1.862 20.307 6.486 24 11.979 24c6.627 0 11.999-5.373 11.999-12S18.605 0 11.979 0zM7.54 18.21l-1.473-.61c.262.543.714.999 1.314 1.25 1.297.539 2.793-.076 3.332-1.375.263-.63.264-1.319.005-1.949s-.75-1.121-1.377-1.383c-.624-.26-1.29-.249-1.878-.03l1.523.63c.956.4 1.409 1.5 1.009 2.455-.397.957-1.497 1.41-2.454 1.012H7.54zm11.415-9.303c0-1.662-1.353-3.015-3.015-3.015-1.665 0-3.015 1.353-3.015 3.015 0 1.665 1.35 3.015 3.015 3.015 1.663 0 3.015-1.35 3.015-3.015zm-5.273-.005c0-1.252 1.013-2.266 2.265-2.266 1.249 0 2.266 1.014 2.266 2.266 0 1.251-1.017 2.265-2.266 2.265-1.253 0-2.265-1.014-2.265-2.265z'/%3E%3C/svg%3E") center / contain no-repeat;
+      }
+      .row.row-steam.on {
+        border-left-color: #66c0f4;
+        background: linear-gradient(90deg, rgba(102, 192, 244, 0.16), rgba(102, 192, 244, 0) 48%);
+      }
       .screen-title a.patreon { text-shadow: 0 1px 8px rgba(0, 0, 0, 0.65); }
 
       /* ---- SUPPORT PROMPT ----------------------------------------------
-         Soft support prompt shown on every exit from a flight to the title.
-         Dismissible. ------------------------------------------------------ */
+         Shown on every exit from a flight to the title. Dismissible.
+         A MANGA PANEL, the owner's ask of 2026-10-30: it lands on the gate,
+         so it is one more panel of that page. The frame leans like the
+         gate's cards with the ink rule and the hard ink shadow they wear;
+         a burst in sakura with the dot tone holds the drawing
+         (supportArt in src/ui/gatepages.js); the message is a narration
+         box hung over the panel's edge; the buttons are cut like the
+         gate's Back button, each in its own brand's colour. Everything
+         but the burst is counter skewed so the words stand up straight.
+         ------------------------------------------------------------------ */
       /* On the body, never in a screen: a screen is pointer-events none and
          its children inherit it, which made every button on the prompt a
          hole to the page behind (src/share/supportprompt.js). The builder's
-         page carries a copy of these rules for its own prompt. */
+         page carries a copy of the old rules for its own prompt. */
       .support-prompt {
+        --sp-x: translateX(-50%);
         position: fixed; z-index: 1000; pointer-events: auto;
         /* Up in the band between the wordmark and the title's cards, not
            centred: centred it sat over the cards at 390 px and at 1280x720,
            and it is now shown on the title (every exit), where the menu is. */
         top: 108px; left: 50%;
-        transform: translateX(-50%);
+        transform: var(--sp-x) skewX(-2.5deg);
         box-sizing: border-box;
-        max-width: 420px; width: calc(100% - 32px);
-        padding: 24px 48px 24px 24px;
-        border-radius: 6px;
-        background: rgba(16, 22, 17, 0.95);
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(244, 236, 214, 0.2);
-        backdrop-filter: blur(8px);
+        width: calc(100% - 40px); max-width: 420px;
+        background:
+          radial-gradient(circle, rgba(11, 17, 22, 0.07) 0 1px, transparent 1.5px) 0 0 / 4px 4px,
+          #f7f0dc;
+        border: 4px solid var(--ink-line);
+        box-shadow: 8px 8px 0 var(--ink-line);
+        color: var(--ink-line);
+        animation: sp-slam 0.2s cubic-bezier(0.2, 1.5, 0.4, 1) both;
+      }
+      @keyframes sp-slam {
+        from { opacity: 0; transform: var(--sp-x) skewX(-2.5deg) scale(0.9) rotate(-1.5deg); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .support-prompt { animation: none; }
       }
       @media (min-width: 900px) {
-        .support-prompt { top: 64px; left: auto; right: 24px; transform: none; max-width: 492px; }
+        .support-prompt { --sp-x: translateX(0); top: 64px; left: auto; right: 28px; max-width: 452px; }
       }
+      /* A short window (a phone on its side, a small laptop window): the
+         panel goes to the top, the drawing comes out and the burst is a
+         band with the kicker in it, so the buttons stay on screen. Measured
+         at 400x260, where the full panel put the coffee button below the
+         window's edge. The scroll is the last resort, never the plan. */
+      @media (max-height: 600px) {
+        .support-prompt { top: 8px; max-width: 480px; max-height: calc(100vh - 16px); overflow-y: auto; scrollbar-width: thin; }
+        .support-prompt-art { aspect-ratio: auto; height: 46px; }
+        .support-prompt-art .gp-svg { display: none; }
+        .support-prompt-message { margin-top: -8px; }
+        .support-prompt-actions { padding-top: 12px; }
+        .support-prompt-foot { padding-top: 12px; padding-bottom: 12px; }
+      }
+      .support-prompt-art {
+        position: relative; overflow: hidden;
+        aspect-ratio: 32 / 11;
+        border-bottom: 4px solid var(--ink-line);
+        background:
+          radial-gradient(circle, rgba(11, 17, 22, 0.2) 0 1px, transparent 1.5px) 0 0 / 4px 4px,
+          repeating-conic-gradient(from 0deg at 76% 34%, rgba(255, 250, 240, 0.55) 0 5deg, transparent 5deg 12deg),
+          var(--sakura);
+      }
+      .support-prompt-art .gp-svg {
+        position: absolute; inset: 0; width: 100%; height: 100%;
+        overflow: visible; transform: skewX(2.5deg);
+      }
+      .support-prompt-kicker {
+        position: absolute; left: 12px; top: 10px; z-index: 2;
+        padding: 3px 9px;
+        background: var(--ink-line); color: var(--cream);
+        font: 900 11px/1.2 var(--ui-font); letter-spacing: 0.14em; text-transform: uppercase;
+        transform: skewX(2.5deg);
+      }
+      .support-prompt-in > :not(.support-prompt-art) { transform: skewX(2.5deg); }
+      /* The narration box: paper, an ink rule, a hard shadow, hung over
+         the burst's lower edge the way a caption breaks a panel border. */
       .support-prompt-message {
-        margin: 0 0 20px 0;
-        font: 400 14px/1.5 var(--ui-font);
-        color: var(--cream);
+        position: relative; z-index: 2;
+        margin: -20px 18px 0 14px;
+        padding: 8px 12px;
+        background: #fffaf0;
+        border: 2.5px solid var(--ink-line);
+        box-shadow: 3px 3px 0 var(--ink-line);
+        font: 700 13.5px/1.42 var(--ui-font);
+        color: var(--ink-line);
+        text-wrap: pretty;
       }
       .support-prompt-actions {
-        display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+        display: flex; flex-wrap: wrap; gap: 12px 14px; align-items: center;
+        padding: 16px 18px 0 16px;
       }
       .support-prompt-btn {
-        display: inline-flex; align-items: center; justify-content: center;
-        height: 36px; padding: 0 16px;
-        border: 0; border-radius: 3px;
-        font: 600 13px/1 var(--ui-font); letter-spacing: 0.02em;
-        text-decoration: none; white-space: nowrap;
-        cursor: pointer; transition: all 0.15s ease;
-        background: rgba(244, 236, 214, 0.1);
-        box-shadow: inset 0 0 0 1px rgba(244, 236, 214, 0.2);
-        color: var(--cream);
+        display: inline-flex; align-items: center; gap: 8px;
+        height: 38px; padding: 0 14px 0 10px; box-sizing: border-box;
+        border: 3px solid var(--ink-line);
+        box-shadow: 4px 4px 0 var(--ink-line);
+        background: #f7f0dc;
+        color: var(--ink-line);
+        font: italic 900 12.5px/1 var(--ui-font); letter-spacing: 0.04em;
+        text-transform: uppercase; text-decoration: none; white-space: nowrap;
+        cursor: pointer;
+        transform: skewX(-8deg);
+        transition: transform 0.12s ease, box-shadow 0.12s ease;
       }
-      .support-prompt-btn:hover {
-        background: rgba(244, 236, 214, 0.15);
-        box-shadow: inset 0 0 0 1px rgba(244, 236, 214, 0.3);
+      .support-prompt-btn svg { width: 18px; height: 18px; display: block; flex: none; transform: skewX(8deg); }
+      .support-prompt-btn:hover, .support-prompt-btn:focus-visible {
+        transform: skewX(-8deg) translate(-2px, -2px);
+        box-shadow: 6px 6px 0 var(--ink-line);
       }
-      .support-prompt-btn-primary {
-        background: #FF424D;
-        box-shadow: none;
-        color: var(--deep);
+      .support-prompt-btn:focus-visible { outline: 3px solid var(--mint); outline-offset: 3px; }
+      /* Patreon's coral with their mark in ink, which their notes allow. */
+      .support-prompt-btn-primary { background: #FF424D; }
+      .support-prompt-btn-tip { background: var(--amber); }
+      /* Steam on its own line under the two that pay for the sim, and the
+         way to Settings small at the far end of it. */
+      .support-prompt-foot {
+        display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+        gap: 10px 14px;
+        padding: 14px 18px 16px 16px;
       }
-      .support-prompt-btn-primary:hover {
-        background: #ff5a63;
-        box-shadow: 0 2px 8px rgba(255, 66, 77, 0.3);
+      a.steam-wishlist.support-prompt-steam {
+        height: 38px; padding: 0 14px 0 10px; gap: 9px;
+        border-width: 3px; box-shadow: 4px 4px 0 var(--ink-line);
+        font-size: 12.5px;
+      }
+      a.steam-wishlist.support-prompt-steam svg { width: 20px; height: 20px; }
+      a.steam-wishlist.support-prompt-steam:hover, a.steam-wishlist.support-prompt-steam:focus-visible {
+        box-shadow: 0 0 0 2px #66c0f4, 6px 6px 0 2px var(--ink-line);
       }
       .support-prompt-btn-text {
         display: inline-flex; align-items: center;
-        height: 36px; padding: 0 12px;
+        height: 30px; padding: 0 2px; margin-left: auto;
         background: none; border: 0;
-        font: 600 13px/1 var(--ui-font); letter-spacing: 0.02em;
-        color: var(--slate);
+        font: 800 11.5px/1 var(--ui-font); letter-spacing: 0.1em; text-transform: uppercase;
+        color: rgba(11, 17, 22, 0.62);
+        text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px;
         cursor: pointer; white-space: nowrap;
       }
-      .support-prompt-btn-text:hover {
-        color: var(--cream);
-      }
+      .support-prompt-btn-text:hover { color: var(--ink-line); }
+      .support-prompt-btn-text:focus-visible { outline: 2px solid var(--ink-line); outline-offset: 3px; }
+      /* The close button: an ink disc with a paper cross, pinned to the
+         burst's corner, upright. */
       .support-prompt-close {
-        position: absolute; top: 12px; right: 12px;
+        position: absolute; top: 9px; right: 9px; z-index: 3;
         width: 32px; height: 32px;
         display: flex; align-items: center; justify-content: center;
-        background: none; border: 0;
-        font: 600 24px/1 var(--ui-font);
-        color: var(--slate);
-        cursor: pointer; border-radius: 3px;
+        padding: 0 0 2px;
+        background: #f7f0dc; border: 3px solid var(--ink-line); border-radius: 50%;
+        box-shadow: 2px 2px 0 var(--ink-line);
+        font: 900 20px/1 var(--ui-font);
+        color: var(--ink-line);
+        cursor: pointer;
+        transform: skewX(2.5deg);
       }
-      .support-prompt-close:hover {
-        background: rgba(244, 236, 214, 0.1);
-        color: var(--cream);
-      }
+      .support-prompt-close:hover { background: var(--amber); }
       .support-prompt-close:focus-visible {
-        outline: 2px solid var(--cream); outline-offset: 2px;
+        outline: 3px solid var(--mint); outline-offset: 2px;
       }
 
       .frame-legend { display: flex; align-items: center; gap: 16px; flex-wrap: nowrap; overflow: hidden; }

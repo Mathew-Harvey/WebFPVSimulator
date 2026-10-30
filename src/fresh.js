@@ -621,6 +621,7 @@
       'src/ui/credits.js',
       'src/share/patreon.js',
       'src/share/stats.js',
+      'src/steam/edition.js',
       'src/ui/ratespanel.js',
       'src/ui/pidspanel.js',
       'src/ui/stickhelp.js',

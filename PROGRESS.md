@@ -73178,3 +73178,4 @@ The bug hunt thread saw together-shots' ribbon check "a bot cuts somebody's ribb
 - Latency: no change to flight or input. The page is in `dogfightpages.js`, already fetched for Set the match, drawn only on the menu.
 - Checks run: new `scripts/ball-door-check.js` (`npm run check:balldoor`) all passed in headless Chromium, `net:selftest` all passed, `ball-selftest` 53 of 53. `lint:shell` printed overflow findings I did not compare against main. Not run: `npm run verify` (no physics, plant, ABI or build). Not flown.
 - Went wrong: the first door cards had no top alignment and the code box overflowed its card; fixed from a screenshot. The bots check first timed out because the quad picker sits in front of the flight.
+- To main: the owner, 2026-10-30 13:50Z, "push to main", after the latency line (no change to flight or input) and the checks run were put to him. Main had not moved, so it fast forwards. Not flown, quick match not tried with two pilots.

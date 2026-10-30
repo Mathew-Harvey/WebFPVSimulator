@@ -136,7 +136,7 @@ export class BallHud extends DogfightHud {
       this.goalCall.style.top = `${Math.round((this.h || window.innerHeight) * 0.16)}px`;
       return e.to === g.team[ME] ? 'gate' : 'select';
     }
-    if (e.type === 'go' || e.type === 'overtime') {
+    if (e.type === 'go' || e.type === 'overtime' || e.type === 'reset') {
       return 'select';
     }
     /* A hard knock of the ball is heard when it is near you. */
@@ -242,7 +242,7 @@ export class BallHud extends DogfightHud {
     const floor = g.arena.floor || 0;
     const R = g.bR;
     const hh = by - R - floor;
-    if (hh > 3 * k) {
+    if (hh > 3 * k && g.inPlay) {
       const gg = BALL_G * k;
       const tt = (g.ball.vy + Math.sqrt(g.ball.vy * g.ball.vy + 2 * gg * hh)) / gg;
       const lx = Math.max(-g.arena.hx, Math.min(g.arena.hx, bx + g.ball.vx * tt));

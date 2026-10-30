@@ -35,7 +35,8 @@
  */
 
 import { counting, eventsUrl } from './stats.js';
-import { COFFEE_TIER_URL } from './patreon.js';
+import { COFFEE_TIER_URL, steamUrl } from './patreon.js';
+import { wishlistAllowed } from '../steam/edition.js';
 
 const SUPPORT_PROMPT_KEY = 'webfpv.support.prompt.v1';
 const SUPPORT_DISABLED_KEY = 'webfpv.support.disabled.v1';
@@ -178,6 +179,18 @@ export function showSupportPrompt(trigger, { onSettings = null } = {}) {
     recordPromptClick(trigger, 'tip');
   });
 
+  /* A third, quiet button: the post-flight prompt is the one moment a pilot
+   * is already being asked for something, and it is never shown in flight. */
+  let wishBtn = null;
+  if (wishlistAllowed()) {
+    wishBtn = document.createElement('a');
+    wishBtn.href = steamUrl('prompt');
+    wishBtn.target = '_blank';
+    wishBtn.rel = 'noopener noreferrer';
+    wishBtn.className = 'support-prompt-btn';
+    wishBtn.textContent = 'Wishlist on Steam';
+  }
+
   let settingsBtn = null;
   if (typeof onSettings === 'function') {
     settingsBtn = document.createElement('button');
@@ -200,6 +213,9 @@ export function showSupportPrompt(trigger, { onSettings = null } = {}) {
   });
 
   actions.append(patreonBtn, tipBtn);
+  if (wishBtn) {
+    actions.append(wishBtn);
+  }
   if (settingsBtn) {
     actions.append(settingsBtn);
   }

@@ -31,6 +31,7 @@
  */
 
 import { counting, eventsUrl } from './stats.js';
+import { wishlistAllowed } from '../steam/edition.js';
 
 /* The public page. Same address in the landing config and the board app. */
 export const PATREON_URL = 'https://www.patreon.com/cw/webfpv/membership';
@@ -48,6 +49,13 @@ export const PATREON_NOTE = 'Support WebFPV on Patreon. Keep the lights on, $3. 
 export const INSTAGRAM_URL = 'https://www.instagram.com/webfpv_org/';
 
 export const INSTAGRAM_NOTE = 'WebFPV on Instagram: clips, maps and updates. Opens in a new tab.';
+
+/* The Steam store page, for the Wishlist buttons. Text only: Valve's logo is
+ * theirs and a redrawn one is worse than none. Gated by wishlistAllowed(),
+ * so the Steam edition never shows it. */
+export const STEAM_URL = 'https://store.steampowered.com/app/4944190/webFPV/';
+
+export const STEAM_NOTE = 'WebFPV is coming to Steam. Wishlist it to hear when it launches. Opens the store page in a new tab.';
 
 export const TIP_NOTE = 'Buy Mat a battery with a one-off $5 tip. Opens Stripe, amount can be changed.';
 
@@ -136,6 +144,38 @@ export function openTip() {
   } catch (e) {
     /* No beacon */
   }
+}
+
+/*
+ * The Wishlist on Steam buttons. Same shape as the tip: opened from script,
+ * no opener, a utm tag saying which button, no beacon (the board's events
+ * endpoint has no target to carry it). Never called from the flight loop.
+ */
+export function steamUrl(placement) {
+  return `${STEAM_URL}?utm_source=sim&utm_campaign=${placement}`;
+}
+
+export function openWishlist(placement = 'menu') {
+  const tab = window.open(steamUrl(placement), '_blank', 'noopener,noreferrer');
+  if (tab) {
+    tab.opener = null;
+  }
+}
+
+/* One anchor for the title's chip row, or null where it may not show. */
+export function wishlistAnchor() {
+  if (!wishlistAllowed()) {
+    return null;
+  }
+  const a = document.createElement('a');
+  a.className = 'steam-wishlist';
+  a.title = STEAM_NOTE;
+  a.setAttribute('aria-label', STEAM_NOTE);
+  a.textContent = 'Wishlist on Steam';
+  a.href = steamUrl('title');
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  return a;
 }
 
 /*

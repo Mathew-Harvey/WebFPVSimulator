@@ -240,7 +240,7 @@ import { formatScore } from '../game/score.js';
 import { PRACTICE_LAPS } from '../game/race.js';
 import { JOKE_MS, quotedJoke } from './loading.js';
 import { fillCredits } from './credits.js';
-import { INSTAGRAM_NOTE, PATREON_NOTE, TIP_NOTE, openInstagram, openSupport, openTip, patreonAnchor } from '../share/patreon.js';
+import { INSTAGRAM_NOTE, PATREON_NOTE, TIP_NOTE, STEAM_NOTE, openInstagram, openSupport, openTip, openWishlist, patreonAnchor, wishlistAnchor } from '../share/patreon.js';
 import { mountRatesPanel } from './ratespanel.js';
 import { mountPidsPanel } from './pidspanel.js';
 import { touchWanted } from '../input/touchsticks.js';
@@ -253,6 +253,7 @@ import {
 import {
   downloadCli, drawAttitude, FcSession, paintPageStrip, paintTabStrip,
 } from './fc.js';
+import { wishlistAllowed } from '../steam/edition.js';
 import { fcDumpKeyFor, readFcDump, writeFcDump } from '../fc/dump.js';
 /*
  * The pilot's own tracks live in this browser, and the Track room lists
@@ -276,7 +277,7 @@ import {
  */
 /* card-board opens the board's page for one track in the board's tab, so it
  * wears the link arrow the leaderboard row wears (MENUS-PLAN.md 1.38). */
-const LINK_ACTIONS = new Set(['leaderboard', 'seat-board', 'wiki', 'support', 'partners', 'card-board']);
+const LINK_ACTIONS = new Set(['leaderboard', 'seat-board', 'wiki', 'support', 'wishlist', 'partners', 'card-board']);
 /* mapbuilder is the builder's freestyle door, and it opens the same page
  * trackbuilder does, so it wears the same chevron: the pause menu's Back to
  * the track builder is one or the other depending on what is being flown,
@@ -6305,6 +6306,11 @@ export class Ui {
     this.patreonLink = patreonAnchor();
     this.patreonSlot.append(this.patreonLink);
     chips.append(this.patreonSlot);
+    /* Wishlist on Steam, beside it. Null in the Steam edition. */
+    const wishlist = wishlistAnchor();
+    if (wishlist) {
+      chips.append(wishlist);
+    }
     this.titleBest = el('div', 'brand-best', '');
     brand.append(this.titleBest);
     /*
@@ -10006,6 +10012,7 @@ export class Ui {
         },
         { label: 'Support', action: 'support', note: PATREON_NOTE },
         { label: 'Buy Mat a battery ($5)', action: 'tip', note: TIP_NOTE },
+        ...(wishlistAllowed() ? [{ label: 'Wishlist on Steam', action: 'wishlist', note: STEAM_NOTE }] : []),
         { label: 'Instagram', action: 'instagram', note: INSTAGRAM_NOTE },
         {
           label: 'FPV wiki',
@@ -21528,6 +21535,10 @@ export class Ui {
     /* Stripe tip link for one-off battery donation */
     if (action === 'tip') {
       openTip();
+      return;
+    }
+    if (action === 'wishlist') {
+      openWishlist('about');
       return;
     }
     if (action === 'instagram') {

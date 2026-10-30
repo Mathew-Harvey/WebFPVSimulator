@@ -3512,6 +3512,20 @@
       a.patreon svg { width: 14px; height: 14px; display: block; }
       a.patreon:hover { box-shadow: inset 0 0 0 1px #FF424D; color: var(--cream); }
       a.patreon[hidden] { display: none; }
+      /* Wishlist on Steam, the chip beside Patreon on the title. Text only,
+         in the product palette, with Steam's blue as the hover line. */
+      a.steam-wishlist {
+        display: inline-flex; align-items: center;
+        height: 28px; padding: 0 11px; border-radius: 3px;
+        background: rgba(16, 22, 17, 0.72);
+        box-shadow: inset 0 0 0 1px rgba(244, 236, 214, 0.16);
+        color: var(--cream);
+        font: 600 12px/1 var(--ui-font); letter-spacing: 0.02em;
+        text-decoration: none; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.65);
+        pointer-events: auto; flex: 0 0 auto; white-space: nowrap;
+      }
+      a.steam-wishlist:hover { box-shadow: inset 0 0 0 1px #66C0F4; }
+      a.steam-wishlist:focus-visible { outline: 2px solid #66C0F4; outline-offset: 2px; }
       .screen-title a.patreon { text-shadow: 0 1px 8px rgba(0, 0, 0, 0.65); }
 
       /* ---- SUPPORT PROMPT ----------------------------------------------

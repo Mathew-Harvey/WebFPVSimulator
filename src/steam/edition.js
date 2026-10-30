@@ -113,6 +113,13 @@ export function likenessAllowed(slug) {
   return !STEAM_EDITION || (CONTENT.likenesses || []).includes(slug);
 }
 
+/* "Wishlist on Steam" buttons. They advertise the Steam edition, so they
+ * show in the browser edition only: a player who already owns the game on
+ * Steam has nothing to wishlist. */
+export function wishlistAllowed() {
+  return !STEAM_EDITION;
+}
+
 /* Is the public board part of this game? The Steam edition keeps it off. */
 export function boardEnabled() {
   return !STEAM_EDITION;

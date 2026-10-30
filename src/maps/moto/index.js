@@ -445,7 +445,7 @@ export async function buildMap(shell, onProgress, options) {
     posed: rider.posed,
     kicker: 'Ridgeline MX',
     words: {
-      find: 'Find the pack', smoke: 'In the roost!', lost: 'Find a rider', tip: '\nYou are the camera. Film the riders for a minute.',
+      find: 'Find the pack', smoke: 'In the roost!', inShot: 'Riders in shot', tandem: 'Pack in frame', smokeLabel: 'In the roost', lost: 'Find a rider', tip: '\nYou are the camera. Film the riders for a minute.',
     },
     bikes: moto.bikes,
     ride: rider.rideOf,

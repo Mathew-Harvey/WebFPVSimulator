@@ -82,6 +82,10 @@ export const MAP_BUILD_MS = {
   /* Drift Matsuri (src/maps/drift/): a plot of trees and a festival round a
    * drift course. An estimate until it is measured. */
   drift: 2600,
+
+  /* Quad Ball (src/maps/ball/): a plain arena, a few dozen boxes. An
+   * estimate until it is measured. */
+  ball: 900,
   /* Ridgeline MX (src/maps/moto/): a plot of trees, a track of mounds and
    * berms and ten bikes. An estimate until it is measured. */
   moto: 2400,

@@ -997,14 +997,14 @@ const scoringBoardBuilt = (where) => 'Scored run: two minutes from the first thi
  */
 function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
   const built = mapId === 'built' || mapId === 'house' || mapId === 'heads' || mapId === 'bardwell' || mapId === 'warehouse'
-    || mapId === 'goats' || mapId === 'sunny' || mapId === 'drift' || mapId === 'moto';
+    || mapId === 'goats' || mapId === 'sunny' || mapId === 'drift' || mapId === 'ball' || mapId === 'moto';
   const where = mapId === 'house' ? "Nick's house"
     : mapId === 'heads' ? "Heads' house"
       : mapId === 'bardwell' ? "Joshua's house"
         : mapId === 'warehouse' ? "Thomas's shop"
           : mapId === 'goats' ? "Heads' street"
           : mapId === 'sunny' ? 'Sunnyfield'
-            : mapId === 'drift' ? 'Drift Matsuri' : mapId === 'moto' ? 'Ridgeline MX' : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
+            : mapId === 'drift' ? 'Drift Matsuri' : mapId === 'ball' ? 'Quad Ball' : mapId === 'moto' ? 'Ridgeline MX' : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
   if (mode === 'off') {
     return `${drawn ? '' : `${SCORING_UNDRAWN} `}${scoringOff(where)} ${built ? scoringMoreBuilt(where) : SCORING_MORE}`;
   }
@@ -1066,6 +1066,10 @@ const SUNNY_OFF_BOARD = 'The board keeps no runs for Sunnyfield, so a run flown 
   + ' Fly the town for a run that can go up.';
 
 /* Drift Matsuri, the same way. */
+/* Quad Ball, the same way. */
+const BALL_OFF_BOARD = 'The board keeps no runs for Quad Ball, so a run flown there stays here.'
+  + ' Fly the town for a run that can go up.';
+
 const MOTO_OFF_BOARD = 'The board keeps no runs for Ridgeline MX, so a run flown there stays here.';
 const DRIFT_OFF_BOARD = 'The board keeps no runs for Drift Matsuri, so a run flown there stays here.'
   + ' Fly the town for a run that can go up.';
@@ -4654,6 +4658,46 @@ function goatsRoomItems(info) {
       value: GOAT_ROUND_NAMES[gt.round] || '3 minutes',
       action: between ? 'room-gt-round' : 'noop',
       note: 'How long a round runs, or until every goat is home. Changes between rounds.',
+    },
+  ];
+}
+
+/*
+ * A Quad Ball room's pause rows: the host starts a match, seats bots and
+ * sets how long a match runs between matches.
+ */
+const BALL_ROUND_NAMES = { '3m': '3 minutes', '5m': '5 minutes', first5: 'First to 5' };
+function ballRoomItems(info) {
+  const bl = info.ball;
+  if (!bl) {
+    return [];
+  }
+  const between = bl.phase === 'pit' || bl.phase === 'results';
+  if (!info.host) {
+    return [{
+      label: 'Quad Ball',
+      value: between ? 'Waiting' : 'Match on',
+      action: 'noop',
+      note: 'The host starts each match. Pink against mint: push the ball into their goal.',
+    }];
+  }
+  return [
+    {
+      label: between ? 'Start a match' : 'Match on',
+      action: between ? 'room-bl-start' : 'noop',
+      note: between ? 'Everybody here and every bot is dealt into pink and mint. Or press G while flying.' : 'The next one can start when this one ends.',
+    },
+    {
+      label: 'Fill the roster',
+      value: `${bl.bots || 0} bots`,
+      action: 'room-roster',
+      note: 'Your friends and the empty seats, and bots to fill them. Bots fly from your computer and give a seat to a friend who joins.',
+    },
+    {
+      label: 'Match',
+      value: BALL_ROUND_NAMES[bl.round] || '3 minutes',
+      action: between ? 'room-bl-round' : 'noop',
+      note: 'How long a match runs, or first to five goals. Changes between matches.',
     },
   ];
 }
@@ -11097,6 +11141,7 @@ export class Ui {
         ...dogfightRoomItems(r),
         ...goatsRoomItems(r),
         ...driftRoomItems(r),
+        ...ballRoomItems(r),
         {
           label: 'Room',
           value: `${r.code} · ${r.n} ${r.n === 1 ? 'pilot' : 'pilots'}`,
@@ -11116,6 +11161,27 @@ export class Ui {
         { label: 'Settings', action: 'pilot', note: 'Your name, your radio, graphics and sound.' },
         { label: 'Leave room', action: 'room-leave', note: 'Fly on here, solo.' },
         { label: 'Quit to title', action: 'room-title', note: 'Leaves the room too.' },
+      ];
+    }
+    if (this.screen === 'paused' && this.dogfight && this.dogfight.game === 'ball') {
+      /* A Quad Ball match's pause: goat herding's, with a ball. */
+      return [
+        { label: 'Resume', action: 'resume', primary: true },
+        { label: 'Restart the match', action: 'restart' },
+        { label: 'Change the match', action: 'fight-change', note: 'How many a side, how well the bots play, and when it ends.' },
+        { label: 'Does it feel wrong?', section: true },
+        tuneItem(s, true),
+        flightModeItem(s, this.flightModeKey()),
+        {
+          label: 'Rates',
+          value: ratesShort(s.rates),
+          action: 'rates',
+          note: 'How far the sticks go, and the throttle limit. Changing them here leaves the quad where it is and the clock running.',
+        },
+        { label: 'Elsewhere', section: true },
+        { label: 'Settings', action: 'pilot', note: 'Your name, your radio, graphics and sound.' },
+        { label: 'Leave the match', action: 'fight-leave', note: 'Fly on here alone, with no bots and no clock.' },
+        { label: 'Quit to title', action: 'title' },
       ];
     }
     if (this.screen === 'paused' && this.dogfight && this.dogfight.game === 'drift') {
@@ -11353,7 +11419,7 @@ export class Ui {
          * reason. */
         const built = this.settings.map === 'built' || this.settings.map === 'house' || this.settings.map === 'heads'
           || this.settings.map === 'bardwell' || this.settings.map === 'warehouse' || this.settings.map === 'goats'
-          || this.settings.map === 'sunny' || this.settings.map === 'drift' || this.settings.map === 'moto';
+          || this.settings.map === 'sunny' || this.settings.map === 'drift' || this.settings.map === 'ball' || this.settings.map === 'moto';
         return [
           { label: 'Fly again', action: 'restart', primary: true },
           this.runPosted
@@ -11385,6 +11451,7 @@ export class Ui {
                       : this.settings.map === 'goats' ? GOATS_OFF_BOARD
                         : this.settings.map === 'sunny' ? SUNNY_OFF_BOARD
                           : this.settings.map === 'drift' ? DRIFT_OFF_BOARD
+                            : this.settings.map === 'ball' ? BALL_OFF_BOARD
                           : this.settings.map === 'moto' ? MOTO_OFF_BOARD
                       : (this.sharedMap ? BOARD_MAP_OFF_BOARD : BUILT_OFF_BOARD)) : (nothing
                 ? 'A run with no tricks in it is not a score. Fly one and it appears here.'
@@ -13502,7 +13569,7 @@ export class Ui {
          * Each asks its solo page first, Set the herd or Set the shoot,
          * and the room opens with those bots and starts the first round,
          * as a dogfight room does (armRoomGame). */
-        if (game === 'goats' || game === 'drift') {
+        if (game === 'goats' || game === 'drift' || game === 'ball') {
           this.armRoomGame(world, entry, game, false);
         } else {
           this.onFlyTogether(world);
@@ -13512,7 +13579,7 @@ export class Ui {
     }
     /* Goat herding alone is a round with bots (src/game/goatround.js):
      * Set the herd first, as a dogfight's arena has Set the fight. */
-    if (game === 'goats' || game === 'drift') {
+    if (game === 'goats' || game === 'drift' || game === 'ball') {
       this.fightPick = { from: 'gate', game, map: id };
       this.fightArmed = false;
     }
@@ -15031,8 +15098,10 @@ export class Ui {
     const kit = { letterHeading };
     const name = entry.name || entry.label || (entry.item && entry.item.map && entry.item.map.name) || 'This map';
     const game = this.fightPick.game;
-    const quiet = game === 'ribbon' || game === 'goats' || game === 'drift';
-    const ask = { ribbon: pages.askRibbon, goats: pages.askGoats, drift: pages.askDrift }[game] || pages.askFight;
+    const quiet = game === 'ribbon' || game === 'goats' || game === 'drift' || game === 'ball';
+    const ask = {
+      ribbon: pages.askRibbon, goats: pages.askGoats, drift: pages.askDrift, ball: pages.askBall,
+    }[game] || pages.askFight;
     const got = await ask(this, kit, name, entry && entry.item ? entry.item.action : '');
     if (!got || !this.fightPick) {
       return;
@@ -15064,7 +15133,7 @@ export class Ui {
       const kit = { letterHeading };
       const name = world.name || entry.name || 'This map';
       const ask = {
-        ribbon: pages.askRibbon, goats: pages.askGoats, drift: pages.askDrift,
+        ribbon: pages.askRibbon, goats: pages.askGoats, drift: pages.askDrift, ball: pages.askBall,
       }[game] || pages.askFight;
       const got = await ask(this, kit, name, entry && entry.item ? entry.item.action : '');
       if (!got || (picker && !this.hostPick)) {
@@ -15103,7 +15172,9 @@ export class Ui {
     const kit = { letterHeading };
     if (action === 'fight-change') {
       const game = this.dogfight ? this.dogfight.game : '';
-      const ask = { ribbon: pages.askRibbon, goats: pages.askGoats, drift: pages.askDrift }[game] || pages.askFight;
+      const ask = {
+        ribbon: pages.askRibbon, goats: pages.askGoats, drift: pages.askDrift, ball: pages.askBall,
+      }[game] || pages.askFight;
       const got = await ask(this, kit, this.fightArenaName || 'This map');
       if (got && this.dogfight) {
         this.dogfight = got.rules;
@@ -15170,8 +15241,11 @@ export class Ui {
       const ribbon = Boolean(this.fightPick && this.fightPick.game === 'ribbon');
       const goats = Boolean(this.fightPick && this.fightPick.game === 'goats');
       const drift = Boolean(this.fightPick && this.fightPick.game === 'drift');
+      const ball = Boolean(this.fightPick && this.fightPick.game === 'ball');
       const [kick, title, line, tab] = !this.hostPick
-        ? (goats
+        ? (ball
+          ? ['Quad Ball', 'The ball is out', 'Set the match, then fly.', 'Quad Ball']
+          : goats
           ? ['Goat herding', 'The goats are out', 'Set the herd, then fly.', 'Goat herding']
           : drift
           ? (this.fightPick.map === 'moto'
@@ -17790,6 +17864,7 @@ export class Ui {
       /* Drift Matsuri's score is the take's, on the camera's own slate
        * (src/ui/filmhud.js): two scores on one screen is one too many. */
       && this.settings.map !== 'drift'
+      && this.settings.map !== 'ball'
       && this.settings.map !== 'moto'
       && (this.screen === 'flight' || this.screen === 'paused'),
     );
@@ -21157,8 +21232,9 @@ export class Ui {
       this.pickDogfightRoom();
       return;
     }
-    if (action === 'gate-goats' || action === 'gate-goats-room' || action === 'gate-drift' || action === 'gate-drift-room') {
-      this.playMapGame(action.includes('goats') ? 'goats' : 'drift', action.endsWith('-room'));
+    if (action === 'gate-goats' || action === 'gate-goats-room' || action === 'gate-drift' || action === 'gate-drift-room'
+      || action === 'gate-ball' || action === 'gate-ball-room') {
+      this.playMapGame(action.includes('goats') ? 'goats' : (action.includes('ball') ? 'ball' : 'drift'), action.endsWith('-room'));
       return;
     }
     if (action === 'gate-moto' || action === 'gate-moto-room') {

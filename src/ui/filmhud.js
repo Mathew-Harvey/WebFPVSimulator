@@ -69,16 +69,16 @@ function timecode(ms) {
 }
 
 /* What a callout says, and in which ink. */
-export function filmCallText(e) {
+export function filmCallText(e, words = null) {
   switch (e.type) {
     case 'action':
-      return { word: 'Action!', line: 'Find the battle', fill: INKS.amber };
+      return { word: 'Action!', line: words && words.find ? words.find : 'Find the battle', fill: INKS.amber };
     case 'money':
       return { word: 'Money shot!', line: `${e.zone}  +${e.points}`, fill: INKS.amber };
     case 'smoke':
-      return { word: 'In the smoke!', line: `+${e.points}`, fill: INKS.drift };
+      return { word: words && words.smoke ? words.smoke : 'In the smoke!', line: `+${e.points}`, fill: INKS.drift };
     case 'lost':
-      return { word: 'Lost the shot', line: 'Find a car', fill: INKS.bail, lost: true };
+      return { word: 'Lost the shot', line: words && words.lost ? words.lost : 'Find a car', fill: INKS.bail, lost: true };
     case 'cut':
       return { word: 'Cut!', line: "That's a take", fill: INKS.cream };
     case 'crash':
@@ -157,6 +157,12 @@ export class FilmHud {
   }
 
   /* A new run: the card down, a new take number when it starts. */
+  /* The words a map says its own way (Ridgeline MX's roost for Drift
+   * Matsuri's smoke): { find, smoke, lost }, or null for the drift's. */
+  setWords(words) {
+    this.words = words || null;
+  }
+
   reset() {
     this.calls.textContent = '';
     this.card.classList.add('is-off');
@@ -261,7 +267,7 @@ export class FilmHud {
   }
 
   call(e) {
-    const t = filmCallText(e);
+    const t = filmCallText(e, this.words);
     if (!t || !this.visible) {
       return;
     }

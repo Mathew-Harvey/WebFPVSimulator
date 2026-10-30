@@ -420,8 +420,8 @@ function logoGeometry(lite) {
  * logo fitted in its cell keeping its shape, cell i at column i % COLS,
  * row i / COLS from the top.
  */
-function paintLogos(crops, sheets) {
-  const rows = Math.ceil(crops.length / COLS);
+function paintLogos(crops, sheets, pics = []) {
+  const rows = Math.ceil((crops.length + pics.length) / COLS);
   const cv = document.createElement('canvas');
   cv.width = COLS * CELL_PX;
   cv.height = rows * CELL_PX;
@@ -442,19 +442,96 @@ function paintLogos(crops, sheets) {
     const cy = Math.floor(i / COLS) * CELL_PX + CELL_PX / 2;
     g.drawImage(img, c.x * W, c.y * H, sw, sh, cx - (sw * s) / 2, cy - (sh * s) / 2, sw * s, sh * s);
   });
+  /* The patrons' pictures (patronPicture) follow the crops, fitted whole. */
+  pics.forEach((pic, j) => {
+    const i = crops.length + j;
+    const room = CELL_PX * (1 - 2 * PAD);
+    g.drawImage(pic, (i % COLS) * CELL_PX + (CELL_PX - room) / 2, Math.floor(i / COLS) * CELL_PX + (CELL_PX - room) / 2, room, room);
+  });
   const t = new THREE.CanvasTexture(cv);
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 4;
   return { texture: t, rows };
 }
 
+/* The plate a patron's name is written on, by tier: [plate, rim, ink]. */
+const PLATES = {
+  bronze: ['#3a2a22', '#c8895a', '#faf6ee'],
+  silver: ['#2a3038', '#c4ccd6', '#faf6ee'],
+  gold: ['#2c2616', '#f2c14e', '#fff6d8'],
+};
+const PIC_PX = 256;
+
+/*
+ * A patron's picture, a PIC_PX square canvas: their logo fitted whole when
+ * `img` is a decoded picture, otherwise their name on a plate in the tier's
+ * colour, in one or two lines at the largest size that fits. The one place
+ * the fall back is, so a logo that did not come looks the same on the goat
+ * and in the callout. The canvas carries naturalWidth and naturalHeight so
+ * the shell's callout (stickerPicture in src/main.js) takes it as a sheet.
+ */
+export function patronPicture(patron, img) {
+  const cv = document.createElement('canvas');
+  cv.width = PIC_PX;
+  cv.height = PIC_PX;
+  cv.naturalWidth = PIC_PX;
+  cv.naturalHeight = PIC_PX;
+  const g = cv.getContext('2d');
+  g.imageSmoothingQuality = 'high';
+  if (img && img.naturalWidth > 0 && img.naturalHeight > 0) {
+    const room = PIC_PX * 0.94;
+    const k = Math.min(room / img.naturalWidth, room / img.naturalHeight);
+    const w = img.naturalWidth * k;
+    const h = img.naturalHeight * k;
+    g.drawImage(img, (PIC_PX - w) / 2, (PIC_PX - h) / 2, w, h);
+    return cv;
+  }
+  const [plate, rim, ink] = PLATES[patron.tier] || PLATES.bronze;
+  g.fillStyle = plate;
+  g.strokeStyle = rim;
+  g.lineWidth = 14;
+  g.beginPath();
+  g.roundRect(10, 40, PIC_PX - 20, PIC_PX - 80, 28);
+  g.fill();
+  g.stroke();
+  g.fillStyle = ink;
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  const words = String(patron.name).split(' ');
+  /* Try one line, then every split into two, and keep the largest type. */
+  let best = null;
+  for (let cut = words.length; cut >= 1; cut -= 1) {
+    const lines = cut === words.length ? [words.join(' ')] : [words.slice(0, cut).join(' '), words.slice(cut).join(' ')];
+    let size = 64;
+    for (; size > 14; size -= 2) {
+      g.font = `800 ${size}px sans-serif`;
+      if (lines.every((l) => g.measureText(l).width <= PIC_PX - 56)) {
+        break;
+      }
+    }
+    if (!best || size > best.size) {
+      best = { size, lines };
+    }
+    if (words.length === 1) {
+      break;
+    }
+  }
+  g.font = `800 ${best.size}px sans-serif`;
+  const lead = best.size * 1.1;
+  best.lines.forEach((l, n) => {
+    g.fillText(l, PIC_PX / 2, PIC_PX / 2 + (n - (best.lines.length - 1) / 2) * lead, PIC_PX - 56);
+  });
+  return cv;
+}
+
 /*
  * The herd drawn: { group, update(), dispose } for `herd` (./herd.js),
  * `crops` its logos in the herd's order, `sheets` the decoded sheets, and
  * `worldAt(px, py, h)` the plan to the world. `S` is world metres a real
- * metre. `lite` draws Low's lighter goat.
+ * metre. `lite` draws Low's lighter goat. `pics` are the patron goats'
+ * pictures (patronPicture), which are the herd's goats after the crops.
  */
-export function makeGoatDraw(herd, crops, sheets, worldAt, S, lite = false) {
+export function makeGoatDraw(herd, crops, sheets, worldAt, S, lite = false, pics = []) {
   const N = herd.count;
   const group = new THREE.Group();
   group.name = 'goats';
@@ -500,7 +577,7 @@ export function makeGoatDraw(herd, crops, sheets, worldAt, S, lite = false) {
   geometry.setAttribute('aCoatLegs', new THREE.InstancedBufferAttribute(coatLegs, 3));
   group.add(body);
 
-  const { texture, rows } = paintLogos(crops, sheets);
+  const { texture, rows } = paintLogos(crops, sheets, pics);
   const logoMat = new THREE.MeshBasicMaterial({
     map: texture, alphaTest: 0.5, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
   });

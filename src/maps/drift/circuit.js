@@ -310,6 +310,9 @@ function nobori(P, decor, x, y, k) {
  * the manji.
  */
 export const TOWER = { x: 168, y: 112, half: 3.2, deck: 8, top: 11.6 };
+/* Where the start pads stand, world metres: the tower's roof. The built
+ * map seats its start on this (padBase in src/maps/built/index.js). */
+export const DRIFT_PAD_BASE = TOWER.top;
 function tower(P, decor) {
   const { x, y, half, deck, top } = TOWER;
   for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {

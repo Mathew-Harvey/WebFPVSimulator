@@ -497,7 +497,7 @@ const AXIS_X = new THREE.Vector3(1, 0, 0);
  * alone. The entry is written out because it has moved with the directory:
  * it was three before looks.js came and four before egg.js, and with no
  * entry then the bar sat at 75 percent until the import resolved. */
-const MAP_MODULE_COUNT = { field: 1, city: 72, custom: 1, built: 5, house: 3, heads: 4, bardwell: 4, warehouse: 3, goats: 8, sunny: 12, drift: 3 };
+const MAP_MODULE_COUNT = { field: 1, city: 72, custom: 1, built: 5, house: 3, heads: 4, bardwell: 4, warehouse: 3, goats: 9, sunny: 12, drift: 3 };
 /* Where a map's modules live, so the loading bar can count them. Data, not a
  * ternary: the ternary read "field or else city", so a third map counted its
  * modules under the city's prefix and the bar sat at zero.
@@ -766,6 +766,8 @@ export async function boot({ loading, bootStart, mapId }) {
     canvas.style.cursor = 'none';
   }
   const ui = new Ui(uiRoot);
+  /* For the dogfight's Arm up page, which listens for a button or switch. */
+  ui.input = input;
   /*
    * The thumb sticks, on a device that has thumbs to offer. Mounted after
    * the Ui so the overlay sits ABOVE every screen in the stacking order,
@@ -1811,7 +1813,7 @@ export async function boot({ loading, bootStart, mapId }) {
     filmCam.p = st[11];
     filmCam.q = st[12];
     filmCam.r = st[13];
-    film.step(clock, filmCam, carFeed, carTouched || chaseCrashed);
+    film.step(clock, filmCam, view.filmGame.posed ? view.filmGame.posed(carFeed) : carFeed, carTouched || chaseCrashed);
   }
 
   /*
@@ -1867,7 +1869,7 @@ export async function boot({ loading, bootStart, mapId }) {
     filmCam.p = 0;
     filmCam.q = 0;
     filmCam.r = 0;
-    game.film.step(simTimeMs, filmCam, carCurr, false);
+    game.film.step(simTimeMs, filmCam, game.posed ? game.posed(carCurr) : carCurr, false);
   }
   window.__filmRig = (r) => {
     filmRig = r ? { along: -5, side: 0, up: 1.6, lead: 0, ...r } : null;
@@ -1885,20 +1887,34 @@ export async function boot({ loading, bootStart, mapId }) {
 
   const FILM_BEST_KEY = 'webfpv.drift.best.v1';
   let filmBest = -1;
+  /* Which map's best is in filmBest: Drift Matsuri keeps the key it always
+   * had, Ridgeline MX its own. */
+  let filmBestFor = '';
+  const filmBestKey = () => (view.id === 'drift' ? FILM_BEST_KEY : `webfpv.${view.id}.best.v1`);
   function filmFrame() {
     const game = view && view.filmGame;
-    ui.filmHud.setVisible(Boolean(game) && !replayMode && (ui.screen === 'flight' || ui.screen === 'paused'));
+    /* A dogfight or ribbon cutting on the map is the game being played:
+     * the take's HUD sat over the fight's, two games on one screen. */
+    /* A Drift Matsuri round is this game with bots: its viewfinder stays. */
+    const filming = !fightGame || fightKind === 'drift';
+    ui.filmHud.setVisible(Boolean(game) && filming && !replayMode && (ui.screen === 'flight' || ui.screen === 'paused'));
     if (!game) {
       return;
     }
-    if (filmBest < 0) {
+    if (!filming) {
+      game.film.drainEvents();
+      return;
+    }
+    if (filmBest < 0 || filmBestFor !== view.id) {
       filmBest = 0;
+      filmBestFor = view.id;
       try {
-        filmBest = Number(localStorage.getItem(FILM_BEST_KEY)) || 0;
+        filmBest = Number(localStorage.getItem(filmBestKey())) || 0;
       } catch {
         filmBest = 0;
       }
       ui.filmHud.setBest(filmBest);
+      ui.filmHud.setWords(game.words || null);
     }
     const film = game.film;
     film.setLens(Math.tan((shell.camera.fov * Math.PI) / 360), shell.camera.aspect);
@@ -1909,7 +1925,7 @@ export async function boot({ loading, bootStart, mapId }) {
           e.newBest = true;
           filmBest = e.summary.score;
           try {
-            localStorage.setItem(FILM_BEST_KEY, String(filmBest));
+            localStorage.setItem(filmBestKey(), String(filmBest));
           } catch {
             /* A private window keeps it for the session only. */
           }
@@ -2146,7 +2162,7 @@ export async function boot({ loading, bootStart, mapId }) {
   /* Once a frame, before anything reads the game: on, off, or a new map. */
   function syncBalloons() {
     const want = Boolean(view) && view.mode === 'freestyle' && Boolean(view.balloonChase)
-      && mapReady && !replayMode;
+      && mapReady && !replayMode && !ui.dogfight;
     if (!want) {
       if (balloonGame) {
         balloonOff();
@@ -2277,6 +2293,791 @@ export async function boot({ loading, bootStart, mapId }) {
     return balloonIdleAcc;
   }
 
+
+  /*
+   * DOGFIGHT (src/game/dogfight.js, src/render/dogfight.js,
+   * src/ui/dogfighthud.js), the owner's ask of 2026-10-29: guns, missiles
+   * and bots on any map, picked from the gate's Dogfight panel. ui.dogfight
+   * is the rules while one is on and null otherwise, so every map flown
+   * any other way runs nothing below past one comparison a frame.
+   *
+   * NOTHING HERE REACHES THE PLANT. The bots, pellets and missiles are drawn
+   * and never uploaded, and a hit takes health and nothing else. In flight
+   * the game is fed from the step loop every DOGFIGHT_EVERY steps of the
+   * lap clock, as the balloons are, so a dropped frame changes nothing it
+   * does; while the plant is not stepping (sat on the ground, a turtle
+   * wait) the frame feeds it so the bots fly on. Pause freezes it.
+   *
+   * A pop of the pilot is the shell's own put back at the spawn, the same
+   * resetCraft a restart uses, with the lap clock left alone. The bots and
+   * the walls they see are read from the map's colliders once, when the
+   * fight starts, into what the game calls its world (fightWorld).
+   */
+  /* The modules of the game being flown, and every game's once fetched:
+   * the dogfight's, and ribbon cutting's (src/game/ribbons.js), which is the
+   * dogfight with ribbons for guns and runs through everything below. */
+  let fightMods = null;
+  const fightLib = {
+    dogfight: null, ribbon: null, goats: null, drift: null,
+  };
+  let fightKind = 'dogfight';
+  /* The room game being played, 'ribbon' (RibbonRoom) or 'dogfight'
+   * (DogfightRoom), which the room plays rather than the pilot's own
+   * rules, or '' for the pilot's own. */
+  let fightInRoom = '';
+  const ROOM_RIBBON_RULES = Object.freeze({ game: 'ribbon', room: true });
+  const ROOM_DOGFIGHT_RULES = Object.freeze({ game: 'dogfight', room: true });
+  const ROOM_GOATS_RULES = Object.freeze({ game: 'goats', room: true });
+  const ROOM_DRIFT_RULES = Object.freeze({ game: 'drift', room: true });
+  /* What the room pump last gave a DogfightRoom of the bot seats. */
+  let fightSeats = null;
+  let fightBots = null;
+  const fightBotPose = (id, x, y, z, fx, fy, fz, ux, uy, uz) => {
+    fightBots.pose(id, x, y, z, fx, fy, fz, ux, uy, uz);
+  };
+  const fightHuds = {
+    dogfight: null, ribbon: null, goats: null, drift: null,
+  };
+  let fightLoading = false;
+  let fightGame = null;
+  let fightView = null;
+  let fightHud = null;
+  let fightFor = null;
+  let fightRulesKey = '';
+  let fightScaleK = 0;
+  let fightRulesRef = null;
+  let fightRulesText = '';
+  let fightScaleCraft = '';
+  let fightKey = '';
+  let fightRound = 0;
+  let fightBest = 0;
+  let fightSaved = false;
+  let fightNewBest = false;
+  let fightFeedAt = 0;
+  let fightIdleAcc = 0;
+  let fightTeleported = true;
+  let fightWhoop = false;
+  const fightMe = {
+    x: 0, y: 0, z: 0, fx: 0, fy: 0, fz: -1, ux: 0, uy: 1, uz: 0, gun: false, missile: false, flying: false,
+  };
+  const fightPos = new THREE.Vector3();
+  const fightQuat = new THREE.Quaternion();
+  const fightAim = new THREE.Vector3();
+  const fightExtra = {
+    best: 0, newBest: false, nextMs: 0, kicker: 'Dogfight', start: '',
+  };
+
+  function fightBestKey() {
+    if (fightKind === 'goats' || fightKind === 'drift') {
+      return `webfpv.${fightKind}.best.${fightKey}`;
+    }
+    return fightKind === 'ribbon' ? `webfpv.ribbons.best.${fightKey}` : `webfpv.dogfight.best.${fightKey}`;
+  }
+
+  function readFightBest() {
+    try {
+      const v = Number(localStorage.getItem(fightBestKey()));
+      return Number.isFinite(v) && v > 0 ? Math.floor(v) : 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  function writeFightBest(v) {
+    try {
+      localStorage.setItem(fightBestKey(), String(v));
+    } catch (e) {
+      /* Private window: the best lasts the session. */
+    }
+  }
+
+  /*
+   * THE FIGHT'S WORLD, read once when it starts. Where the bots roam: round
+   * the spawn, out to the map's colliders, never further than a fight can
+   * see across. The ground as a grid, so the game's floor is an array read.
+   *
+   * AND THE SOLIDS AS A GRID OF CELLS, filled once from the colliders, so
+   * `blocked`, the one question the game asks of them, is a walk of array
+   * reads along the line. The first build asked the colliders' own through
+   * test instead and cost 0.3 to 0.4 ms a feed in the town, forty times
+   * the game's whole budget: each query walks every bucket within the
+   * largest solid's reach. A cell is marked when a solid touches any of
+   * it, so a wall thinner than a cell still stops a pellet; the price is a
+   * wall half a cell thicker than it is, which nobody aiming a gun sees.
+   * The cars and the train are not in it: they move, and a pellet through
+   * a train is the train's business.
+   */
+  function fightWorld() {
+    const c = view.colliders;
+    const k = simLenToWorld(1);
+    const cx = startX;
+    const cz = startZ;
+    const cy = startY;
+    const solid = Boolean(c && c.built && c.fax);
+    /* How far the map's solids go from the spawn, and how high. */
+    let far = 0;
+    let topY = cy;
+    if (solid) {
+      for (let i = 0; i < c.count; i += 1) {
+        const x0 = Math.min(c.fax[i], c.fbx[i]);
+        const x1 = Math.max(c.fax[i], c.fbx[i]);
+        const z0 = Math.min(c.faz[i], c.fbz[i]);
+        const z1 = Math.max(c.faz[i], c.fbz[i]);
+        const dx = Math.max(Math.abs(x0 - cx), Math.abs(x1 - cx));
+        const dz = Math.max(Math.abs(z0 - cz), Math.abs(z1 - cz));
+        const d = Math.sqrt(dx * dx + dz * dz);
+        /* A ground slab the size of the map says nothing about where the
+         * fight is. */
+        if (d < 400 * k) {
+          far = Math.max(far, d);
+          topY = Math.max(topY, c.fay[i], c.fby[i]);
+        }
+      }
+    }
+    const radius = Math.max(40 * k, Math.min(150 * k, far * 0.85));
+    const top = Math.max(12 * k, Math.min(60 * k, topY - cy + 4 * k));
+    /* The ground, sampled from just above the spawn's height so a deck or
+     * a floor indoors is the floor and not the street under it. */
+    const half = radius + 30 * k;
+    const n = 160;
+    const cell = (half * 2) / n;
+    const ground = new Float32Array(n * n);
+    const fromY = cy + 1 * k;
+    let lowY = cy;
+    for (let i = 0; i < n; i += 1) {
+      for (let j = 0; j < n; j += 1) {
+        const g = view.height(cx - half + (i + 0.5) * cell, cz - half + (j + 0.5) * cell, fromY);
+        ground[i * n + j] = Number.isFinite(g) ? g : cy;
+        lowY = Math.min(lowY, ground[i * n + j]);
+      }
+    }
+    const x0g = cx - half;
+    const z0g = cz - half;
+    /* The cells: as fine as three million of them allow, and never finer
+     * than a third of a metre of the aircraft's. */
+    const yLo = lowY - 2 * k;
+    const yHi = cy + top + 12 * k;
+    let v = Math.max(0.35 * k, (half * 2) / 256);
+    while (Math.ceil((half * 2) / v) ** 2 * Math.ceil((yHi - yLo) / v) > 3e6) {
+      v *= 1.15;
+    }
+    const nx = Math.ceil((half * 2) / v);
+    const ny = Math.ceil((yHi - yLo) / v);
+    const occ = new Uint8Array(nx * nx * ny);
+    const at = (i, j, l) => (l * nx + j) * nx + i;
+    if (solid) {
+      const lo = (q, o, nmax) => Math.max(0, Math.min(nmax - 1, Math.floor((q - o) / v)));
+      for (let s = 0; s < c.count; s += 1) {
+        const box = c.fbox[s] === 1;
+        const r = box ? 0 : c.fr[s];
+        const ax = c.fax[s];
+        const ay = c.fay[s];
+        const az = c.faz[s];
+        const bx = c.fbx[s];
+        const by = c.fby[s];
+        const bz = c.fbz[s];
+        const minX = Math.min(ax, bx) - r;
+        const maxX = Math.max(ax, bx) + r;
+        const minY = Math.min(ay, by) - r;
+        const maxY = Math.max(ay, by) + r;
+        const minZ = Math.min(az, bz) - r;
+        const maxZ = Math.max(az, bz) + r;
+        if (maxX < x0g || minX > x0g + nx * v || maxZ < z0g || minZ > z0g + nx * v || maxY < yLo || minY > yLo + ny * v) {
+          continue;
+        }
+        const i0 = lo(minX, x0g, nx);
+        const i1 = lo(maxX, x0g, nx);
+        const j0 = lo(minZ, z0g, nx);
+        const j1 = lo(maxZ, z0g, nx);
+        const l0 = lo(minY, yLo, ny);
+        const l1 = lo(maxY, yLo, ny);
+        /* A capsule marks the cells whose middle is within its radius and
+         * half a cell's diagonal of its axis. */
+        const ex = bx - ax;
+        const ey = by - ay;
+        const ez = bz - az;
+        const ee = ex * ex + ey * ey + ez * ez;
+        const reach = r + v * 0.87;
+        for (let l = l0; l <= l1; l += 1) {
+          for (let j = j0; j <= j1; j += 1) {
+            for (let i = i0; i <= i1; i += 1) {
+              if (!box) {
+                const px = x0g + (i + 0.5) * v - ax;
+                const py = yLo + (l + 0.5) * v - ay;
+                const pz = z0g + (j + 0.5) * v - az;
+                let u = ee > 0 ? (px * ex + py * ey + pz * ez) / ee : 0;
+                u = u < 0 ? 0 : (u > 1 ? 1 : u);
+                const qx = px - ex * u;
+                const qy = py - ey * u;
+                const qz = pz - ez * u;
+                if (qx * qx + qy * qy + qz * qz > reach * reach) {
+                  continue;
+                }
+              }
+              occ[at(i, j, l)] = 1;
+            }
+          }
+        }
+      }
+    }
+    /* The questions the game asks of the two grids live beside the game, so
+     * the bots' arena in Node asks them of a dumped map exactly as here. */
+    const grid = fightMods.gridWorld({
+      ground, gn: n, gcell: cell, gx0: x0g, gz0: z0g, gout: cy, occ, nx, ny, v, yLo,
+    });
+    const { inside, floorAt: floorOf, blocked } = grid;
+    /* Where a bot comes back: open air round the spawn that can be seen
+     * from it, in eight directions at three distances, nearest first. */
+    const DIRS = [[1, 0], [0.7071, 0.7071], [0, 1], [-0.7071, 0.7071], [-1, 0], [-0.7071, -0.7071], [0, -1], [0.7071, -0.7071]];
+    const spawns = [];
+    const eyeY = cy + 2 * k;
+    for (const share of [0.3, 0.5, 0.7, 0.15]) {
+      for (let d = 0; d < DIRS.length && spawns.length < 14; d += 1) {
+        const [ux, uz] = DIRS[d];
+        const x = cx + ux * radius * share;
+        const z = cz + uz * radius * share;
+        const y = Math.min(cy + top - 2 * k, Math.max(floorOf(x, cy, z) + 4 * k, eyeY + 2 * k));
+        if (inside(x, y, z) || blocked(cx, eyeY, cz, x, y, z) >= 0) {
+          continue;
+        }
+        spawns.push({ x, y, z });
+      }
+    }
+    if (spawns.length < 3) {
+      spawns.push({ x: cx, y: eyeY + 3 * k, z: cz });
+    }
+    return {
+      k,
+      cruise: fightWhoop ? 9 : 24,
+      cx,
+      cy,
+      cz,
+      radius,
+      top,
+      spawns,
+      floorAt: floorOf,
+      blocked,
+      inside,
+      grid: grid.data,
+    };
+  }
+
+  function fightOff() {
+    if (fightGame && fightGame.detach) {
+      fightGame.detach();
+    }
+    if (together) {
+      together.goatsHerdSize(0);
+      together.driftReady(false);
+    }
+    if (fightView) {
+      fightView.dispose();
+    }
+    fightView = null;
+    fightGame = null;
+    fightFor = null;
+    input.weaponsLive = false;
+    input.touchGun = false;
+    if (fightHud) {
+      fightHud.setVisible(false);
+    }
+  }
+
+  function fightNewRound() {
+    fightRound += 1;
+    fightGame.reset(fightRound);
+    fightSaved = false;
+    fightNewBest = false;
+    fightTeleported = true;
+  }
+
+  /* Once a frame, before anything reads the game: on, off, a new map or
+   * new rules. */
+  function syncDogfight() {
+    /* A ribbon cutting or dogfight room on this world plays its game
+     * whatever the pilot was doing; any other room plays no game of this
+     * kind. */
+    const inGame = together && ui.roomInfo ? together.gameRoom() : '';
+    const roomGame = inGame === 'ribbon' || inGame === 'dogfight' || inGame === 'goats' || inGame === 'drift' ? inGame : '';
+    const roomRibbon = roomGame === 'ribbon';
+    const rules = roomGame
+      ? ({ ribbon: ROOM_RIBBON_RULES, dogfight: ROOM_DOGFIGHT_RULES, goats: ROOM_GOATS_RULES, drift: ROOM_DRIFT_RULES })[roomGame]
+      : ui.dogfight;
+    /* Goat herding's round is the goat map's, and nowhere else. */
+    const herdable = !rules || rules.game !== 'goats' || Boolean(view && view.goatGame);
+    /* Drift Matsuri's is the drift map's, its judge and its cars. */
+    const filmable = !rules || rules.game !== 'drift' || Boolean(view && view.filmGame);
+    const want = Boolean(view) && Boolean(rules) && herdable && filmable && mapReady && !replayMode && (Boolean(roomGame) || !ui.roomInfo);
+    if (!want) {
+      if (fightGame) {
+        fightOff();
+      }
+      return;
+    }
+    const kind = rules.game === 'ribbon' || rules.game === 'goats' || rules.game === 'drift' ? rules.game : 'dogfight';
+    /* The rules as text only when the object is a new one: a string a
+     * frame for as long as a fight lasts is garbage, and a collection is a
+     * hitch. */
+    if (rules !== fightRulesRef) {
+      fightRulesRef = rules;
+      fightRulesText = JSON.stringify(rules);
+    }
+    const rulesKey = fightRulesText;
+    /* The fight is read in the aircraft's own metres, through the world
+     * scale it was built at (fightWorld's k). A quad of another size on the
+     * same map moves that scale without a new view: the host of a room
+     * swapping everybody's quad, or the quad picker on a map already
+     * loaded. The fight was left at the old size, bots, pellets and hit
+     * reach three and a half times off, until it is built again here. */
+    const scaleK = simLenToWorld(1);
+    if (fightFor === view && fightGame && fightKind === kind && fightInRoom === roomGame
+      && fightScaleK === scaleK && fightScaleCraft === runAirframe) {
+      if (roomGame) {
+        return;
+      }
+      if (rulesKey !== fightRulesKey) {
+        fightRulesKey = rulesKey;
+        fightGame.setRules(rules);
+        fightSaved = false;
+        fightNewBest = false;
+        fightTeleported = true;
+      }
+      return;
+    }
+    if (!fightLib[kind]) {
+      if (!fightLoading) {
+        fightLoading = true;
+        const want = kind === 'drift'
+          ? Promise.all([import('./game/driftround.js'), import('./ui/drifthud.js'), import('./game/dogfight.js'), import('./render/dogfight.js'), import('./game/driftroom.js')])
+            .then(([game, hud, base, render, room]) => ({
+              ...base, ...game, Game: game.DriftRound, View: render.DogfightView, feedFraction: render.feedFraction, Hud: hud.DriftHud, kicker: 'Drift Matsuri', DriftRoom: room.DriftRoom,
+            }))
+          : kind === 'goats'
+          ? Promise.all([import('./game/goatround.js'), import('./ui/herdhud.js'), import('./game/dogfight.js'), import('./render/dogfight.js'), import('./game/goatroom.js')])
+            .then(([game, hud, base, render, room]) => ({
+              ...base, ...game, Game: game.GoatRound, View: render.DogfightView, feedFraction: render.feedFraction, Hud: hud.HerdHud, kicker: 'Goat herding', GoatRoom: room.GoatRoom,
+            }))
+          : kind === 'ribbon'
+          ? Promise.all([import('./game/ribbons.js'), import('./render/ribbons.js'), import('./ui/ribbonhud.js'), import('./game/dogfight.js'), import('./render/dogfight.js')])
+            .then(([game, render, hud, base, baseRender]) => ({
+              ...base, ...game, Game: game.RibbonCut, View: render.RibbonView, feedFraction: baseRender.feedFraction, Hud: hud.RibbonHud, kicker: 'Ribbon cutting',
+            }))
+          : Promise.all([import('./game/dogfight.js'), import('./render/dogfight.js'), import('./ui/dogfighthud.js'), import('./game/dogroom.js')])
+            .then(([game, render, hud, room]) => ({
+              ...game, Game: game.Dogfight, View: render.DogfightView, feedFraction: render.feedFraction, Hud: hud.DogfightHud, kicker: 'Dogfight', DogfightRoom: room.DogfightRoom,
+            }));
+        want
+          .then((mods) => {
+            fightLib[kind] = mods;
+          })
+          .catch((e) => {
+            console.warn('dogfight: the game did not load', e);
+          })
+          .finally(() => {
+            fightLoading = false;
+          });
+      }
+      return;
+    }
+    if (fightGame) {
+      fightOff();
+    }
+    fightKind = kind;
+    fightMods = fightLib[kind];
+    const {
+      Game, hashKey, View, Hud,
+    } = fightMods;
+    fightWhoop = runAirframe === 'whoop65';
+    fightScaleK = scaleK;
+    fightScaleCraft = runAirframe;
+    fightKey = `${view.id}:${(view.egg && view.egg.key) || view.name || ''}:${fightWhoop ? 'whoop' : 'five'}`;
+    fightRulesKey = rulesKey;
+    fightInRoom = roomGame;
+    fightSeats = null;
+    const builtAt = performance.now();
+    const world = fightWorld();
+    const seed = hashKey(fightKey) ^ (Date.now() >>> 0);
+    if (roomRibbon) {
+      fightGame = new fightMods.RibbonRoom(world);
+    } else if (roomGame === 'dogfight') {
+      fightGame = new fightMods.DogfightRoom(world, { seed });
+    } else if (roomGame === 'goats') {
+      fightGame = new fightMods.GoatRoom(world, { seed, pen: view.goatGame });
+    } else if (roomGame === 'drift') {
+      fightGame = new fightMods.DriftRoom(world, { seed, pen: { film: view.filmGame.film, poses: () => (view.filmGame.posed ? view.filmGame.posed(carCurr) : carCurr) } });
+    } else if (kind === 'goats') {
+      fightGame = new Game(world, rules, seed, view.goatGame);
+    } else if (kind === 'drift') {
+      fightGame = new Game(world, rules, seed, { film: view.filmGame.film, poses: () => (view.filmGame.posed ? view.filmGame.posed(carCurr) : carCurr) });
+    } else {
+      fightGame = new Game(world, rules, seed);
+    }
+    /* For the checks: what reading the map cost, once. */
+    fightGame.buildMs = performance.now() - builtAt;
+    if (roomGame) {
+      fightGame.who = (id) => together.pilotOf(id);
+    }
+    fightView = new View({ whoop: fightWhoop, slots: roomRibbon ? fightMods.ROOM_SLOTS : 0 });
+    fightView.attach(view.scene, shell.renderer, shell.camera, view.post && view.post.rtScene);
+    for (const other of Object.keys(fightHuds)) {
+      if (other !== kind && fightHuds[other]) {
+        fightHuds[other].setVisible(false);
+      }
+    }
+    if (!fightHuds[kind]) {
+      fightHuds[kind] = new Hud(ui.root, {
+        input,
+        onAgain: () => {
+          if (fightGame && fightGame.room) {
+            if (fightKind === 'ribbon') {
+              together.ribbonStart();
+            } else if (fightKind === 'goats') {
+              together.goatsStart();
+            } else if (fightKind === 'drift') {
+              together.driftStart();
+            } else {
+              together.dogfightStart();
+            }
+          } else if (fightGame) {
+            fightNewRound();
+          }
+        },
+        onFlyOn: () => {
+          if (fightGame && fightGame.room) {
+            fightGame.reset();
+          }
+        },
+        onChange: () => ui.act('fight-change'),
+        onLeave: () => ui.act('fight-leave'),
+      });
+    }
+    fightHud = fightHuds[kind];
+    fightExtra.kicker = fightKind === 'drift' && view && view.filmGame && view.filmGame.kicker ? view.filmGame.kicker : fightMods.kicker;
+    fightFor = view;
+    fightBest = readFightBest();
+    fightRound = 0;
+    if (roomRibbon) {
+      const last = together.ribbonLast();
+      fightRoomSync();
+      if (last) {
+        fightGame.heard(last.state, last.goLocal, last.endLocal);
+      }
+    } else if (roomGame === 'dogfight') {
+      fightRoomSync();
+      const last = together.dogfightLast();
+      if (last) {
+        fightGame.heard(last, together.boardToLocal);
+      }
+    } else if (roomGame === 'goats') {
+      fightRoomSync();
+      const last = together.goatsLast();
+      if (last) {
+        fightGame.heard(last, together.boardToLocal);
+      }
+    } else if (roomGame === 'drift') {
+      fightRoomSync();
+      const last = together.driftLast();
+      if (last) {
+        fightGame.heard(last, together.boardToLocal);
+      }
+    }
+    fightNewRound();
+    /* Ribbons and goats fire nothing: the gun and missile buttons stay
+     * what they were. */
+    input.weaponsLive = kind === 'dogfight';
+  }
+
+  /* Once a frame in a ribbon cutting room: who this page is, the board's
+   * round and the cuts it believed in, and this page's cuts out to it. */
+  function fightRoomSync() {
+    if (!fightGame || !fightGame.room || !together) {
+      return;
+    }
+    if (fightKind === 'dogfight') {
+      dogfightRoomSync();
+      return;
+    }
+    if (fightKind === 'goats') {
+      goatsRoomSync();
+      return;
+    }
+    if (fightKind === 'drift') {
+      driftRoomSync();
+      return;
+    }
+    const who = together.ribbonWho();
+    if (who) {
+      fightGame.setYou(who.you, who.host, who.avatar);
+    }
+    /* The host's bots: the seats, and their places out to the room when
+     * this page is the one flying them (src/net/roombots.js). */
+    const bots = together.roomBots();
+    if (bots) {
+      const g = fightGame;
+      const mine = bots.mine();
+      g.setBots(bots.seats(), mine);
+      if (mine) {
+        for (let s = 1; s < fightMods.MAX_PILOTS; s += 1) {
+          if (g.botFlies(s)) {
+            bots.pose(g.idOf[s], g.x[s], g.y[s], g.z[s], g.fx[s], g.fy[s], g.fz[s], g.ux[s], g.uy[s], g.uz[s]);
+          }
+        }
+      }
+    }
+    const rb = together.takeRibbon();
+    if (rb) {
+      fightGame.heard(rb.state, rb.goLocal, rb.endLocal);
+    }
+    const cuts = together.takeRibbonCuts();
+    if (cuts) {
+      for (const c of cuts) {
+        fightGame.applyCut(c);
+      }
+    }
+    const out = fightGame.takeOutbox();
+    if (out) {
+      for (const m of out) {
+        together.sendRibbon(m);
+      }
+    }
+  }
+
+  /* The same, in a dogfight room (src/game/dogroom.js): who this page is,
+   * the bot seats and, on the host's page, their places out to the room;
+   * the board's round, the hits it believed and the guns and missiles it
+   * passed on; and this page's own hits, guns and launches out to it. */
+  function dogfightRoomSync() {
+    const g = fightGame;
+    const who = together.ribbonWho();
+    if (who) {
+      g.setYou(who.you, who.host);
+    }
+    const bots = together.roomBots();
+    if (bots) {
+      const seats = bots.seats();
+      if (seats !== fightSeats) {
+        fightSeats = seats;
+        g.setBots(seats);
+      }
+      if (bots.mine()) {
+        fightBots = bots;
+        g.eachFlown(fightBotPose);
+      }
+    }
+    const toLocal = together.boardToLocal;
+    const st = together.takeDogfight();
+    if (st) {
+      g.heard(st, toLocal);
+    }
+    const ins = together.takeDogfightIn();
+    if (ins) {
+      for (const m of ins) {
+        if (m.t === 'dfHit') {
+          g.heardHit(m, toLocal);
+        } else if (m.t === 'dfGun') {
+          g.heardGun(m);
+        } else if (m.t === 'dfLaunch') {
+          g.heardLaunch(m);
+        }
+      }
+    }
+    const out = g.takeOutbox();
+    if (out) {
+      for (const m of out) {
+        together.sendDogfight(m);
+      }
+    }
+  }
+
+  /* The same, in a goat herding room (src/game/goatroom.js): who this
+   * page is, the bot seats and their places, the board's round and the
+   * goats it counted, the host's herd on everybody else's page, and on the
+   * host's page its herd and its goats home out to the room. */
+  function goatsRoomSync() {
+    const g = fightGame;
+    const who = together.ribbonWho();
+    if (who) {
+      g.setYou(who.you, who.host);
+    }
+    const bots = together.roomBots();
+    if (bots) {
+      const seats = bots.seats();
+      if (seats !== fightSeats) {
+        fightSeats = seats;
+        g.setBots(seats);
+      }
+      if (bots.mine()) {
+        fightBots = bots;
+        g.eachFlown(fightBotPose);
+      }
+    }
+    together.goatsHerdSize(g.herd ? g.herd.count : 0);
+    const st = together.takeGoats();
+    if (st) {
+      g.heard(st, together.boardToLocal);
+    }
+    const ins = together.takeGoatsIn();
+    if (ins) {
+      for (const m of ins) {
+        if (m.t === 'gtHome') {
+          g.heardHome(m);
+        } else if (m.t === 'gtHerd') {
+          g.heardHerd(m);
+        }
+      }
+    }
+    const out = g.takeOutbox();
+    if (out) {
+      for (const m of out) {
+        together.sendGoats(m);
+      }
+    }
+  }
+
+  /* The same, in a Drift Matsuri room (src/game/driftroom.js): who this
+   * page is, the bot seats and their places, the board's round and the
+   * takes' scores it passed on, and the takes this page judged out. */
+  function driftRoomSync() {
+    const g = fightGame;
+    const who = together.ribbonWho();
+    if (who) {
+      g.setYou(who.you, who.host);
+    }
+    const bots = together.roomBots();
+    if (bots) {
+      const seats = bots.seats();
+      if (seats !== fightSeats) {
+        fightSeats = seats;
+        g.setBots(seats);
+      }
+      if (bots.mine()) {
+        fightBots = bots;
+        g.eachFlown(fightBotPose);
+      }
+    }
+    together.driftReady(Boolean(g.film));
+    const st = together.takeDrift();
+    if (st) {
+      g.heard(st, together.boardToLocal);
+    }
+    const ins = together.takeDriftIn();
+    if (ins) {
+      for (const m of ins) {
+        g.heardReel(m);
+      }
+    }
+    const out = g.takeOutbox();
+    if (out) {
+      for (const m of out) {
+        together.sendDrift(m);
+      }
+    }
+  }
+
+  /* One step loop feed with the craft at state `st`. */
+  function fightStep(clock, st, flying) {
+    poseFromState(st, fightPos);
+    simQuatToThree(st[7], st[8], st[9], st[10], fightQuat);
+    fightQuat.premultiply(qSpawn);
+    const m = fightMe;
+    m.x = fightPos.x;
+    m.y = fightPos.y;
+    m.z = fightPos.z;
+    fightAim.set(0, 1, 0).applyQuaternion(fightQuat);
+    m.ux = fightAim.x;
+    m.uy = fightAim.y;
+    m.uz = fightAim.z;
+    /* The gun points where the camera looks, its tilt included, which is
+     * where the reticle is. */
+    fightQuat.multiply(qTilt);
+    fightAim.set(0, 0, -1).applyQuaternion(fightQuat);
+    m.fx = fightAim.x;
+    m.fy = fightAim.y;
+    m.fz = fightAim.z;
+    m.flying = flying;
+    m.gun = flying && mode === 'flight' && input.gunHeld();
+    /* Taken whatever: a press on the ground is not a missile on takeoff. */
+    m.missile = input.takeMissile() && flying && mode === 'flight';
+    fightGame.step(m, fightTeleported);
+    fightTeleported = false;
+    fightFeedAt = clock;
+  }
+
+  /* While the plant does not step: feeds from the frame's own time, with
+   * the craft where it sits. Returns how far past the last feed the frame
+   * is. */
+  function fightIdleTick(dtMs) {
+    const { DOGFIGHT_EVERY } = fightMods;
+    fightIdleAcc += dtMs;
+    let n = 0;
+    while (fightIdleAcc >= DOGFIGHT_EVERY && n < 40) {
+      fightIdleAcc -= DOGFIGHT_EVERY;
+      fightStep(fightFeedAt, stateCurr, false);
+      n += 1;
+    }
+    if (n === 40) {
+      fightIdleAcc = 0;
+    }
+    return fightIdleAcc;
+  }
+
+  /* Once a drawn frame: the game's events out to the world, the HUD and
+   * the speaker, a pop of the pilot put back at the spawn, and the round's
+   * end. `ahead` is how far past the last feed this frame is drawn. */
+  function fightFrame(ahead, dtMs, nowMs) {
+    if (!fightGame) {
+      return;
+    }
+    const { RESULT_MS, ME, feedFraction } = fightMods;
+    const g = fightGame;
+    let popMe = false;
+    for (let n = 0; n < g.eventCount; n += 1) {
+      const e = g.events[n];
+      fightView.event(e, g, nowMs);
+      const sound = fightHud.event(e, g, nowMs);
+      if (sound && mode === 'flight' && typeof audio.event === 'function') {
+        audio.event(sound);
+      }
+      if (e.type === 'pop' && e.to === ME) {
+        popMe = true;
+      }
+    }
+    g.eventCount = 0;
+    if (popMe && mode === 'flight') {
+      adoptSpawn();
+      resetCraft();
+      fightTeleported = true;
+    }
+    if (g.over && !fightSaved && !g.room) {
+      fightSaved = true;
+      const mine = g.pops[ME];
+      if (mine > fightBest) {
+        fightNewBest = fightBest > 0 || mine > 0;
+        fightBest = mine;
+        writeFightBest(mine);
+      }
+    }
+    /* After the table's time a solo fight starts its next round, and a
+     * room's table is put away: its next round is the host's to start. */
+    if (g.over && !g.dismissed && g.sinceOverMs() >= RESULT_MS) {
+      fightNewRound();
+    }
+    const t = feedFraction(ahead);
+    fightView.frame(g, t, shell.camera.position, dtMs, nowMs);
+    /* Not over a menu: the pause and its dialogs are read, not flown. */
+    const on = ui.screen === 'flight';
+    let touch = false;
+    try {
+      touch = window.matchMedia('(pointer: coarse)').matches;
+    } catch (e) {
+      touch = false;
+    }
+    fightHud.setVisible(on, { touch: touch && ui.screen === 'flight' });
+    fightExtra.best = fightBest;
+    fightExtra.newBest = fightNewBest;
+    fightExtra.nextMs = g.over ? Math.max(0, RESULT_MS - g.sinceOverMs()) : 0;
+    fightHud.frame(g, t, shell.camera, nowMs, fightExtra);
+  }
 
   /* A crash the shell called, told to the chase as it is told to the score:
    * the tail and everything waiting to pay are lost. */
@@ -3473,6 +4274,10 @@ export async function boot({ loading, bootStart, mapId }) {
   const ovKeepAt = { x: 0, y: 0, z: 0 };
   let ovKeepSeen = false;
   const mpDraw = (id, pose, pilot) => {
+    /* A ribbon cutting room's game draws every pilot's ribbon from here. */
+    if (fightGame && fightGame.room) {
+      fightGame.remote(id, pose, pilot);
+    }
     const dx = pose.px - mpHx;
     const dy = pose.py - mpHy;
     const dz = pose.pz - mpHz;
@@ -6138,11 +6943,16 @@ export async function boot({ loading, bootStart, mapId }) {
   function goatFrame() {
     const game = view && view.goatGame;
     ui.goatsOn = Boolean(game);
-    ui.goatHud.setVisible(Boolean(game) && !replayMode && (ui.screen === 'flight' || ui.screen === 'paused'));
+    /* As the take's, above: the herd still runs, its HUD and its HOME!
+     * callouts wait for the fight to end. */
+    ui.goatHud.setVisible(Boolean(game) && !fightGame && !replayMode && (ui.screen === 'flight' || ui.screen === 'paused'));
     if (!game) {
       return;
     }
     const home = game.drain();
+    if (fightGame) {
+      return;
+    }
     const hud = game.hud();
     if (home.length) {
       const last = home[home.length - 1];
@@ -6154,7 +6964,7 @@ export async function boot({ loading, bootStart, mapId }) {
         ui.goalComplete({
           word: `ALL ${hud.total}!`,
           sub: `Every goat home in ${goatClock(last.atS)}`,
-          band: "Every 90%er's goat in Heads' garage",
+          band: "Every goat in Heads' garage",
           picture: keptPicture(last.sticker, false),
           tiles,
         });
@@ -6358,7 +7168,8 @@ export async function boot({ loading, bootStart, mapId }) {
    * place. */
   function yardFrame(nowWall) {
     const hud = ui.yardHud;
-    const on = Boolean(yard) && yard.near && !replayMode && airtimeMs > 0
+    /* Not under a mini game (fightGame), as the goat and film HUDs. */
+    const on = Boolean(yard) && yard.near && !replayMode && !fightGame && airtimeMs > 0
       && (mode === 'flight' || mode === 'paused') && (ui.screen === 'flight' || ui.screen === 'paused');
     if (hud.asking && (!landed || mode !== 'flight' || ui.screen !== 'flight')) {
       hud.setAsking(false);
@@ -6417,9 +7228,12 @@ export async function boot({ loading, bootStart, mapId }) {
      */
     simTimeMs = 0;
     airtimeMs = 0;
-    /* A fresh run is a fresh balloon round. */
+    /* A fresh run is a fresh balloon round, and a fresh fight. */
     if (balloonGame) {
       balloonNewRound();
+    }
+    if (fightGame) {
+      fightNewRound();
     }
     /* Anything that holds a stamp ON that clock has to go back with it, or a
      * fresh run compares a zeroed clock against last run's stamp and stays
@@ -6505,7 +7319,9 @@ export async function boot({ loading, bootStart, mapId }) {
     ghostGap = null;
     ghostChased = null;
     ghostRig.setPresence(0);
-    runLaps = ui.settings.laps;
+    /* A dogfight on a race track is practice: no end to the run, so the
+     * fight is never cut off by a results screen. */
+    runLaps = ui.dogfight ? PRACTICE_LAPS : ui.settings.laps;
     view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
     /* Steam edition: career. A new run of the lesson under way, if any. */
     if (career) {
@@ -8301,9 +9117,9 @@ export async function boot({ loading, bootStart, mapId }) {
       return;
     }
     /* Nor for Drift Matsuri: DRIFT_OFF_BOARD in src/ui/ui.js. */
-    if (view.id === 'drift') {
+    if (view.id === 'drift' || view.id === 'moto') {
       notice = {
-        text: 'The board keeps no runs for Drift Matsuri, so its runs stay here.',
+        text: `The board keeps no runs for ${view.id === 'moto' ? 'Ridgeline MX' : 'Drift Matsuri'}, so its runs stay here.`,
         untilMs: performance.now() + 4200,
       };
       return;
@@ -9289,6 +10105,22 @@ export async function boot({ loading, bootStart, mapId }) {
     if (career && career.handleKey(code, repeat)) {
       return;
     }
+    /*
+     * NOT WHILE A WORLD BUILDS. The loading screen covers the menu that was
+     * up when the load began, usually the title, and that menu still has a
+     * cursor. A key pressed while the bar fills (Enter on the quad picker
+     * pressed twice, a pad's A) used to choose the hidden row, which on a
+     * phone sized window is Fly together, and a solo round opened under the
+     * room's pages (2026-10-29, scripts/minigames-check.js --only=load).
+     * And the loading screen's own state as well as swapInFlight: the swap
+     * ends when the world is adopted, but the screen stays up through the
+     * world's first frame, which is shader compiles, seconds on a slow
+     * machine (7 s here) with the title under it and its keys live. A
+     * failed load keeps its keys: its help is the page then.
+     */
+    if (swapInFlight || (loading.visible && !loading.failed)) {
+      return;
+    }
     if (ui.handleKey(code, repeat)) {
       return;
     }
@@ -10228,6 +11060,11 @@ export async function boot({ loading, bootStart, mapId }) {
       together.pollPad(padNav(), nowWall);
     } else if (career && career.wantsPad()) {
       career.pollPad(padNav(), nowWall);
+    } else if (swapInFlight || (loading.visible && !loading.failed)) {
+      /* Nothing under a loading screen, as for keys (input.onKey), and
+       * the first poll after it learns where the pad is, acting on nothing,
+       * so a button held through the load is not a press when it ends. */
+      ui.padRearm = true;
     } else if (ui.isModal()) {
       ui.pollPad(padNav());
     }
@@ -10443,6 +11280,13 @@ export async function boot({ loading, bootStart, mapId }) {
               }
             }
           }
+          if (fightGame) {
+            for (let t = simTimeMs + 1; t <= simTimeMs + steps; t += 1) {
+              if (t % fightMods.DOGFIGHT_EVERY === 0) {
+                fightStep(t, stateCurr, false);
+              }
+            }
+          }
           if (plantUpZ(stateCurr) < 0) {
             endLaunchStaging(false);
             takingOff = false;
@@ -10491,6 +11335,10 @@ export async function boot({ loading, bootStart, mapId }) {
             }
             if (balloonGame && (simTimeMs + i + 1) % balloonMods.BALLOON_EVERY === 0) {
               balloonStep(simTimeMs + i + 1, stNow, true);
+            }
+            /* The dogfight, on the same lap clock. */
+            if (fightGame && (simTimeMs + i + 1) % fightMods.DOGFIGHT_EVERY === 0) {
+              fightStep(simTimeMs + i + 1, stNow, true);
             }
             if (scoring) {
               /* Body rates, the two quaternion components the attitude test
@@ -11654,6 +12502,22 @@ export async function boot({ loading, bootStart, mapId }) {
           balloonFrame(0, 0, nowWall);
         }
       }
+      syncDogfight();
+      fightRoomSync();
+      if (fightGame) {
+        /* A room's bots flown by this page fly on while its pilot is in
+         * the pause menu: the room does not stop for one pilot, and frozen
+         * they hung in the air for everybody else to shoot or cut, as
+         * often as not while the host was in that menu adding them. */
+        const roomBotsHere = fightGame.room && fightGame.host && mode === 'paused';
+        if (mode === 'title' || (mode === 'flight' && balloonIdle) || roomBotsHere) {
+          fightFrame(fightIdleTick(dt), dt, nowWall);
+        } else if (mode === 'flight') {
+          fightFrame(simTimeMs - 1 + a - fightFeedAt, dt, nowWall);
+        } else {
+          fightFrame(0, 0, nowWall);
+        }
+      }
       if (trafficOn) {
         if (mode === 'title') {
           trafficFrame(titleStepMs, titleAcc);
@@ -12304,7 +13168,7 @@ export async function boot({ loading, bootStart, mapId }) {
         : '\nThe green gate starts your lap';
       if (race.freestyle && view.filmGame) {
         /* Drift Matsuri: the take is the game, and it starts in the air. */
-        second = '\nYou are the camera. Film the drift battles for a minute.';
+        second = view.filmGame.words ? view.filmGame.words.tip : '\nYou are the camera. Film the drift battles for a minute.';
       } else if (race.freestyle && view.goatGame) {
         /* The goat map: the herd is the game and it has a clock, so the
          * freestyle promise of none is not true of it (goathud.js). */
@@ -12330,7 +13194,14 @@ export async function boot({ loading, bootStart, mapId }) {
       if (together && together.raceRoom()) {
         second = '';
       }
-      ui.setBanner(`${start}${second}`);
+      if (fightGame) {
+        /* A dogfight says it on its own HUD's line, which names the bots
+         * waiting; the banner would sit under its score. */
+        fightExtra.start = start;
+        ui.setBanner('');
+      } else {
+        ui.setBanner(`${start}${second}`);
+      }
       if (guidedStart && !onGrid) {
         ui.noteGuideShown();
       }
@@ -12732,6 +13603,8 @@ export async function boot({ loading, bootStart, mapId }) {
   /* Flying together, for scripts/together-shots.js: what is on screen and
    * the room it is in, or null before anything asked for a room. */
   window.__together = () => (together ? together.debugState() : null);
+  /* For scripts/together-shots.js: the room's bot seats (src/net/roombots.js). */
+  window.__roomBots = () => (together && together.roomBots ? together.roomBots() : null);
   /* For scripts/together-shots.js: the watching camera as it is now, and
    * what one of its frames costs, timed riding behind the pilot watched on
    * the real map's colliders with a camera of its own. Harness only. */
@@ -12891,6 +13764,10 @@ export async function boot({ loading, bootStart, mapId }) {
   window.__score = () => score.summary();
   /* Balloon chase, for its checks: the game, or null while it is off. */
   window.__balloons = () => balloonGame;
+  /* Dogfight, for its checks: the game, or null while there is none. */
+  window.__dogfight = () => fightGame;
+  window.__dogfightView = () => fightView;
+  window.__dogfightHud = () => fightHud;
   window.__balloonCraft = () => ({ ...balloonCraft });
   /*
    * THE COUNTER, for the checks and the flown rigs: the live view (the
@@ -14504,6 +15381,17 @@ export async function boot({ loading, bootStart, mapId }) {
   window.__animTo = (step) => {
     view.updateAnim(step);
     return view.stats ? (view.stats().trainOffset ?? null) : null;
+  };
+  /*
+   * Put the lap clock at `ms`, so a capture can have the bikes of Ridgeline
+   * MX or the cars of Drift Matsuri where it needs them instead of waiting
+   * a lap at two frames a second. The next frame draws the traffic there.
+   * Harness only; nothing in the shell reads it.
+   */
+  window.__lapTo = (ms) => {
+    simTimeMs = Math.max(0, Math.round(ms));
+    carClockRead = -1;
+    return simTimeMs;
   };
   /* The active map's scene graph, for measurement. tests/lib/checks.js walks
    * it to assert that reference objects measure what this project claims they

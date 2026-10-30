@@ -56,6 +56,9 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
+import {
+  BOTS_MAX, BOT_SKILLS, botPilot, createRoomBots,
+} from './roombots.js';
 import { RoomSession } from './room.js';
 import { ROOM_MAX, STREAM_MAX, roomsUrl } from './link.js';
 import { RoomRace, RACE_LAPS_MAX } from './roomrace.js';
@@ -489,6 +492,8 @@ export function createTogether(shell) {
 
   let session = null;
   let race = null;
+  /* The host's bots (src/net/roombots.js), one transport per session. */
+  let bots = null;
   /* What the pilot asked for and has not got yet: { kind: 'host', entry }
    * or { kind: 'join', code, room }. */
   let pending = null;
@@ -976,6 +981,7 @@ export function createTogether(shell) {
       send: (m) => session && session.link.raceSend(m),
       you: () => (session ? session.you : 0),
     });
+    bots = createRoomBots(session);
     return session;
   }
 
@@ -995,6 +1001,10 @@ export function createTogether(shell) {
     }
     session = null;
     race = null;
+    if (bots) {
+      bots.heard([]);
+    }
+    bots = null;
     pending = null;
     welcomedOnce = false;
     cardOwed = '';
@@ -1106,6 +1116,26 @@ export function createTogether(shell) {
     }
     shell.roomInfo({
       code: r.code, name: r.name, n: session.link.pilots.size, host: isHost(), race: RoomRace.racing(r.way), freestyle: r.way === 'freestyle',
+      ribbon: r.game === 'ribbon' ? {
+        phase: ribbonNow ? ribbonNow.state.phase : 'pit',
+        length: ribbonNow ? ribbonNow.state.length : 'normal',
+        bots: session.link.bots.size,
+      } : null,
+      dogfight: r.game === 'dogfight' ? {
+        phase: dogfightNow ? dogfightNow.state.phase : 'pit',
+        hits: dogfightNow ? dogfightNow.state.hits : 'arcade',
+        round: dogfightNow ? dogfightNow.state.round : '3m',
+        bots: session.link.bots.size,
+      } : null,
+      goats: r.game === 'goats' ? {
+        phase: goatsNow ? goatsNow.state.phase : 'pit',
+        round: goatsNow ? goatsNow.state.round : '3m',
+        bots: session.link.bots.size,
+      } : null,
+      drift: r.game === 'drift' ? {
+        phase: driftNow ? driftNow.state.phase : 'pit',
+        bots: session.link.bots.size,
+      } : null,
     });
   }
 
@@ -1347,6 +1377,10 @@ export function createTogether(shell) {
       map: entry.map,
       mapName: String(entry.name || 'A map').slice(0, 48),
       scale: entry.whoop ? 100 : 50,
+      /* A mini game the room plays, fixed when it opens: 'ribbon',
+       * 'dogfight', 'goats', 'drift', or none. The board refuses a name it does
+       * not know. */
+      game: entry.game || undefined,
     });
     sheetConnecting({ hosting: entry, step: 0 });
   }
@@ -1466,6 +1500,7 @@ export function createTogether(shell) {
         infoForShell();
         refresh('room');
         refresh('share');
+        refresh('botRoster');
         break;
       case 'left': {
         if (shell.forget) shell.forget(data.id);
@@ -1484,6 +1519,7 @@ export function createTogether(shell) {
         infoForShell();
         refresh('room');
         refresh('share');
+        refresh('botRoster');
         /* A card about a pilot who has gone has nothing left to act on. */
         if ((topName() === 'confirm' || topName() === 'report') && aboutId === data.id) {
           pop();
@@ -1696,9 +1732,415 @@ export function createTogether(shell) {
         if (race) race.heard(data.race);
         raceChanged();
         break;
+      case 'ribbon':
+        ribbonHeard(data.ribbon);
+        break;
+      case 'bots':
+        if (bots) bots.heard(data.bots);
+        infoForShell();
+        refresh('botRoster');
+        break;
+      case 'rbCut':
+        if (ribbonCuts.length < 64) {
+          ribbonCuts.push(data);
+        }
+        break;
+      case 'dogfight':
+        dogfightHeard(data.dogfight);
+        break;
+      case 'dfHit':
+      case 'dfGun':
+      case 'dfLaunch':
+        /* For the shell's game to take next frame; a page that has not
+         * drawn a frame for a while drops the oldest. */
+        dogfightIn.push(data);
+        if (dogfightIn.length > 256) {
+          dogfightIn.shift();
+        }
+        break;
+      case 'goats':
+        goatsHeard(data.goats);
+        break;
+      case 'gtHome':
+        goatsIn.push(data);
+        break;
+      case 'drift':
+        driftHeard(data.drift);
+        break;
+      case 'drReel':
+        driftIn.push(data);
+        if (driftIn.length > 256) {
+          driftIn.shift();
+        }
+        break;
+      case 'gtHerd':
+        /* Only the newest herd matters, but a whole one and the deltas
+         * after it are all needed: a page that has not drawn a frame for a
+         * while keeps the last few seconds of them. */
+        goatsIn.push(data);
+        if (goatsIn.length > 256) {
+          goatsIn.shift();
+        }
+        break;
       default:
         break;
     }
+  }
+
+  /*
+   * RIBBON CUTTING (src/game/ribbons.js RibbonRoom). The board's round and
+   * its cuts are kept here for the shell to take once a frame, GO and the
+   * end put on this page's clock as they arrive.
+   */
+  let ribbonNow = null;
+  let ribbonCuts = [];
+  function ribbonHeard(rb) {
+    if (!rb || !race) {
+      ribbonNow = null;
+      return;
+    }
+    const clock = race.clock;
+    ribbonNow = {
+      state: rb,
+      goLocal: rb.goAt ? clock.toLocal(rb.goAt) : 0,
+      endLocal: rb.endAt ? clock.toLocal(rb.endAt) : 0,
+    };
+    infoForShell();
+  }
+
+  function ribbonRoom() {
+    const r = room();
+    return Boolean(r && r.game === 'ribbon');
+  }
+
+  /* The host's start: everybody here, in the air or not, gets a ribbon. */
+  function ribbonStart() {
+    if (!ribbonRoom() || !isHost()) {
+      return false;
+    }
+    const ph = ribbonNow ? ribbonNow.state.phase : 'pit';
+    if (ph !== 'pit' && ph !== 'results') {
+      return false;
+    }
+    if (session.link.pilots.size + session.link.bots.size < 2) {
+      toast('Ribbon cutting needs two pilots. Add a bot or send the link.', 'warn');
+      return true;
+    }
+    session.link.raceSend({ t: 'rbStart' });
+    return true;
+  }
+
+  /*
+   * DOGFIGHT (src/game/dogroom.js DogfightRoom). As ribbon cutting's: the
+   * board's round, and the hits, guns and launches it passed on, kept for
+   * the shell to take once a frame.
+   */
+  let dogfightNow = null;
+  let dogfightIn = [];
+  function dogfightHeard(df) {
+    if (!df || !race) {
+      dogfightNow = null;
+      return;
+    }
+    dogfightNow = { state: df, taken: false };
+    infoForShell();
+  }
+
+  function dogfightRoom() {
+    const r = room();
+    return Boolean(r && r.game === 'dogfight');
+  }
+
+  /* The host's start: everybody here and every bot is in the round. */
+  function dogfightStart() {
+    if (!dogfightRoom() || !isHost()) {
+      return false;
+    }
+    const ph = dogfightNow ? dogfightNow.state.phase : 'pit';
+    if (ph !== 'pit' && ph !== 'results') {
+      return false;
+    }
+    if (session.link.pilots.size + session.link.bots.size < 2) {
+      toast('A dogfight needs two. Add a bot or send the link.', 'warn');
+      return true;
+    }
+    session.link.raceSend({ t: 'dfStart' });
+    return true;
+  }
+
+  /*
+   * GOAT HERDING (src/game/goatroom.js GoatRoom). As the dogfight's: the
+   * board's round, and the goats it counted and the host's herd it passed
+   * on, kept for the shell to take once a frame. The round's goats are
+   * the herd's on the host's page, which the shell says each frame.
+   */
+  let goatsNow = null;
+  let goatsIn = [];
+  let goatsHerd = 0;
+  function goatsHeard(gt) {
+    if (!gt || !race) {
+      goatsNow = null;
+      return;
+    }
+    goatsNow = { state: gt, taken: false };
+    infoForShell();
+  }
+
+  function goatsRoom() {
+    const r = room();
+    return Boolean(r && r.game === 'goats');
+  }
+
+  /* The host's start: everybody here and every bot herds. */
+  function goatsStart() {
+    if (!goatsRoom() || !isHost()) {
+      return false;
+    }
+    const ph = goatsNow ? goatsNow.state.phase : 'pit';
+    if (ph !== 'pit' && ph !== 'results') {
+      return false;
+    }
+    if (!goatsHerd) {
+      toast('Goat herding needs the goat map. Move the room there first.', 'warn');
+      return true;
+    }
+    if (session.link.pilots.size + session.link.bots.size < 2) {
+      toast('Goat herding needs two. Add a bot or send the link.', 'warn');
+      return true;
+    }
+    session.link.raceSend({ t: 'gtStart', total: goatsHerd });
+    return true;
+  }
+
+  /* The host's round length between rounds, one press a step. */
+  function goatsRound() {
+    if (!goatsRoom() || !isHost() || !goatsNow) {
+      return;
+    }
+    const order = ['3m', '5m', 'all'];
+    const at = order.indexOf(goatsNow.state.round);
+    session.link.raceSend({ t: 'gtSet', round: order[(at + 1) % order.length] });
+  }
+
+  /*
+   * DRIFT MATSURI (src/game/driftroom.js DriftRoom). As the goats': the
+   * board's round and the takes' scores it passed on, kept for the shell
+   * to take once a frame. Every page judges its own take.
+   */
+  let driftNow = null;
+  let driftIn = [];
+  let driftCan = false;
+  function driftHeard(dr) {
+    if (!dr || !race) {
+      driftNow = null;
+      return;
+    }
+    driftNow = { state: dr, taken: false };
+    infoForShell();
+  }
+
+  function driftRoom() {
+    const r = room();
+    return Boolean(r && r.game === 'drift');
+  }
+
+  /* The host's start: everybody here and every bot films one take. */
+  function driftStart() {
+    if (!driftRoom() || !isHost()) {
+      return false;
+    }
+    const ph = driftNow ? driftNow.state.phase : 'pit';
+    if (ph !== 'pit' && ph !== 'results') {
+      return false;
+    }
+    if (!driftCan) {
+      toast('Drift Matsuri needs the drift map. Move the room there first.', 'warn');
+      return true;
+    }
+    if (session.link.pilots.size + session.link.bots.size < 2) {
+      toast('Drift Matsuri needs two. Add a bot or send the link.', 'warn');
+      return true;
+    }
+    session.link.raceSend({ t: 'drStart' });
+    return true;
+  }
+
+  /* The host's rules between rounds, one press a step round each list. */
+  const DF_LISTS = { hits: ['arcade', 'hard'], round: ['3m', '5m', 'first10', 'none'] };
+  function dogfightSet(field) {
+    if (!dogfightRoom() || !isHost() || !dogfightNow || !DF_LISTS[field]) {
+      return;
+    }
+    const order = DF_LISTS[field];
+    const at = order.indexOf(dogfightNow.state[field]);
+    session.link.raceSend({ t: 'dfSet', [field]: order[(at + 1) % order.length] });
+  }
+
+  /*
+   * FILL THE ROSTER, the room's seats on one sheet (the owner, 2026-10-29
+   * 04:51Z: "multiplayer you can fill the roster with bots if you like").
+   * The pilots in the room, the bots this page flies with their skill, and
+   * an empty seat for each one still free, each with + Add a bot. A friend
+   * who joins a full room takes the newest bot's seat on the board's side
+   * (src/net/roombots.js), and the sheet is painted again from 'joined',
+   * 'left' and 'bots'. The host's only; anybody else has nothing to set.
+   */
+  const SKILL_NAMES = { rookie: 'Rookie', pilot: 'Pilot', ace: 'Ace' };
+  let rosterSkill = 'pilot';
+
+  function rosterFree() {
+    const r = room();
+    if (!r || !bots) {
+      return 0;
+    }
+    const seats = bots.seats().length;
+    return Math.max(0, Math.min(BOTS_MAX - seats, r.max - session.link.pilots.size - seats));
+  }
+
+  function rosterFill() {
+    for (let i = rosterFree(); i > 0; i -= 1) {
+      bots.add(rosterSkill);
+    }
+  }
+
+  function nextSkill(s) {
+    const order = ['rookie', 'pilot', 'ace'];
+    return order[(order.indexOf(s) + 1) % order.length];
+  }
+
+  function sheetRoster() {
+    if (!bots || !bots.mine()) {
+      return;
+    }
+    const under = stack.length ? stack[stack.length - 1].render : null;
+    open('botRoster', () => {
+      const pilotsHere = pilotsList();
+      const seats = bots.seats();
+      const free = rosterFree();
+      const seat = (kids, cls = '') => h(`div.rseat${cls}`, null, kids);
+      return h('div', null, under ? under() : null, h('div.modal-back', null, h('div.modal.sheet.sakura.halftone.botroster', null,
+        lettered('FILL THE ROSTER', [INKS.cream, INKS.amber], 38, 500),
+        h('p.rline', { text: 'Your friends, and bots in the empty seats. A friend who joins a full room takes a bot\'s seat.' }),
+        h('div.rgrid', null,
+          pilotsHere.map((pl) => seat([face(pl.avatar, 'calm', 44), h('b', { text: pl.handle }), h('span', { text: pl.id === session.you ? 'You, host' : 'Friend' })])),
+          seats.map((s) => seat([
+            face(botPilot(s).avatar, 'calm', 44),
+            h('b', { text: s.name }),
+            btn(SKILL_NAMES[s.skill] || 'Pilot', 'ghost.small', () => bots.skill(s.id, nextSkill(s.skill)), { 'data-k': `skill-${s.id}`, title: 'How good this bot is' }),
+            btn('Drop', 'ghost.small', () => bots.drop(s.id), { 'data-k': `drop-${s.id}` }),
+          ], '.is-bot')),
+          Array.from({ length: Math.min(free, 8) }, (_, i) => seat([
+            h('span.rempty', { text: 'Empty seat' }),
+            btn('+ Add a bot', 'small', () => bots.add(rosterSkill), { 'data-k': `add-${i}` }),
+          ], '.is-empty'))),
+        h('div.btnrow', null,
+          btn(`New bots: ${SKILL_NAMES[rosterSkill]}`, 'ghost', () => {
+            rosterSkill = nextSkill(rosterSkill);
+            refresh('botRoster');
+          }, { 'data-k': 'newskill' }),
+          free ? btn('Fill every seat with bots', 'amber', () => rosterFill(), { 'data-k': 'fill' }) : null,
+          seats.length ? btn('No bots', 'ghost', () => {
+            for (const s of seats) bots.drop(s.id);
+          }, { 'data-k': 'none' }) : null,
+          btn('Done', 'ghost', () => back(), { 'data-k': 'done', 'data-autofocus': true })))));
+    });
+  }
+
+  /*
+   * A MINI GAME'S ROOM, SET UP AS THE SOLO GAME IS. The host answered Set
+   * the fight (or Set the ribbons) before the room opened (ui.armRoomGame):
+   * the board takes the rules, the bots are seated at the skill picked,
+   * and the first round starts once the host is in the air with them, so
+   * hosting a dogfight is never a map with nothing in it. A room the host
+   * opened with no bots waits for a friend, as before.
+   */
+  let roundOwed = false;
+  let owedTimer = 0;
+  let owedUntil = 0;
+  function seatRoomRules(rules) {
+    const r = room();
+    if (!r || !isHost() || !bots) {
+      return;
+    }
+    if (r.game === 'dogfight') {
+      session.link.raceSend({ t: 'dfSet', hits: rules.hits, round: rules.round });
+    } else if (r.game === 'ribbon') {
+      session.link.raceSend({ t: 'rbSet', length: rules.length, round: rules.round });
+    } else if (r.game === 'goats') {
+      if (rules.round === '3m' || rules.round === '5m' || rules.round === 'all') {
+        session.link.raceSend({ t: 'gtSet', round: rules.round });
+      }
+    } else if (r.game !== 'drift') {
+      return;
+    }
+    if (BOT_SKILLS.includes(rules.skill)) {
+      rosterSkill = rules.skill;
+    }
+    const n = Math.min(Number(rules.bots) || 0, rosterFree());
+    if (n <= 0) {
+      return;
+    }
+    const adds = [];
+    for (let i = 0; i < n; i += 1) {
+      adds.push(bots.add(rosterSkill));
+    }
+    roundOwed = true;
+    owedUntil = 0;
+    Promise.all(adds).then(() => startOwedRound());
+  }
+
+  /* The owed first round, once the bots are seated and the host is flying
+   * with no sheet up. The seats and Start flying each call it, and while
+   * the world is still building it looks again every half second, for a
+   * minute at most. */
+  function startOwedRound() {
+    clearTimeout(owedTimer);
+    if (!roundOwed || !session || !isHost()) {
+      roundOwed = false;
+      return;
+    }
+    /* A sheet up (the share card, the first flight's lesson) is the host
+     * reading, which takes as long as it takes: the minute starts after. */
+    if (topName()) {
+      owedUntil = 0;
+      owedTimer = setTimeout(startOwedRound, 500);
+      return;
+    }
+    if (!owedUntil) {
+      owedUntil = performance.now() + 60000;
+    }
+    /* Goat herding starts on the map's herd and Drift Matsuri on its
+     * judge, which the shell hands over once the round is built. */
+    const unready = (goatsRoom() && !goatsHerd) || (driftRoom() && !driftCan);
+    if (!shell.flying() || bots.seats().length === 0 || unready) {
+      if (performance.now() < owedUntil) {
+        owedTimer = setTimeout(startOwedRound, 500);
+      } else {
+        roundOwed = false;
+      }
+      return;
+    }
+    roundOwed = false;
+    owedUntil = 0;
+    if (dogfightRoom()) {
+      dogfightStart();
+    } else if (ribbonRoom()) {
+      ribbonStart();
+    } else if (goatsRoom()) {
+      goatsStart();
+    } else if (driftRoom()) {
+      driftStart();
+    }
+  }
+
+  /* The host's ribbon length, round by round. */
+  function ribbonLength() {
+    if (!ribbonRoom() || !isHost() || !ribbonNow) {
+      return;
+    }
+    const order = ['short', 'normal', 'long'];
+    const at = order.indexOf(ribbonNow.state.length);
+    session.link.raceSend({ t: 'rbSet', length: order[(at + 1) % order.length] });
   }
 
   function welcomed(data, now) {
@@ -1721,6 +2163,15 @@ export function createTogether(shell) {
     if (race) {
       race.welcome(data, now);
     }
+    ribbonCuts = [];
+    ribbonHeard(data.ribbon);
+    dogfightIn = [];
+    dogfightHeard(data.dogfight);
+    goatsIn = [];
+    goatsHeard(data.goats);
+    driftIn = [];
+    driftHeard(data.drift);
+    if (bots) bots.heard(data.bots);
     lastLink = 'good';
     paintChip();
     infoForShell();
@@ -1771,6 +2222,9 @@ export function createTogether(shell) {
      * in the air yet, so it is said with the welcome rather than splashed. */
     const swapped = quadHeard(r, true);
     if (was && was.kind === 'host') {
+      if (was.entry && was.entry.rules) {
+        seatRoomRules(was.entry.rules);
+      }
       sheetShare({ first: true, entry: was.entry });
       return;
     }
@@ -2705,7 +3159,7 @@ export function createTogether(shell) {
         });
       };
       return scrimmed(h('div.page.fit.sheet.halftone', null,
-        h('div.page-head', null, h('div.grow', null, h('span.kicker', { text: `Host a room on ${entry.name}` }), lettered('OPEN YOUR ROOM', [INKS.cream, INKS.sakura], 50, 620)),
+        h('div.page-head', null, h('div.grow', null, h('span.kicker', { text: entry.game === 'ribbon' ? `Host ribbon cutting on ${entry.name}` : (entry.game === 'dogfight' ? `Host a dogfight on ${entry.name}` : `Host a room on ${entry.name}`) }), lettered('OPEN YOUR ROOM', [INKS.cream, INKS.sakura], 50, 620)),
           btn('Back to the maps', 'small ghost', () => back(), { 'data-k': 'cancel' })),
         h('div.rule'),
         h('div.page-body', null, h('div.tg-cols', null,
@@ -2780,6 +3234,7 @@ export function createTogether(shell) {
       }
       /* The host's own first moment in their room says so, and says how
        * the others get in: nothing else on screen would. */
+      startOwedRound();
       if (first && r) {
         banner(me().avatar, 'hello', `${r.name} is open`,
           `You are hosting on ${r.mapName}. Room code ${r.code}. ${hands() === 'touch' ? 'Tap the room card' : 'Pause, then Room'} to invite more.`, 'mint');
@@ -5341,6 +5796,10 @@ export function createTogether(shell) {
       offerWatch(now);
     }
     const r = room();
+    if (r && race && (r.game === 'ribbon' || r.game === 'dogfight')) {
+      /* The board's clock, for GO and the round's end. */
+      race.ping(now);
+    }
     if (!r || !race || !RoomRace.racing(r.way)) {
       return;
     }
@@ -5419,6 +5878,28 @@ export function createTogether(shell) {
         return true;
       }
       return false;
+    }
+    /* G starts a ribbon or dogfight round, for the host, from the air or
+     * the pause. */
+    if (code === 'KeyG' && ribbonRoom() && isHost() && (shell.flying() || shell.paused())) {
+      if (ribbonStart()) {
+        return true;
+      }
+    }
+    if (code === 'KeyG' && dogfightRoom() && isHost() && (shell.flying() || shell.paused())) {
+      if (dogfightStart()) {
+        return true;
+      }
+    }
+    if (code === 'KeyG' && goatsRoom() && isHost() && (shell.flying() || shell.paused())) {
+      if (goatsStart()) {
+        return true;
+      }
+    }
+    if (code === 'KeyG' && driftRoom() && isHost() && (shell.flying() || shell.paused())) {
+      if (driftStart()) {
+        return true;
+      }
     }
     /* G answers the race's panel, which also sits beside the results. */
     if (code === 'KeyG' && race && race.race && panelScreen()) {
@@ -5685,6 +6166,32 @@ export function createTogether(shell) {
       sheetScene();
     } else if (action === 'room-quad') {
       sheetSwapQuad();
+    } else if (action === 'room-ribbon-start') {
+      if (ribbonStart()) {
+        shell.resume();
+      }
+    } else if (action === 'room-ribbon-length') {
+      ribbonLength();
+    } else if (action === 'room-ribbon-bots' || action === 'room-df-bots' || action === 'room-roster') {
+      sheetRoster();
+    } else if (action === 'room-df-start') {
+      if (dogfightStart()) {
+        shell.resume();
+      }
+    } else if (action === 'room-gt-start') {
+      if (goatsStart()) {
+        shell.resume();
+      }
+    } else if (action === 'room-gt-round') {
+      goatsRound();
+    } else if (action === 'room-dr-start') {
+      if (driftStart()) {
+        shell.resume();
+      }
+    } else if (action === 'room-df-hits') {
+      dogfightSet('hits');
+    } else if (action === 'room-df-round') {
+      dogfightSet('round');
     }
   }
 
@@ -5738,6 +6245,159 @@ export function createTogether(shell) {
     },
     inRoom() {
       return Boolean(room());
+    },
+    /* The mini game the room plays on the world being flown, 'ribbon' or
+     * another of the board's GAMES, or '' for none. */
+    gameRoom() {
+      const r = room();
+      return r && r.game && sameWorld(r) ? r.game : '';
+    },
+    /* A ribbon cutting room on the world being flown: the shell plays
+     * RibbonRoom in it (src/main.js syncDogfight). */
+    ribbonRoom() {
+      return ribbonRoom() && sameWorld(room());
+    },
+    /* The board's round since the last ask, or null when nothing new. */
+    takeRibbon() {
+      const r = ribbonNow;
+      if (!r || r.taken) {
+        return null;
+      }
+      r.taken = true;
+      return r;
+    },
+    /* Whatever the shell's game needs: who this page is, the host, its
+     * avatar, and the round as it stands. */
+    ribbonWho() {
+      if (!session) {
+        return null;
+      }
+      const me = session.link.pilots.get(session.you);
+      return { you: session.you, host: isHost(), avatar: me ? me.avatar : null };
+    },
+    ribbonLast() {
+      return ribbonNow;
+    },
+    /* A room pilot by id, { handle, avatar, ... }, or null: for a game's
+     * names, from the list the board keeps current. */
+    pilotOf(id) {
+      return session ? session.link.pilots.get(id) || null : null;
+    },
+    takeRibbonCuts() {
+      if (!ribbonCuts.length) {
+        return null;
+      }
+      const out = ribbonCuts;
+      ribbonCuts = [];
+      return out;
+    },
+    sendRibbon(msg) {
+      if (session && session.inRoom && ribbonRoom()) {
+        session.link.raceSend(msg);
+      }
+    },
+    ribbonStart,
+    /* A dogfight room on the world being flown: the shell plays
+     * DogfightRoom in it (src/main.js syncDogfight). */
+    dogfightRoom() {
+      return dogfightRoom() && sameWorld(room());
+    },
+    /* The board's round since the last ask, or null when nothing new. */
+    takeDogfight() {
+      const d = dogfightNow;
+      if (!d || d.taken) {
+        return null;
+      }
+      d.taken = true;
+      return d.state;
+    },
+    dogfightLast() {
+      return dogfightNow ? dogfightNow.state : null;
+    },
+    /* Hits, guns and launches the board passed on, oldest first. */
+    takeDogfightIn() {
+      if (!dogfightIn.length) {
+        return null;
+      }
+      const out = dogfightIn;
+      dogfightIn = [];
+      return out;
+    },
+    sendDogfight(msg) {
+      if (session && session.inRoom && dogfightRoom()) {
+        session.link.raceSend(msg);
+      }
+    },
+    /* A time on the board's clock on this page's. */
+    boardToLocal(ms) {
+      return race ? race.clock.toLocal(ms) : ms;
+    },
+    dogfightStart,
+    /* A goat herding room's, as the dogfight's. */
+    takeGoats() {
+      const d = goatsNow;
+      if (!d || d.taken) {
+        return null;
+      }
+      d.taken = true;
+      return d.state;
+    },
+    goatsLast() {
+      return goatsNow ? goatsNow.state : null;
+    },
+    takeGoatsIn() {
+      if (!goatsIn.length) {
+        return null;
+      }
+      const out = goatsIn;
+      goatsIn = [];
+      return out;
+    },
+    sendGoats(msg) {
+      if (session && session.inRoom && goatsRoom()) {
+        session.link.raceSend(msg);
+      }
+    },
+    /* How many goats the herd on this page has: the round's, when this
+     * page is the host's and starts one. */
+    goatsHerdSize(n) {
+      goatsHerd = n;
+    },
+    goatsStart,
+    /* A Drift Matsuri room's, as the goats'. */
+    takeDrift() {
+      const d = driftNow;
+      if (!d || d.taken) {
+        return null;
+      }
+      d.taken = true;
+      return d.state;
+    },
+    driftLast() {
+      return driftNow ? driftNow.state : null;
+    },
+    takeDriftIn() {
+      if (!driftIn.length) {
+        return null;
+      }
+      const out = driftIn;
+      driftIn = [];
+      return out;
+    },
+    sendDrift(msg) {
+      if (session && session.inRoom && driftRoom()) {
+        session.link.raceSend(msg);
+      }
+    },
+    /* Whether this page has the drift map's judge, so a round can start. */
+    driftReady(on) {
+      driftCan = Boolean(on);
+    },
+    driftStart,
+    /* The room's bot seats and their poses, for the games and the roster
+     * page; null out of a room. */
+    roomBots() {
+      return session && session.inRoom ? bots : null;
     },
     modalOpen() {
       return !modal.hidden;

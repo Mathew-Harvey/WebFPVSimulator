@@ -1733,16 +1733,25 @@ async function sceneTabs() {
     await pressKey(page, 'join');
     await page.until(`${T} && window.__together().inRoom`, 15000);
     await page.until("window.__mode === 'flight'", 30000);
+    /* When the page was first flying: the welcome (BANNER_MS, 4200 ms in
+     * src/net/together.js) went up before this, so by 4200 ms after it the
+     * welcome has gone on its own, which is not the squeeze this checks. */
+    const flyingAt = Date.now();
     for (const [w, hgt] of [[1024, 600], [800, 520], [1600, 900]]) {
       await size(w, hgt);
       await wait(700);
+      const bw = await page.evaluate("(() => { const b = document.querySelector('#tg .tg-banner'); return b ? Math.round(b.getBoundingClientRect().width) : 0; })()");
+      const over = Date.now() - flyingAt > 4200;
       const on = await overlaps(page, '#tg .roomchip, #tg .roster, #tg .tg-banner');
       check(`at ${w} by ${hgt}, nothing of the room's covers the shell's instruments`, !on, on);
-      /* The welcome is up for the first two sizes and may have gone by the
-       * last: wide enough to read, not a word a line. It was 104 px wide at
-       * 800 by 520, squeezed between two copies of the right hand column. */
-      const bw = await page.evaluate("(() => { const b = document.querySelector('#tg .tg-banner'); return b ? Math.round(b.getBoundingClientRect().width) : 0; })()");
-      check(`and the welcome is wide enough to read (${bw} px)`, bw >= 300 || (bw === 0 && w === 1600), String(bw));
+      /* The welcome, while it is up, is wide enough to read, not a word a
+       * line. It was 104 px wide at 800 by 520, squeezed between two copies
+       * of the right hand column. Read before the overlap walk above it
+       * took its time: on a slow machine the walk at 1024 by 600 alone took
+       * the welcome past its 4.2 s, and 0 px read as a failure (2026-10-29,
+       * the same on the tree of 2026-10-28). Gone is a pass only once its
+       * time is up. */
+      check(`and the welcome is wide enough to read (${bw} px)`, bw >= 300 || (bw === 0 && (over || w === 1600)), `${bw}${over ? ', its time was up' : ''}`);
       const bannerOn = await overlaps(page, '#tg .tg-banner', BANNER_CLEAR_OF);
       check('and keeps off the room\'s own panels', !bannerOn, bannerOn);
       await shot(`flight-${w}x${hgt}`);
@@ -2931,7 +2940,8 @@ async function sceneGate() {
   try {
     await page.until("window.__ui.screen === 'title' && window.__ui.onGate()", 20000);
     await wait(800);
-    check('with rooms on, the front screen asks solo or multiplayer first', (await page.evaluate(cards)) === 'Fly solo,Multiplayer', await page.evaluate(cards));
+    /* Three panels since the Mini games page (2026-10-29). */
+    check('with rooms on, the front screen asks solo, multiplayer or mini games first', (await page.evaluate(cards)) === 'Fly solo,Multiplayer,Mini games', await page.evaluate(cards));
     check('and the multiplayer panel wears its NEW sticker', await page.evaluate("Boolean(document.querySelector('.gate-card-together .gp-sticker svg'))"));
     await shot('cover');
     await page.tap('ArrowRight');
@@ -2943,7 +2953,7 @@ async function sceneGate() {
     await wait(500);
     await shot('multiplayer');
     await page.tap('Escape');
-    await onPage(2);
+    await onPage(3);
     check('Escape turns back to the cover', true);
     await page.evaluate("(() => { window.__ui.act('gate-solo'); return 1; })()");
     await onPage(5);
@@ -2951,7 +2961,7 @@ async function sceneGate() {
     await wait(500);
     await shot('solo');
     await page.tap('Escape');
-    await onPage(2);
+    await onPage(3);
     await page.evaluate("(() => { window.__ui.act('gate-together'); return 1; })()");
     await onPage(4);
 
@@ -4059,6 +4069,516 @@ async function sceneOverview() {
   }
 }
 
+/*
+ * RIBBON CUTTING IN A ROOM: a room that plays it from the moment it opens,
+ * every pilot's ribbon drawn from the poses, the host's start, the board's
+ * count and GO, a cut by the page sent to the board and heard back by the
+ * host, and a cut by the host heard on the page.
+ */
+async function sceneRibbon() {
+  console.log('\nribbon: ribbon cutting in a room');
+  const kite = bot('Kite Runner', 341);
+  const room = await hostRoom(kite, {
+    name: 'Ribbons', way: 'freestyle', map: 'bardwell', mapName: "Bardwell's house", scale: 50, game: 'ribbon',
+  });
+  check('the board opens a ribbon cutting room', room.game === 'ribbon', String(room.game));
+  const at = `/index.html?mp=1&board=${encodeURIComponent(boardOrigin)}&map=bardwell`;
+  const page = await open(at, seedFor({ met: true, name: 'Ribbon Pilot', map: 'bardwell' }));
+  const shot = shooter(page, 'ribbon');
+  const G = 'window.__dogfight && window.__dogfight()';
+  let hover = null;
+  try {
+    /* The Mini games menu's way in to a room of ribbons: the room picker,
+     * titled for it. */
+    const pick = await page.evaluate("(() => { window.__ui.pickRibbons({ room: true }); return window.__ui.hostPick; })()");
+    check('pickRibbons with room opens the room picker for ribbon cutting', pick && pick.game === 'ribbon' && pick.way === 'freestyle', JSON.stringify(pick));
+    check('titled for it', await page.until(SEES('Ribbon cutting room', '#ui'), 5000).then(() => true, () => false));
+    await shot('pick');
+    await page.evaluate("(() => { window.__ui.back(); return 1; })()");
+    await joinByCode(page, room.code);
+    await page.until(`${T} && window.__together().inRoom`, 15000);
+    await page.until("window.__mode === 'flight' && window.__ui.screen === 'flight'", 20000);
+    const youId = (await state(page)).you;
+    /* The host hangs still a few metres off the page's quad, nose to -Z,
+     * so its ribbon trails toward +Z. */
+    const me = await poseOf(kite, 'Ribbon Pilot');
+    const spot = { x: me.px + 6, y: me.py + 1.5, z: me.pz };
+    hover = setInterval(() => kite.s.uplink(spot.x, spot.y, spot.z, 0, 0, 0, 1, true, 0), 1000 / 30);
+    check('the page plays the room\'s ribbons', await page.until(`${G} && window.__dogfight().room === true`, 15000).then(() => true, () => false));
+    const kiteSlot = () => page.evaluate(`(${G}) ? window.__dogfight().slotFor(${kite.s.you}) : -1`);
+    check('the host flies a whole ribbon on the page', await page.until(`${G} && window.__dogfight().rCount[window.__dogfight().slotFor(${kite.s.you})] === 16`, 10000).then(() => true, () => false));
+    /* Waited for, not read once: a pilot counts as here for 1.5 s after
+     * the last frame that drew them, and the software rasteriser's first
+     * frames over Bardwell's trees can take longer than that, so a single
+     * read sometimes caught "needs two pilots" (2 of 4 runs). */
+    await page.until(`${G} && window.__dogfight().banner.startsWith('Waiting for the host')`, 5000).catch(() => {});
+    const banner = await page.evaluate(`${G}.banner`);
+    check('the page is told the host starts a round', banner.startsWith('Waiting for the host'), banner);
+    check('the HUD says it on screen', await page.evaluate(SEES('Waiting for the host', '#ui')));
+    const drawn = await page.evaluate('window.__dogfightView().ribbons.geometry.drawRange.count');
+    check('two ribbons are drawn, the page\'s and the host\'s', drawn === 2 * 15 * 6, String(drawn));
+    await wait(600);
+    await shot('pit');
+
+    kite.s.link.raceSend({ t: 'rbStart' });
+    check('the host\'s start counts down on the page', await page.until(`${G} && window.__dogfight().phase === 'count'`, 5000).then(() => true, () => false));
+    const count = await page.evaluate(`${G}.banner`);
+    check('with the seconds to GO', /^Ribbons out in [1-5]$/.test(count), count);
+    await shot('count');
+    check('and goes live', await page.until(`${G} && window.__dogfight().phase === 'live'`, 9000).then(() => true, () => false));
+    check('cuts land once the grace is over', await page.until(`${G} && window.__dogfight().cutting`, 4000).then(() => true, () => false));
+
+    /* The page's quad flown across the host's ribbon, two thirds down. */
+    const across = await page.evaluate(`(async () => {
+      const g = window.__dogfight();
+      const s = g.slotFor(${kite.s.you});
+      const j = s * 16 + 11;
+      const x = g.rx[j], y = g.ry[j], z = g.rz[j];
+      const k = g.k;
+      for (let n = -8; n <= 8; n += 1) {
+        window.__placeCraft(x + n * 0.25 * k, y, z);
+        for (let f = 0; f < 3; f += 1) await new Promise((r) => requestAnimationFrame(r));
+      }
+      return { x, y, z, k };
+    })()`);
+    const heard = await until(() => kite.heard.some((h) => h.name === 'rbCut' && h.data.by === youId && h.data.to === kite.s.you), 5000);
+    check('the page\'s cut reaches the board and the host hears it', heard, JSON.stringify(across));
+    const left = await page.evaluate(`${G}.rCount[${await kiteSlot()}]`);
+    check('and the host\'s ribbon is shorter on the page', left > 0 && left < 16, String(left));
+    await shot('cut');
+
+    /* The host cuts the page's ribbon off at the knot: the page is out. */
+    await wait(500);
+    const n = await page.evaluate(`${G}.state.n`);
+    kite.s.link.raceSend({ t: 'rbCut', n, to: youId, s: 5 });
+    check('the host\'s cut puts the page out', await page.until(`${G} && window.__dogfight().alive[0] === 0`, 5000).then(() => true, () => false));
+    check('which the board calls the end of a two pilot round', await page.until(`${G} && window.__dogfight().over`, 5000).then(() => true, () => false));
+    const title = await page.evaluate("(document.querySelector('.rb-hud h2') || {}).textContent || ''");
+    check('the results name the host as the winner', title.includes('KITE RUNNER WINS'), title);
+    check('and the page is told the host starts the next', await page.evaluate(SEES('The host starts the next round', '#ui')));
+    await shot('results');
+    await page.evaluate("(() => { const b = [...document.querySelectorAll('.rb-hud .df-btn')].find((x) => x.textContent === 'Fly on'); b.click(); return 1; })()");
+    check('Fly on puts the table away, and everybody has a whole ribbon again', await page.until(`${G} && !window.__dogfight().over && window.__dogfight().rCount[0] === 16`, 3000).then(() => true, () => false));
+
+    /* The pause rows. */
+    const rows = await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); return window.__ui.items().filter(Boolean).map((x) => x.label); })()");
+    check('the pause menu says who starts a round', rows.includes('Ribbon cutting'), rows.join(', '));
+    await page.evaluate("(() => { window.__ui.act('resume'); return 1; })()");
+
+    /* The host goes, the page is host, and fills the room with bots. */
+    clearInterval(hover);
+    hover = null;
+    kite.s.leave();
+    check('the page is host once the host goes', await page.until(`${T} && window.__together().host === window.__together().you`, 10000).then(() => true, () => false));
+    const botRows = await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); return window.__ui.items().filter(Boolean).map((x) => x.label); })()");
+    check('the host\'s pause menu has Start a ribbon round and Fill the roster', botRows.includes('Start a ribbon round') && botRows.includes('Fill the roster'), botRows.join(', '));
+    await page.evaluate("(() => { window.__ui.act('room-roster'); return 1; })()");
+    const rosterUp = await page.until("!!document.querySelector('#tg .botroster')", 3000).then(() => true, () => false);
+    check('Fill the roster opens the roster sheet', rosterUp);
+    await page.evaluate("(() => { document.querySelector('#tg .botroster [data-k=\\'add-0\\']').click(); return 1; })()");
+    await wait(400);
+    await page.evaluate("(() => { document.querySelector('#tg .botroster [data-k=\\'add-0\\']').click(); return 1; })()");
+    const seated = await page.until(`${G} && window.__dogfight().isBot[1] === 1 && window.__dogfight().isBot[2] === 1`, 5000).then(() => true, () => false);
+    check('two presses seat two bots, flown by the page', seated);
+    const seatsShown = await page.evaluate("document.querySelectorAll('#tg .botroster .rseat.is-bot').length");
+    check('and the roster shows them', seatsShown === 2, String(seatsShown));
+    await shot('roster');
+    await page.evaluate("(() => { document.querySelector('#tg .botroster [data-k=\\'done\\']').click(); return 1; })()");
+    const row = await page.evaluate("(() => { const it = window.__ui.items().find((x) => x && x.label === 'Fill the roster'); return it ? it.value : ''; })()");
+    check('and the row says so', row === '2 bots', row);
+    /* Aces, so a bot's cut comes inside the check's minute on a software
+     * rasteriser. */
+    await page.evaluate("(() => { const b = window.__roomBots(); b.skill(201, 'ace'); b.skill(202, 'ace'); return 1; })()");
+    await page.evaluate("(() => { window.__ui.act('resume'); return 1; })()");
+    const moss = bot('Moss Comet', 343);
+    await joinRoom(moss, room.code, '');
+    const sees = await until(() => {
+      let n = 0;
+      moss.s.eachRemote((id, pose, p) => { if (p.bot) n += 1; });
+      return n === 2;
+    }, 8000);
+    check('a pilot who joins sees both bots fly, as pilots', sees);
+    let named = '';
+    moss.s.eachRemote((id, pose, p) => { if (p.bot && !named) named = p.handle; });
+    check('named from the board\'s list', named === 'MOCHI' || named === 'GIZMO', named);
+    await shot('bots');
+    /* One bot for the round, and the joiner hanging still a few metres off
+     * it. Two aces pick each other, as the nearest ribbons, and can circle
+     * for minutes without either getting through, which is the game but
+     * not this check: 2 of 4 runs saw no cut in the minute and a half,
+     * the probe showing the pair locked 30 m from everyone else. */
+    await page.evaluate("(() => { window.__roomBots().drop(202); return 1; })()");
+    await page.until(`${G} && window.__dogfight().isBot[2] === 0`, 5000).catch(() => {});
+    const b1 = await page.evaluate(`(() => { const g = window.__dogfight(); return { x: g.x[1], y: g.y[1], z: g.z[1] }; })()`);
+    const perch = { x: b1.x + 4, y: Math.max(b1.y, 3), z: b1.z };
+    hover = setInterval(() => moss.s.uplink(perch.x, perch.y, perch.z, 0, 0, 0, 1, true, 0), 1000 / 30);
+    await wait(500);
+    await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); window.__ui.act('room-ribbon-start'); return 1; })()");
+    const started = await until(() => {
+      const r = moss.heard.filter((h) => h.name === 'ribbon').pop();
+      return r && r.data.ribbon.phase === 'count' && r.data.ribbon.rows.length === 3;
+    }, 5000);
+    check('the host\'s start puts the bot in the round', started);
+    check('the start puts the host back in the air', await page.until("window.__ui.screen === 'flight'", 3000).then(() => true, () => false));
+    /* The host goes into the pause menu in a live round: the bots fly on,
+     * not hang in the air for the room to shoot. */
+    await page.until(`${G} && window.__dogfight().state.phase === 'live'`, 9000).catch(() => {});
+    await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); return 1; })()");
+    const botAt = '(() => { const g = window.__dogfight(); for (let i = 1; i < g.cap; i += 1) if (g.isBot[i] && g.botFlies(i) && g.alive[i]) return [g.x[i], g.y[i], g.z[i]]; return null; })()';
+    const before = await page.evaluate(botAt);
+    await wait(1500);
+    const after = await page.evaluate(botAt);
+    const moved = before && after ? Math.hypot(after[0] - before[0], after[1] - before[1], after[2] - before[2]) : 0;
+    check('the bots fly on while the host is in the pause menu', moved > 0.5, `${moved.toFixed(2)} m in 1.5 s`);
+    await page.evaluate("(() => { window.__ui.act('resume'); return 1; })()");
+    const botCut = await until(() => moss.heard.some((h) => h.name === 'rbCut' && h.data.by > 200), 90000, 200);
+    check('a bot cuts somebody\'s ribbon, and the room hears it', botCut);
+    await shot('bots-live');
+    /* Moss joined after Kite left and the board gave Moss Kite's id: the
+     * slot is named for who has the id now, though Moss never flew. */
+    const mossName = await page.evaluate(`(() => { const g = window.__dogfight(); return g.nameOf(g.slotFor(${moss.s.you})); })()`);
+    check('a pilot who takes a leaver\'s id is named as themselves', mossName === 'Moss Comet', mossName);
+    clearInterval(hover);
+    hover = null;
+    moss.s.leave();
+    /* The picker asks for Drift Matsuri's picture, which main does not
+     * have yet (PROGRESS.md, the swap scene's entry). */
+    endChecks(page, /thumbs\/drift\.jpg/);
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.message}`);
+    await shot('failed').catch(() => {});
+  } finally {
+    if (hover) clearInterval(hover);
+    kite.s.leave();
+    await page.close();
+  }
+}
+
+/*
+ * A DOGFIGHT IN A ROOM: the owner's ask of 2026-10-29, "multiplayer you
+ * can fill the roster with bots". A room that plays a dogfight from the
+ * moment it opens, the host's start, the board's count and GO, a hit by
+ * the host believed by the board and drawn on the page, then the page as
+ * host filling the room with bots it flies, and a bot's hit heard by a
+ * pilot who joined.
+ */
+async function sceneDogfight() {
+  console.log('\ndogfight: a dogfight in a room');
+  const kite = bot('Kite Runner', 351);
+  const room = await hostRoom(kite, {
+    name: 'Dogfight', way: 'freestyle', map: 'bardwell', mapName: "Bardwell's house", scale: 50, game: 'dogfight',
+  });
+  check('the board opens a dogfight room', room.game === 'dogfight', String(room.game));
+  const at = `/index.html?mp=1&board=${encodeURIComponent(boardOrigin)}&map=bardwell`;
+  const page = await open(at, seedFor({ met: true, name: 'Dogfight Pilot', map: 'bardwell' }));
+  const shot = shooter(page, 'dogfight');
+  const G = 'window.__dogfight && window.__dogfight()';
+  let hover = null;
+  try {
+    const pick = await page.evaluate("(() => { window.__ui.pickDogfightRoom(); return window.__ui.hostPick; })()");
+    check('pickDogfightRoom opens the room picker for a dogfight', pick && pick.game === 'dogfight' && pick.way === 'freestyle', JSON.stringify(pick));
+    check('titled for it', await page.until(SEES('Dogfight room', '#ui'), 5000).then(() => true, () => false));
+    await shot('pick');
+    await page.evaluate("(() => { window.__ui.back(); return 1; })()");
+    await joinByCode(page, room.code);
+    await page.until(`${T} && window.__together().inRoom`, 15000);
+    await page.until("window.__mode === 'flight' && window.__ui.screen === 'flight'", 20000);
+    const youId = (await state(page)).you;
+    const me = await poseOf(kite, 'Dogfight Pilot');
+    const spot = { x: me.px + 6, y: me.py + 1.5, z: me.pz };
+    hover = setInterval(() => kite.s.uplink(spot.x, spot.y, spot.z, 0, 0, 0, 1, true, 0), 1000 / 30);
+    check('the page plays the room\'s dogfight', await page.until(`${G} && window.__dogfight().room === true && window.__dogfight().cap === 64`, 15000).then(() => true, () => false));
+    check('the host is drawn as a puppet, never flown here', await page.until(`${G} && window.__dogfight().puppet[window.__dogfight().slotFor(${kite.s.you})] === 1`, 10000).then(() => true, () => false));
+    const rows = await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); return window.__ui.items().filter(Boolean).map((x) => x.label + '=' + (x.value || '')); })()");
+    check('the pause menu says the host starts a round', rows.includes('Dogfight=Waiting'), rows.join(', '));
+    await page.evaluate("(() => { window.__ui.act('resume'); return 1; })()");
+    await shot('pit');
+
+    kite.s.link.raceSend({ t: 'dfStart' });
+    check('the host\'s start counts down on the page', await page.until(`${G} && window.__dogfight().state.phase === 'count'`, 5000).then(() => true, () => false));
+    await shot('count');
+    check('and goes live', await page.until(`${G} && window.__dogfight().state.phase === 'live'`, 9000).then(() => true, () => false));
+    /* Past the board's shield, the host's gun hits the page. */
+    await wait(2300);
+    const n = await page.evaluate(`${G}.state.n`);
+    kite.s.link.raceSend({ t: 'dfHit', n, to: youId, w: 'gun', d: 14 });
+    check('the board believes the host\'s hit and the page takes it', await page.until(`${G} && window.__dogfight().hp[0] === 86`, 5000).then(() => true, () => false));
+    const lied = kite.heard.filter((h) => h.name === 'dfHit').length;
+    kite.s.link.raceSend({ t: 'dfHit', n, to: youId, w: 'gun', d: 99 });
+    await wait(500);
+    check('and refuses more damage than a gun does', kite.heard.filter((h) => h.name === 'dfHit').length === lied);
+    await shot('hit');
+
+    /* The host goes, the page is host, and fills the room with bots. */
+    clearInterval(hover);
+    hover = null;
+    kite.s.leave();
+    check('the page is host once the host goes', await page.until(`${T} && window.__together().host === window.__together().you`, 10000).then(() => true, () => false));
+    check('and the round ends with one pilot left', await page.until(`${G} && window.__dogfight().state.phase === 'results'`, 10000).then(() => true, () => false));
+    /* The room's table: the host's Again and Fly on, never the solo fight's
+     * Change the fight and Leave, and Fly on puts it away. */
+    const table = await page.until("!document.querySelector('.df-result').classList.contains('is-off')", 5000).then(() => true, () => false);
+    const tableButtons = await page.evaluate("[...document.querySelectorAll('.df-result .df-btn')].map((b) => b.textContent)");
+    check('the host\'s results table offers Again and Fly on', table && tableButtons.join(',') === 'Again,Fly on', tableButtons.join(', '));
+    await page.evaluate("(() => { [...document.querySelectorAll('.df-result .df-btn')].find((b) => b.textContent === 'Fly on').click(); return 1; })()");
+    check('Fly on puts the table away', await page.until("document.querySelector('.df-result').classList.contains('is-off')", 3000).then(() => true, () => false));
+    const hostRows = await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); return window.__ui.items().filter(Boolean).map((x) => x.label); })()");
+    check('the host\'s pause menu has Start a dogfight round, Fill the roster, Hits and Round', ['Start a dogfight round', 'Fill the roster', 'Hits', 'Round'].every((x) => hostRows.includes(x)), hostRows.join(', '));
+    await page.evaluate("(() => { window.__ui.act('room-roster'); return 1; })()");
+    const rosterUp = await page.until("!!document.querySelector('#tg .botroster')", 3000).then(() => true, () => false);
+    check('Fill the roster opens the roster sheet', rosterUp);
+    await page.evaluate("(() => { document.querySelector('#tg .botroster [data-k=\\'add-0\\']').click(); return 1; })()");
+    await wait(400);
+    await page.evaluate("(() => { document.querySelector('#tg .botroster [data-k=\\'add-0\\']').click(); return 1; })()");
+    const seated = await page.until(`${G} && (() => { const g = window.__dogfight(); let k = 0; for (let i = 1; i < g.cap; i += 1) if (g.isBot[i] && !g.puppet[i]) k += 1; return k === 2; })()`, 5000).then(() => true, () => false);
+    check('two presses seat two bots, flown by the page', seated);
+    await page.evaluate("(() => { const b = window.__roomBots(); b.skill(201, 'ace'); b.skill(202, 'ace'); return 1; })()");
+    await page.evaluate("(() => { window.__ui.act('resume'); return 1; })()");
+    const moss = bot('Moss Comet', 353);
+    await joinRoom(moss, room.code, '');
+    const sees = await until(() => {
+      let k = 0;
+      moss.s.eachRemote((id, pose, p) => { if (p.bot) k += 1; });
+      return k === 2;
+    }, 8000);
+    check('a pilot who joins sees both bots fly, as pilots', sees);
+    await shot('bots');
+    await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); window.__ui.act('room-df-start'); return 1; })()");
+    const started = await until(() => {
+      const r = moss.heard.filter((h) => h.name === 'dogfight').pop();
+      return r && r.data.dogfight.phase === 'count' && r.data.dogfight.rows.length === 4;
+    }, 5000);
+    check('the host\'s start puts the bots in the round', started);
+    check('the start puts the host back in the air', await page.until("window.__ui.screen === 'flight'", 3000).then(() => true, () => false));
+    /* The host goes into the pause menu in a live round: the bots fly on,
+     * not hang in the air for the room to shoot. */
+    await page.until(`${G} && window.__dogfight().state.phase === 'live'`, 9000).catch(() => {});
+    await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); return 1; })()");
+    const botAt = '(() => { const g = window.__dogfight(); for (let i = 1; i < g.cap; i += 1) if (g.isBot[i] && !g.puppet[i] && g.alive[i]) return [g.x[i], g.y[i], g.z[i]]; return null; })()';
+    const before = await page.evaluate(botAt);
+    await wait(1500);
+    const after = await page.evaluate(botAt);
+    const moved = before && after ? Math.hypot(after[0] - before[0], after[1] - before[1], after[2] - before[2]) : 0;
+    check('the bots fly on while the host is in the pause menu', moved > 0.5, `${moved.toFixed(2)} m in 1.5 s`);
+    await page.evaluate("(() => { window.__ui.act('resume'); return 1; })()");
+    const botHit = await until(() => moss.heard.some((h) => h.name === 'dfHit' && h.data.by > 200), 90000, 200);
+    check('a bot hits somebody, and the room hears it', botHit);
+    await shot('bots-live');
+    /* Moss joined after Kite left and the board gave Moss Kite's id: the
+     * slot is named for who has the id now, though Moss never flew. */
+    const mossName = await page.evaluate(`(() => { const g = window.__dogfight(); return g.nameOf(g.slotOf(${moss.s.you})); })()`);
+    check('a pilot who takes a leaver\'s id is named as themselves', mossName === 'Moss Comet', mossName);
+    moss.s.leave();
+    endChecks(page, /thumbs\/drift\.jpg/);
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.message}`);
+    await shot('failed').catch(() => {});
+  } finally {
+    if (hover) clearInterval(hover);
+    kite.s.leave();
+    await page.close();
+  }
+}
+
+/*
+ * GOAT HERDING IN A ROOM: the owner's ask of 2026-10-29, "Every map should
+ * be available with friends", with his pick of the same day, "Most goats
+ * wins". A room on the goat map that plays goat herding from the moment it
+ * opens; the page as host seats two bots and starts a round; a pilot who
+ * joined hears the round, the host's herd and, once the bots have got one
+ * in, a goat home with a bot's name on it.
+ */
+async function sceneGoats() {
+  console.log('\ngoats: goat herding in a room');
+  const kite = bot('Kite Runner', 361);
+  const room = await hostRoom(kite, {
+    name: 'Goats', way: 'freestyle', map: 'goats', mapName: 'Goat herding', scale: 50, game: 'goats',
+  });
+  check('the board opens a goat herding room', room.game === 'goats', String(room.game));
+  const at = `/index.html?mp=1&board=${encodeURIComponent(boardOrigin)}&map=goats`;
+  const page = await open(at, seedFor({ met: true, name: 'Goat Pilot', map: 'goats' }));
+  const shot = shooter(page, 'goats');
+  const G = 'window.__dogfight && window.__dogfight()';
+  let moss = null;
+  try {
+    await joinByCode(page, room.code);
+    await page.until(`${T} && window.__together().inRoom`, 15000);
+    await page.until("window.__mode === 'flight' && window.__ui.screen === 'flight'", 60000);
+    check('the page plays the room\'s goat herding on the map\'s herd', await page.until(`${G} && window.__dogfight().room === true && window.__dogfight().cap === 64 && !!window.__dogfight().herd`, 20000).then(() => true, () => false));
+    const rows = await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); return window.__ui.items().filter(Boolean).map((x) => x.label + '=' + (x.value || '')); })()");
+    check('the pause menu says the host starts a round', rows.includes('Goat herding=Waiting'), rows.join(', '));
+    check('and has no Let the goats out, which would let out this page\'s goats alone', !rows.some((r) => r.startsWith('Let the goats out')));
+    await page.evaluate("(() => { window.__ui.act('resume'); return 1; })()");
+    kite.s.leave();
+    check('the page is host once the host goes', await page.until(`${T} && window.__together().host === window.__together().you`, 10000).then(() => true, () => false));
+    const hostRows = await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); return window.__ui.items().filter(Boolean).map((x) => x.label); })()");
+    check('the host\'s pause menu has Start a goat round, Fill the roster and Round', ['Start a goat round', 'Fill the roster', 'Round'].every((x) => hostRows.includes(x)), hostRows.join(', '));
+    await page.evaluate("(() => { window.__ui.act('room-gt-round'); return 1; })()");
+    check('Round steps the round\'s length', await page.until("window.__ui.roomInfo && window.__ui.roomInfo.goats && window.__ui.roomInfo.goats.round === '5m'", 3000).then(() => true, () => false));
+    /* All home: the board's clock is the wall's, and a headless page flies
+     * at a fifth of it, so a five minute round is a minute of herding. */
+    await page.evaluate("(() => { window.__ui.act('room-gt-round'); return 1; })()");
+    await page.until("window.__ui.roomInfo.goats.round === 'all'", 3000).catch(() => {});
+    await page.evaluate("(() => { window.__ui.act('room-roster'); return 1; })()");
+    await page.until("!!document.querySelector('#tg .botroster')", 3000).catch(() => {});
+    await page.evaluate("(() => { document.querySelector('#tg .botroster [data-k=\\'add-0\\']').click(); return 1; })()");
+    await wait(400);
+    await page.evaluate("(() => { document.querySelector('#tg .botroster [data-k=\\'add-0\\']').click(); return 1; })()");
+    const seated = await page.until(`${G} && (() => { const g = window.__dogfight(); let k = 0; for (let i = 1; i < g.cap; i += 1) if (g.isBot[i] && !g.puppet[i]) k += 1; return k === 2; })()`, 5000).then(() => true, () => false);
+    check('two presses seat two bots, flown by the page', seated);
+    await page.evaluate("(() => { const b = window.__roomBots(); for (const s of b.seats()) b.skill(s.id, 'ace'); window.__ui.act('resume'); return 1; })()");
+    moss = bot('Moss Comet', 363);
+    await joinRoom(moss, room.code, '');
+    await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); window.__ui.act('room-gt-start'); return 1; })()");
+    const started = await until(() => {
+      const r = moss.heard.filter((h) => h.name === 'goats').pop();
+      return r && r.data.goats.phase === 'count' && r.data.goats.rows.length === 4 && r.data.goats.total > 90;
+    }, 5000);
+    check('the host\'s start puts both pilots and both bots in, with the map\'s herd', started,
+      JSON.stringify((moss.heard.filter((h) => h.name === 'goats').pop() || {}).data));
+    check('and puts the host back in the air', await page.until("window.__ui.screen === 'flight'", 3000).then(() => true, () => false));
+    check('the round goes live', await page.until(`${G} && window.__dogfight().state.phase === 'live'`, 30000).then(() => true, () => false));
+    /* A headless page flies at about a fifth of the wall clock, and a
+     * grazing goat is sent only once it has wandered a metre: a minute. */
+    const herds = await until(() => moss.heard.filter((h) => h.name === 'gtHerd').length >= 3, 60000, 500);
+    check('a pilot who joined hears the host\'s herd', herds, `${moss.heard.filter((h) => h.name === 'gtHerd').length}`);
+    await shot('live');
+    /* On the round's own clock: the solo round's bots get their first in
+     * 40 to 60 s of it. Three minutes of it, or fifteen of the wall. */
+    let roundMs = 0;
+    const home = await until(async () => {
+      if (moss.heard.some((h) => h.name === 'gtHome' && h.data.by > 200)) return true;
+      roundMs = await page.evaluate(`${G} ? window.__dogfight().clockMs - window.__dogfight().startedMs : 0`);
+      if (roundMs > 180000) throw new Error(`no bot goat home in ${Math.round(roundMs / 1000)} s of the round`);
+      return false;
+    }, 900000, 2000).catch((e) => { console.log(`  note  ${e.message}`); return false; });
+    const probe = await page.evaluate(`(() => { const g = window.__dogfight(); if (!g) return ''; const out = []; for (let i = 1; i < g.cap; i += 1) if (g.isBot[i] && !g.puppet[i]) out.push(i + ':goat ' + g.gTarget[i] + ' h' + (g.y[i] / 3.5).toFixed(1)); return out.join(' ') + ' nOthers ' + g.pen.nOthers + ' round ' + Math.round((g.clockMs - g.startedMs) / 1000) + ' s'; })()`);
+    check('a bot gets a goat home, and the room hears whose it was', home, probe);
+    const hud = await page.evaluate("document.querySelector('.rb-hud') ? document.querySelector('.rb-hud').textContent : ''");
+    check('the host\'s HUD counts the herd', /HOME [1-9]\d*\//.test(hud), hud.slice(0, 120));
+    await shot('home');
+    endChecks(page, /thumbs\/drift\.jpg/);
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.message}`);
+    await shot('failed').catch(() => {});
+  } finally {
+    if (moss) moss.s.leave();
+    kite.s.leave();
+    await page.close();
+  }
+}
+
+/*
+ * HOSTING A MINI GAME IS SET UP AS THE SOLO GAME IS. The owner,
+ * 2026-10-29 09:52Z: a double click on a map picking an arena flew it
+ * with no bots and no buttons, "entering a mini game should be fool proof
+ * in solo or multi player modes". With friends, a double click on the
+ * room picker opened the room on a bare map. Now it asks Set the fight
+ * (or Set the ribbons) and Arm up first, and the room opens with the bots
+ * seated and the first round under way once the host is flying.
+ */
+async function sceneGameHost(game) {
+  console.log(`\ngamehost: hosting ${game} from a double click`);
+  const at = `/index.html?mp=1&board=${encodeURIComponent(boardOrigin)}&map=city`;
+  const page = await open(at, seedFor({ met: true, name: 'Game Host', map: 'city' }));
+  const shot = shooter(page, `gamehost-${game}`);
+  const G = 'window.__dogfight && window.__dogfight()';
+  try {
+    await page.evaluate(`(() => { ${game === 'ribbon' ? "window.__ui.pickRibbons({ room: true })" : 'window.__ui.pickDogfightRoom()'}; return 1; })()`);
+    await page.until("window.__ui.hostPick && document.querySelectorAll('.wp-card').length > 0", 15000);
+    await wait(1500);
+    const r = await page.evaluate(`(() => {
+      const c = document.querySelector('.wp-card');
+      c.scrollIntoView({ block: 'center', inline: 'center' });
+      return 1;
+    })()`);
+    await wait(1500);
+    const xy = await page.evaluate(`(() => {
+      const b = document.querySelector('.wp-card').getBoundingClientRect();
+      return { x: b.x + b.width / 2, y: b.y + b.height / 3 };
+    })()`);
+    const mouse = (type, clickCount) => page.cdp.send('Input.dispatchMouseEvent', {
+      type, x: xy.x, y: xy.y, button: 'left', clickCount,
+    }, page.sessionId);
+    await mouse('mouseMoved', 0);
+    await mouse('mousePressed', 1);
+    await mouse('mouseReleased', 1);
+    await wait(80);
+    await mouse('mousePressed', 2);
+    await mouse('mouseReleased', 2);
+    check('a double click on a map opens the game\'s own page first', await page.until("Boolean(document.querySelector('.df-page'))", 8000).then(() => true, () => false), String(r));
+    await shot('set');
+    for (let i = 0; i < 6; i += 1) {
+      if (await page.evaluate("Boolean(document.querySelector('#tg .sheet') && [...document.querySelectorAll('#tg .sheet')].some((e) => e.getBoundingClientRect().width > 0))")) break;
+      if (await page.evaluate("Boolean(document.querySelector('.df-page'))")) await page.tap('Enter');
+      await wait(700);
+    }
+    check('then the room\'s own sheet', await sheetIs(page, 'host').then(() => true, () => false));
+    await pressKey(page, 'open');
+    check('the room opens', await sheetIs(page, 'share').then(() => true, () => false));
+    await pressKey(page, 'fly');
+    const seated = await page.until(`${G} && (() => { const g = window.__dogfight(); let k = 0; for (let i = 1; i < g.cap; i += 1) if (g.isBot[i] && !(g.puppet && g.puppet[i])) k += 1; return k >= 1; })()`, 15000).then(() => true, () => false);
+    check('the bots picked on the page are seated, flown by the host', seated);
+    const phase = game === 'ribbon' ? `${G} && window.__dogfight().state && ['count', 'live'].includes(window.__dogfight().state.phase)` : `${G} && ['count', 'live'].includes(window.__dogfight().state.phase)`;
+    check('and the first round starts with them, no other press needed', await page.until(phase, 70000).then(() => true, () => false));
+    await shot('round');
+    endChecks(page, /thumbs\/drift\.jpg/);
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.message}`);
+    await shot('failed').catch(() => {});
+  } finally {
+    await page.close();
+  }
+}
+
+/*
+ * HOSTING GOAT HERDING OR DRIFT MATSURI IS SET UP AS THE SOLO GAME IS, as
+ * sceneGameHost holds for the dogfight and ribbons: the Mini games page's
+ * panel with friends asks Set the herd or Set the shoot first, and the
+ * room opens on the map with those bots seated and the first round under
+ * way once the host is flying.
+ */
+async function sceneMapGameHost(game) {
+  console.log(`\ngamehost: hosting ${game} from the Mini games page`);
+  const at = `/index.html?mp=1&board=${encodeURIComponent(boardOrigin)}&map=city`;
+  const page = await open(at, seedFor({ met: true, name: 'Game Host', map: 'city' }));
+  const shot = shooter(page, `gamehost-${game}`);
+  const G = 'window.__dogfight && window.__dogfight()';
+  try {
+    await page.until("window.__ui && window.__ui.screen", 15000);
+    await page.evaluate(`(() => { window.__ui.act('gate-${game}-room'); return 1; })()`);
+    check('the panel with friends opens the game\'s own page first', await page.until("Boolean(document.querySelector('.df-page'))", 30000).then(() => true, () => false));
+    await shot('set');
+    for (let i = 0; i < 6; i += 1) {
+      if (await page.evaluate("Boolean(document.querySelector('#tg .sheet') && [...document.querySelectorAll('#tg .sheet')].some((e) => e.getBoundingClientRect().width > 0))")) break;
+      if (await page.evaluate("Boolean(document.querySelector('.df-page'))")) await page.tap('Enter');
+      await wait(700);
+    }
+    check('then the room\'s own sheet', await sheetIs(page, 'host').then(() => true, () => false));
+    await pressKey(page, 'open');
+    check('the room opens', await sheetIs(page, 'share').then(() => true, () => false));
+    await pressKey(page, 'fly');
+    check('as the game\'s room, on its map', await page.until(`${G} && window.__dogfight().room === true && (${game === 'goats' ? '!!window.__dogfight().herd' : '!!window.__dogfight().film'})`, 120000).then(() => true, () => false));
+    const seated = await page.until(`${G} && (() => { const g = window.__dogfight(); let k = 0; for (let i = 1; i < g.cap; i += 1) if (g.isBot[i] && !g.puppet[i]) k += 1; return k >= 1; })()`, 120000).then(() => true, () => false);
+    check('the bots picked on the page are seated, flown by the host', seated);
+    const begun = await page.until(`${G} && ['count', 'live'].includes(window.__dogfight().state.phase)`, 120000).then(() => true, () => false);
+    const why = begun ? '' : await page.evaluate(`JSON.stringify({ phase: ${G} && window.__dogfight().state.phase, last: ${T} && window.__together().${game}Last ? window.__together().${game}Last() : null, screen: window.__ui.screen, seats: window.__roomBots && window.__roomBots() ? window.__roomBots().seats().length : -1 })`);
+    check('and the first round starts with them, no other press needed', begun, why);
+    await shot('round');
+    endChecks(page, /thumbs\/drift\.jpg/);
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.message}`);
+    await shot('failed').catch(() => {});
+  } finally {
+    await page.close();
+  }
+}
+
 try {
   if (wanted('host')) { await freshBoard(); await sceneHost(); }
   if (wanted('lobby')) { await freshBoard(); await sceneLobby(); }
@@ -4083,6 +4603,12 @@ try {
   if (wanted('vote')) { await freshBoard(); await sceneVote(); }
   if (wanted('swap')) { await freshBoard(); await sceneSwap(); }
   if (wanted('overview')) { await freshBoard(); await sceneOverview(); }
+  if (wanted('ribbon')) { await freshBoard(); await sceneRibbon(); }
+  if (wanted('dogfight')) { await freshBoard(); await sceneDogfight(); }
+  if (wanted('goats')) { await freshBoard(); await sceneGoats(); }
+  if (wanted('gamehost')) { await freshBoard(); await sceneGameHost('dogfight'); await freshBoard(); await sceneGameHost('ribbon'); }
+  if (wanted('gamehostmaps')) { await freshBoard(); await sceneMapGameHost('goats'); await freshBoard(); await sceneMapGameHost('drift'); }
+  if (wanted('gamehostdrift')) { await freshBoard(); await sceneMapGameHost('drift'); }
 } finally {
   if (board) board.kill('SIGKILL');
   rmSync(scratch, { recursive: true, force: true });

@@ -113,7 +113,7 @@ import {
 import { starterMap } from './starter.js';
 import { lookOf, kitLook, paintLights, paintSky, paintPost, skyLook } from './looks.js';
 import { STF_PAINTED } from '../../game/egg.js';
-import { chooseStfSpot, choosePartnerSpots, choosePatronSpots, partnerKey, stfKey } from './egg.js';
+import { chooseStfSpot, choosePartnerSpots, choosePatronSpots, chooseHiddenSpot, HIDDEN_PATRON, partnerKey, stfKey } from './egg.js';
 import { choosePatrons } from '../../partners/patrons.js';
 import { trafficOf, uploadTraffic, roadKeepOut } from './traffic.js';
 import { buildRoadMesh, roadCover } from './roadmesh.js';
@@ -834,6 +834,11 @@ function orbitPath(placed) {
   const req = [];
   const pts = [];
   const S = { s: 0, c: 1 };
+  /* A solid is cleared if it is within reach of a point, and the reach is
+   * at least half the way to the next point: on a map as wide as the goat
+   * street the points are 42 m apart, and a 10 m reach left a wall between
+   * two of them under the camera (lint:attract, goats, 2026-10-29). */
+  const reach = Math.max(10, (Math.PI * R) / N + 2);
   for (let i = 0; i < N; i += 1) {
     sincos((i / N) * Math.PI * 2, S);
     const x = R * S.c;
@@ -841,7 +846,7 @@ function orbitPath(placed) {
     let need = EYE;
     for (const o of placed.solids) {
       const r = planReach(o, x, z);
-      if (r.d < 10) {
+      if (r.d < reach) {
         need = Math.max(need, r.top + 4);
       }
     }
@@ -1194,6 +1199,12 @@ function trianglesOf(root) {
  *   chunkOf optional, (x, z) world metres to the name of the cull chunk
  *           a thing there is filed under, for the parts and the
  *           document's assets alike: Sunnyfield's six (src/maps/sunny/)
+ *   padBase optional, the height in world metres the start pads stand at
+ *           when they stand on the structure: Drift Matsuri's judges'
+ *           tower roof. The document's own height for them is not enough,
+ *           because seatDocument sets a raised pad down on what the
+ *           document holds under it, and the structure is not in the
+ *           document, so a pad on its roof arrives here on the paving.
  *
  * It goes in as the last item and its solids as the last solids, in part
  * order, which is the pairing ./egg.js checks. The box tops are indexed
@@ -1211,7 +1222,7 @@ function addExtra(placed, extra) {
   placed.tops = indexTops(placed.solids);
   const sp = placed.spawn;
   if (sp && sp.from === 'pads') {
-    sp.y = topUnder(placed.tops, sp.x, sp.z, sp.base);
+    sp.y = topUnder(placed.tops, sp.x, sp.z, extra.padBase ?? sp.base);
     const pads = placed.items.find((it) => it.el && it.el.type === 'startPads');
     if (pads) {
       pads.y = sp.y;
@@ -1297,6 +1308,17 @@ export async function buildMap(shell, onProgress, options) {
         patronSpots = choosePatronSpots(placed, doc, chosen.source, stfSpot, partnerSpots,
           chosenPatrons.map((p) => ({ slug: p.slug, aspect: signAspect(p) })));
       }
+      /* And the one hidden patron sign (./egg.js, HIDDEN_PATRON), on every
+       * map the chooser serves, after all the others so it takes no wall
+       * they want. */
+      const hiddenPatron = PATRON_MAP_BRANDS.find((p) => p.slug === HIDDEN_PATRON && shownOn(p, mapKey.replace(/^built:(?=starter$)/, '')));
+      if (hiddenPatron) {
+        const hidden = chooseHiddenSpot(placed, doc, chosen.source, stfSpot, [...partnerSpots, ...patronSpots],
+          { slug: hiddenPatron.slug, aspect: signAspect(hiddenPatron) });
+        if (hidden) {
+          patronSpots.push(hidden);
+        }
+      }
     } catch (e) {
       console.error('patrons: no spots for the marks on this map', e);
     }
@@ -1304,7 +1326,8 @@ export async function buildMap(shell, onProgress, options) {
   /* THE MARKS BY HAND, from a map that brings a structure the chooser
    * cannot see (src/maps/house/supporters.js): each { slug, p, n, up, w,
    * chunk } on a face of that structure, in the world, `p` on the face. Each
-   * gets the key a chosen spot would and the height its sign's artwork
+   * gets the key a chosen spot would (or its own `key`, for a second sign
+   * of a brand the map already hangs once) and the height its sign's artwork
    * gives (signAspect), and goes to the partners' list or the patrons' by
    * which roster names it, so it is painted, found or not, exactly as a
    * chosen one is. A slug no roster names is left out. */
@@ -1315,7 +1338,7 @@ export async function buildMap(shell, onProgress, options) {
       continue;
     }
     const spot = {
-      key: partnerKey(doc, chosen.source, m.slug), slug: m.slug, p: [...m.p], n: [...m.n], up: [...m.up], w: m.w, h: m.w / signAspect(brand), chunk: m.chunk,
+      key: m.key ?? partnerKey(doc, chosen.source, m.slug), slug: m.slug, p: [...m.p], n: [...m.n], up: [...m.up], w: m.w, h: m.w / signAspect(brand), chunk: m.chunk,
     };
     (partner ? partnerSpots : patronSpots).push(spot);
   }

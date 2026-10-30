@@ -234,7 +234,7 @@ import {
 } from './mangapage.js';
 import { paintTitle } from './lettering.js';
 import {
-  GATE_HEADS, GATE_ROOMS, GATE_SIDES, SOLO_PANELS, paintGatePilot, sceneFor,
+  GATE_GAMES, GATE_HEADS, GATE_ROOMS, GATE_SIDES, SOLO_PANELS, paintGatePilot, sceneFor,
 } from './gatepages.js';
 import { formatScore } from '../game/score.js';
 import { PRACTICE_LAPS } from '../game/race.js';
@@ -997,14 +997,14 @@ const scoringBoardBuilt = (where) => 'Scored run: two minutes from the first thi
  */
 function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
   const built = mapId === 'built' || mapId === 'house' || mapId === 'heads' || mapId === 'bardwell' || mapId === 'warehouse'
-    || mapId === 'goats' || mapId === 'sunny' || mapId === 'drift';
+    || mapId === 'goats' || mapId === 'sunny' || mapId === 'drift' || mapId === 'moto';
   const where = mapId === 'house' ? "Nick's house"
     : mapId === 'heads' ? "Heads' house"
       : mapId === 'bardwell' ? "Joshua's house"
         : mapId === 'warehouse' ? "Thomas's shop"
           : mapId === 'goats' ? "Heads' street"
           : mapId === 'sunny' ? 'Sunnyfield'
-            : mapId === 'drift' ? 'Drift Matsuri' : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
+            : mapId === 'drift' ? 'Drift Matsuri' : mapId === 'moto' ? 'Ridgeline MX' : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
   if (mode === 'off') {
     return `${drawn ? '' : `${SCORING_UNDRAWN} `}${scoringOff(where)} ${built ? scoringMoreBuilt(where) : SCORING_MORE}`;
   }
@@ -1066,6 +1066,7 @@ const SUNNY_OFF_BOARD = 'The board keeps no runs for Sunnyfield, so a run flown 
   + ' Fly the town for a run that can go up.';
 
 /* Drift Matsuri, the same way. */
+const MOTO_OFF_BOARD = 'The board keeps no runs for Ridgeline MX, so a run flown there stays here.';
 const DRIFT_OFF_BOARD = 'The board keeps no runs for Drift Matsuri, so a run flown there stays here.'
   + ' Fly the town for a run that can go up.';
 
@@ -4495,6 +4496,168 @@ function craftItem(s, midRun) {
  * room's own card for it (swapQuad in src/net/together.js), and the quad
  * changes here when the room has heard it.
  */
+/*
+ * A ribbon cutting room's pause rows: the host starts a round and sets the
+ * ribbons' length between rounds; everybody else is told who starts one.
+ */
+const RIBBON_LENGTH_NAMES = { short: 'Short', normal: 'Normal', long: 'Long' };
+function ribbonRoomItems(info) {
+  const rb = info.ribbon;
+  if (!rb) {
+    return [];
+  }
+  const between = rb.phase === 'pit' || rb.phase === 'results';
+  if (!info.host) {
+    return [{
+      label: 'Ribbon cutting',
+      value: between ? 'Waiting' : 'Round on',
+      action: 'noop',
+      note: 'The host starts each round. Everybody here when it starts gets a ribbon.',
+    }];
+  }
+  return [
+    {
+      label: between ? 'Start a ribbon round' : 'Round on',
+      action: between ? 'room-ribbon-start' : 'noop',
+      note: between ? 'Everybody in the room gets a ribbon. Or press G while flying.' : 'The next one can start when this one ends.',
+    },
+    {
+      label: 'Fill the roster',
+      value: `${rb.bots || 0} bots`,
+      action: 'room-roster',
+      note: 'Your friends and the empty seats, and bots to fill them. Bots fly from your computer and give a seat to a friend who joins.',
+    },
+    {
+      label: 'Ribbon length',
+      value: RIBBON_LENGTH_NAMES[rb.length] || 'Normal',
+      action: between ? 'room-ribbon-length' : 'noop',
+      note: 'Long ribbons are easier to cut. Changes between rounds.',
+    },
+  ];
+}
+
+/*
+ * A dogfight room's pause rows, as ribbon cutting's: the host starts a
+ * round, seats bots and sets the hits and the round between rounds.
+ */
+const DF_HITS_NAMES = { arcade: 'Arcade', hard: 'Hard' };
+const DF_ROUND_NAMES = {
+  '3m': '3 minutes', '5m': '5 minutes', first10: 'First to 10', none: 'No clock',
+};
+function dogfightRoomItems(info) {
+  const df = info.dogfight;
+  if (!df) {
+    return [];
+  }
+  const between = df.phase === 'pit' || df.phase === 'results';
+  if (!info.host) {
+    return [{
+      label: 'Dogfight',
+      value: between ? 'Waiting' : 'Round on',
+      action: 'noop',
+      note: 'The host starts each round. Everybody here when it starts is in it, and the bots too.',
+    }];
+  }
+  return [
+    {
+      label: between ? 'Start a dogfight round' : 'Round on',
+      action: between ? 'room-df-start' : 'noop',
+      note: between ? 'Everybody in the room and every bot. Or press G while flying.' : 'The next one can start when this one ends.',
+    },
+    {
+      label: 'Fill the roster',
+      value: `${df.bots || 0} bots`,
+      action: 'room-roster',
+      note: 'Your friends and the empty seats, and bots to fill them. Bots fly from your computer and give a seat to a friend who joins.',
+    },
+    {
+      label: 'Hits',
+      value: DF_HITS_NAMES[df.hits] || 'Arcade',
+      action: between ? 'room-df-hits' : 'noop',
+      note: 'Arcade: 100 health, back in 3 s. Hard: 60, back in 5 s. Changes between rounds.',
+    },
+    {
+      label: 'Round',
+      value: DF_ROUND_NAMES[df.round] || '3 minutes',
+      action: between ? 'room-df-round' : 'noop',
+      note: 'How a round ends. Changes between rounds.',
+    },
+  ];
+}
+
+/*
+ * A Drift Matsuri room's pause rows: the host starts a round and seats
+ * bots. Every take is one minute, so there is no length to set.
+ */
+function driftRoomItems(info) {
+  const dr = info.drift;
+  if (!dr) {
+    return [];
+  }
+  const between = dr.phase === 'pit' || dr.phase === 'results';
+  if (!info.host) {
+    return [{
+      label: 'Drift Matsuri',
+      value: between ? 'Waiting' : 'Take on',
+      action: 'noop',
+      note: 'The host starts each round. Everybody films one minute of the battles, and the best reel wins.',
+    }];
+  }
+  return [
+    {
+      label: between ? 'Start a drift round' : 'Take on',
+      action: between ? 'room-dr-start' : 'noop',
+      note: between ? 'Everybody films one minute of the battles, the bots too. Or press G while flying.' : 'The next one can start when every take is cut.',
+    },
+    {
+      label: 'Fill the roster',
+      value: `${dr.bots || 0} bots`,
+      action: 'room-roster',
+      note: 'Your friends and the empty seats, and bots to fill them. Bots fly from your computer and give a seat to a friend who joins.',
+    },
+  ];
+}
+
+/*
+ * A goat herding room's pause rows, as the dogfight's: the host starts a
+ * round, seats bots and sets how long a round runs between rounds.
+ */
+const GOAT_ROUND_NAMES = { '3m': '3 minutes', '5m': '5 minutes', all: 'All home' };
+function goatsRoomItems(info) {
+  const gt = info.goats;
+  if (!gt) {
+    return [];
+  }
+  const between = gt.phase === 'pit' || gt.phase === 'results';
+  if (!info.host) {
+    return [{
+      label: 'Goat herding',
+      value: between ? 'Waiting' : 'Round on',
+      action: 'noop',
+      note: 'The host starts each round. Every goat is whoever pushed it into the garage last.',
+    }];
+  }
+  return [
+    {
+      label: between ? 'Start a goat round' : 'Round on',
+      action: between ? 'room-gt-start' : 'noop',
+      note: between ? 'The goats go back out and everybody herds, the bots too. Or press G while flying.' : 'The next one can start when this one ends.',
+    },
+    {
+      label: 'Fill the roster',
+      value: `${gt.bots || 0} bots`,
+      action: 'room-roster',
+      note: 'Your friends and the empty seats, and bots to fill them. Bots fly from your computer and give a seat to a friend who joins.',
+    },
+    {
+      label: 'Round',
+      value: GOAT_ROUND_NAMES[gt.round] || '3 minutes',
+      action: between ? 'room-gt-round' : 'noop',
+      note: 'How long a round runs, or until every goat is home. Changes between rounds.',
+    },
+  ];
+}
+
 function roomCraftItem(s, info) {
   const af = airframeById(s.airframe);
   if (info.host && info.freestyle) {
@@ -5388,7 +5551,10 @@ export class Ui {
       const always = quadAlways(this.settings)[key];
       const own = always || quadPicks(this.settings)[key];
       const rec = craftForMap(linkedMapId) || '5inch';
-      linkedAf = own || (linkedFly() ? rec : (linkedAf || rec));
+      /* A link to the title that names no quad leaves the seat as it is,
+       * as before the picker: `|| rec` here seated the map's own quad over
+       * a pilot's whoop on any ?map= address (check:seat, from 2026-10-28). */
+      linkedAf = own || (linkedFly() ? rec : linkedAf);
       quadAskKey = always ? null : key;
     }
     if (craftForMap(linkedMapId)) {
@@ -5555,6 +5721,13 @@ export class Ui {
     this.gatePage = null;
     this.gateTurn = '';
     this.gateSide = '';
+    /* The mini games page: with friends or not, the panel last played, and
+     * whether the picker open now was opened from it, so Back from the
+     * picker turns to it rather than to the cover. */
+    this.gameFriends = false;
+    this.gameLast = '';
+    this.gameReturn = false;
+    this.mapGamePick = false;
     /*
      * HOSTING, BETWEEN "HOST A ROOM" AND THE ROOM. A room is hosted on a
      * map, so Host a room opens the map picker, and while it does the
@@ -5565,6 +5738,20 @@ export class Ui {
      * host a room"). { way } while it lasts, null otherwise.
      */
     this.hostPick = null;
+    /*
+     * DOGFIGHT (src/game/dogfight.js), the owner's ask of 2026-10-29: guns,
+     * missiles and bots on any map. fightPick is the picker opened from the
+     * gate's Dogfight panel, { from }, and while it lasts the picker's one
+     * button is Fight here. fightArmed says Set the fight and Arm up were
+     * answered for it. dogfight is the rules the seated world is fought
+     * under, or null when it is flown as ever; main.js reads it each frame.
+     * input is main.js's InputManager, for Arm up.
+     */
+    this.fightPick = null;
+    this.fightArmed = false;
+    this.dogfight = null;
+    this.input = null;
+    this.onFight = null;
     this.onRoom = null;
     this.roomInfo = null;
     this.roomCounts = null;
@@ -7045,7 +7232,10 @@ export class Ui {
    * no muscle memory lands on it.
    */
   goatItems() {
-    if (!this.goatsOn) {
+    /* A goat herding room's herd is the host's and its rounds let the
+     * goats out: one page letting its own out would leave it herding goats
+     * nobody else has. */
+    if (!this.goatsOn || (this.roomInfo && this.roomInfo.goats)) {
       return [];
     }
     return [{
@@ -9402,6 +9592,30 @@ export class Ui {
             ...tail,
           ];
         }
+        /* The mini games: the switch, then a panel a game, each panel's
+         * action the way alone or the way with friends as the switch says
+         * (gatepages.js GATE_GAMES). */
+        if (page === 'games') {
+          const friends = Boolean(this.gameFriends);
+          return [
+            {
+              label: friends ? 'With friends' : 'Just me',
+              card: 'mg-switch',
+              caption: friends ? 'Playing with friends. Switch to just me.' : 'Playing just me. Switch to with friends.',
+              action: 'mg-friends',
+            },
+            ...GATE_GAMES.map((c) => ({
+              label: c.label,
+              card: c.id,
+              art: c.art,
+              kicker: c.kicker,
+              caption: c.caption,
+              chips: c.chips,
+              action: friends ? c.room : c.action,
+            })),
+            ...tail,
+          ];
+        }
         const panel = (id) => SOLO_PANELS[id] || {};
         return [
           /* Career. First, see CAREER_CARD. */
@@ -10879,6 +11093,10 @@ export class Ui {
         { label: 'Resume', action: 'resume', primary: true },
         { label: 'Restart run', action: 'restart' },
         ...this.goatItems(),
+        ...ribbonRoomItems(r),
+        ...dogfightRoomItems(r),
+        ...goatsRoomItems(r),
+        ...driftRoomItems(r),
         {
           label: 'Room',
           value: `${r.code} · ${r.n} ${r.n === 1 ? 'pilot' : 'pilots'}`,
@@ -10898,6 +11116,93 @@ export class Ui {
         { label: 'Settings', action: 'pilot', note: 'Your name, your radio, graphics and sound.' },
         { label: 'Leave room', action: 'room-leave', note: 'Fly on here, solo.' },
         { label: 'Quit to title', action: 'room-title', note: 'Leaves the room too.' },
+      ];
+    }
+    if (this.screen === 'paused' && this.dogfight && this.dogfight.game === 'drift') {
+      /* A Drift Matsuri round's pause: goat herding's, with a take. */
+      return [
+        { label: 'Resume', action: 'resume', primary: true },
+        { label: 'Restart the round', action: 'restart' },
+        { label: 'Change the round', action: 'fight-change', note: 'Bots, and how well they film.' },
+        { label: 'Does it feel wrong?', section: true },
+        tuneItem(s, true),
+        flightModeItem(s, this.flightModeKey()),
+        {
+          label: 'Rates',
+          value: ratesShort(s.rates),
+          action: 'rates',
+          note: 'How far the sticks go, and the throttle limit. Changing them here leaves the quad where it is and the clock running.',
+        },
+        { label: 'Elsewhere', section: true },
+        { label: 'Settings', action: 'pilot', note: 'Your name, your radio, graphics and sound.' },
+        { label: 'Leave the round', action: 'fight-leave', note: 'Film on here alone, with no bots.' },
+        { label: 'Quit to title', action: 'title' },
+      ];
+    }
+    if (this.screen === 'paused' && this.dogfight && this.dogfight.game === 'goats') {
+      /* A goat herding round's pause: the ribbons', with goats. */
+      return [
+        { label: 'Resume', action: 'resume', primary: true },
+        { label: 'Restart the round', action: 'restart' },
+        { label: 'Change the round', action: 'fight-change', note: 'Bots, how well they herd, and when the round ends.' },
+        { label: 'Does it feel wrong?', section: true },
+        tuneItem(s, true),
+        flightModeItem(s, this.flightModeKey()),
+        {
+          label: 'Rates',
+          value: ratesShort(s.rates),
+          action: 'rates',
+          note: 'How far the sticks go, and the throttle limit. Changing them here leaves the quad where it is and the clock running.',
+        },
+        { label: 'Elsewhere', section: true },
+        { label: 'Settings', action: 'pilot', note: 'Your name, your radio, graphics and sound.' },
+        { label: 'Leave the round', action: 'fight-leave', note: 'Herd on here alone, with no bots and no clock.' },
+        { label: 'Quit to title', action: 'title' },
+      ];
+    }
+    if (this.screen === 'paused' && this.dogfight && this.dogfight.game === 'ribbon') {
+      /* Ribbon cutting's pause: the dogfight's, with nothing to fire. */
+      return [
+        { label: 'Resume', action: 'resume', primary: true },
+        { label: 'Restart the round', action: 'restart' },
+        { label: 'Change the ribbons', action: 'fight-change', note: 'Bots, how good they are, how long the ribbons are and the round.' },
+        { label: 'Does it feel wrong?', section: true },
+        tuneItem(s, true),
+        flightModeItem(s, this.flightModeKey()),
+        {
+          label: 'Rates',
+          value: ratesShort(s.rates),
+          action: 'rates',
+          note: 'How far the sticks go, and the throttle limit. Changing them here leaves the quad where it is and the clock running.',
+        },
+        { label: 'Elsewhere', section: true },
+        { label: 'Settings', action: 'pilot', note: 'Your name, your radio, graphics and sound.' },
+        { label: 'Leave ribbon cutting', action: 'fight-leave', note: 'Fly on here with no ribbons and no bots.' },
+        { label: 'Quit to title', action: 'title' },
+      ];
+    }
+    if (this.screen === 'paused' && this.dogfight) {
+      /* A dogfight's pause: the fight's own rows, then the tuning a pilot
+       * pauses for, then the ways out. Leave the fight flies on here with
+       * no guns and no bots. */
+      return [
+        { label: 'Resume', action: 'resume', primary: true },
+        { label: 'Restart the round', action: 'restart' },
+        { label: 'Change the fight', action: 'fight-change', note: 'Bots, how good they are, the round and how hard hits land.' },
+        { label: 'Gun and missile buttons', action: 'fight-buttons', note: 'Pick a button or switch for each, and test them.' },
+        { label: 'Does it feel wrong?', section: true },
+        tuneItem(s, true),
+        flightModeItem(s, this.flightModeKey()),
+        {
+          label: 'Rates',
+          value: ratesShort(s.rates),
+          action: 'rates',
+          note: 'How far the sticks go, and the throttle limit. Changing them here leaves the quad where it is and the clock running.',
+        },
+        { label: 'Elsewhere', section: true },
+        { label: 'Settings', action: 'pilot', note: 'Your name, your radio, graphics and sound.' },
+        { label: 'Leave the fight', action: 'fight-leave', note: 'Fly on here with no guns and no bots.' },
+        { label: 'Quit to title', action: 'title' },
       ];
     }
     if (this.screen === 'paused') {
@@ -11048,7 +11353,7 @@ export class Ui {
          * reason. */
         const built = this.settings.map === 'built' || this.settings.map === 'house' || this.settings.map === 'heads'
           || this.settings.map === 'bardwell' || this.settings.map === 'warehouse' || this.settings.map === 'goats'
-          || this.settings.map === 'sunny' || this.settings.map === 'drift';
+          || this.settings.map === 'sunny' || this.settings.map === 'drift' || this.settings.map === 'moto';
         return [
           { label: 'Fly again', action: 'restart', primary: true },
           this.runPosted
@@ -11080,6 +11385,7 @@ export class Ui {
                       : this.settings.map === 'goats' ? GOATS_OFF_BOARD
                         : this.settings.map === 'sunny' ? SUNNY_OFF_BOARD
                           : this.settings.map === 'drift' ? DRIFT_OFF_BOARD
+                          : this.settings.map === 'moto' ? MOTO_OFF_BOARD
                       : (this.sharedMap ? BOARD_MAP_OFF_BOARD : BUILT_OFF_BOARD)) : (nothing
                 ? 'A run with no tricks in it is not a score. Fly one and it appears here.'
                 : (run && run.timed === false
@@ -12977,7 +13283,7 @@ export class Ui {
     }
     const items = this.items().filter((it) => it.card);
     const page = this.onGate() ? this.gatePageNow() : 'solo';
-    const key = `${page}:${items.map((it) => it.card).join('|')}`;
+    const key = `${page}:${items.map((it) => `${it.card}=${it.action}`).join('|')}`;
     if (!this.titleCards || this.titleCardKey !== key) {
       this.titleCardKey = key;
       host.textContent = '';
@@ -12985,6 +13291,9 @@ export class Ui {
       host.append(this.gateHead(page));
       const grid = el('div', 'gate-grid');
       this.titleCards = items.map((it, i) => {
+        if (it.card === 'mg-switch') {
+          return this.gameSwitch(grid, i);
+        }
         const card = el('div', `gate-card gate-card-${it.card}`);
         card.setAttribute('role', 'button');
         card.setAttribute('aria-label', it.caption ? `${it.label}. ${it.caption}` : it.label);
@@ -13052,6 +13361,13 @@ export class Ui {
         if (it.caption) {
           nm.append(el('p', 'gate-card-blurb', it.caption));
         }
+        if (it.chips) {
+          const chips = el('div', 'gate-card-chips');
+          for (const c of it.chips) {
+            chips.append(el('span', `gate-chip${c === 'Bots' ? ' is-bots' : c === 'Friends' ? ' is-friends' : ''}`, c));
+          }
+          nm.append(chips);
+        }
         art.append(nm);
         const inner = el('div', 'gate-card-in');
         inner.append(art);
@@ -13081,11 +13397,140 @@ export class Ui {
         const cls = `turn-${this.gateTurn}`;
         this.gateTurn = '';
         grid.classList.add(cls);
-        grid.addEventListener('animationend', () => grid.classList.remove(cls), { once: true });
+        /* The names are measured on screen, and mid turn the page is
+         * swung about its spine: a name lettered then is fitted to where
+         * the swing had it, which on a phone held sideways clipped one
+         * name and shrank another to a speck. So they are lettered again
+         * once the page is flat. */
+        grid.addEventListener('animationend', () => {
+          grid.classList.remove(cls);
+          this.letterGateNames();
+        }, { once: true });
       }
     }
     this.markCards();
     this.letterGateNames();
+  }
+
+  /*
+   * THE MINI GAMES PAGE'S SWITCH, Just me or With friends, a stop like the
+   * panels so a radio or a pad reaches it with the cursor (they have no
+   * Tab), across the top of the page where the mockup put it. Choosing it
+   * flips it; Tab flips it from anywhere on the page (handleKey).
+   */
+  gameSwitch(grid, i) {
+    const friends = Boolean(this.gameFriends);
+    const card = el('div', 'gate-card gate-card-mg-switch');
+    card.setAttribute('role', 'switch');
+    card.setAttribute('aria-checked', friends ? 'true' : 'false');
+    card.setAttribute('aria-label', 'With friends');
+    const me = el('span', `mg-side${friends ? '' : ' is-on'}`, 'Just me');
+    const them = el('span', `mg-side${friends ? ' is-on' : ''}`, 'With friends');
+    const line = el('span', 'mg-line', friends
+      ? 'The game you pick opens a room. Friends come in by the code or the link, and bots can fill the empty seats.'
+      : 'Just you, and as many bots as you like.');
+    card.append(me, them, line);
+    card.addEventListener('mousemove', (e) => this.hoverCursor(e, i));
+    card.addEventListener('click', () => {
+      this.cursor = i;
+      this.select();
+    });
+    grid.append(card);
+    return { card };
+  }
+
+  /* 'games' when the picker being left was opened from the mini games
+   * page, once: the next picker opened from anywhere else forgets it. */
+  backToGames() {
+    const back = this.gameReturn && this.roomsOn ? 'games' : '';
+    this.gameReturn = false;
+    return back;
+  }
+
+  /*
+   * GOAT HERDING AND DRIFT MATSURI from the mini games page: each is one
+   * map, so the panel flies it, or hosts a room on it, as its card in the
+   * map picker would. The picker is opened on the Maps shelf first because
+   * that card is where the map's quad picker and its room are asked from,
+   * and Back from there is the world cards with the map under the cursor.
+   */
+  playMapGame(id, room) {
+    this.endFightPick();
+    this.endHostPick();
+    if (this.onGate()) {
+      this.craftGate = false;
+      this.settings.airframeAsked = true;
+    }
+    this.pickerShelfChosen('maps');
+    this.mapGamePick = true;
+    /* The picker is fetched on its first visit (mountPicker), so the very
+     * first game played from the page waits for it, on the map cards. */
+    if (!this.pickerLib) {
+      if (this.pickerLoading) {
+        this.pickerLoading.then(() => {
+          if (this.pickerLib && isCardScreen(this.screen)) {
+            this.playMapGameOn(id, room);
+          }
+        });
+      }
+      return;
+    }
+    this.playMapGameOn(id, room);
+  }
+
+  playMapGameOn(id, room) {
+    /* Ridgeline MX is Drift Matsuri's game on another map: the same round,
+     * the same room, the board's 'drift'. */
+    const game = id === 'moto' ? 'drift' : id;
+    const entry = this.pickerEntries().find((e) => e.item && e.item.action === `map:${id}`);
+    if (!entry) {
+      return;
+    }
+    const at = this.items().indexOf(entry.item);
+    if (at >= 0) {
+      this.setCursor(at);
+    }
+    if (room && this.roomsOn && this.onFlyTogether) {
+      const world = this.roomWorldOf(entry);
+      if (world) {
+        if (this.onUiSound) {
+          this.onUiSound('select');
+        }
+        /* A goat room is goat herding from the moment it opens: rounds,
+         * bots and most goats wins (src/game/goatroom.js). A drift room
+         * is Drift Matsuri's, best reel wins (src/game/driftroom.js).
+         * Each asks its solo page first, Set the herd or Set the shoot,
+         * and the room opens with those bots and starts the first round,
+         * as a dogfight room does (armRoomGame). */
+        if (game === 'goats' || game === 'drift') {
+          this.armRoomGame(world, entry, game, false);
+        } else {
+          this.onFlyTogether(world);
+        }
+        return;
+      }
+    }
+    /* Goat herding alone is a round with bots (src/game/goatround.js):
+     * Set the herd first, as a dogfight's arena has Set the fight. */
+    if (game === 'goats' || game === 'drift') {
+      this.fightPick = { from: 'gate', game, map: id };
+      this.fightArmed = false;
+    }
+    this.pickerAction('fly', entry);
+  }
+
+  /* Flip the mini games page between alone and with friends, the cursor
+   * staying on the panel it was on. */
+  flipGameFriends() {
+    const at = this.items()[this.cursor];
+    const want = at && at.card;
+    this.gameFriends = !this.gameFriends;
+    if (this.onUiSound) {
+      this.onUiSound('adjust');
+    }
+    this.renderMenu();
+    const i = this.items().findIndex((it) => it.card === want);
+    this.setCursor(i >= 0 ? i : this.titleStop());
   }
 
   /*
@@ -13125,12 +13570,12 @@ export class Ui {
   /* Turn to a page of the gate: the cursor lands where that page starts,
    * and the page swings in from the side it is on. */
   turnGate(page) {
-    const order = { cover: 0, solo: 1, together: 2 };
+    const order = { cover: 0, solo: 1, together: 2, games: 3 };
     const was = this.gatePageNow();
     if (page === was) {
       return;
     }
-    if (page === 'solo' || page === 'together') {
+    if (page === 'solo' || page === 'together' || page === 'games') {
       this.gateSide = page;
     }
     this.gateTurn = order[page] > order[was] ? 'fwd' : 'back';
@@ -14087,7 +14532,7 @@ export class Ui {
     this.pickerOpened = false;
     this.feedPicker();
     this.loadRoomCounts();
-    if (this.hostPick) {
+    if (this.hostPick || this.fightPick) {
       this.paintHostPick();
     }
   }
@@ -14312,6 +14757,10 @@ export class Ui {
   }
 
   pickerActions(entry) {
+    /* Picking a dogfight's arena: the one button fights there. */
+    if (this.fightPick) {
+      return [{ id: this.screen === 'courses' ? 'card-fly' : 'fly', label: this.fightPick.game === 'dogfight' ? 'Fight here' : 'Fly here', primary: true }];
+    }
     /* Hosting: the one button is the room, so Enter and a double click
      * host this map. A map that lives only in this browser cannot be a
      * room's, and says so rather than flying solo instead. */
@@ -14377,9 +14826,30 @@ export class Ui {
     if (id === 'fly-together') {
       const world = this.roomWorldOf(entry);
       if (world && this.onFlyTogether) {
-        this.onFlyTogether(this.hostPick && this.hostPick.move ? { ...world, move: true } : world);
+        const hp = this.hostPick;
+        /* A mini game's room is set up as the solo game is, whatever
+         * pressed it (a double click, Enter, the pad's A, the button):
+         * Set the fight or Set the ribbons, and Arm up, then the room,
+         * which seats the bots and starts the first round with them. The
+         * owner, 2026-10-29: "entering a mini game should be fool proof in
+         * solo or multi player modes". */
+        if (hp && !hp.move && (hp.game === 'dogfight' || hp.game === 'ribbon')) {
+          this.armRoomGame(world, entry, hp.game);
+          return;
+        }
+        this.onFlyTogether(hp && hp.move ? { ...world, move: true } : hp && hp.game ? { ...world, game: hp.game } : world);
       }
       return;
+    }
+    /* A dogfight's arena: Set the fight and Arm up first, then on as any
+     * map is flown, the quad picker included. Any other map flown from
+     * the picker is flown without one. */
+    if (this.fightPick && !this.fightArmed) {
+      this.armFight(id, entry, ev);
+      return;
+    }
+    if (!this.fightPick && !this.quadPicking) {
+      this.dogfight = null;
     }
     if (this.screen === 'courses') {
       this.cardSubject = entry.key;
@@ -14458,11 +14928,207 @@ export class Ui {
    * on a map, so the picker, on the shelf of the kind of room the pilot was
    * looking at. From the title as well as from the picker's own Rooms tab.
    */
-  pickRoomWorld(way, { move = false } = {}) {
+  /*
+   * THE DOGFIGHT'S ARENA: the map picker on its Maps shelf, opened from the
+   * gate's Dogfight panel, as Host a room opens it (pickRoomWorld). Any map
+   * works, and the other shelves stay one tab away.
+   */
+  pickDogfight(game = 'dogfight') {
+    this.endHostPick();
+    this.mapGamePick = false;
+    this.fightPick = { from: this.onGate() ? 'gate' : this.screen, game };
+    this.fightArmed = false;
+    if (this.onUiSound) {
+      this.onUiSound('select');
+    }
+    if (isCardScreen(this.screen) && this.pickerShelf() === 'maps') {
+      this.paintHostPick();
+      return;
+    }
+    if (this.onGate()) {
+      this.craftGate = false;
+      this.settings.airframeAsked = true;
+    }
+    this.pickerShelfChosen('maps');
+    this.paintHostPick();
+  }
+
+  /*
+   * RIBBON CUTTING (src/game/ribbons.js), the owner's ask of 2026-10-29:
+   * every quad trails a ribbon, cut the others', keep yours, the last with
+   * a ribbon wins. The entry point the Mini games menu calls: the
+   * dogfight's arena picker titled for ribbons, then Set the ribbons, then
+   * the map. `room` asks for the room version: the room picker titled
+   * for ribbons, then the host's room page, and a room that plays ribbon
+   * cutting from the moment it opens. Where rooms are off it is solo.
+   */
+  /* The dogfight with friends, for the Mini games menu: the room picker
+   * titled for a dogfight, then the host's room page, and a room that is a
+   * dogfight from the moment it opens. Where rooms are off it is solo. */
+  pickDogfightRoom() {
+    if (this.roomsOn && this.onFlyTogether) {
+      this.endFightPick();
+      this.pickRoomWorld('freestyle', { game: 'dogfight' });
+      return;
+    }
+    this.pickDogfight();
+  }
+
+  pickRibbons({ room = false } = {}) {
+    if (room && this.roomsOn && this.onFlyTogether) {
+      this.endFightPick();
+      this.pickRoomWorld('freestyle', { game: 'ribbon' });
+      return;
+    }
+    this.pickDogfight('ribbon');
+  }
+
+  endFightPick() {
+    if (!this.fightPick) {
+      return;
+    }
+    this.fightPick = null;
+    this.fightArmed = false;
+    this.paintHostPick();
+  }
+
+  /* The dogfight's two pages, fetched the first time they are wanted. */
+  fightPages() {
+    if (!this.fightPagesP) {
+      this.fightPagesP = import('./dogfightpages.js').catch((e) => {
+        this.fightPagesP = null;
+        throw e;
+      });
+    }
+    return this.fightPagesP;
+  }
+
+  /* Set the fight, Arm up the first time or when asked, then the map is
+   * flown as the picker flies it. Back on either page leaves the pilot on
+   * the arena picker with nothing changed. */
+  async armFight(id, entry, ev) {
+    /* One page at a time: a second press while it is up (a double click
+     * then Enter, a pad's A pressed twice) is the same press. */
+    if (this.fightArming) {
+      return;
+    }
+    this.fightArming = true;
+    try {
+      await this.armFightPages(id, entry, ev);
+    } finally {
+      this.fightArming = false;
+    }
+  }
+
+  async armFightPages(id, entry, ev) {
+    let pages;
+    try {
+      pages = await this.fightPages();
+    } catch (e) {
+      console.warn('dogfight: the pages did not load', e);
+      return;
+    }
+    const kit = { letterHeading };
+    const name = entry.name || entry.label || (entry.item && entry.item.map && entry.item.map.name) || 'This map';
+    const game = this.fightPick.game;
+    const quiet = game === 'ribbon' || game === 'goats' || game === 'drift';
+    const ask = { ribbon: pages.askRibbon, goats: pages.askGoats, drift: pages.askDrift }[game] || pages.askFight;
+    const got = await ask(this, kit, name, entry && entry.item ? entry.item.action : '');
+    if (!got || !this.fightPick) {
+      return;
+    }
+    if (!quiet && this.input && (got.buttons || !pages.armed())) {
+      const ok = await pages.askArm(this, kit, this.input);
+      if (!ok || !this.fightPick) {
+        return;
+      }
+    }
+    this.dogfight = got.rules;
+    this.fightArenaName = name;
+    this.fightArmed = true;
+    this.pickerAction(id, entry, ev);
+  }
+
+  /* A mini game's room, set up before it opens: the solo pages, then the
+   * room with the rules (src/net/together.js host, which seats the bots,
+   * sets the board's rules and starts the first round). Back on a page
+   * leaves the pilot on the room picker. One at a time: a second press
+   * while a page is up is the same press. */
+  async armRoomGame(world, entry, game, picker = true) {
+    if (this.roomArming) {
+      return;
+    }
+    this.roomArming = true;
+    try {
+      const pages = await this.fightPages();
+      const kit = { letterHeading };
+      const name = world.name || entry.name || 'This map';
+      const ask = {
+        ribbon: pages.askRibbon, goats: pages.askGoats, drift: pages.askDrift,
+      }[game] || pages.askFight;
+      const got = await ask(this, kit, name, entry && entry.item ? entry.item.action : '');
+      if (!got || (picker && !this.hostPick)) {
+        return;
+      }
+      if (game === 'dogfight' && this.input && (got.buttons || !pages.armed())) {
+        const ok = await pages.askArm(this, kit, this.input);
+        if (!ok || !this.hostPick) {
+          return;
+        }
+      }
+      this.onFlyTogether({ ...world, game, rules: got.rules });
+    } catch (e) {
+      console.warn('dogfight: the pages did not load', e);
+    } finally {
+      this.roomArming = false;
+    }
+  }
+
+  /* The pause rows of a dogfight, and the results' Change the fight. */
+  async fightAction(action) {
+    if (action === 'fight-leave') {
+      this.dogfight = null;
+      if (this.onFight) {
+        this.onFight('leave');
+      }
+      this.act('resume');
+      return;
+    }
+    let pages;
+    try {
+      pages = await this.fightPages();
+    } catch (e) {
+      return;
+    }
+    const kit = { letterHeading };
+    if (action === 'fight-change') {
+      const game = this.dogfight ? this.dogfight.game : '';
+      const ask = { ribbon: pages.askRibbon, goats: pages.askGoats, drift: pages.askDrift }[game] || pages.askFight;
+      const got = await ask(this, kit, this.fightArenaName || 'This map');
+      if (got && this.dogfight) {
+        this.dogfight = got.rules;
+        if (this.onFight) {
+          this.onFight('rules');
+        }
+      }
+      if (got && got.buttons && this.input) {
+        await pages.askArm(this, kit, this.input);
+      }
+      return;
+    }
+    if (action === 'fight-buttons' && this.input) {
+      await pages.askArm(this, kit, this.input);
+    }
+  }
+
+  pickRoomWorld(way, { move = false, game = '' } = {}) {
     const shelf = { freestyle: 'maps', '5inch': 'five', whoop: 'whoop' }[way] || 'maps';
+    this.mapGamePick = false;
     /* move: the host of a room taking it to another map, from the pause
      * menu, which is where the pilot goes back to. */
-    this.hostPick = { way, move, from: this.onGate() ? 'gate' : this.screen };
+    this.hostPick = {
+      way, move, game: move ? '' : game, from: this.onGate() ? 'gate' : this.screen,
+    };
     if (isCardScreen(this.screen) && this.pickerShelf() === shelf) {
       this.paintHostPick();
       return;
@@ -14482,7 +15148,7 @@ export class Ui {
    * is for now, and the way out of it. Built once, shown and hidden.
    */
   paintHostPick() {
-    const on = Boolean(this.hostPick) && isCardScreen(this.screen) && Boolean(this.pickerHost && this.pickerHost.isConnected);
+    const on = Boolean(this.hostPick || this.fightPick) && isCardScreen(this.screen) && Boolean(this.pickerHost && this.pickerHost.isConnected);
     if (!this.hostBand) {
       this.hostBand = el('div', 'host-band');
       this.hostBand.setAttribute('role', 'status');
@@ -14500,9 +15166,23 @@ export class Ui {
     const head = this.pickerHost ? this.pickerHost.querySelector('.wp-head') : null;
     const hero = this.pickerHost ? this.pickerHost.querySelector('.wp-hero') : null;
     if (on) {
-      const move = this.hostPick.move;
-      const [kick, title, line, tab] = move
-        ? ['Change map', 'Pick the room\'s next map', 'Everybody votes to come with you or stay. Double click a map, or choose it and press Move the room here.', 'Moving the room']
+      const move = Boolean(this.hostPick && this.hostPick.move);
+      const ribbon = Boolean(this.fightPick && this.fightPick.game === 'ribbon');
+      const goats = Boolean(this.fightPick && this.fightPick.game === 'goats');
+      const drift = Boolean(this.fightPick && this.fightPick.game === 'drift');
+      const [kick, title, line, tab] = !this.hostPick
+        ? (goats
+          ? ['Goat herding', 'The goats are out', 'Set the herd, then fly.', 'Goat herding']
+          : drift
+          ? (this.fightPick.map === 'moto'
+            ? ['Ridgeline MX', 'The riders are out', 'Set the chase, then fly.', 'Ridgeline MX']
+            : ['Drift Matsuri', 'The cars are out', 'Set the shoot, then fly.', 'Drift Matsuri'])
+          : ribbon
+          ? ['Ribbon cutting', 'Pick a map', 'Any map works. Double click a map, or choose it and press Fly here.', 'Ribbon cutting']
+          : ['Dogfight', 'Pick an arena', 'Any map works. Double click a map, or choose it and press Fight here.', 'Dogfight arena'])
+        : move ? ['Change map', 'Pick the room\'s next map', 'Everybody votes to come with you or stay. Double click a map, or choose it and press Move the room here.', 'Moving the room']
+        : this.hostPick.game === 'ribbon' ? ['Ribbon cutting room', 'Pick the map for your room', 'Any map works. Double click a map, or choose it and press Host a room here.', 'Hosting ribbon cutting']
+        : this.hostPick.game === 'dogfight' ? ['Dogfight room', 'Pick the arena for your room', 'Any map works. Double click a map, or choose it and press Host a room here.', 'Hosting a dogfight']
         : ['Host a room', 'Pick the map for your room', 'Double click a map, or choose it and press Host a room here.', 'Hosting a room'];
       const titleEl = this.hostBand.querySelector('.host-band-title');
       if (titleEl.dataset.words !== title) {
@@ -14510,7 +15190,13 @@ export class Ui {
         setHeadingText(titleEl, title);
       }
       this.hostBand.querySelector('.host-band-kick').textContent = kick;
-      this.hostBand.querySelector('.host-band-line').textContent = line;
+      /* A phone has no double click (the bar's touch voice, hints(), says
+       * the same): tap the map, then the band's button. */
+      const touch = this.lastInput === 'none'
+        && typeof navigator !== 'undefined' && (navigator.maxTouchPoints || 0) > 0;
+      this.hostBand.querySelector('.host-band-line').textContent = touch
+        ? line.replace('Double click a map, or choose it and press', 'Tap a map, then press')
+        : line;
       this.hostTab.textContent = tab;
     }
     if (on && head) {
@@ -15463,6 +16149,9 @@ export class Ui {
     if (this.hostPick && !isCardScreen(screen)) {
       this.endHostPick();
     }
+    if (this.fightPick && !isCardScreen(screen)) {
+      this.endFightPick();
+    }
     /* In the air by any path, a card's double click and a ?fly=1 link
      * included, is having flown: see hasFlown. */
     if (screen === 'flight') {
@@ -16273,7 +16962,8 @@ export class Ui {
     /* The cover lands on the side this visit last took, solo the first
      * time; the multiplayer page on Host a room, its first door. */
     if (this.onGate() && this.gatePageNow() !== 'solo') {
-      const want = this.gatePageNow() === 'cover' ? (this.gateSide || 'solo') : 'mp-host';
+      const page = this.gatePageNow();
+      const want = page === 'cover' ? (this.gateSide || 'solo') : page === 'games' ? (this.gameLast || 'mg-dogfight') : 'mp-host';
       const at = items.findIndex((it) => it.card === want);
       return at >= 0 ? at : this.firstStop(items);
     }
@@ -17100,6 +17790,7 @@ export class Ui {
       /* Drift Matsuri's score is the take's, on the camera's own slate
        * (src/ui/filmhud.js): two scores on one screen is one too many. */
       && this.settings.map !== 'drift'
+      && this.settings.map !== 'moto'
       && (this.screen === 'flight' || this.screen === 'paused'),
     );
   }
@@ -19453,7 +20144,9 @@ export class Ui {
      * rather than a key: a double click on a track flies it (flyCard). Not
      * in the radio's voice, which has no pointer to double click with, nor
      * the phone's, where a double tap is the browser's to interpret. */
-    if (this.hostPick && isCardScreen(this.screen) && !pad) {
+    if (this.fightPick && isCardScreen(this.screen) && !pad) {
+      out.push({ keys: ['Double click'], text: this.fightPick.game === 'dogfight' ? 'Fight here' : 'Fly here' });
+    } else if (this.hostPick && isCardScreen(this.screen) && !pad) {
       out.push({ keys: ['Double click'], text: this.hostPick.move ? 'Move here' : 'Host here' });
     } else if (this.screen === 'courses' && !pad) {
       out.push({ keys: ['Double click'], text: 'Fly' });
@@ -19468,6 +20161,9 @@ export class Ui {
     if (this.screen !== 'title') {
       out.push({ keys: [pad ? 'B' : 'Esc'], text: 'Back', action: 'back' });
     } else if (this.onGate()) {
+      if (this.gatePageNow() === 'games' && !pad) {
+        out.push({ keys: ['Tab'], text: this.gameFriends ? 'Just me' : 'With friends', action: 'mg-friends' });
+      }
       if (this.gatePageNow() !== this.gateRoot()) {
         out.push({ keys: [pad ? 'B' : 'Esc'], text: 'Back', action: 'back' });
       } else {
@@ -20045,6 +20741,8 @@ export class Ui {
   }
 
   flown() {
+    /* In the air, so Back from a later picker is the picker's own again. */
+    this.mapGamePick = false;
     /* Before the early return: this is the one place every door to the air
      * passes through once per launch, and a pilot who has flown before is
      * exactly who meets a kind of place for the first time here. */
@@ -20119,6 +20817,43 @@ export class Ui {
     /* Back out of picking a map for a room: to the multiplayer page when
      * that is where Host a room was pressed, otherwise to the picker as it
      * is for flying, which is where the pilot was. */
+    if (this.fightPick && isCardScreen(this.screen)) {
+      const fromGate = this.fightPick.from === 'gate';
+      this.endFightPick();
+      if (this.onUiSound) {
+        this.onUiSound('back');
+      }
+      if (fromGate) {
+        this.mode = null;
+        this.craftGate = true;
+        this.gatePage = this.backToGames() || (this.roomsOn ? 'cover' : 'solo');
+        this.gateTurn = 'back';
+        this.show('title');
+        this.setCursor(this.titleStop());
+        this.renderMenu();
+      }
+      return;
+    }
+    /* Goat herding or Drift Matsuri, opened from the Mini games page: the
+     * map cards they were played from are the picker's, so Back from there
+     * is the page, as it is from a dogfight's arena. */
+    if (this.mapGamePick && isCardScreen(this.screen)) {
+      this.mapGamePick = false;
+      if (this.onUiSound) {
+        this.onUiSound('back');
+      }
+      if (this.roomsOn) {
+        this.mode = null;
+        this.craftGate = true;
+        this.gatePage = 'games';
+        this.gameReturn = false;
+        this.gateTurn = 'back';
+        this.show('title');
+        this.setCursor(this.titleStop());
+        this.renderMenu();
+        return;
+      }
+    }
     if (this.hostPick && this.hostPick.move && isCardScreen(this.screen)) {
       this.endMovePick();
       if (this.onUiSound) {
@@ -20135,7 +20870,7 @@ export class Ui {
       if (fromGate && this.roomsOn) {
         this.mode = null;
         this.craftGate = true;
-        this.gatePage = 'together';
+        this.gatePage = this.backToGames() || 'together';
         this.gateTurn = 'back';
         this.show('title');
         this.setCursor(this.titleStop());
@@ -20314,6 +21049,11 @@ export class Ui {
   }
 
   act(action) {
+    /* A dogfight's pause rows. */
+    if (typeof action === 'string' && action.startsWith('fight-')) {
+      this.fightAction(action);
+      return;
+    }
     /* The goat map's own row on the pause menu (goatItems): the herd back
      * out, then straight back to flying. */
     if (action === 'goats-out') {
@@ -20396,6 +21136,47 @@ export class Ui {
      * otherwise the default board. */
     /* The gate's cover, and the multiplayer page's four doors, which are
      * together.js's (main.js routes them). */
+    /* The mini games page (gatepages.js GATE_GAMES): the switch, and the
+     * way back to it from a game's picker is remembered here. */
+    if (action === 'gate-games') {
+      this.turnGate('games');
+      return;
+    }
+    if (action === 'mg-friends') {
+      this.flipGameFriends();
+      return;
+    }
+    if (this.onGate()) {
+      this.gameReturn = this.gatePageNow() === 'games';
+      if (this.gameReturn) {
+        const at = this.items()[this.cursor];
+        this.gameLast = at && at.card ? at.card : '';
+      }
+    }
+    if (action === 'gate-dogfight-room') {
+      this.pickDogfightRoom();
+      return;
+    }
+    if (action === 'gate-goats' || action === 'gate-goats-room' || action === 'gate-drift' || action === 'gate-drift-room') {
+      this.playMapGame(action.includes('goats') ? 'goats' : 'drift', action.endsWith('-room'));
+      return;
+    }
+    if (action === 'gate-moto' || action === 'gate-moto-room') {
+      this.playMapGame('moto', action.endsWith('-room'));
+      return;
+    }
+    if (action === 'gate-dogfight') {
+      this.pickDogfight();
+      return;
+    }
+    if (action === 'gate-ribbon') {
+      this.pickRibbons();
+      return;
+    }
+    if (action === 'gate-ribbon-room') {
+      this.pickRibbons({ room: true });
+      return;
+    }
     if (action === 'gate-solo' || action === 'gate-together') {
       this.turnGate(action === 'gate-solo' ? 'solo' : 'together');
       return;
@@ -21221,8 +22002,27 @@ export class Ui {
     const leaving = action === 'title' && (from === 'paused' || from === 'flight')
       ? this.takeTuneFlight()
       : null;
+    /* Quit to title ends a dogfight or ribbon cutting as Leave the fight
+     * does. It used to fight on behind the title, the bots shooting each
+     * other over the menus, and a Fly from there was back in it, score
+     * and all, where the pilot had chosen to stop. */
+    const fromGame = action === 'title' && (from === 'paused' || from === 'flight' || from === 'results')
+      && this.roomsOn && this.gatePage === 'games' && Boolean(this.dogfight || this.gameLast);
+    if (action === 'title' && this.dogfight && (from === 'paused' || from === 'flight' || from === 'results')) {
+      this.dogfight = null;
+      this.fightArmed = false;
+    }
     if (action === 'title' || action === 'paused') {
       this.show(action);
+    }
+    /* Quit to title from a mini game played from the Mini games page is
+     * back on that page, on its panel, rather than on the menu of the way
+     * the game happened to seat. */
+    if (fromGame) {
+      this.mode = null;
+      this.craftGate = true;
+      this.setCursor(this.titleStop());
+      this.renderMenu();
     }
     /* Freestyle reaches the air through here rather than through the launch
      * card, so this is the other end of the same event. See flown(). */
@@ -21382,6 +22182,11 @@ export class Ui {
         this.back();
         return true;
       }
+    }
+    /* The mini games page's switch, from anywhere on the page. */
+    if (code === 'Tab' && this.screen === 'title' && this.onGate() && this.gatePageNow() === 'games') {
+      this.flipGameFriends();
+      return true;
     }
     this.lastInput = 'key';
     if (PICKER_KEYS[code] && this.pickerNav(PICKER_KEYS[code])) {
@@ -21566,6 +22371,10 @@ export class Ui {
           key('ArrowLeft');
         } else if (now.right && !this.padPrev.right) {
           key('ArrowRight');
+        } else if (now.up && !this.padPrev.up) {
+          key('ArrowUp');
+        } else if (now.down && !this.padPrev.down) {
+          key('ArrowDown');
         } else if (now.select && !this.padPrev.select) {
           this.dialogPadArmed = false;
           key('Enter');

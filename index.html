@@ -2610,7 +2610,7 @@
         gap: clamp(10px, 1.4vw, 18px);
       }
       .gate-page-cover .gate-grid {
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) minmax(0, 0.9fr);
         grid-template-rows: minmax(0, 1fr);
       }
       .gate-page-solo .gate-grid {
@@ -2636,6 +2636,48 @@
       .gate-card-mp-find { grid-area: find; }
       .gate-card-mp-code { grid-area: code; }
       .gate-card-mp-pilot { grid-area: pilot; }
+      /* The mini games page: the switch across the top, then the dogfight
+         two rows tall beside ribbons and goats, and the drift strip under
+         them, as the mockup set it. */
+      .gate-page-games .gate-grid {
+        grid-template-columns: repeat(12, minmax(0, 1fr));
+        grid-template-rows: auto repeat(2, minmax(0, 1fr));
+        grid-template-areas:
+          "sw sw sw sw sw sw sw sw sw sw sw sw"
+          "dog dog dog dog dog rib rib rib rib goat goat goat"
+          "dog dog dog dog dog drift drift drift drift drift drift drift";
+      }
+      .gate-card-mg-switch { grid-area: sw; }
+      .gate-card-mg-dogfight { grid-area: dog; }
+      .gate-card-mg-ribbon { grid-area: rib; }
+      .gate-card-mg-goats { grid-area: goat; }
+      .gate-card-mg-drift { grid-area: drift; }
+      .gate-card.gate-card-mg-switch {
+        align-items: center; gap: 0;
+        padding: 0; background: var(--gc-ink); box-shadow: 5px 5px 0 var(--gc-ink);
+      }
+      .mg-side {
+        flex: none;
+        padding: 9px 16px;
+        border-right: 3px solid var(--gc-ink);
+        background: var(--gc-paper); color: var(--gc-ink);
+        font-size: 13px; font-weight: 900; letter-spacing: 0.12em; text-transform: uppercase;
+      }
+      .mg-side.is-on { background: var(--amber); }
+      .mg-line { flex: 1 1 auto; min-width: 0; padding: 0 14px; color: var(--cream); font-size: 13px; font-weight: 700; }
+      .gate-card-mg-switch.on { box-shadow: 0 0 0 4px var(--amber), 7px 7px 0 4px var(--gc-ink); }
+      .gate-card-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+      .gate-chip {
+        padding: 3px 6px;
+        border: 2px solid var(--gc-ink);
+        background: var(--slate); color: var(--gc-ink);
+        font-size: 10px; font-weight: 900; letter-spacing: 0.12em; text-transform: uppercase;
+      }
+      .gate-chip.is-bots { background: var(--mint); }
+      .gate-chip.is-friends { background: var(--gc-ink); color: var(--cream); border-color: var(--cream); }
+      .gp-ribbon { right: 3%; top: 4%; width: 46%; max-width: 300px; }
+      .gate-card-mg-dogfight .gp-dog { left: 8%; top: 18%; width: 70%; }
+      .gate-card-mg-dogfight .gp-dog-sfx, .gate-card-games .gp-dog-sfx { top: 12%; }
       .gate-card {
         position: relative;
         min-width: 0;
@@ -2747,6 +2789,9 @@
       .gp-bub-a { left: 4%; top: 6%; width: 25%; max-width: 210px; }
       .gp-bub-b { right: 5%; top: 44%; width: 15%; max-width: 130px; }
       .gp-sticker { right: 3%; top: 3%; width: 16%; max-width: 140px; }
+      .gp-dog { left: 10%; top: 16%; width: 80%; max-width: 380px; }
+      .gp-dog-sfx { left: 6%; top: 4%; width: 36%; max-width: 190px; }
+      .gp-dog-sticker { right: 4%; top: 3%; width: 22%; max-width: 120px; }
       .gp-career-bub { right: 5%; top: 9%; width: 44%; max-width: 200px; }
       .gp-medal { left: 6%; top: 32%; width: 18%; max-width: 84px; }
       .gp-watch { left: 5%; top: 21%; width: 12%; max-width: 64px; }
@@ -4746,7 +4791,8 @@
            and the props stay. */
         .gate-grid,
         .gate-page-solo .gate-grid,
-        .gate-page-together .gate-grid {
+        .gate-page-together .gate-grid,
+        .gate-page-games .gate-grid {
           grid-template-columns: repeat(2, minmax(0, 1fr));
           grid-template-rows: none;
           grid-auto-rows: minmax(0, 1fr);
@@ -4755,7 +4801,9 @@
         }
         .gate-page-cover .gate-grid { grid-template-columns: minmax(0, 1fr); }
         .gate-card { grid-area: auto; box-shadow: 5px 5px 0 var(--gc-ink); }
-        .gate-card-career { grid-column: 1 / -1; }
+        .gate-card-career, .gate-card-mg-switch { grid-column: 1 / -1; }
+        .gate-page-games .gate-grid { grid-template-rows: auto; }
+        .gate-card-chips, .mg-line { display: none; }
         .gate-card.on { box-shadow: 0 0 0 3px var(--sakura), 7px 7px 0 3px var(--gc-ink); }
         .gate-cards { --gc-bleed: 12px; }
         .gate-card-nm { left: calc(var(--gc-bleed) + 8px); right: calc(var(--gc-bleed) + 8px); bottom: 6px; }
@@ -4764,7 +4812,7 @@
         .gate-card-blurb { display: none; }
         .gate-page-cover .gate-card-blurb { display: block; font-size: 12.5px; }
         .gate-card-kicker { left: calc(var(--gc-bleed) + 8px); top: 8px; font-size: 10px; }
-        .gp-solo-sfx, .gp-bub-a, .gp-bub-b, .gp-career-bub, .gp-free-sfx, .gp-build-bub, .gp-pilot-bub { display: none; }
+        .gp-solo-sfx, .gp-bub-a, .gp-bub-b, .gp-career-bub, .gp-free-sfx, .gp-build-bub, .gp-pilot-bub, .gp-dog-sfx { display: none; }
         .gate-folio { display: none; }
         /* The art is half a phone's width here, so the mark comes down with
            it. Same box on every card that has one, as ever. */
@@ -4845,7 +4893,8 @@
         .gate-grid,
         .gate-page-cover .gate-grid,
         .gate-page-solo .gate-grid,
-        .gate-page-together .gate-grid {
+        .gate-page-together .gate-grid,
+        .gate-page-games .gate-grid {
           grid-template-columns: none;
           grid-template-rows: minmax(0, 1fr);
           grid-template-areas: none;
@@ -4859,8 +4908,14 @@
         .gate-card-blurb, .gate-page-cover .gate-card-blurb { display: none; }
         .gate-card-name, .gate-card-mp-host .gate-card-name { font-size: clamp(15px, 4.4vh, 20px); }
         .gate-page-cover .gate-card-name { font-size: clamp(22px, 7vh, 32px); }
-        .gp-solo-sfx, .gp-bub-a, .gp-bub-b, .gp-career-bub, .gp-free-sfx, .gp-build-bub, .gp-pilot-bub, .gp-medal, .gp-watch, .gp-pencil { display: none; }
+        .gp-solo-sfx, .gp-bub-a, .gp-bub-b, .gp-career-bub, .gp-free-sfx, .gp-build-bub, .gp-pilot-bub, .gp-medal, .gp-watch, .gp-pencil, .gp-dog-sfx { display: none; }
         .gate-card-mark { width: 38px; height: 38px; right: calc(var(--gc-bleed) + 6px); top: 5px; }
+        /* The mini games' switch is the row's first, narrow column, its two
+           sides stacked. */
+        .gate-page-games .gate-grid { grid-template-columns: auto; }
+        .gate-card.gate-card-mg-switch { flex-direction: column; justify-content: center; align-items: stretch; }
+        .mg-side { border-right: 0; border-bottom: 3px solid var(--gc-ink); padding: 8px 10px; font-size: 11px; text-align: center; }
+        .gate-card-chips, .mg-line { display: none; }
       }
 
       /* The map screen. One card per world, each playing a short flight

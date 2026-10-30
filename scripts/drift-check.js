@@ -34,8 +34,14 @@
 import {
   circuitLayout, FIELD_W, FIELD_D, TOWER, ROAD_WIDTH,
 } from '../src/maps/drift/circuit.js';
+import { readFileSync, readdirSync } from 'node:fs';
 import { driftDocument, groupIds } from '../src/maps/drift/yard.js';
+import { MATERIALS as HOME_MATERIALS } from '../src/props/homes.js';
 import { trafficOf } from '../src/maps/built/traffic.js';
+import { seatDocument, indexTops, topUnder } from '../src/maps/built/place.js';
+import { placeSolids } from '../src/props/solids.js';
+import { normalize } from '../src/trackbuilder/model.js';
+import { DRIFT_PAD_BASE } from '../src/maps/drift/circuit.js';
 import { nearestOn } from '../src/maps/built/road.js';
 import {
   Film, FILM_EVERY, TAKE_MS, gradeOf, closeness, framing,
@@ -98,8 +104,31 @@ const across = L.decor.filter((d) => (d.t === 'fence' || d.t === 'panel')
 check('no fence crosses the course', across.length === 0, `${across.length} runs across`);
 const pad = doc.elements.find((e) => e.type === 'startPads');
 check('the start pad is on the tower roof', pad && pad.position.x === TOWER.x && pad.position.z === TOWER.top);
+/* The start as the built map seats it: the document seated, then the
+ * structure added (addExtra in src/maps/built/index.js, restated, with
+ * ./index.js's padBase). Without padBase the seating sets the pad down on
+ * the paving under the tower, among its legs, where the course and its
+ * cars are out of sight. */
+{
+  const { placed } = seatDocument(normalize(doc).doc);
+  placeSolids(L.parts, 0, 0, 0, 0, 'quarter', placed.solids, placed.stats);
+  placed.tops = indexTops(placed.solids);
+  const sp = placed.spawn;
+  const base = DRIFT_PAD_BASE ?? sp.base;
+  sp.y = topUnder(placed.tops, sp.x, sp.z, base);
+  check('the pilot is seated on the tower roof', sp.from === 'pads' && Math.abs(sp.y - TOWER.top) < 1e-6, `${sp.y.toFixed(2)} m, the roof is ${TOWER.top} m`);
+}
 check('the document is the same every build', JSON.stringify(driftDocument()) === JSON.stringify(doc));
 check('five zones', L.zones.length === 5, L.zones.map((z) => z.name).join(', '));
+/* The map's own colours, dr*, live in the house kit's table (src/props/
+ * homes.js), so scripts/house-check.js leaves them to this check, as it
+ * leaves heads*, bardwell*, wh* and goat* to theirs. The map is drawn in
+ * the page, so this reads its source for each name rather than a layout. */
+const driftDir = new URL('../src/maps/drift/', import.meta.url);
+const driftSrc = readdirSync(driftDir).filter((f) => f.endsWith('.js')).map((f) => readFileSync(new URL(f, driftDir), 'utf8')).join('\n');
+const driftOwn = Object.keys(HOME_MATERIALS).filter((m) => m.startsWith('dr'));
+const undrawn = driftOwn.filter((m) => !driftSrc.includes(`'${m}'`));
+check('every one of the map\'s own colours in src/props/homes.js is drawn', driftOwn.length > 0 && undrawn.length === 0, undrawn.join(', ') || `${driftOwn.length} colours`);
 
 /* ---- the judge ---- */
 console.log('the judge');

@@ -208,6 +208,7 @@
     'src/maps/city/vendored/core/textures.js',
     'src/maps/city/vendored/core/toon.js',
     'src/maps/city/vendored/core/util.js',
+    'src/maps/city/vendored/meshopt_simplifier.js',
     'src/maps/city/vendored/world/alleys.js',
     'src/maps/city/vendored/world/approach.js',
     'src/maps/city/vendored/world/blocks.js',

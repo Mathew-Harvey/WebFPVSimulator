@@ -73141,3 +73141,4 @@ The bug hunt thread saw together-shots' ribbon check "a bot cuts somebody's ribb
 - `MUSIC_REV` not bumped: new ids are URLs nobody has cached, a bump would re-fetch the existing 14 tracks for nothing.
 - Latency: no change to flight or input. Nothing loads at boot; a track is fetched only when it is picked and streams through the same single media element as the others. The only cost is that rotation and the Music setting now choose from 16 records, and a visitor who lands on one pays about 2.4 MB once, as for any other.
 - Checks run: `music:selftest` all passed, `lint:preload` up to date. Not run: `npm run verify` (no physics, plant, ABI or build). Not listened to.
+- To main: the owner, 2026-10-30 07:51Z, "push to main", after the latency line (no change to flight or input) and the checks run were put to him. Main had not moved, so it fast forwards. Not listened to.

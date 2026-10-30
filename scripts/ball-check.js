@@ -102,6 +102,11 @@ async function main() {
     check('taking off starts the match', await until(`${G} return g.startedMs >= 0;`, 20000));
     check('the countdown is on', await ev(`${G} return g.countdownS() > 0;`));
     await shot('kickoff');
+    /* A first flight's control lines used to sit on the scoreboard and the
+     * count: a match has its own words, so the guide waits. */
+    await sleep(600);
+    const words = await ev('return window.__ui.banner.textContent;');
+    check('the first flight\'s lines stay off a match', !/then throttle|holds its attitude|levels itself/.test(words), JSON.stringify(words));
     check('the ball goes live', await until(`${G} return g.inPlay;`, 60000));
     await ev('window.__stick(0, 0, 0, 0.5); return 1;');
     /* A camera over the arena's corner, for the pictures. */

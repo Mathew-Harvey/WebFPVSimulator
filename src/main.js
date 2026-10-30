@@ -13129,6 +13129,11 @@ export async function boot({ loading, bootStart, mapId }) {
       ui.guided
       /* Steam edition: career. A lesson has its own coach. */
       && !(career && career.owns())
+      /* Quad Ball has its own words (the banner and the count) and the
+       * first flight's lines sat on top of them and the score. The guide
+       * stays armed for the next free flight. Only the ball: other worlds
+       * keep a game object up (the town's), and the guide is theirs. */
+      && !(fightGame && fightGame.ballRules)
       && !crashflipOn
       && !turtleRecover
       && lastUpz >= 0

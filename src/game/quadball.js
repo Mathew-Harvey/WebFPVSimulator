@@ -33,8 +33,9 @@
  * says how fast it flies, how far ahead it reads the ball and how often it
  * thinks again.
  *
- * PURE, as the dogfight is: no Three.js, no DOM, no JS trigonometry, nothing
- * allocated on a step, its own clock fed every DOGFIGHT_EVERY steps of the
+ * PURE, as the dogfight is: no Three.js, no DOM, no JS trigonometry and no
+ * Math.hypot (not specified to the bit, and a room's pages step the same
+ * ball), nothing allocated on a step, its own clock fed every DOGFIGHT_EVERY steps of the
  * lap clock.
  *
  * This file is part of WebFPVSimulator.
@@ -187,7 +188,7 @@ export function grip(b, R, nx, ny, nz, jn, mu, ux = 0, uy = 0, uz = 0) {
   cx -= cn * nx;
   cy -= cn * ny;
   cz -= cn * nz;
-  const tm = Math.hypot(cx, cy, cz);
+  const tm = Math.sqrt(cx * cx + cy * cy + cz * cz);
   if (tm < 1e-9) {
     return;
   }
@@ -262,7 +263,7 @@ export function arenaStep(b, R, k, A, dt) {
   b.x += b.vx * dt;
   b.y += b.vy * dt;
   b.z += b.vz * dt;
-  let m = Math.hypot(b.vx, b.vy, b.vz);
+  let m = Math.sqrt(b.vx * b.vx + b.vy * b.vy + b.vz * b.vz);
   const cap = BALL.top * k;
   if (m > cap) {
     const s = cap / m;
@@ -285,10 +286,11 @@ export function arenaStep(b, R, k, A, dt) {
     }
   }
   if (b.vy === 0 && b.y <= floor + R + 1e-9) {
-    /* On the grass: gravity presses it, so the grass still grips, and a
-     * roll loses a little to the blades, spin and speed together so a roll
+    /* On the grass. The grip is the bounce's above: gravity pulls the
+     * resting ball a hair under every step and the floor pushes it back,
+     * so the grass grips with the weight's impulse and no more. A roll
+     * loses a little to the blades, spin and speed together so a roll
      * stays a roll. */
-    grip(b, R, 0, 1, 0, BALL.gravity * k * dt, BALL.muFloor);
     const f = 1 - BALL.roll * dt;
     b.vx *= f;
     b.vz *= f;
@@ -327,7 +329,7 @@ export function arenaStep(b, R, k, A, dt) {
     const ez = A.gw - Math.abs(b.z);
     const ey = b.y - A.gh;
     for (let pass = 0; pass < 2; pass += 1) {
-      const d = pass === 0 ? Math.hypot(ex, ez) : Math.hypot(ex, ey);
+      const d = Math.sqrt(ex * ex + (pass === 0 ? ez * ez : ey * ey));
       if (d >= R || d < 1e-9) {
         continue;
       }
@@ -710,7 +712,7 @@ export class BallRound extends Dogfight {
     const j = rel * (1 + (rel >= soft ? e : e * (rel / soft)));
     /* The push leans up a little, as a boot under a ball does. */
     const ln = BALL.lift * (rel >= soft ? 1 : rel / soft);
-    const nl = Math.hypot(nx, ny + ln, nz);
+    const nl = Math.sqrt(nx * nx + (ny + ln) * (ny + ln) + nz * nz);
     nx /= nl;
     ny = (ny + ln) / nl;
     nz /= nl;
@@ -741,9 +743,15 @@ export class BallRound extends Dogfight {
     }
   }
 
-  /* Whether the ball has lain still, in play, for STALL_MS. */
+  /* Whether the ball has lain still against a wall, in play, for STALL_MS.
+   * Only against a wall: a ball dead in the open is a ball somebody can
+   * line up on, and a pilot taking their time over a practice shot must not
+   * have it taken away. */
   stuck(b, k) {
-    if (b.vx * b.vx + b.vy * b.vy + b.vz * b.vz > (0.4 * k) * (0.4 * k)) {
+    const A = this.arena;
+    const R = this.bR;
+    const walled = Math.abs(b.x) > A.hx - R - k || Math.abs(b.z) > A.hz - R - k;
+    if (!walled || b.vx * b.vx + b.vy * b.vy + b.vz * b.vz > (0.4 * k) * (0.4 * k)) {
       this.stillMs = 0;
       return false;
     }

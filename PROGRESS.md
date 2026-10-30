@@ -73133,3 +73133,11 @@ The bug hunt thread saw together-shots' ribbon check "a bot cuts somebody's ribb
 - Latency: no change to flight or input; the prompt is never shown in flight and is built once per exit. Static SVG and CSS. Dropping the old prompt's backdrop blur removes a full screen blur pass while it is up on the title. Proxy reasoning only, no GPU timing.
 - Checks run: `check:longflight` all pass (after the fix above), `lint:shell` 25 lines as on main, `lint:nouns`, `lint:preload`, `shots.js` at 1600x900, 1280x720, 390x844 touch, 844x390 touch and `?edition=steam` (no Steam button, prompt still right). Not run: `npm run verify` (no physics, plant, ABI or build). Not flown.
 - To main: the owner, 2026-10-30 05:17Z, "push to main", after the round two screenshots and the latency line (no change to flight or input; one more boot module, `edition.js`) were put to him. Main had not moved from 43b20e9, so main fast forwards to this branch. Not flown.
+
+## 2026-10-30 | feature | Two more records in the flight crate
+
+- The owner, 2026-10-30 07:42Z: "lets add these to the game sound track in both the web and steam versions", with Hypnotic Arpeggio (5.2 MB, 235 s) and Gritty Breaks (4.8 MB, 199 s).
+- Added `hypnotic-arpeggio` and `gritty-breaks` to TRACKS in `src/render/tracks.js` and encoded with `node scripts/music.js --only=<id>`, same settings as the rest of the crate: Opus 80 kbps (2.4 and 2.3 MB) with the LAME V7 fallback (2.9 and 2.6 MB). Loudness -14.9 and -15.1 LUFS, inside the crate's -12.9 to -17.1 range, and the encode's own drift gate passed. No gain was applied.
+- `MUSIC_REV` not bumped: new ids are URLs nobody has cached, a bump would re-fetch the existing 14 tracks for nothing.
+- Latency: no change to flight or input. Nothing loads at boot; a track is fetched only when it is picked and streams through the same single media element as the others. The only cost is that rotation and the Music setting now choose from 16 records, and a visitor who lands on one pays about 2.4 MB once, as for any other.
+- Checks run: `music:selftest` all passed, `lint:preload` up to date. Not run: `npm run verify` (no physics, plant, ABI or build). Not listened to.

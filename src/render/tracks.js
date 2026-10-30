@@ -86,6 +86,8 @@ export const TRACKS = [
   rec('hypnotic-acid-loop', 'Hypnotic Acid Loop'),
   rec('prop-wash', 'Prop Wash'),
   rec('ground-effect', 'Ground Effect'),
+  rec('hypnotic-arpeggio', 'Hypnotic Arpeggio'),
+  rec('gritty-breaks', 'Gritty Breaks'),
 ];
 
 /*

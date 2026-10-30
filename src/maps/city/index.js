@@ -70,7 +70,7 @@ import { disposeSceneGraph } from '../../render/shell.js';
 import { SESSION_TEXTURES } from '../../render/session-textures.js';
 import { cityAnimation, findBoomBlocks } from './animation.js';
 import {
-  bakeCity, buildCullGrid, chunkInstanced, fogFloor, thinFoliage,
+  bakeCity, loadSimplifier, buildCullGrid, chunkInstanced, fogFloor, thinFoliage,
 } from './bake.js';
 import { cityReferences, boomColliderExtent } from './references.js';
 import { buildPlaces } from './places/index.js';
@@ -2645,6 +2645,12 @@ export async function buildMap(shell, onProgress, options) {
    * Merge, then group for culling, in that order: the cull grid has to see
    * the merged meshes, not the twenty thousand it replaced.
    */
+  /* Low only, with the fog bands: the same buckets, simplified a hair
+   * before they are banded. The simplifier is a 67 KB WASM module, so it
+   * is fetched here and nowhere else. See loadSimplifier in ./bake.js. */
+  const simplify = q.city.fogBands === true
+    ? await loadSimplifier()
+    : null;
   const baked = bakeCity(world, {
     cell: MERGE_CELL,
     shadowCell: q.shadows ? MERGE_SHADOW_CELL : MERGE_CELL,
@@ -2656,6 +2662,7 @@ export async function buildMap(shell, onProgress, options) {
     releaseStillRigs: true,
     shadowProxyCell: q.shadows ? q.city.shadowProxyCell : 0,
     fogBanding: q.city.fogBands === true,
+    simplify,
   });
   const thinned = thinFoliage(world.root, { keep: foliageKeep });
   const chunked = chunkInstanced(world.root, { cell: CULL_CELL });

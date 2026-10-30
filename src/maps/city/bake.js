@@ -1170,6 +1170,64 @@ const casterScale = new THREE.Vector3();
 
 /* The whole bake in one call, which is what this always was: every step of
  * bakeCitySteps below, run straight through. */
+/*
+ * Take the redundant triangles out of one merged bucket, with meshoptimizer's
+ * simplifier (MIT, ./vendored/meshopt_simplifier.js). The error is absolute
+ * and in metres: SIMPLIFY_ERROR, 15 cm, is below what a pilot at speed can
+ * tell on town wide ground and walls that the fog is already taking away.
+ * The normal and the baked colour are weighted in, so a collapse that would
+ * smear a painted edge costs more than one along a flat. LockBorder, because
+ * the first try without it erased the road's centre and edge lines: a marking
+ * is a thin strip a few centimetres off the tarmac, and any error over that
+ * folds it into the road, while its open border is what the lock holds. No
+ * Prune flag: that one deletes small detached parts, a size test by another
+ * name, and PROGRESS.md has the two rounds where such a test took out shop
+ * signage.
+ * Only the index changes. The vertices stay where they are, so the bands
+ * and the draw ranges below read the same buffers.
+ */
+const SIMPLIFY_ERROR = 0.15;
+export async function loadSimplifier() {
+  const { MeshoptSimplifier: M } = await import('./vendored/meshopt_simplifier.js');
+  await M.ready;
+  return (geo) => {
+    const pos = geo.attributes.position;
+    const nor = geo.attributes.normal;
+    const col = geo.attributes.color;
+    if (!pos || pos.itemSize !== 3 || pos.isInterleavedBufferAttribute) {
+      return;
+    }
+    const n = pos.count;
+    const nat = (nor ? 3 : 0) + (col ? 3 : 0);
+    const weights = [];
+    const attrs = new Float32Array(n * nat);
+    for (let v = 0; v < n; v += 1) {
+      let o = v * nat;
+      if (nor) {
+        attrs[o++] = nor.getX(v);
+        attrs[o++] = nor.getY(v);
+        attrs[o++] = nor.getZ(v);
+      }
+      if (col) {
+        attrs[o++] = col.getX(v);
+        attrs[o++] = col.getY(v);
+        attrs[o++] = col.getZ(v);
+      }
+    }
+    if (nor) {
+      weights.push(0.5, 0.5, 0.5);
+    }
+    if (col) {
+      weights.push(1, 1, 1);
+    }
+    const [out] = M.simplifyWithAttributes(
+      Uint32Array.from(geo.index.array), pos.array, 3, attrs, nat, weights, null, 3,
+      SIMPLIFY_ERROR, ['ErrorAbsolute', 'LockBorder'],
+    );
+    geo.setIndex(new THREE.BufferAttribute(out, 1));
+  };
+}
+
 export function bakeCity(world, opts) {
   const steps = bakeCitySteps(world, opts);
   for (;;) {
@@ -1461,6 +1519,7 @@ export function* bakeCitySteps(world, {
   releaseStillRigs = false,
   shadowProxyCell = 0,
   fogBanding = false,
+  simplify = null,
 } = {}) {
   const root = world.root;
   const { moving: animated, stillRigs, released } = findAnimated(world, { releaseStillRigs });
@@ -1625,6 +1684,7 @@ export function* bakeCitySteps(world, {
   const merged = [];
   let mergedBuckets = 0;
   let banded = 0;
+  const simplified = { from: 0, to: 0, ms: 0 };
   for (const b of buckets.values()) {
     if (mergedBuckets > 0 && mergedBuckets % 6 === 0) {
       yield 'merge';
@@ -1639,6 +1699,17 @@ export function* bakeCitySteps(world, {
       continue;
     }
     const geo = mergeGeometries(b.geos, false);
+    /* Before the bands, which sort whatever triangles are left. Only the
+     * buckets that are banded: the town wide, opaque, fogged, non casting
+     * ones, which are the geometry the pilot sees least of. */
+    if (geo && b.banded && simplify && geo.index) {
+      const was = geo.index.count / 3;
+      const t0 = performance.now();
+      simplify(geo);
+      simplified.ms += performance.now() - t0;
+      simplified.from += was;
+      simplified.to += geo.index.count / 3;
+    }
     if (geo && b.banded) {
       const t = bandGeometry(geo);
       if (t) {
@@ -1698,6 +1769,7 @@ export function* bakeCitySteps(world, {
       mergeShadowCell: shadowCell,
       mergeCullCell: cullCell,
       fogBanded: banded,
+      simplified,
       atlas,
       shadowProxies: proxies.stats,
       casterMinRadius: casters.minRadius,

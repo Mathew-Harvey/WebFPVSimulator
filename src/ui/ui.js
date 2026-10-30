@@ -13522,6 +13522,37 @@ export class Ui {
   }
 
   /*
+   * Back out of a game a Mini games panel opened (playMapGame): to the
+   * page, on that panel. The map cards under the game's own pages are only
+   * how it is flown, never a place the pilot chose, so Back from the door,
+   * Set the match, Set the herd or the quad page lands on the page too,
+   * not on the cards (the owner, 2026-10-30: "i'm dumped in to the maps
+   * menu, which is confusing"). True when it went.
+   */
+  leaveMapGamePick() {
+    if (!this.mapGamePick || !isCardScreen(this.screen)) {
+      return false;
+    }
+    this.mapGamePick = false;
+    this.endFightPick();
+    if (this.onUiSound) {
+      this.onUiSound('back');
+    }
+    if (!this.roomsOn) {
+      return false;
+    }
+    this.mode = null;
+    this.craftGate = true;
+    this.gatePage = 'games';
+    this.gameReturn = false;
+    this.gateTurn = 'back';
+    this.show('title');
+    this.setCursor(this.titleStop());
+    this.renderMenu();
+    return true;
+  }
+
+  /*
    * GOAT HERDING AND DRIFT MATSURI from the mini games page: each is one
    * map, so the panel flies it, or hosts a room on it, as its card in the
    * map picker would. The picker is opened on the Maps shelf first because
@@ -14996,6 +15027,8 @@ export class Ui {
               this.endFightPick();
               this.dogfight = null;
             }
+            /* A mini game's quad page: Back is the Mini games page. */
+            this.leaveMapGamePick();
             return;
           }
           this.seatPickedQuad(key, got);
@@ -15138,7 +15171,11 @@ export class Ui {
       ribbon: pages.askRibbon, goats: pages.askGoats, drift: pages.askDrift, ball: pages.askBall,
     }[game] || pages.askFight;
     const got = await ask(this, kit, name, entry && entry.item ? entry.item.action : '');
-    if (!got || !this.fightPick) {
+    if (!got) {
+      this.leaveMapGamePick();
+      return;
+    }
+    if (!this.fightPick) {
       return;
     }
     if (!quiet && this.input && (got.buttons || !pages.armed())) {
@@ -15172,7 +15209,11 @@ export class Ui {
       const world = this.roomsOn && this.onFlyTogether ? this.roomWorldOf(entry) : null;
       const name = (world && world.name) || entry.name || 'Quad Ball';
       const how = await pages.askBallHow(this, kit, name, { rooms: Boolean(world), at });
-      if (!how || (picker && !this.hostPick)) {
+      if (!how) {
+        this.leaveMapGamePick();
+        return;
+      }
+      if (picker && !this.hostPick) {
         return;
       }
       if (how.how === 'join') {
@@ -15182,7 +15223,11 @@ export class Ui {
         return;
       }
       const got = await pages.askBall(this, kit, name, '', how.how);
-      if (!got || (picker && !this.hostPick)) {
+      if (!got) {
+        this.leaveMapGamePick();
+        return;
+      }
+      if (picker && !this.hostPick) {
         return;
       }
       if (how.how === 'make') {
@@ -15223,7 +15268,11 @@ export class Ui {
         ribbon: pages.askRibbon, goats: pages.askGoats, drift: pages.askDrift, ball: pages.askBall,
       }[game] || pages.askFight;
       const got = await ask(this, kit, name, entry && entry.item ? entry.item.action : '');
-      if (!got || (picker && !this.hostPick)) {
+      if (!got) {
+        this.leaveMapGamePick();
+        return;
+      }
+      if (picker && !this.hostPick) {
         return;
       }
       if (game === 'dogfight' && this.input && (got.buttons || !pages.armed())) {
@@ -20999,22 +21048,8 @@ export class Ui {
     /* Goat herding or Drift Matsuri, opened from the Mini games page: the
      * map cards they were played from are the picker's, so Back from there
      * is the page, as it is from a dogfight's arena. */
-    if (this.mapGamePick && isCardScreen(this.screen)) {
-      this.mapGamePick = false;
-      if (this.onUiSound) {
-        this.onUiSound('back');
-      }
-      if (this.roomsOn) {
-        this.mode = null;
-        this.craftGate = true;
-        this.gatePage = 'games';
-        this.gameReturn = false;
-        this.gateTurn = 'back';
-        this.show('title');
-        this.setCursor(this.titleStop());
-        this.renderMenu();
-        return;
-      }
+    if (this.leaveMapGamePick()) {
+      return;
     }
     if (this.hostPick && this.hostPick.move && isCardScreen(this.screen)) {
       this.endMovePick();

@@ -326,12 +326,19 @@ async function sceneMenu() {
     for (const [card, friends, open, escs] of [
       ['mg-dogfight', false, "Boolean(window.__ui.fightPick && window.__ui.fightPick.game === 'dogfight')", 1],
       ['mg-ribbon', false, "Boolean(window.__ui.fightPick && window.__ui.fightPick.game === 'ribbon')", 1],
-      ['mg-goats', false, "Boolean(document.querySelector('.qp-page'))", 2],
-      ['mg-drift', false, "Boolean(document.querySelector('.qp-page'))", 2],
-      ['mg-ball', false, "Boolean(document.querySelector('.qp-page'))", 2],
-      ['mg-moto', false, "Boolean(document.querySelector('.qp-page'))", 2],
+      /* One Escape from a map game's own page: the map cards under it
+       * were never the pilot's choice, so Back is the page itself (the
+       * owner, 2026-10-30: "i'm dumped in to the maps menu, which is
+       * confusing"). It was two, through the cards. */
+      ['mg-goats', false, "Boolean(document.querySelector('.qp-page'))", 1],
+      ['mg-drift', false, "Boolean(document.querySelector('.qp-page'))", 1],
+      ['mg-ball', false, "Boolean(document.querySelector('.qp-page'))", 1],
+      ['mg-moto', false, "Boolean(document.querySelector('.qp-page'))", 1],
       ['mg-dogfight', true, "Boolean(window.__ui.hostPick && window.__ui.hostPick.game === 'dogfight')", 1],
       ['mg-ribbon', true, "Boolean(window.__ui.hostPick && window.__ui.hostPick.game === 'ribbon')", 1],
+      /* Quad Ball with friends is its door, on the friends card, and Back
+       * (the door's own button, as the owner pressed it) is the page. */
+      ['mg-ball', true, "Boolean(document.querySelector('.df-door'))", 0],
     ]) {
       const name = `${card.slice(3)}${friends ? ' with friends' : ''}`;
       await play(card, friends);
@@ -340,7 +347,11 @@ async function sceneMenu() {
         await sleep(500);
         await page.tap('Escape');
       }
-      check(`and Escape${escs > 1 ? ' twice' : ''} is back on the page, on ${name}`, await until(onPage(card), 5000));
+      if (!escs) {
+        await sleep(500);
+        await ev("[...document.querySelectorAll('.df-page .qp-btn')].find((b) => b.textContent === 'Back').click(); return 1;");
+      }
+      check(`and ${escs ? 'Escape' : 'its Back button'} is back on the page, on ${name}`, await until(onPage(card), 5000));
     }
     await play('mg-goats', false);
     check('goat herding alone opens Set the herd', await until("return Boolean(document.querySelector('.df-page'))", 30000));
@@ -353,6 +364,13 @@ async function sceneMenu() {
     check('as a round with bots', await until("const g = window.__dogfight(); return Boolean(g && g.herd && window.__ui.dogfight.game === 'goats');", 30000));
     await ev("window.__ui.act('pause'); window.__ui.show('paused'); window.__ui.act('title'); return 1;");
     check('and quit to title is back on the page, on goat herding', await until(onPage('mg-goats'), 5000));
+    /* The owner's own path, 2026-10-30: a mini game, quit to title, Quad
+     * Ball with friends, and the Back beside Make a game. */
+    await play('mg-ball', true);
+    check('after a flight, ball with friends opens its door', await until("return Boolean(document.querySelector('.df-door'))", 30000));
+    await sleep(500);
+    await ev("[...document.querySelectorAll('.df-page .qp-btn')].find((b) => b.textContent === 'Back').click(); return 1;");
+    check('and its Back button is back on the page, not the map cards', await until(onPage('mg-ball'), 5000));
     const errs = pageErrors(page);
     check('no errors on the page', errs.length === 0, errs.slice(0, 3).join(' | '));
   } finally {

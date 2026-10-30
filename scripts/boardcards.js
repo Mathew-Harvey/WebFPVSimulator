@@ -345,6 +345,11 @@ const WORLDS = [
   /* Sunnyfield, added 28 October 2026, picked by eye from four sides: the
    * one with the hill's letters, the town hall and the gorge in it. */
   { id: 'sunny', file: 'sunny.jpg', name: 'Sunnyfield', shot: { tp: 0.62, tr: 0.9, ta: -2.4 } },
+  /* Quad Ball's stadium and Ridgeline MX, added 29 October 2026 with no
+   * picture, so their map cards were blank and every picker asked the
+   * server for a file that was not there (found 30 October 2026). */
+  { id: 'ball', file: 'ball.jpg', name: 'Quad Ball' },
+  { id: 'moto', file: 'moto.jpg', name: 'Ridgeline MX' },
 ];
 
 async function drawWorlds(opts) {

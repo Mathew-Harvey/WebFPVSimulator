@@ -4562,7 +4562,7 @@ async function sceneMapGameHost(game) {
     await pressKey(page, 'open');
     check('the room opens', await sheetIs(page, 'share').then(() => true, () => false));
     await pressKey(page, 'fly');
-    check('as the game\'s room, on its map', await page.until(`${G} && window.__dogfight().room === true && (${game === 'goats' ? '!!window.__dogfight().herd' : '!!window.__dogfight().film'})`, 120000).then(() => true, () => false));
+    check('as the game\'s room, on its map', await page.until(`${G} && window.__dogfight().room === true && (${game === 'goats' ? '!!window.__dogfight().herd' : game === 'ball' ? '!!window.__dogfight().ball' : '!!window.__dogfight().film'})`, 120000).then(() => true, () => false));
     const seated = await page.until(`${G} && (() => { const g = window.__dogfight(); let k = 0; for (let i = 1; i < g.cap; i += 1) if (g.isBot[i] && !g.puppet[i]) k += 1; return k >= 1; })()`, 120000).then(() => true, () => false);
     check('the bots picked on the page are seated, flown by the host', seated);
     const begun = await page.until(`${G} && ['count', 'live'].includes(window.__dogfight().state.phase)`, 120000).then(() => true, () => false);
@@ -4576,6 +4576,75 @@ async function sceneMapGameHost(game) {
     await shot('failed').catch(() => {});
   } finally {
     await page.close();
+  }
+}
+
+/*
+ * QUAD BALL'S DOOR, two real pilots (the owner, 2026-10-30: "you go into a
+ * match up, with bots to play with until you are matched with a IRL
+ * player"). The first pilot's Quick match finds nothing, opens a listed
+ * room sized for the match, goes straight into the air and kicks off with
+ * a bot in every other seat. The second pilot's Quick match finds that
+ * room and joins it: the newest bot gives up its seat and its side, and
+ * the second pilot plays at once, two a side.
+ */
+async function sceneQuickBall() {
+  console.log('\nquickball: two pilots meet in a Quad Ball quick match');
+  const G = 'window.__dogfight && window.__dogfight()';
+  const quick = async (page) => {
+    await page.evaluate("(() => { window.__ui.pickerShelfChosen('maps'); return 1; })()");
+    await page.until('window.__ui.pickerLib', 60000);
+    await wait(600);
+    await page.evaluate("(() => { const u = window.__ui; u.pickerAction('fly', u.pickerEntries().find((e) => e.item && e.item.action === 'map:ball')); return 1; })()");
+    await page.until("Boolean(document.querySelector('.df-door'))", 20000);
+    await wait(500);
+    await page.evaluate("(() => { document.querySelectorAll('.df-doorcard')[2].click(); return 1; })()");
+    await page.until("Boolean(document.querySelector('.df-rows'))", 10000);
+    await wait(500);
+    await page.evaluate("(() => { document.querySelector('.df-page .qp-fly').click(); return 1; })()");
+  };
+  /* The first pilot starts in the town, so the room's own flight into the
+   * stadium is part of the walk (it opened the door a second time). */
+  const a = await open(`/index.html?mp=1&board=${encodeURIComponent(boardOrigin)}&map=city`, seedFor({ met: true, name: 'First Pilot', map: 'city' }));
+  const shotA = shooter(a, 'quickball-a');
+  let b = null;
+  try {
+    await quick(a);
+    check('the first quick match opens a room and flies straight in, no sheet to send a link from',
+      await a.until(`${T} && window.__together().inRoom && window.__mode === 'flight' && !window.__together().sheet && window.__map && window.__map().ready && window.__ui.settings.map === 'ball'`, 150000).then(() => true, () => false), JSON.stringify(await state(a)));
+    check('and the door is not asked a second time on the way in', await a.evaluate("!document.querySelector('.df-door')"));
+    const st = await state(a);
+    const listed = await (await fetch(`${boardOrigin}/api/rooms?way=freestyle`)).json();
+    const mine = listed.rooms.find((r) => r.code === st.code);
+    check('it is a listed Quad Ball room sized two a side', Boolean(mine) && mine.game === 'ball' && mine.max === 4 && mine.name === 'Quick match', JSON.stringify(mine));
+    check('three bots take the other seats', await a.until('window.__roomBots && window.__roomBots() && window.__roomBots().seats().length === 3', 30000).then(() => true, () => false));
+    check('and the match kicks off with no other press', await a.until(`${G} && ['count', 'live'].includes(window.__dogfight().state.phase)`, 90000).then(() => true, () => false),
+      await a.evaluate(`JSON.stringify(${G} && window.__dogfight().state)`));
+    await shotA('kicked-off');
+    b = await open(`/index.html?mp=1&board=${encodeURIComponent(boardOrigin)}&map=ball`, seedFor({ met: true, name: 'Second Pilot', map: 'ball' }));
+    const shotB = shooter(b, 'quickball-b');
+    await quick(b);
+    check('the second quick match joins the first pilot\'s room',
+      await b.until(`${T} && window.__together().inRoom && window.__together().code === ${JSON.stringify(st.code)}`, 60000).then(() => true, () => false), JSON.stringify(await state(b)));
+    check('a bot gives up its seat for them', await a.until('window.__roomBots().seats().length === 2', 20000).then(() => true, () => false));
+    const you = (await state(b)).you;
+    const rows = async (pg) => pg.evaluate(`(() => { const g = ${G}; return g && g.state ? JSON.stringify(g.state.rows) : '[]'; })()`);
+    const playing = await b.until(`(() => { const g = ${G}; return Boolean(g && g.state && g.state.rows.some((r) => r.id === ${you})); })()`, 30000).then(() => true, () => false);
+    check('and they play now, dealt a side', playing, await rows(b));
+    const sides = JSON.parse(await rows(a));
+    const count = [0, 1].map((t) => sides.filter((r) => r.team === t).length).join();
+    check('two a side on the host\'s page', count === '2,2', JSON.stringify(sides));
+    await wait(1500);
+    await shotB('joined');
+    endChecks(a, /thumbs\/ball\.jpg/);
+    endChecks(b, /thumbs\/ball\.jpg/);
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.message}`);
+    await shotA('failed').catch(() => {});
+  } finally {
+    await a.close();
+    if (b) await b.close();
   }
 }
 
@@ -4609,6 +4678,8 @@ try {
   if (wanted('gamehost')) { await freshBoard(); await sceneGameHost('dogfight'); await freshBoard(); await sceneGameHost('ribbon'); }
   if (wanted('gamehostmaps')) { await freshBoard(); await sceneMapGameHost('goats'); await freshBoard(); await sceneMapGameHost('drift'); }
   if (wanted('gamehostdrift')) { await freshBoard(); await sceneMapGameHost('drift'); }
+  if (wanted('gamehostball')) { await freshBoard(); await sceneMapGameHost('ball'); }
+  if (wanted('quickball')) { await freshBoard(); await sceneQuickBall(); }
 } finally {
   if (board) board.kill('SIGKILL');
   rmSync(scratch, { recursive: true, force: true });

@@ -2146,7 +2146,11 @@ export function createTogether(shell) {
     if (BOT_SKILLS.includes(rules.skill)) {
       rosterSkill = rules.skill;
     }
-    const n = Math.min(Number(rules.bots) || 0, rosterFree());
+    /* Quad Ball's rules say a side, not a count: every seat but the
+     * host's is a bot until a pilot takes it (normaliseBallRules has no
+     * bots, so this read 0 and a ball room opened on an empty pitch). */
+    const want = r.game === 'ball' ? Math.max(1, (Number(rules.size) || 2) * 2 - 1) : Number(rules.bots) || 0;
+    const n = Math.min(want, rosterFree());
     if (n <= 0) {
       return;
     }
@@ -2298,6 +2302,22 @@ export function createTogether(shell) {
     if (was && was.kind === 'host') {
       if (was.entry && was.entry.rules) {
         seatRoomRules(was.entry.rules);
+      }
+      /* A quick match has nobody to send a link to: straight into the
+       * air, the bots kicking off as soon as they are seated. */
+      if (was.entry && was.entry.quick) {
+        closeAll();
+        taughtFirst(r, () => {
+          if (was.entry.fly && !sameWorld(r)) {
+            was.entry.fly();
+          } else if (!shell.flying()) {
+            shell.fly();
+          }
+          startOwedRound();
+          banner(me().avatar, 'hello', 'Quick match',
+            'Bots play every other seat. A pilot who picks Quick match on this map takes a bot\'s seat and its side.', 'mint');
+        });
+        return;
       }
       sheetShare({ first: true, entry: was.entry });
       return;
@@ -3172,7 +3192,7 @@ export function createTogether(shell) {
    * rules as in any Quad Ball room (seatRoomRules).
    */
   function quickBall(entry) {
-    gate(async () => {
+    leaveFirst('A quick match takes you out of this room. The others carry on without you.', () => gate(async () => {
       sheetConnecting({ hosting: entry, step: 0 });
       flowSeq += 1;
       const mine = flowSeq;
@@ -3188,10 +3208,10 @@ export function createTogether(shell) {
         return;
       }
       const size = entry.rules && Number(entry.rules.size) > 0 ? Number(entry.rules.size) : 2;
-      host(entry, {
+      host({ ...entry, quick: true }, {
         name: 'Quick match', listed: true, schoolSafe: false, streamer: false, typedChat: false, hide: true, max: Math.max(2, Math.min(6, size * 2)), tags: [],
       });
-    });
+    }));
   }
 
   /* A friend's code typed on Quad Ball's door. */
@@ -3214,7 +3234,10 @@ export function createTogether(shell) {
       name: suggested,
       listed: false,
       password: '',
-      max: 16,
+      /* A Quad Ball match is as many seats as it has a side, so the board
+       * hands a friend who joins a bot's seat (and its side) rather than
+       * an extra one on top of a full match. */
+      max: entry && entry.game === 'ball' && entry.rules && Number(entry.rules.size) > 0 ? Math.min(ROOM_MAX, Number(entry.rules.size) * 2) : 16,
       /* Off until the host turns it on, the owner's pick of 2026-10-26:
        * a host opening a room for friends has not yet thought about who
        * may type, and the switch is one press away for one who has. */

@@ -91,9 +91,21 @@ const CSS = `
 .df-doorcard .df-chips { gap: 8px; }
 .df-code { box-sizing: border-box; width: 100%; padding: 9px 10px; font: 900 22px/1 ui-monospace, Menlo, Consolas, monospace; letter-spacing: .18em; text-transform: uppercase; border: 3px solid var(--ink-line); background: #fff; color: var(--ink-line); }
 .df-code.is-bad { background: #ffe4e0; }
-@media (max-width: 860px) {
-  .df-door { grid-template-columns: 1fr; }
+/* A phone upright: one card under another, each as tall as its words
+ * (max-content, or the column squeezes them over each other). A phone on
+ * its side: three short cards in a row, the words smaller. */
+@media (max-width: 600px) {
+  .df-door { grid-template-columns: 1fr; grid-auto-rows: max-content; gap: 12px; padding: 12px; }
   .df-doorcard { min-height: 0; }
+}
+@media (max-height: 520px) and (min-width: 601px) {
+  .df-door { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: max-content; gap: 10px; padding: 10px 12px; }
+  .df-doorcard { min-height: 0; padding: 8px 10px; gap: 6px; border-top-width: 8px; }
+  .df-doorcard .df-tag { display: none; }
+  .df-doorcard h3 { font-size: 19px; }
+  .df-doorcard p { padding: 5px 7px; font-size: 12px; line-height: 1.25; }
+  .df-doorcard .df-chip { padding: 6px 8px; font-size: 12px; }
+  .df-code { padding: 5px 8px; font-size: 16px; }
 }
 @media (max-width: 860px) {
   .df-page .df-body { grid-template-columns: 1fr; }
@@ -444,10 +456,10 @@ export function askGoats(ui, kit, mapName) {
  * setting. Bots only plays at once. With friends makes a private game
  * (Set the match, then the room's code) or joins one by its code. Quick
  * match kicks off with bots and lets real pilots take a bot's seat. Only
- * the first one is offered without rooms. Resolves { how: 'bots' | 'make' |
- * 'join' | 'quick', code } or null.
+ * the first one is offered without rooms. `at` is the card it opens on.
+ * Resolves { how: 'bots' | 'make' | 'join' | 'quick', code } or null.
  */
-export function askBallHow(ui, kit, mapName, { rooms = false } = {}) {
+export function askBallHow(ui, kit, mapName, { rooms = false, at: first = 0 } = {}) {
   if (!rooms) {
     return Promise.resolve({ how: 'bots' });
   }
@@ -460,45 +472,57 @@ export function askBallHow(ui, kit, mapName, { rooms = false } = {}) {
     code.setAttribute('aria-label', 'A friend\'s game code');
     code.autocomplete = 'off';
     code.spellcheck = false;
+    code.dataset.osk = 'code';
     const mk = (tag, name, line, ...extra) => {
       const c = el('div', 'df-doorcard');
       c.tabIndex = 0;
+      c.setAttribute('role', 'button');
       c.append(el('span', 'df-tag', tag), el('h3', null, name), el('p', null, line), ...extra);
       body.append(c);
       return c;
     };
-    const go = (how) => close({ how, code: code.value });
+    const go = (how) => close({ how, code: code.value.trim() });
     const bots = mk('Just you', 'Play with bots', 'Pick your side and the bots fill every other seat. Starts in seconds, nobody to wait for.');
     const row = el('div', 'df-chips');
     const make = btn('df-chip is-on', 'Make a game');
     const join = btn('df-chip', 'Join');
     row.append(make, join);
-    const friends = mk('With friends', 'Play with friends', 'Make a private game and send the code, or type a friend\'s code. Empty seats fill with bots.', row, code);
-    const quick = mk('Real pilots', 'Quick match', 'Kick off now with bots. Real pilots who want a game take a bot\'s seat at a kickoff. Preset chat and made up names only.');
+    const friends = mk('With friends', 'Play with friends', 'Make a private game and send its code, or type a friend\'s code. Bots keep the empty seats, and a friend who joins takes one.', row, code);
+    const quick = mk('Real pilots', 'Quick match', 'Kick off now with bots. Another pilot who picks Quick match on this map takes a bot\'s seat. Preset chat and made up names only.');
     const cards = [bots, friends, quick];
-    let at = 0;
-    const paint = () => cards.forEach((c, i) => c.classList.toggle('is-at', i === at));
+    const goBtn = btn('qp-btn qp-fly', 'Play with bots');
+    const back = btn('qp-btn', 'Back');
+    let at = Math.max(0, Math.min(2, first | 0));
+    /* The big button says what it will do, so Enter is never a guess. */
+    const paint = () => {
+      cards.forEach((c, i) => c.classList.toggle('is-at', i === at));
+      goBtn.textContent = at === 0 ? 'Play with bots' : at === 2 ? 'Quick match' : (code.value.trim() ? 'Join' : 'Make a game');
+    };
     const pick = (i) => {
       at = i;
       paint();
+    };
+    const joinIt = () => {
+      if (!/^[A-Za-z0-9-]{4,7}$/.test(code.value.trim())) {
+        code.classList.add('is-bad');
+        pick(1);
+        code.focus();
+        return;
+      }
+      go('join');
     };
     const choose = () => {
       if (at === 0) {
         go('bots');
       } else if (at === 2) {
         go('quick');
-      } else if (document.activeElement === code || code.value) {
-        const c = code.value.trim();
-        if (!/^[A-Za-z0-9-]{4,7}$/.test(c)) {
-          code.classList.add('is-bad');
-          code.focus();
-          return;
-        }
-        go('join');
+      } else if (code.value.trim()) {
+        joinIt();
       } else {
         go('make');
       }
     };
+    cards.forEach((c, i) => c.addEventListener('focus', () => pick(i)));
     bots.addEventListener('click', () => go('bots'));
     quick.addEventListener('click', () => go('quick'));
     friends.addEventListener('click', () => pick(1));
@@ -509,43 +533,59 @@ export function askBallHow(ui, kit, mapName, { rooms = false } = {}) {
     });
     join.addEventListener('click', (e) => {
       e.stopPropagation();
-      pick(1);
-      code.focus();
-      if (code.value) {
-        choose();
+      if (code.value.trim()) {
+        joinIt();
+      } else {
+        pick(1);
+        code.focus();
       }
     });
     code.addEventListener('input', () => {
       code.value = code.value.toUpperCase();
       code.classList.remove('is-bad');
+      paint();
     });
     code.addEventListener('focus', () => pick(1));
-    const goBtn = btn('qp-btn qp-fly', 'Choose');
-    const back = btn('qp-btn', 'Back');
+    code.addEventListener('click', (e) => e.stopPropagation());
     const keys = el('span', 'qp-keys');
-    keys.innerHTML = '<kbd>\u2190</kbd> <kbd>\u2192</kbd> pick \u00b7 <kbd>Enter</kbd> choose \u00b7 <kbd>Esc</kbd> back';
+    keys.innerHTML = '<kbd>\u2190</kbd> <kbd>\u2192</kbd> pick \u00b7 <kbd>Enter</kbd> choose \u00b7 type a code to join \u00b7 <kbd>Esc</kbd> back';
     p.caption.append(goBtn, back, keys);
     const close = show(ui, kit, p, body, (e) => {
       if (document.activeElement === code) {
         if (e.key === 'Enter') {
-          choose();
+          joinIt();
           return true;
         }
         if (e.key === 'Escape') {
           code.blur();
+          goBtn.focus();
           return true;
         }
         return false;
       }
-      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-        pick((at + (e.key === 'ArrowRight' ? 1 : 2)) % 3);
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        pick((at + (e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : 2)) % 3);
+        goBtn.focus();
         return true;
+      }
+      /* A letter or a number typed anywhere is a code being typed. */
+      if (e.key.length === 1 && /[A-Za-z0-9]/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        pick(1);
+        code.focus();
+        return false;
       }
       if (e.key === 'Enter') {
         if (e.target === back) {
           return false;
         }
-        choose();
+        if (e.target === make) {
+          code.value = '';
+          go('make');
+        } else if (e.target === join) {
+          join.click();
+        } else {
+          choose();
+        }
         return true;
       }
       if (e.key === 'Escape') {

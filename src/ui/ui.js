@@ -13576,7 +13576,11 @@ export class Ui {
          * Each asks its solo page first, Set the herd or Set the shoot,
          * and the room opens with those bots and starts the first round,
          * as a dogfight room does (armRoomGame). */
-        if (game === 'goats' || game === 'drift' || game === 'ball') {
+        if (game === 'ball') {
+          /* With friends on the Mini games page is the door's middle
+           * card: make a game, a friend's code, or a quick match. */
+          this.ballDoor('fly', entry, null, false, 1);
+        } else if (game === 'goats' || game === 'drift') {
           this.armRoomGame(world, entry, game, false);
         } else {
           this.onFlyTogether(world);
@@ -14923,8 +14927,11 @@ export class Ui {
       return;
     }
     /* Quad Ball, picked on the solo or the multiplayer map selector, opens
-     * its own door first: bots, friends or quick match (ballDoor). */
-    if ((id === 'fly' || id === 'card-fly') && !this.fightPick && !this.ballDooring
+     * its own door first: bots, friends or quick match (ballDoor). Not in
+     * a room: there the room says what is played, and the room's own fly
+     * into the stadium (a share sheet's Start flying, a quick match) comes
+     * through here and opened the door a second time. */
+    if ((id === 'fly' || id === 'card-fly') && !this.fightPick && !this.ballDooring && !this.roomInfo
       && entry && entry.item && entry.item.action === 'map:ball') {
       this.ballDoor(id, entry, ev);
       return;
@@ -14982,6 +14989,13 @@ export class Ui {
           : this.askQuad(world, entry.name || entry.label || (world && world.name) || 'This map', key);
         asked.then((got) => {
           if (!got) {
+            /* Back from the quad after Quad Ball's door: the door's answer
+             * goes with it, so the next Fly on the card asks again rather
+             * than flying the match the pilot backed out of. */
+            if (this.fightPick && this.fightPick.door) {
+              this.endFightPick();
+              this.dogfight = null;
+            }
             return;
           }
           this.seatPickedQuad(key, got);
@@ -15147,7 +15161,7 @@ export class Ui {
    * quick match opens or joins a listed room (together.js quickBall).
    * Back on any page leaves the pilot on the map cards.
    */
-  async ballDoor(id, entry, ev, picker = false) {
+  async ballDoor(id, entry, ev, picker = false, at = 0) {
     if (this.ballDooring) {
       return;
     }
@@ -15157,7 +15171,7 @@ export class Ui {
       const kit = { letterHeading };
       const world = this.roomsOn && this.onFlyTogether ? this.roomWorldOf(entry) : null;
       const name = (world && world.name) || entry.name || 'Quad Ball';
-      const how = await pages.askBallHow(this, kit, name, { rooms: Boolean(world) });
+      const how = await pages.askBallHow(this, kit, name, { rooms: Boolean(world), at });
       if (!how || (picker && !this.hostPick)) {
         return;
       }
@@ -15176,7 +15190,9 @@ export class Ui {
       } else if (how.how === 'quick') {
         this.onQuickBall({ ...world, game: 'ball', rules: got.rules });
       } else {
-        this.fightPick = { from: this.onGate() ? 'gate' : this.screen, game: 'ball', map: 'ball' };
+        this.fightPick = {
+          from: this.onGate() ? 'gate' : this.screen, game: 'ball', map: 'ball', door: true,
+        };
         this.dogfight = got.rules;
         this.fightArenaName = name;
         this.fightArmed = true;

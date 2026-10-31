@@ -125,7 +125,6 @@ export const MATERIALS = {
   ofScreen: { f: 0xc9e4f2, noCast: true },
   ofScreenWarm: { f: 0xf2e6c4, noCast: true },
   ofFrost: { f: 0xc9d3dc, noCast: true },
-  ofVendLit: { f: 0xf6f4ea, noCast: true },
 
   /* ---- outside ---- */
   /* The building's beige tile and the darker band at each floor, its
@@ -133,7 +132,6 @@ export const MATERIALS = {
   ofTile: { c: 0xdcc8a6, tint: T },
   ofTileDark: { c: 0xa48b70, tint: TD },
   ofSash: { c: 0xb9bec4, tint: 0x6a6a8a },
-  ofGlassOut: { f: 0x8fb4d0, noCast: true },
   ofRoof: { c: 0x7fa08a, tint: 0x4f6478 },
   ofRoofEdge: { c: 0xc7c3ba, tint: TD },
   ofTank: { c: 0xe6ecf0, tint: 0x8c94b0 },

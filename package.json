@@ -60,6 +60,7 @@
     "check:house": "node scripts/house-check.js",
     "check:heads": "node scripts/heads-check.js",
     "check:warehouse": "node scripts/warehouse-check.js",
+    "check:office": "node scripts/office-check.js",
     "check:goats": "node scripts/goats-check.js",
     "check:driftroom": "node scripts/driftroom-check.js",
     "check:dan": "node scripts/dan-check.js",

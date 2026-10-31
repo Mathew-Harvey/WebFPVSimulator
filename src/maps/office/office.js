@@ -434,10 +434,10 @@ function deskTop(O, x0, y0, x1, y1, open, r, top) {
   };
   const shift = r.range(-0.12, 0.12);
   /* The monitor on its foot, its screen facing the sitter. */
-  box('ofMonitor', shift - 0.26, shift + 0.26, 0.18, 0.21, top + 0.1, top + 0.42, true, 'monitor');
-  box('ofMonitor', shift - 0.03, shift + 0.03, 0.21, 0.25, top, top + 0.12);
-  box('ofMonitor', shift - 0.1, shift + 0.1, 0.16, 0.28, top, top + 0.015);
-  box(r.chance(0.8) ? 'ofScreen' : 'ofScreenWarm', shift - 0.235, shift + 0.235, 0.175, 0.18, top + 0.125, top + 0.395);
+  box('ofMonitor', shift - 0.26, shift + 0.26, 0.3, 0.33, top + 0.1, top + 0.42, true, 'monitor');
+  box('ofMonitor', shift - 0.03, shift + 0.03, 0.31, 0.35, top, top + 0.12);
+  box('ofMonitor', shift - 0.1, shift + 0.1, 0.25, 0.35, top, top + 0.015);
+  box(r.chance(0.8) ? 'ofScreen' : 'ofScreenWarm', shift - 0.235, shift + 0.235, 0.295, 0.3, top + 0.125, top + 0.395);
   box(r.chance(0.5) ? 'ofWhite' : 'ofBlack', shift - 0.2, shift + 0.2, -0.12, 0.02, top, top + 0.02);
   box('ofBlack', shift + 0.27, shift + 0.33, -0.08, -0.0, top, top + 0.015);
   /* The phone, the tray of papers and the files, either side. */
@@ -676,7 +676,11 @@ function flight(O, axis, a0, along, d0, d1, h0, rise, run, o = {}) {
     const top = h0 + (i + 1) * r;
     const u0 = a0 + along * i * g;
     const u1 = a0 + along * (i + 1) * g;
-    const lo = Math.max(h0 - 0.05, top - 0.32);
+    /* The flight's underside, a slab's thickness under its nosings, run
+     * down to the floor where it would be a slot over it (GAP_MIN in
+     * src/props/parts.js), and meeting the slab it climbs to. */
+    const under = top - 0.9;
+    const lo = under - h0 < 0.45 ? h0 - 0.05 : under;
     const [x0, y0, x1, y1] = rowBox(axis, Math.min(u0, u1), Math.max(u0, u1), d0, d1);
     O.box(m, x0, y0, lo, x1, y1, top, { name: 'stair' });
     /* The nosing strip. */
@@ -733,10 +737,10 @@ function windowIn(O, dir, at, inside, a0, a1, c0, c1, o = {}) {
     if (o.frost) {
       O.face('ofFrost', dir, at + 0.03, 1, b0, b1, c0 + t, c1 - t);
       O.face('ofFrost', dir, at - 0.03, -1, b0, b1, c0 + t, c1 - t);
-      fr('ofFrost', b0, b1, at - 0.005, at + 0.005, c0 + t, c1 - t, { draw: false, name: 'glass' });
+      fr('ofFrost', b0, b1, at - 0.12, at + 0.12, c0 + t, c1 - t, { draw: false, name: 'glass' });
       continue;
     }
-    fr('ofWallIn', b0, b1, at - 0.005, at + 0.005, c0 + t, c1 - t, { draw: false, name: 'glass' });
+    fr('ofWallIn', b0, b1, at - 0.12, at + 0.12, c0 + t, c1 - t, { draw: false, name: 'glass' });
     const w = b1 - b0;
     const h = c1 - c0 - 2 * t;
     const c = (b0 + b1) / 2;
@@ -1025,7 +1029,7 @@ function core(O) {
   }
   O.cap('ofBlack', [SHAFT.x1 - 0.2, SHAFT.y1 - 0.15, F1], [SHAFT.x1 - 0.2, SHAFT.y1 - 0.15, PH - 0.3], 0.012, { fine: true, seg: 4, name: 'cable' });
   O.cap('ofBlack', [SHAFT.x1 - 0.3, SHAFT.y1 - 0.15, F1], [SHAFT.x1 - 0.3, SHAFT.y1 - 0.15, PH - 0.3], 0.012, { fine: true, seg: 4, name: 'cable' });
-  for (const x of [6.9, 7.5]) {
+  for (const x of [6.75, 7.65]) {
     O.box('ofYellow', x - 0.12, 13.9, F1, x + 0.12, 14.14, F1 + 0.5, { name: 'buffer' });
   }
   O.paint('ofBlack', SHAFT.x0, SHAFT.y0, F1, SHAFT.x1, SHAFT.y1, F1 + 0.008, 'pit');
@@ -1033,7 +1037,7 @@ function core(O) {
   for (const f of [F2 - 0.3, F3 - 0.3, ROOF - 0.3]) {
     O.face('ofSteel', 'x', SHAFT.y1, -1, SHAFT.x0, SHAFT.x1, f, f + 0.12);
   }
-  O.box('ofLamp', 7.0, 14.6, PH - 0.4, 7.4, 14.9, PH - 0.3, { name: 'shaft lamp' });
+  O.box('ofLamp', 7.0, 14.6, PH - 0.1, 7.4, 14.9, PH, { name: 'shaft lamp' });
 }
 
 /* ------------------------------------------------------------------ */
@@ -1044,7 +1048,7 @@ function core(O) {
  * beams at each level, a pallet of cartons on most, one solid round the
  * whole row and its load. */
 function racking(O, x0, x1, y0, y1, f, r, face) {
-  const H = 3.4;
+  const H = 3.3;
   const levels = [1.15, 2.3];
   O.hidden(x0, y0, f, x1, y1, f + H, 'racking');
   const bays = Math.max(1, Math.round((y1 - y0) / 2.7));
@@ -1143,7 +1147,7 @@ function groundFloor(O) {
   }
   /* The racking: along the west wall, a double row, and a single row,
    * each 2.7 m aisle open at both ends. */
-  racking(O, 0.1, 1.2, 0.6, 11.2, f, r, 1);
+  racking(O, 0.0, 1.2, 0.6, 11.2, f, r, 1);
   racking(O, 3.9, 6.1, 0.6, 9.6, f, r, -1);
   racking(O, 8.8, 9.9, 0.6, 9.6, f, r, -1);
   O.paint('ofSlabLine', 3.9, 0.5, f, 6.1, 0.6, f + 0.006, 'line');
@@ -1169,10 +1173,10 @@ function groundFloor(O) {
   /* The shutters: the open one's drum and guides, the stopped one's slats
    * coming down to 0.9 m over the floor. */
   for (const s of [o.shutterUp, o.shutterHalf]) {
-    O.box('ofSteel', s.a0 - 0.15, 0, s.h1, s.a1 + 0.15, 0.5, s.h1 + 0.45, { name: 'shutter box' });
+    O.box('ofSteel', s.a0 - 0.15, 0, s.h1, s.a1 + 0.15, 0.5, B2, { name: 'shutter box' });
     O.box('ofSteel', s.a0 - 0.1, 0, f, s.a0, 0.12, s.h1, { name: 'shutter guide' });
     O.box('ofSteel', s.a1, 0, f, s.a1 + 0.1, 0.12, s.h1, { name: 'shutter guide' });
-    O.box('ofTile', s.a0 - 0.15, -TW, s.h1, s.a1 + 0.15, 0, s.h1 + 0.45, { name: 'shutter box' });
+    O.box('ofTile', s.a0 - 0.15, -TW, s.h1, s.a1 + 0.15, 0, B2, { name: 'shutter box' });
   }
   const sh = o.shutterHalf;
   O.box('ofSteel', sh.a0, 0.02, sh.stop, sh.a1, 0.1, sh.h1, { name: 'shutter' });
@@ -1208,7 +1212,7 @@ function groundFloor(O) {
   for (const [x, y] of [[15.25, 7.45], [17.7, 7.45], [15.25, 8.1], [17.7, 8.1]]) {
     O.box('ofSteel', x, y, f, x + 0.05, y + 0.05, f + 0.82, { name: 'bench leg' });
   }
-  O.box('ofSteel', 15.25, 7.45, f + 0.15, 17.75, 8.15, f + 0.18, { name: 'bench shelf' });
+  O.box('ofSteel', 15.25, 7.45, f, 17.75, 8.15, f + 0.03, { name: 'bench shelf' });
   for (let k = 0; k < 6; k += 1) {
     O.fine('ofCard', 15.35, 7.55, f + 0.18 + k * 0.025, 16.9, 8.05, f + 0.2 + k * 0.025, 'flat cartons');
   }
@@ -1219,7 +1223,7 @@ function groundFloor(O) {
   carton(O, 15.6, 7.5, f + 0.86, 16.3, 7.9, f + 1.18, r, { label: ['s', 'fragile'] });
   /* Roll cages lined up to go out, and pallets of incoming stock. */
   for (let i = 0; i < 5; i += 1) {
-    rollCage(O, 14.2 + i * 0.85, 1.4, 14.98 + i * 0.85, 2.0, f, r);
+    rollCage(O, 18.6, 3.0 + i * 0.65, 19.38, 3.6 + i * 0.65, f, r);
   }
   for (const [x0, y0, h] of [[10.6, 7.0, 1.2], [10.6, 3.3, 0.9], [15.0, 4.4, 1.5], [16.6, 4.4, 0.8]]) {
     pallet(O, x0, y0, x0 + 1.1, y0 + 1.1, f);
@@ -1234,7 +1238,7 @@ function groundFloor(O) {
   O.box('ofRed', 14.0, 3.2, f, 14.55, 4.4, f + 0.09, { name: 'pallet truck' });
   O.box('ofRed', 14.2, 4.4, f, 14.35, 4.55, f + 0.4, { name: 'pallet truck' });
   O.cap('ofBlack', [14.27, 4.5, f + 0.4], [14.27, 4.9, f + 1.2], 0.025, { name: 'pallet truck handle', seg: 5 });
-  forklift(O, 10.3, 1.2, f);
+  forklift(O, 10.45, 0.9, f);
   /* The time recorder and the card rack by the stair door, the safety
    * banner and the delivery board on the north wall, extinguishers. */
   O.onWall('ofWhite', 'x', CORE_FACE, -1, 2.3, 2.75, f + 1.15, f + 1.5, 0.22, { name: 'time recorder' });
@@ -1323,14 +1327,14 @@ function frontOffice(O, f, r) {
   desk(O, 21.0, 2.9, 22.2, 3.6, 'n', r, { f });
   chair(O, 21.6, 1.55, 'n', { f });
   chair(O, 21.4, 4.2, 's', { f });
-  cabinets(O, 'y', 0.3, 2.0, LEN - 0.45, LEN, 1.8, f, r, -1);
+  cabinets(O, 'y', 0.0, 2.0, LEN - 0.45, LEN, 1.8, f, r, -1);
   plant(O, 23.5, 4.8, f, r);
   O.sign('calendar', LEN - 0.02, 3.4, f + 1.6, 0.45, 0.6, 'w');
   O.sign('clock', X + 0.08, 4.2, f + 2.2, 0.32, 0.32, 'e');
   for (const [a0, a1] of [[19.6, 20.3], [22.1, 23.9]]) {
     O.box('ofSash', a0, -0.2, 0.3, a1, 0.0, 0.35, { name: 'sash' });
     O.box('ofSash', a0, -0.2, 2.25, a1, 0.0, 2.3, { name: 'sash' });
-    O.hidden(a0, -0.15, 0.35, a1, -0.05, 2.25, 'glass');
+    O.hidden(a0, -0.25, 0.35, a1, 0.0, 2.25, 'glass');
     O.sign('glass', (a0 + a1) / 2, -0.04, 1.3, a1 - a0, 1.9, 'n', { lift: 0.004 });
     O.sign('glass', (a0 + a1) / 2, -0.16, 1.3, a1 - a0, 1.9, 's', { lift: 0.004 });
   }
@@ -1340,7 +1344,7 @@ function frontOffice(O, f, r) {
   O.box('ofSteel', o.entrance.a0 - 0.6, -0.4, 2.3, o.entrance.a1 + 0.6, -0.15, 2.5, { name: 'door head' });
   O.paint('ofCarpetB', o.entrance.a0, 0.1, f, o.entrance.a1, 1.0, f + 0.01, 'mat');
   /* An umbrella stand by the door. */
-  O.box('ofSteel', 22.3, 0.2, f, 22.6, 0.5, f + 0.5, { name: 'umbrella stand' });
+  O.box('ofSteel', 22.3, 0.0, f, 22.6, 0.3, f + 0.5, { name: 'umbrella stand' });
   for (const [dx, m] of [[0.06, 'ofNoren'], [0.18, 'ofRed'], [0.12, 'ofBlack']]) {
     O.cap(m, [22.3 + dx, 0.3, f + 0.2], [22.3 + dx + 0.02, 0.36, f + 0.92], 0.02, { fine: true, seg: 5, name: 'umbrella' });
   }
@@ -1425,10 +1429,10 @@ function salesFloor(O) {
   }
   /* The department head's desk under the kamidana, facing the room, and
    * the visitor's chair. */
-  desk(O, 1.6, 10.35, 3.2, 11.05, 'n', r, { f, top: 'ofWood' });
-  chair(O, 2.4, 11.25 + 0.0, 's', { f, tall: true, seat: 'ofChairBoss' });
-  O.sign('nameplate', 2.4, 10.3, f + 0.8, 0.3, 0.07, 's', { lift: 0.0 });
-  kamidana(O, 2.4, CORE_FACE, f + 2.0);
+  desk(O, 1.6, 10.2, 3.2, 10.9, 'n', r, { f, top: 'ofWood' });
+  chair(O, 2.4, 11.1, 's', { f, tall: true, seat: 'ofChairBoss' });
+  O.sign('nameplate', 2.4, 10.15, f + 0.8, 0.3, 0.07, 's', { lift: 0.0 });
+  kamidana(O, 2.4, CORE_FACE, f + 1.8);
   /* The low cabinets under the west windows, files and a printer on top. */
   cabinets(O, 'y', 1.0, 9.6, 0.0, 0.45, 0.75, f, r, 1);
   O.box('ofWhite', 0.02, 4.2, f + 0.75, 0.43, 4.7, f + 1.0, { name: 'printer' });
@@ -1450,7 +1454,7 @@ function salesFloor(O) {
     O.fine('ofCabinetDark', 21.7, 10.69, f + h, 22.6, 10.7, f + h + 0.02, 'copier tray');
   }
   for (let k = 0; k < 3; k += 1) {
-    O.box('ofPaper', 22.9, 10.9, f + k * 0.28, 23.5, 11.35, f + (k + 1) * 0.28 - 0.01, { name: 'paper box' });
+    O.box('ofPaper', 22.7, 10.9, f + k * 0.28, 23.3, 11.35, f + (k + 1) * 0.28 - 0.01, { name: 'paper box' });
   }
   O.box('ofWhite', 20.55, 11.4, f, 20.95, CORE_FACE, f + 1.05, { name: 'water server' });
   O.cap('ofTankBlue', [20.75, 11.62, f + 1.05], [20.75, 11.62, f + 1.4], 0.13, { name: 'water bottle', seg: 8 });
@@ -1477,10 +1481,9 @@ function salesFloor(O) {
   O.sign('calendar', 0.02, 8.7, f + 1.65, 0.5, 0.65, 'e');
   O.onWall('ofRed', 'x', CORE_FACE, -1, 19.0, 19.75, f + 0.3, f + 1.2, 0.15, { name: 'hydrant' });
   O.sign('hydrant', 19.375, CORE_FACE - 0.16, f + 0.75, 0.66, 0.8, 's');
-  O.sign('goal', 17.5, LEN === 24 ? 11.75 : 0, f + 1.6, 0.9, 1.2, 's');
+  O.sign('goal', 17.5, CORE_FACE - 0.02, f + 1.6, 0.9, 1.2, 's');
   O.sign('poster', LEN - 0.02, 10.2, f + 1.5, 0.5, 0.7, 'w');
   extinguisher(O, 4.4, CORE_FACE - 0.2, f, 's');
-  O.sign('floorGuide2', 7.3, 12.0 + 0.02, f + 1.5, 0.0001, 0.0001, 'n');
   /* The north rooms: the toilets, the tea kitchen through its noren, the
    * archive. */
   O.wall('ofWallIn', 'x', CORE_Y, SHAFT.x1 + 0.2, LEN, F2, C2, CORE_T, [[12.7, 13.7, F2 - 0.05, F2 + 2.1]], 'north rooms');
@@ -1562,9 +1565,9 @@ function kitchen(O, f, r) {
   O.cap('ofRed', [14.3, 14.7, f + 0.88], [14.3, 14.7, f + 1.08], 0.08, { name: 'kettle', seg: 8 });
   O.box('ofWhite', 14.25, 12.0, f, 14.94, 12.7, f + 1.5, { name: 'fridge' });
   O.fine('ofSteel', 14.24, 12.1, f + 0.9, 14.25, 12.6, f + 0.92, 'fridge seam');
-  O.box('ofWood', x0, 14.75, f + 1.45, x1, DEP, f + 1.48, { name: 'shelf' });
+  O.box('ofWood', x0, 14.75, f + 1.6, x1, DEP, f + 1.63, { name: 'shelf' });
   for (let x = 12.2; x < 14.8; x += 0.16) {
-    O.cap(r.pick(['ofWhite', 'ofRed', 'ofTeal', 'ofYellow', 'ofNoren']), [x, 14.88, f + 1.48], [x, 14.88, f + 1.57], 0.04, { fine: true, seg: 6, name: 'cup' });
+    O.cap(r.pick(['ofWhite', 'ofRed', 'ofTeal', 'ofYellow', 'ofNoren']), [x, 14.88, f + 1.63], [x, 14.88, f + 1.72], 0.04, { fine: true, seg: 6, name: 'cup' });
   }
   O.box('ofWhite', 12.1, 14.85, f + 1.7, 12.6, DEP, f + 2.05, { name: 'water heater' });
   O.box('ofLamp', 12.9, 13.2, C2 - 0.03, 14.1, 13.5, C2, { name: 'light' });
@@ -1742,7 +1745,7 @@ function meetingRoom(O, f, r) {
     O.fine('ofPaper', x - 0.1, T.y0 + 0.15, f + 0.72, x + 0.12, T.y0 + 0.45, f + 0.725, 'papers');
     O.cap('ofWhite', [x + 0.2, T.y1 - 0.25, f + 0.72], [x + 0.2, T.y1 - 0.25, f + 0.8], 0.035, { fine: true, seg: 6, name: 'cup' });
   }
-  chair(O, T.x0 - 0.55, (T.y0 + T.y1) / 2, 'e', { f, seat: 'ofChairBoss', tall: true });
+  chair(O, T.x0 - 0.3, (T.y0 + T.y1) / 2, 'e', { f, seat: 'ofChairBoss', tall: true });
   O.box('ofWhite', X + 0.4, 4.7, f + 0.9, X + 2.2, 4.76, f + 1.9, { name: 'whiteboard' });
   O.box('ofSteel', X + 0.4, 4.76, f + 0.88, X + 2.2, 4.8, f + 0.9, { name: 'whiteboard tray' });
   for (const x of [X + 0.5, X + 2.1]) {
@@ -1811,8 +1814,8 @@ function breakRoom(O, f, r) {
     O.sign(key, x0 + 0.475, 14.19, f + 1.15, 0.8, 1.2, 's', { glow: true, lift: 0.004 });
     O.fine('ofBlack', x0 + 0.2, 14.18, f + 0.2, x0 + 0.75, 14.2, f + 0.4, 'vending slot');
   }
-  O.box('ofWhite', 18.2, 14.25, f, 18.75, 14.95, f + 0.85, { name: 'bin' });
-  O.fine('ofBinderBlue', 18.25, 14.24, f + 0.6, 18.7, 14.25, f + 0.8, 'bin lid');
+  O.box('ofWhite', 17.95, 14.25, f, 18.5, 14.95, f + 0.85, { name: 'bin' });
+  O.fine('ofBinderBlue', 18.0, 14.24, f + 0.6, 18.45, 14.25, f + 0.8, 'bin lid');
   /* A table, its stools, a bench along the east wall, a TV. */
   O.box('ofWhite', 19.6, 12.8, f + 0.7, 21.2, 13.7, f + 0.73, { name: 'table' });
   O.cap('ofSteel', [20.4, 13.25, f], [20.4, 13.25, f + 0.7], 0.04, { name: 'table', seg: 6 });
@@ -1821,7 +1824,7 @@ function breakRoom(O, f, r) {
     O.cap('ofSteel', [x, y, f], [x, y, f + 0.42], 0.025, { name: 'stool', seg: 6 });
     O.cap('ofOrange', [x, y, f + 0.42], [x, y, f + 0.47], 0.17, { name: 'stool', seg: 10 });
   }
-  O.box('ofWood', LEN - 0.45, 12.2, f, LEN, 14.8, f + 0.42, { name: 'bench' });
+  O.box('ofWood', LEN - 0.45, CORE_Y + CORE_T / 2, f, LEN, DEP, f + 0.42, { name: 'bench' });
   O.box('ofMonitor', 22.0, DEP - 0.08, f + 1.4, 23.4, DEP, f + 2.2, { name: 'tv' });
   O.sign('tvShow', 22.7, DEP - 0.085, f + 1.8, 1.3, 0.72, 's', { glow: true, lift: 0.002 });
   O.box('ofLamp', 15.5, 13.2, C3 - 0.03, 16.7, 13.5, C3, { name: 'light' });
@@ -1875,11 +1878,11 @@ function roof(O) {
     O.fine('ofSteelOut', W.x1 + 0.07, W.y0 + 0.54, f + h, W.x1 + 0.09, W.y0 + 0.9, f + h + 0.03, 'rung');
   }
   /* The pipes from the tank down to the roof and across to the core. */
-  O.cap('ofTankBlue', [15.3, W.y0 + 0.3, f + 1.5], [15.3, W.y0 + 0.3, f + 0.2], 0.05, { name: 'pipe', seg: 6 });
-  O.cap('ofTankBlue', [15.3, W.y0 + 0.3, f + 0.2], [SHAFT.x1 + 0.4, W.y0 + 0.3, f + 0.2], 0.05, { name: 'pipe', seg: 6 });
+  O.cap('ofTankBlue', [14.3, W.y0 + 0.3, f + 1.5], [14.3, W.y0 + 0.3, f + 0.2], 0.05, { name: 'pipe', seg: 6 });
+  O.cap('ofTankBlue', [14.3, W.y0 + 0.3, f + 0.2], [SHAFT.x1 + 0.4, W.y0 + 0.3, f + 0.2], 0.05, { name: 'pipe', seg: 6 });
   /* The air conditioners' outdoor units along the east parapet, on their
    * steel bases, each with its fan's grille, and their pipes. */
-  for (let y = 1.0; y < 13.5; y += 1.3) {
+  for (let y = 1.0; y < 13.5; y += 1.45) {
     O.box('ofSteelOut', 22.7, y, f, 23.6, y + 1.0, f + 0.15, { name: 'ac base' });
     O.box('ofAc', 22.8, y + 0.05, f + 0.15, 23.5, y + 0.95, f + 0.8, { name: 'ac unit' });
     O.sign('fan', 22.79, y + 0.4, f + 0.48, 0.5, 0.5, 'w', { lift: 0.0 });
@@ -2110,7 +2113,7 @@ function street(O) {
   O.cap('ofMirror', [27.6, -0.45, 2.85], [27.6, -0.6, 2.85], 0.34, { name: 'mirror', seg: 12 });
   O.sign('mirror', 27.6, -0.62, 2.85, 0.6, 0.6, 's', { lift: 0.0 });
   /* Two vending machines at the alley's mouth, lit, a recycling bin. */
-  for (const [x0, key, m] of [[24.5, 'vendDrinks', 'ofVendRed'], [25.5, 'vendTea', 'ofVendBlue']]) {
+  for (const [x0, key, m] of [[LEN + TW, 'vendDrinks', 'ofVendRed'], [LEN + TW + 0.95, 'vendTea', 'ofVendBlue']]) {
     O.box(m, x0, 0.05, 0, x0 + 0.95, 0.8, 1.83, { name: 'vending machine' });
     O.box('ofVend', x0 + 0.03, 0.02, 1.83, x0 + 0.92, 0.8, 1.9, { name: 'vending machine' });
     O.sign(key, x0 + 0.475, 0.04, 1.15, 0.82, 1.22, 's', { glow: true });
@@ -2121,8 +2124,8 @@ function street(O) {
   /* The kei truck at the open shutter, its bed half unloaded. */
   keiTruck(O, 10.6, -2.75, r);
   /* Bicycles by the entrance and in the alley. */
-  bike(O, 19.2, -0.5, 'x');
-  bike(O, 18.5, -0.5, 'x');
+  bike(O, 22.9, -0.9, 'y');
+  bike(O, 23.3, -1.75, 'y');
   bike(O, 28.6, 3.0, 'y');
   /* The alley: an air conditioner unit or two on the building's wall, a
    * stack of crates, potted plants, the gas meters. */
@@ -2139,7 +2142,7 @@ function street(O) {
     O.cap('ofLeaf', [29.3, y, 0.45], [29.3, y, 0.55], 0.2, { solid: false, look: 'capsule', seg: 6, name: 'leaves' });
   }
   O.box('ofSteel', LEN + TW, 12.2, 0.8, LEN + TW + 0.2, 12.7, 1.2, { name: 'gas meter' });
-  O.box('ofSteel', LEN + TW, 12.9, 0.8, LEN + TW + 0.2, 13.4, 1.2, { name: 'gas meter' });
+  O.box('ofSteel', LEN + TW, 12.7, 0.8, LEN + TW + 0.2, 13.2, 1.2, { name: 'gas meter' });
   /* The building's own face to the street: its name over the entrance,
    * the plate with its address, the drain pipe, the mailbox. */
   O.sign('buildingName', 21.2, -TW - 0.02, 3.0, 2.6, 0.5, 's');
@@ -2193,7 +2196,7 @@ function across(O, r) {
         }
       }
       if (r.chance(0.5)) {
-        O.box('ofAc', x + 1.6, y1 + 0.3, h, x + 2.35, y1 + 0.6, h + 0.6, { name: 'ac unit' });
+        O.box('ofAc', x + 1.7, y1 + 0.55, h, x + 2.45, y1 + 0.95, h + 0.6, { name: 'ac unit' });
       }
     }
   }
@@ -2214,7 +2217,7 @@ function keiTruck(O, x, y, r) {
   const W = 1.48;
   O.hidden(x + 0.2, y + 0.15, 0, x + L - 0.2, y + W - 0.15, 0.4, 'truck');
   O.box('ofKei', x + 2.2, y, 0.4, x + L, y + W, 1.25, { name: 'truck cab' });
-  O.box('ofKei', x + 2.35, y + 0.03, 1.25, x + L - 0.05, y + W - 0.03, 1.85, { name: 'truck cab' });
+  O.box('ofKei', x + 2.2, y + 0.03, 1.25, x + L - 0.05, y + W - 0.03, 1.85, { name: 'truck cab' });
   O.face('ofNbWindow', 'y', x + L, 1, y + 0.1, y + W - 0.1, 1.28, 1.8);
   O.face('ofNbWindow', 'x', y, -1, x + 2.45, x + 3.25, 1.3, 1.8);
   O.face('ofNbWindow', 'x', y + W, 1, x + 2.45, x + 3.25, 1.3, 1.8);

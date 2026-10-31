@@ -89,4 +89,7 @@ export const MAP_BUILD_MS = {
   /* Ridgeline MX (src/maps/moto/): a plot of trees, a track of mounds and
    * berms and ten bikes. An estimate until it is measured. */
   moto: 2400,
+  /* Hoshino Shoji (src/maps/office/), the warehouse's pipeline with three
+   * floors of furniture. An estimate until it is measured. */
+  office: 2400,
 };

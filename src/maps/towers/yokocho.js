@@ -98,7 +98,7 @@ function shack(T, x0, x1, front, dir, r) {
       const ax = r.chance(0.5) ? x0 + 0.8 : x1 - 0.8;
       const ay = front + over + dir * 0.25;
       T.box('acUnit', ax - 0.4, ay - 0.15, h1 + 0.3, ax + 0.4, ay + 0.15, h1 + 0.9);
-      T.cyl('white', [ax + 0.3, ay, h1 + 0.3], [ax + 0.3, ay, 0.4], 0.03, 4);
+      T.cyl('white', [ax + 0.3, front + dir * 0.06, h1 + 0.3], [ax + 0.3, front + dir * 0.06, 0.4], 0.03, 4);
     }
     /* Crates of bottles stacked by the door. */
     if (r.chance(0.45)) {
@@ -174,8 +174,8 @@ export function yokocho(T) {
   T.paint('twRoadDark', B.x0, B.y0 - 2, 0, B.x1, B.y1, 0.025);
   LANES.forEach((y, i) => {
     const s = LANE_W / 2;
-    row(T, B.x0 + 1, B.x1 - 1, y - s, -1, 101 + i * 13);
-    row(T, B.x0 + 1, B.x1 - 1, y + s, 1, 211 + i * 17);
+    row(T, B.x0 + 1, B.x1 - 1, y - s, 1, 101 + i * 13);
+    row(T, B.x0 + 1, B.x1 - 1, y + s, -1, 211 + i * 17);
     cables(T, y, 307 + i * 11);
     T.dress(() => T.wide(() => {
       /* A gutter line down the middle of the lane. */

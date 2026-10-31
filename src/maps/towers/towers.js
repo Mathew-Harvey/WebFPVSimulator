@@ -102,7 +102,7 @@ function roof(T, r, h, seed, opts = {}) {
     T.deco('metal', x0 + 1.0, y1 - 1.25, h + 0.4, x1 - 1.0, y1 - 1.0, h + 0.65, true);
   }));
   const gx = x0 + w * (0.25 + (seed % 5) * 0.1);
-  T.box('white', gx - 1.2, y0 + 0.7, h + 0.65, gx + 1.2, y0 + 3.0, h + 2.4, { name: 'gondola rig' });
+  T.box('white', gx - 1.2, y0 + 0.6, h + 0.65, gx + 1.2, y0 + 2.4, h + 2.4, { name: 'gondola rig' });
   T.cap('white', [gx, y0 + 1.8, h + 2.2], [gx, y0 - 2.4, h + 3.4], 0.18, { name: 'gondola arm' });
   T.dress(() => {
     T.cyl('rope', [gx, y0 - 2.4, h + 3.4], [gx, y0 - 2.4, h - 2.0], 0.02, 3);
@@ -203,7 +203,7 @@ function hall(T) {
     }
   }
   /* The hall's name over the arcade, in the town's own sign hand. */
-  T.plate('stationSign', 0, H.mid, H.podium.y0 - 0.02, 16, 22, 2.6, 's');
+  T.plate('kumoiSign', 0, H.mid, H.podium.y0 - 0.02, 16, 22, 2.6, 's');
 }
 
 /* ---- THE SKY GARDEN ---- */

@@ -217,7 +217,7 @@ export function towersGaps() {
     { name: 'RED RING', px: RING.px, py: RING.py, deg: 0, w: ringSide, h0: RING.h - ringSide / 2, h1: RING.h + ringSide / 2, points: 500 },
     { name: 'MEMORY LANE', px: LANES_AT.x0 + 0.6, py: lane, deg: 0, w: LANE_W - 0.4 - 2 * M, h0: M, h1: 3.3, points: 1000 },
     { name: 'STEEL FRAME', px: shaftX, py: FRAME.y0, deg: 90, w: FRAME.shaft.x1 - FRAME.shaft.x0 - 0.9 - 2 * M, h0: f20 + M, h1: f20 + FRAME.storey - 0.6 - M, points: 500 },
-    { name: 'UNDER THE EXPRESSWAY', px: 216, py: AVE_S, deg: 90, w: EXPRESS.pier - 2.4 - 2 * M, h0: M, h1: EXPRESS.under - 1.4 - M, points: 250 },
+    { name: 'UNDER THE EXPRESSWAY', px: 216, py: AVE_S, deg: 90, w: EXPRESS.pier - 2.8 - 2 * M, h0: M, h1: EXPRESS.under - 1.4 - M, points: 250 },
     { name: 'GIRDER BRIDGE', px: BLVD_B, py: (RAIL.y0 + RAIL.y1) / 2, deg: 90, w: 2 * HALF - 2 * M, h0: M, h1: RAIL.deck - 1.6 - M, points: 250 },
     { name: 'UNDER THE DECK', px: (DECK.x0 + DECK.x1) / 2, py: AVE_N, deg: 0, w: 2 * ROAD_HALF - 2 * M, h0: M, h1: DECK.h - DECK.t - 0.5 - M, points: 100 },
     { name: 'THE TORII', px: TORII.px, py: TORII.py, deg: 90, w: TORII.w - 0.64 - 2 * M, h0: M, h1: TORII.h - 1.4 - M, points: 250 },

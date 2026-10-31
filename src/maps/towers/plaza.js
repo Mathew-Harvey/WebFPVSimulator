@@ -119,7 +119,7 @@ function subway(T) {
   for (const [x, y] of [[S.x0 + 0.2, S.y1 - 0.2], [S.x1 - 0.2, S.y1 - 0.2], [S.x0 + 0.2, S.y0 + 0.6], [S.x1 - 0.2, S.y0 + 0.6]]) {
     T.post('metal', x, y, 1.1, 3.3, 0.08, { name: 'hood post' });
   }
-  T.plate('stationSign', 0, (S.x0 + S.x1) / 2, S.y0 - 0.03, 2.4, 3.6, 0.9, 's');
+  T.plate('kumoiSign', 0, (S.x0 + S.x1) / 2, S.y0 - 0.03, 2.4, 3.6, 0.9, 's');
 }
 
 function furniture(T) {

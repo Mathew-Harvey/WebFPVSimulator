@@ -93,8 +93,8 @@ function frame(T) {
   T.box('concreteMid', C.x0, C.y0, 0, C.x1, C.y1, top + 2 * STOREY, { name: 'core' });
   T.box('twRoof', C.x0 - 0.3, C.y0 - 0.3, top + 2 * STOREY, C.x1 + 0.3, C.y1 + 0.3, top + 2 * STOREY + 0.5, { name: 'core top' });
   /* The climbing formwork on top of the core: a cage of platforms. */
-  T.box('twHoardBlue', C.x0 - 1.2, C.y0 - 1.2, top + 2 * STOREY - 3, C.x1 + 1.2, C.y0 - 0.6, top + 2 * STOREY + 1.5, { name: 'formwork' });
-  T.box('twHoardBlue', C.x0 - 1.2, C.y1 + 0.6, top + 2 * STOREY - 3, C.x1 + 1.2, C.y1 + 1.2, top + 2 * STOREY + 1.5, { name: 'formwork' });
+  T.box('twHoardBlue', C.x0 - 1.2, C.y0 - 1.2, top + 2 * STOREY - 3, C.x1 + 1.2, C.y0, top + 2 * STOREY + 1.5, { name: 'formwork' });
+  T.box('twHoardBlue', C.x0 - 1.2, C.y1, top + 2 * STOREY - 3, C.x1 + 1.2, C.y1 + 1.2, top + 2 * STOREY + 1.5, { name: 'formwork' });
   /* The safety mesh on the low floors' faces, green, never solid: flown
    * through, it is mesh. */
   T.dress(() => T.wide(() => {

@@ -163,12 +163,19 @@ function roads(T) {
  * town's trees give.
  */
 export const GINKGO = [];
+const LANE_MOUTHS = [14, 36, 58, 80].map((d) => RAIL.y1 + 2 + d);
+
 function ginkgoRows() {
   const out = [];
   for (const x of [BLVD_A, BLVD_B]) {
     for (const s of [-1, 1]) {
       for (let y = RAIL.y1 + 6; y < D - 3; y += 9) {
         if (Math.abs(y - AVE_S) < HALF + 5 || Math.abs(y - AVE_N) < HALF + 5) {
+          continue;
+        }
+        /* None in an old lane's mouth (./yokocho.js's LANES, which import
+         * this file): the lane is a line a pilot flies in from the street. */
+        if (LANE_MOUTHS.some((l) => Math.abs(y - l) < 3)) {
           continue;
         }
         out.push([x + s * (ROAD_HALF + 4.4), y]);
@@ -348,7 +355,7 @@ function expressway(T) {
   }
   /* The direction signs, a green board over each carriageway on a gantry
    * hung off the deck's edge, with the town's own lettering on them. */
-  for (const [sx, face, sy] of [[60, 's', y0 - 0.6], [380, 'n', y1 + 0.6]]) {
+  for (const [sx, face, sy] of [[72, 's', y0 - 0.6], [360, 'n', y1 + 0.6]]) {
     T.box('twTrainBand', sx - 4, sy - 0.15, under - 3.6, sx + 4, sy + 0.15, under - 1.0, { name: 'expressway sign' });
     T.dress(() => T.wide(() => {
       const fy = sy + (face === 'n' ? 0.16 : -0.16);
@@ -425,6 +432,9 @@ function railway(T) {
     const x0 = TRAIN.x0 + c * 24;
     const x1 = x0 + 23.2;
     T.box('twTrain', x0, TRAIN.y0, rail + 0.4, x1, TRAIN.y1, rail + 3.9, { name: 'train car' });
+    /* The bogies, solid to the ballast, so the space under a car is not a
+     * slot too low to fly and high enough to try. */
+    T.box('twTrain', x0 + 1, TRAIN.y0 + 0.4, deck + 0.3, x1 - 1, TRAIN.y1 - 0.4, rail + 0.4, { draw: false, name: 'train bogies' });
     T.box('twTrainBand', x0 - 0.02, TRAIN.y0 - 0.02, rail + 1.5, x1 + 0.02, TRAIN.y1 + 0.02, rail + 1.8, { solid: false });
     T.box('twRoofDark', x0 + 0.3, TRAIN.y0 + 0.2, rail + 3.9, x1 - 0.3, TRAIN.y1 - 0.2, rail + 4.2, { name: 'train roof' });
     T.dress(() => T.wide(() => {

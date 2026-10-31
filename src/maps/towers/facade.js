@@ -38,7 +38,7 @@
  */
 
 import * as THREE from 'three';
-import { cel } from '../city/vendored/core/toon.js';
+import { cel, flat } from '../city/vendored/core/toon.js';
 import { wx, wz, chunkOf, rng } from './frame.js';
 
 const INK = '#39324f';
@@ -342,4 +342,36 @@ export function facadeMeshes(facades) {
 /* The pictures, for dispose. */
 export function facadeTextures() {
   return [...TEXTURES.values()];
+}
+
+/*
+ * The station's name board, as the town's stationSign is ひばり台's: white
+ * enamel, a teal band, the name in kana and in letters under it. The town's
+ * painter has its own name baked in, so this one is the city's.
+ */
+let NAME_MAT = null;
+export function nameSignMaterial() {
+  if (!NAME_MAT) {
+    const c = document.createElement('canvas');
+    c.width = 768;
+    c.height = 192;
+    const g = c.getContext('2d');
+    g.fillStyle = '#fbfaf6';
+    g.fillRect(0, 0, 768, 192);
+    g.fillStyle = '#3f8f8a';
+    g.fillRect(0, 170, 768, 22);
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillStyle = '#2b3346';
+    g.font = "bold 104px 'Yu Gothic', 'Meiryo', 'Hiragino Kaku Gothic ProN', sans-serif";
+    g.fillText('くもい', 384, 80, 540);
+    g.fillStyle = '#8a8fa0';
+    g.font = "600 34px 'Yu Gothic', 'Meiryo', 'Hiragino Kaku Gothic ProN', sans-serif";
+    g.fillText('KUMOI', 384, 150);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 4;
+    NAME_MAT = flat({ color: 0xffffff, map: tex, cache: false });
+  }
+  return NAME_MAT;
 }

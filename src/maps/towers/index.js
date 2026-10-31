@@ -47,7 +47,7 @@ import { qualityFor } from '../../render/quality.js';
 import { towersLayout, towersMarkSpots, W, D, worldAt, chunkOf } from './plan.js';
 import { towersDocument } from './yard.js';
 import { nearOf, WORLD_FACE } from './frame.js';
-import { facadeMeshes } from './facade.js';
+import { facadeMeshes, nameSignMaterial } from './facade.js';
 import { mergePalette } from '../sunny/palette.js';
 
 /* The chunk a drawn thing is filed under, or its near cell if it is set
@@ -240,7 +240,11 @@ function drawDistrict(kit, T, low) {
     const o = OUT[p.face];
     const [x, y, z] = worldAt(p.px, p.py, p.h);
     kit.begin(0, 0, 0, 0, cellOf(p, x, z));
-    kit.townSign(p.fn, p.arg, x + o[0] * 0.01, y, z + o[2] * 0.01, p.w, p.ht, WORLD_FACE[p.face]);
+    if (p.fn === 'kumoiSign') {
+      kit.plane(nameSignMaterial(), x + o[0] * 0.01, y, z + o[2] * 0.01, p.w, p.ht, WORLD_FACE[p.face]);
+    } else {
+      kit.townSign(p.fn, p.arg, x + o[0] * 0.01, y, z + o[2] * 0.01, p.w, p.ht, WORLD_FACE[p.face]);
+    }
   }
   for (const a of T.scaled) {
     const [x, y, z] = worldAt(a.px, a.py, a.h);

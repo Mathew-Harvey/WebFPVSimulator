@@ -89,4 +89,7 @@ export const MAP_BUILD_MS = {
   /* Ridgeline MX (src/maps/moto/): a plot of trees, a track of mounds and
    * berms and ten bikes. An estimate until it is measured. */
   moto: 2400,
+  /* Tanada RX (src/maps/rally/): a circuit, a hillside of terraces, a
+   * paddock and six cars. An estimate until it is measured. */
+  rally: 2800,
 };

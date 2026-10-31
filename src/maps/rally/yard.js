@@ -32,7 +32,7 @@ import { RALLY_DOC_ID } from '../registry.js';
 import { W, D, hash } from './frame.js';
 import { SPAWN, circuitGaps, circuitLayout } from './circuit.js';
 import { ROAD, TORII } from './hill.js';
-import { PARK } from './paddock.js';
+import { PARK, awnings } from './paddock.js';
 
 export const RALLY_NAME = 'Tanada RX';
 
@@ -94,17 +94,21 @@ function rows() {
   out.push(['vending', 258, 214, 180 * DEG, { count: 2, variant: 5 }]);
   out.push(['vending', PARK.x1 - 2, 121, -90 * DEG, { count: 3, variant: 7 }]);
   out.push(['vending', 300, ROAD.y0 - 3, -90 * DEG, { count: 1, variant: 3 }]);
-  /* The car park: two rows nose to nose, a car to every third bay. */
+  /* The car park: three rows, a car in about every third bay. */
   const STYLES = ['kei', 'keivan', 'hatch', 'wagon', 'minivan', 'kei', 'hatch'];
   let n = 0;
   for (const [y, yaw] of [[205.5, 90], [212.5, -90], [219.5, 90]]) {
     for (let x = 268; x < 410; x += 2.9) {
       n += 1;
-      if (hash(n, 11) > 0.5) {
+      if (hash(n, 11) > 0.34) {
         continue;
       }
       out.push(['car', x, y, yaw * DEG, { variant: 1 + (n % 9) }, { style: STYLES[n % STYLES.length] }]);
     }
+  }
+  /* A team's car under each awning, nose out to the lane. */
+  for (const a of awnings()) {
+    out.push(['car', a.car[0], a.car[1], a.face > 0 ? 0 : 180 * DEG, { variant: 1 + a.k }, { style: 'hatch' }]);
   }
   /* The service park's trucks, behind the east row of awnings. */
   [['boxtruck', 22], ['van', 44], ['boxtruck', 62], ['minibus', 84]].forEach(([style, y], i) => {

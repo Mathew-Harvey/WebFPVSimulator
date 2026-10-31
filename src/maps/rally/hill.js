@@ -42,6 +42,7 @@
  */
 
 import { W, D, w, turn, origin, hash } from './frame.js';
+import { partsOf } from '../../props/catalog.js';
 
 /* The farm road along the foot of the hill, and the hill's first wall. */
 export const ROAD = { y0: 229, y1: 235 };
@@ -154,12 +155,13 @@ function terraces(T) {
           for (let y = y0 + 1.2; y < y1 - 0.4; y += 0.7) {
             const a = w(x0 + 0.35, y, h);
             const b = w(x1 - 0.35, y, h);
+            /* One stroke a row: a row of seedlings is a green line from
+             * the air, and a box a plant would be two thousand triangles
+             * a paddy. */
             if (grown) {
               K.box('rxRiceDeep', a[0], h + 0.3, a[2] - 0.08, b[0], h + 0.37, a[2] + 0.08);
             } else {
-              for (let x = a[0]; x < b[0] - 0.1; x += 0.5) {
-                K.box('rxSeedling', x, h + 0.04, a[2] - 0.05, x + 0.12, h + 0.22, a[2] + 0.05);
-              }
+              K.box('rxSeedling', a[0], h + 0.04, a[2] - 0.06, b[0], h + 0.2, a[2] + 0.06);
             }
           }
         });
@@ -428,6 +430,97 @@ function jizo(T, px, py) {
       K.box('rxTimber', r[0] - 1.0, 1.15, r[2] - 0.4, r[0] + 1.0, 1.22, r[2] + 0.4);
     });
   });
+}
+
+/* ------------------------------------------------------------------ */
+/* Trees on the hill, and the hamlet's car                            */
+/* ------------------------------------------------------------------ */
+
+/* The trees the hill grows: a band of cedars along the crest behind the
+ * paddies and round the shrine, cherries flanking the shrine's steps, and
+ * a few by the hamlet. Each stands on the level it grows from. */
+function hillTrees() {
+  const out = [];
+  let k = 0;
+  const add = (x, y, style, size) => {
+    out.push({ x, y, h: hillAt(x, y), style, size, variant: 1 + (k % 9) });
+    k += 1;
+  };
+  /* Two loose rows, with gaps where the wind took one, so the crest is a
+   * wood's edge and not a hedge. */
+  for (let x = 3; x < W - 3; x += 5.5) {
+    const n = Math.round(x * 10);
+    if (hash(n, 40) < 0.22) {
+      continue;
+    }
+    const jx = x + (hash(n, 41) - 0.5) * 3.5;
+    if (jx > SHRINE.x0 - 2 && jx < SHRINE.x1 + 2) {
+      continue;
+    }
+    add(jx, 315 + hash(n, 42) * 13, hash(n, 45) < 0.12 ? 'sakura' : 'pine', 0.9 + hash(n, 43) * 0.75);
+  }
+  /* The shrine's grove, behind and either side of the hall. */
+  for (const [x, y] of [[SHRINE.x0 + 2, 314], [SHRINE.x0 + 4, 326], [SHRINE.x1 - 3, 316], [SHRINE.x1 - 2, 327], [334, 328], [358, 328]]) {
+    add(x, y, 'pine', 1.4 + hash(k, 44) * 0.3);
+  }
+  /* Cherries beside the steps, every other level. */
+  for (let lv = 1; lv < LEVELS - 1; lv += 2) {
+    const i = Math.floor(STEPS.x / 6);
+    const y = wallY(lv, i) + 3;
+    add(STEPS.x - STEPS.w / 2 - 3.2, y, 'sakura', 0.85);
+    add(STEPS.x + STEPS.w / 2 + 3.2, y, 'sakura', 0.85);
+  }
+  /* By the hamlet. */
+  add(YARD.x0 + 3, 263, 'sakura', 1.0);
+  add(YARD.x1 - 4, 244, 'pine', 0.95);
+  return out;
+}
+
+/* The parts of an element stood at (x, h, z) unturned, made solid and
+ * never drawn: the kit draws the element itself. */
+function solidsAt(el, x, h, z) {
+  const out = [];
+  for (const p of partsOf(el)) {
+    if (!p.solid) {
+      continue;
+    }
+    const q = { ...p, draw: false };
+    if (p.t === 'box') {
+      q.lo = [p.lo[0] + x, p.lo[1] + h, p.lo[2] + z];
+      q.hi = [p.hi[0] + x, p.hi[1] + h, p.hi[2] + z];
+    } else {
+      q.a = [p.a[0] + x, p.a[1] + h, p.a[2] + z];
+      q.b = [p.b[0] + x, p.b[1] + h, p.b[2] + z];
+    }
+    out.push(q);
+  }
+  return out;
+}
+
+/* The trees and the car as the kit stands them: world x, the height of
+ * what they stand on, world z, and the element. */
+export function hillStanding() {
+  const out = [];
+  for (const t of hillTrees()) {
+    const [x, , z] = w(t.x, t.y);
+    out.push({
+      x, h: t.h, z, el: { id: 'rx-tree', type: 'tree', style: t.style, dims: { size: t.size, variant: t.variant }, yaw: 0 },
+    });
+  }
+  const [x, , z] = w(48, 263.5);
+  out.push({
+    x, h: YARD.h, z, el: { id: 'rx-kei', type: 'car', style: 'keivan', dims: { variant: 4 }, yaw: 0 },
+  });
+  return out;
+}
+
+/* Their solids, in the world frame, for the structure's parts. */
+export function standingSolids(list) {
+  const out = [];
+  for (const s of list) {
+    out.push(...solidsAt(s.el, s.x, s.h, s.z));
+  }
+  return out;
 }
 
 export function hillParts(T) {

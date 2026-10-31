@@ -181,10 +181,14 @@ export const GANTRY = { x: 96, y: 190, h0: 5.4, h1: 6.2, span: 9.2 };
  * down the infield with the jump on the left and the stand beyond it. */
 export const SPAWN = { px: 168, py: 92, yaw: 0 };
 
-/* The hidden Konex Drone sign: on the inside face of the grandstand's back
- * wall, above the top row and under the roof, in the bay west of the
- * middle. A pilot sees it only from under the roof. */
-export const KONEX = { px: 172, py: STAND.yBack + 0.42, h: STAND.top + 1.25, w: 1.1 };
+/* The hidden Konex Drone sign: on the back of the grandstand's back wall,
+ * four metres up, facing the farm road, in the two metre alley between the
+ * wall and the columns under the roof's overhang. From the road it is
+ * behind the columns in the shade; a pilot sees it only by flying into the
+ * alley. `n` is its face's normal, world. */
+export const KONEX = {
+  px: 172, py: STAND.yBack + 0.32, h: 4.0, w: 1.1, n: [0, 0, -1],
+};
 
 /* ------------------------------------------------------------------ */
 /* The layout                                                          */
@@ -352,15 +356,12 @@ function jumpParts(T, Lay) {
   T.draw(p0.x, y, (K, c) => {
     /* A wedge per piece of the profile, in the plan's east and up. */
     turn(K, c, p0.x, y, 0, 0);
-    const side = [];
-    for (const [d, h] of P) {
-      side.push([d, h]);
-    }
-    const shape = [[0, 0], ...side.slice(1, -1), [P[P.length - 1][0], 0]];
+    const P = JUMP_PROFILE;
+    const shape = [[0, 0], ...P.slice(1, -1), [P[P.length - 1][0], 0]];
     K.extrude('rxGravel', shape, -JUMP_HALF, JUMP_HALF);
     K.extrude('rxTarmac', shape.map(([x, hh]) => [x, hh > 0.001 ? hh + 0.03 : 0]), -JUMP_HALF + 1.2, JUMP_HALF - 1.2);
     /* The white line painted across the lip. */
-    K.box('rxPaint', 9.6, 1.53, -JUMP_HALF + 1.2, 10.4, 1.6, JUMP_HALF - 1.2);
+    K.box('rxPaint', 9.6, 1.47, -JUMP_HALF + 1.2, 10.4, 1.6, JUMP_HALF - 1.2);
   });
 }
 
@@ -380,12 +381,7 @@ function barrierParts(T, Lay) {
           for (let i = 0; i < k; i += 1) {
             const x = (i + 0.5) * (len / k);
             for (const z of [-0.36, 0.36]) {
-              K.cyl('rxTyre', [x, 0, z], [x, 1.08, z], 0.34, 8);
-            }
-            /* Every other column of tyres has a yellow band painted on it,
-             * as a tyre wall's are, so its run reads from the air. */
-            if ((i + b.i) % 2 === 0) {
-              K.cyl('rxTyreBand', [x, 0.72, -0.36], [x, 0.9, -0.36], 0.345, 8);
+              K.cyl('rxTyre', [x, 0, z], [x, 1.08, z], 0.34, 6);
             }
           }
           /* The belt strapped along the front. */
@@ -398,6 +394,22 @@ function barrierParts(T, Lay) {
         }
       });
     });
+    /* Every other column of tyres has a yellow band painted on it, as a
+     * tyre wall's are, so its run reads from the air. Fine: Low leaves
+     * the bands off. */
+    if (tyres) {
+      T.draw((b.a[0] + b.b[0]) / 2, (b.a[1] + b.b[1]) / 2, (K, c) => {
+        along(K, c, b.a, b.b, 0, (len) => {
+          const k = Math.max(1, Math.round(len / 0.72));
+          for (let i = 0; i < k; i += 1) {
+            if ((i + b.i) % 2 === 0) {
+              const x = (i + 0.5) * (len / k);
+              K.cyl('rxTyreBand', [x, 0.72, -0.36], [x, 0.9, -0.36], 0.345, 6);
+            }
+          }
+        });
+      }, true);
+    }
   }
 }
 
@@ -441,17 +453,20 @@ function grandstand(T) {
     }
     /* Seats: a strip of plastic on every row, blue with a red block in
      * the middle of the stand, and the steps up through it. */
+    /* A run of seats is one strip of pan and one of back between the
+     * aisles: from the air and the track a row of seats is a stripe, and
+     * a box a seat was three and a half thousand of them. */
+    const mx = (S.x0 + S.x1) / 2;
+    const runs = [[S.x0 + 0.4, S.x0 + 24.1], [S.x0 + 25.9, mx - 10], [mx - 10, mx - 0.9], [mx + 0.9, mx + 10], [mx + 10, S.x1 - 25.9], [S.x1 - 24.1, S.x1 - 0.4]];
     for (let k = 0; k < S.rows; k += 1) {
       const y0 = S.y0 + k * S.tread;
       const h = S.front + k * S.rise;
-      for (let x = S.x0 + 0.4; x < S.x1 - 0.4; x += 0.55) {
-        if (Math.abs(x - (S.x0 + S.x1) / 2) < 0.9 || Math.abs(x - S.x0 - 25) < 0.9 || Math.abs(x - S.x1 + 25) < 0.9) {
-          continue;
-        }
-        const mid = Math.abs(x - (S.x0 + S.x1) / 2) < 10 && k > 3 && k < 9;
-        const p = w(x, y0 + 0.62, h);
-        K.box(mid ? 'rxSeatRed' : 'rxSeat', p[0] - 0.21, h, p[2] - 0.2, p[0] + 0.21, h + 0.12, p[2] + 0.2);
-        K.box(mid ? 'rxSeatRed' : 'rxSeat', p[0] - 0.21, h + 0.12, p[2] - 0.24, p[0] + 0.21, h + 0.45, p[2] - 0.2);
+      for (const [xa, xb] of runs) {
+        const mid = xa >= mx - 10 && xb <= mx + 10 && k > 3 && k < 9;
+        const a = w(xa, y0 + 0.62, h);
+        const b = w(xb, y0 + 0.62, h);
+        K.box(mid ? 'rxSeatRed' : 'rxSeat', a[0], h, a[2] - 0.2, b[0], h + 0.12, a[2] + 0.2);
+        K.box(mid ? 'rxSeatRed' : 'rxSeat', a[0], h + 0.12, a[2] - 0.24, b[0], h + 0.45, a[2] - 0.2);
       }
     }
     /* Crash rails along the front and the stairs' hand rails. */
@@ -561,6 +576,190 @@ function bigScreen(T) {
     T.post('rxSteelDark', x + dx, y, 0, h0, 0.22, { kind: 'pole', name: 'screen leg' });
   }
   T.box('rxSteelDark', x - sw / 2, y - 0.35, h0, x + sw / 2, y + 0.25, h1, { name: 'big screen' });
+  T.post('rxSteelDark', x - legs / 2, y, h0 - 1.2, h0, 0.12, { kind: 'pole', name: 'screen strut' });
+  /* The picture, on both faces: a car flat out and sideways in a cloud of
+   * its own gravel, under the timing strip, drawn in panels the way a
+   * manga panel draws speed. No words and no marks of anybody's. */
+  T.draw(x, y, (K, c) => {
+    for (const [face, yy] of [[1, y + 0.26], [-1, y - 0.36]]) {
+      turn(K, c, x, yy, 0, face > 0 ? 0 : Math.PI);
+      /* Local x runs along the screen and local z into it, so what is
+       * drawn at negative z stands proud of the face. */
+      const z0 = -0.02;
+      const z1 = 0.0;
+      const L = sw / 2 - 0.3;
+      K.box('rxScreen', -L, h0 + 0.3, z0, L, h1 - 0.3, z1);
+      K.box('rxSteel', -L - 0.3, h1 - 0.3, z0 - 0.01, L + 0.3, h1, z1);
+      K.box('rxSteel', -L - 0.3, h0, z0 - 0.01, L + 0.3, h0 + 0.3, z1);
+      const zz = z0 - 0.02;
+      /* An evening sky, a red sun, the gravel, then speed lines. */
+      K.box('rxCanvasYellow', -L, h0 + 2.2, zz, L, h1 - 0.3, z0);
+      K.cyl('rxCanvasRed', [-1.6, h0 + 3.6, zz - 0.005], [-1.6, h0 + 3.6, zz], 1.5, 16);
+      K.box('rxGravelDark', -L, h0 + 0.3, zz, L, h0 + 2.2, z0);
+      for (let i = 0; i < 6; i += 1) {
+        const yy2 = h0 + 2.5 + i * 0.5;
+        const len = 1.4 + ((i * 7) % 4) * 0.6;
+        K.box('rxCanvasWhite', -L + 0.2 + ((i * 3) % 5) * 0.4, yy2, zz - 0.01, -L + 0.2 + ((i * 3) % 5) * 0.4 + len, yy2 + 0.08, z0);
+      }
+      /* The car, tipped into the slide. */
+      const cx = 0.6;
+      const cy = h0 + 2.1;
+      K.box('rxLivBlue', cx - 2.2, cy, zz - 0.02, cx + 2.0, cy + 0.9, zz);
+      K.box('rxLivBlue', cx - 1.2, cy + 0.9, zz - 0.02, cx + 0.8, cy + 1.6, zz);
+      K.box('rxScreen', cx - 1.0, cy + 1.0, zz - 0.03, cx + 0.6, cy + 1.45, zz - 0.02);
+      K.box('rxLivYellow', cx - 2.2, cy + 0.35, zz - 0.03, cx + 2.0, cy + 0.55, zz - 0.02);
+      K.box('rxLivWhite', cx - 0.5, cy + 0.15, zz - 0.04, cx + 0.3, cy + 0.85, zz - 0.03);
+      K.box('rxLivBlack', cx - 2.5, cy + 1.3, zz - 0.02, cx - 1.6, cy + 1.45, zz);
+      for (const wx of [cx - 1.4, cx + 1.3]) {
+        K.box('rxLivBlack', wx - 0.42, cy - 0.35, zz - 0.03, wx + 0.42, cy + 0.42, zz - 0.02);
+        K.box('rxSteel', wx - 0.18, cy - 0.12, zz - 0.04, wx + 0.18, cy + 0.2, zz - 0.03);
+      }
+      /* The roost behind it. */
+      for (let i = 0; i < 5; i += 1) {
+        const bx = cx - 2.9 - i * 0.55;
+        const by = cy + 0.1 + (i % 2) * 0.35;
+        K.box('rxGravelDark', bx - 0.3, by, zz - 0.02, bx + 0.3, by + 0.5 + i * 0.1, zz);
+      }
+      /* The timing strip: six coloured places down the side, on its own
+       * dark panel. */
+      K.box('rxScreen', L - 2.1, h1 - 3.3, zz - 0.005, L, h1 - 0.3, zz);
+      const COLS = ['rxLivBlue', 'rxLivYellow', 'rxLivRed', 'rxLivGreen', 'rxLivWhite', 'rxLivOrange'];
+      for (let i = 0; i < 6; i += 1) {
+        const ty = h1 - 0.7 - i * 0.48;
+        K.box(COLS[i], L - 1.9, ty, zz - 0.015, L - 1.6, ty + 0.36, zz);
+        K.box('rxCanvasWhite', L - 1.5, ty + 0.1, zz - 0.015, L - 0.25 - (i % 3) * 0.2, ty + 0.26, zz);
+      }
+    }
+  });
+}
+
+/*
+ * THE INFIELD: floodlight towers, television platforms and tyre stacks,
+ * each kept clear of the track and of the named gaps' approaches. A
+ * floodlight is a tall pole with a lamp head, solid, and a line round it is
+ * a line; a platform is scaffold a pilot can thread under its deck.
+ */
+const LIGHTS = [[160, 172], [252, 172], [128, 66], [252, 98], [60, 172], [340, 140], [330, 210]];
+const PLATFORMS = [[118, 132], [302, 60], [52, 112]];
+function infield(T, Lay) {
+  const { clearOf } = Lay;
+  for (const [x, y] of LIGHTS) {
+    if (clearOf(x, y) < 10.5) {
+      continue;
+    }
+    const H = 16;
+    T.post('rxSteelDark', x, y, 0, H, 0.24, { kind: 'pole', name: 'floodlight' });
+    T.box('rxSteelDark', x - 1.7, y - 0.25, H - 0.2, x + 1.7, y + 0.25, H + 1.4, { name: 'floodlight head' });
+    T.draw(x, y, (K, c) => {
+      origin(K, c);
+      /* Six lamps on the face toward the track, a cage, a ladder. */
+      const toward = clearOf(x, y - 1) < clearOf(x, y + 1) ? -1 : 1;
+      for (let i = 0; i < 3; i += 1) {
+        for (let j = 0; j < 2; j += 1) {
+          const p = w(x - 1.1 + i * 1.1, y + toward * 0.27, H + 0.15 + j * 0.65);
+          K.cyl('lampGlow', [p[0], p[1], p[2]], [p[0], p[1], p[2] - toward * 0.05], 0.25, 8);
+          K.cyl('lampHead', [p[0], p[1], p[2]], [p[0], p[1], p[2] - toward * 0.2], 0.29, 8, 0.27);
+        }
+      }
+      K.ladder('rxSteel', w(x + 0.35, y, 0.4), w(x + 0.35, y, H - 0.3), 0.4);
+      K.box('rxSteel', w(x, y, 0)[0] - 1.8, H - 0.3, w(x, y, 0)[2] - 0.4, w(x, y, 0)[0] + 1.8, H - 0.2, w(x, y, 0)[2] + 0.4);
+      const b = w(x, y, 0);
+      K.cyl('rxStone', [b[0], 0, b[2]], [b[0], 0.4, b[2]], 0.6, 8);
+    });
+  }
+  for (const [x, y] of PLATFORMS) {
+    if (clearOf(x, y) < 10) {
+      continue;
+    }
+    const deck = 4.6;
+    for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      T.post('rxSteel', x + dx * 1.2, y + dy * 1.2, 0, deck, 0.06, { kind: 'pole', name: 'scaffold' });
+    }
+    T.box('rxTimberPale', x - 1.4, y - 1.4, deck, x + 1.4, y + 1.4, deck + 0.12, { name: 'platform deck' });
+    T.draw(x, y, (K, c) => {
+      origin(K, c);
+      const at = (dx, dy, h) => w(x + dx, y + dy, h);
+      for (const [a, b] of [[[-1.2, -1.2], [1.2, -1.2]], [[1.2, -1.2], [1.2, 1.2]], [[1.2, 1.2], [-1.2, 1.2]], [[-1.2, 1.2], [-1.2, -1.2]]]) {
+        K.cyl('rxSteel', at(a[0], a[1], 0.3), at(b[0], b[1], deck - 0.3), 0.03, 4);
+        K.cyl('rxSteel', at(a[0], a[1], deck + 1.0), at(b[0], b[1], deck + 1.0), 0.03, 4);
+        K.cyl('rxSteel', at(a[0], a[1], deck), at(a[0], a[1], deck + 1.0), 0.03, 4);
+      }
+      K.ladder('rxSteel', at(-1.25, 0, 0), at(-1.25, 0, deck), 0.45);
+      /* The camera on its tripod and its operator under a parasol. */
+      const p = at(0.3, 0, deck + 0.12);
+      K.cyl('rxLivBlack', [p[0], p[1], p[2]], [p[0], p[1] + 1.2, p[2]], 0.04, 4);
+      K.box('rxLivBlack', p[0] - 0.3, p[1] + 1.2, p[2] - 0.15, p[0] + 0.35, p[1] + 1.5, p[2] + 0.15);
+      K.cyl('rxLivBlack', [p[0] + 0.35, p[1] + 1.35, p[2]], [p[0] + 0.55, p[1] + 1.35, p[2]], 0.09, 8);
+      const q = at(-0.4, 0.3, deck + 0.12);
+      K.cyl('rxIndigo', [q[0], q[1], q[2]], [q[0], q[1] + 1.4, q[2]], 0.22, 6, 0.2);
+      K.blob('rxSkin', [q[0], q[1] + 1.58, q[2]], 0.15, 0.17, [0, x, 0]);
+      K.cyl('rxSteel', [q[0], q[1], q[2]], [q[0], q[1] + 2.4, q[2]], 0.02, 4);
+      K.cone('rxCanvasWhite', [q[0], q[1] + 2.1, q[2]], 1.0, 0.45, 10);
+    });
+  }
+}
+
+/* Stacks of tyres at the apex of every bend, inside it, banded white:
+ * where a driver turns in, and a marker to fly round. Solid. */
+function apexStacks(T, Lay) {
+  const { line, clearOf } = Lay;
+  const L = line.length;
+  let last = -99;
+  for (let s = 0; s < L; s += 2) {
+    const bend = bendAt(line, s, 10, 0.02);
+    if (!bend || s - last < 40) {
+      continue;
+    }
+    const q = beside(line, s, bend * 9.2);
+    if (clearOf(q.x, q.y) < 8.8) {
+      continue;
+    }
+    last = s;
+    for (const [dx, dy] of [[0, 0], [0.62, 0.1], [0.3, -0.55]]) {
+      const x = q.x + dx;
+      const y = q.y + dy;
+      T.post('rxTyre', x, y, 0.3, 0.75, 0.3, { kind: 'obstacle', name: 'tyre stack', draw: false });
+      T.draw(x, y, (K, c) => {
+        origin(K, c);
+        const p = w(x, y, 0);
+        for (let j = 0; j < 4; j += 1) {
+          K.cyl(j === 1 ? 'rxTyreBand' : 'rxTyre', [p[0], j * 0.26, p[2]], [p[0], j * 0.26 + 0.24, p[2]], 0.32, 10);
+        }
+      });
+    }
+  }
+}
+
+/* Banners hung on the catch fences: colour and shape, no words. */
+const HOARD = ['rxCanvasBlue', 'rxCanvasRed', 'rxCanvasYellow', 'rxCanvasGreen', 'rxCanvasWhite', 'rxIndigo'];
+export function hoardings(T, F, face, skip = null) {
+  T.draw((F.x0 + F.x1) / 2, F.y, (K, c) => {
+    origin(K, c);
+    let k = 0;
+    for (let x = F.x0 + 0.5; x + 3.4 < F.x1; x += 4) {
+      k += 1;
+      if (skip && x + 3.4 > skip[0] && x < skip[1]) {
+        continue;
+      }
+      const a = w(x, F.y + face * 0.08, 0.5);
+      const b = w(x + 3.4, F.y + face * 0.1, 1.6);
+      const z0 = Math.min(a[2], b[2]);
+      const z1 = Math.max(a[2], b[2]);
+      const m = HOARD[(k * 5) % HOARD.length];
+      K.box(m, a[0], 0.5, z0, b[0], 1.6, z1);
+      const band = m === 'rxCanvasWhite' ? 'rxCanvasRed' : 'rxCanvasWhite';
+      const zf = face > 0 ? [z0 - 0.015, z0] : [z1, z1 + 0.015];
+      if (k % 3 === 0) {
+        K.box(band, a[0] + 0.3, 0.85, zf[0], b[0] - 0.3, 1.25, zf[1]);
+      } else if (k % 3 === 1) {
+        K.cyl(band, [a[0] + 1.7, 1.05, zf[0]], [a[0] + 1.7, 1.05, zf[1]], 0.38, 12);
+      } else {
+        for (let j = 0; j < 3; j += 1) {
+          K.box(band, a[0] + 0.4 + j * 1.0, 0.7, zf[0], a[0] + 0.8 + j * 1.0, 1.4, zf[1]);
+        }
+      }
+    }
+  });
 }
 
 /* The start lights: two posts, a beam, five lamp pods hung under it, and
@@ -620,7 +819,7 @@ export function circuitGaps() {
       name: 'ROOF GAP', px: mid + S.bay / 2, py: S.colY, deg: 90, w: S.bay - 2 * 0.22 - 2 * M, h0: S.wall + M, h1: S.roof0 - M, points: 1000,
     },
     {
-      name: 'START LIGHTS', px: GANTRY.x, py: GANTRY.y, deg: 0, w: 2 * GANTRY.span - 0.4 - 2 * M, h0: M, h1: GANTRY.h0 - 1.2 - M, points: 100,
+      name: 'START LIGHTS', px: GANTRY.x, py: GANTRY.y, deg: 0, w: 2 * GANTRY.span - 0.4 - 2 * M, h0: 1.2, h1: GANTRY.h0 - 1.2 - M, points: 100,
     },
     {
       name: 'FOOTBRIDGE', px: BRIDGE.x, py: (BRIDGE.y0 + BRIDGE.y1) / 2, deg: 0, w: BRIDGE.y1 - BRIDGE.y0 - 2 * M, h0: M, h1: BRIDGE.deck - M, points: 250,
@@ -650,6 +849,8 @@ export function circuitParts(T) {
   commentary(T);
   bigScreen(T);
   gantry(T);
+  infield(T, Lay);
+  apexStacks(T, Lay);
   return Lay;
 }
 

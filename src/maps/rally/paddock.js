@@ -32,7 +32,9 @@
  */
 
 import { w, turn, origin, hash } from './frame.js';
-import { STAND, BRIDGE, circuitLayout, beside } from './circuit.js';
+import {
+  STAND, BRIDGE, circuitLayout, beside, hoardings,
+} from './circuit.js';
 import { ROAD } from './hill.js';
 
 /* The spectators' bank: from the plot's south edge up to its crest, then
@@ -171,54 +173,76 @@ function fence(T, F, skip = null) {
 }
 
 /* A team's awning in the service park: a frame tent in the team colour,
- * open at the front, the car's place under it, tyres stacked and a tool
- * chest. Its roof is solid; its walls are canvas a quad could tear
+ * open on the side that faces the lane (`face` +1 east, -1 west), its car
+ * parked under it nose out (./yard.js), tyres stacked along the back and a
+ * tool chest. Its roof is solid; its walls are canvas a quad could tear
  * through, so they are drawn only. */
-function awning(T, x0, y0, colour, k) {
-  const wd = 9;
-  const dp = 7;
-  const h = 3.1;
+const AWN = { wd: 9, dp: 7, h: 3.1 };
+function awning(T, x0, y0, colour, k, face) {
+  const { wd, dp, h } = AWN;
   T.box(colour, x0, y0, h, x0 + wd, y0 + dp, h + 0.25, { name: 'awning roof' });
   for (const [px, py] of [[x0, y0], [x0 + wd, y0], [x0, y0 + dp], [x0 + wd, y0 + dp]]) {
     T.post('rxSteel', px, py, 0, h, 0.05, { kind: 'pole', name: 'awning leg' });
   }
+  const back = face > 0 ? x0 : x0 + wd;
+  const front = face > 0 ? x0 + wd : x0;
   T.draw(x0 + wd / 2, y0 + dp / 2, (K, c) => {
     origin(K, c);
-    const a = w(x0, y0 + dp - 0.04, 0);
-    const b = w(x0 + wd, y0 + dp, h);
-    K.box(colour, a[0], 0, b[2], b[0], h, a[2]);
-    /* A white valance round the roof's edge, and the floor mat. */
-    const v0 = w(x0 - 0.02, y0 - 0.02, h - 0.35);
-    const v1 = w(x0 + wd + 0.02, y0 + 0.03, h);
-    K.box('rxCanvasWhite', v0[0], v0[1], v1[2], v1[0], v1[1], v0[2]);
-    const m0 = w(x0 + 0.3, y0 + 0.3, 0);
-    const m1 = w(x0 + wd - 0.3, y0 + dp - 0.3, 0.03);
-    K.box('rxRubber', m0[0], 0.01, m1[2], m1[0], 0.03, m0[2]);
+    /* The back wall, the two side walls cut away at the front, a white
+     * valance round the open front, and the floor mat. */
+    const box = (m, px0, py0, h0, px1, py1, h1) => {
+      const p = w(Math.min(px0, px1), Math.max(py0, py1), h0);
+      const q = w(Math.max(px0, px1), Math.min(py0, py1), h1);
+      K.box(m, p[0], h0, p[2], q[0], h1, q[2]);
+    };
+    box(colour, back - 0.02, y0, 0, back + 0.02, y0 + dp, h);
+    box(colour, back, y0 - 0.02, 0.9, back + face * wd * 0.55, y0 + 0.02, h);
+    box(colour, back, y0 + dp - 0.02, 0.9, back + face * wd * 0.55, y0 + dp + 0.02, h);
+    box('rxCanvasWhite', front - 0.03, y0, h - 0.4, front + 0.03, y0 + dp, h);
+    box('rxCanvasWhite', x0, y0 - 0.03, h - 0.4, x0 + wd, y0 + 0.03, h);
+    box('rxCanvasWhite', x0, y0 + dp - 0.03, h - 0.4, x0 + wd, y0 + dp + 0.03, h);
+    box('rxRubber', x0 + 0.3, y0 + 0.3, 0.01, x0 + wd - 0.3, y0 + dp - 0.3, 0.03);
   });
   T.dress(() => {
     T.draw(x0 + wd / 2, y0 + dp / 2, (K, c) => {
       origin(K, c);
-      /* Stacks of wheels, a tool chest, a jack, a fuel can. */
-      for (let s = 0; s < 3; s += 1) {
-        const p = w(x0 + wd - 0.8, y0 + 1 + s * 1.4, 0);
-        for (let j = 0; j < 3 + ((k + s) % 2); j += 1) {
+      /* Stacks of wheels along the back, a tool chest, a fuel can. */
+      for (let s2 = 0; s2 < 3; s2 += 1) {
+        const p = w(back + face * 0.6, y0 + 1.2 + s2 * 2.2, 0);
+        for (let j = 0; j < 3 + ((k + s2) % 2); j += 1) {
           K.cyl('rxTyre', [p[0], j * 0.24, p[2]], [p[0], j * 0.24 + 0.22, p[2]], 0.32, 10);
         }
       }
-      const t = w(x0 + 0.5, y0 + dp - 1.1, 0);
-      K.box('rxCanvasRed', t[0], 0, t[2], t[0] + 1.2, 1.0, t[2] + 0.6);
-      K.box('rxSteel', t[0], 1.0, t[2], t[0] + 1.2, 1.04, t[2] + 0.6);
-      const f = w(x0 + 2.2, y0 + dp - 0.7, 0);
-      K.box('rxCanvasRed', f[0], 0, f[2], f[0] + 0.3, 0.45, f[2] + 0.22);
-      /* Two crew in the team's colour by the bench. */
-      for (let j = 0; j < 2; j += 1) {
-        const p = w(x0 + 2 + j * 1.1, y0 + dp - 2.2, 0);
+      const t = w(back + face * 1.4, y0 + dp - 0.6, 0);
+      K.box('rxCanvasRed', t[0] - 0.6, 0, t[2] - 0.3, t[0] + 0.6, 1.0, t[2] + 0.3);
+      K.box('rxSteel', t[0] - 0.6, 1.0, t[2] - 0.3, t[0] + 0.6, 1.04, t[2] + 0.3);
+      const f = w(back + face * 2.6, y0 + 0.5, 0);
+      K.box('rxCanvasRed', f[0] - 0.15, 0, f[2] - 0.11, f[0] + 0.15, 0.45, f[2] + 0.11);
+      /* Two crew in the team's colour, one at the bench, one out front. */
+      for (const [dx, dy] of [[1.6, dp - 1.6], [wd + 0.8, dp * 0.5]]) {
+        const p = w(back + face * dx, y0 + dy, 0);
         K.cyl('rxLivBlack', [p[0], 0, p[2]], [p[0], 0.8, p[2]], 0.15, 5);
         K.cyl(colour, [p[0], 0.8, p[2]], [p[0], 1.45, p[2]], 0.21, 6);
-        K.blob('rxSkin', [p[0], 1.62, p[2]], 0.15, 0.17, [0, k + j, 0]);
+        K.blob('rxSkin', [p[0], 1.62, p[2]], 0.15, 0.17, [0, k + dx, 0]);
       }
     });
   });
+}
+
+/* Where the awnings stand, for ./yard.js to park a car under each. */
+export function awnings() {
+  const TEAM = ['rxLivBlue', 'rxLivYellow', 'rxLivRed', 'rxLivGreen', 'rxLivWhite', 'rxLivOrange'];
+  const out = [];
+  let k = 0;
+  for (const [x0, face] of [[12, 1], [58, -1]]) {
+    for (let y0 = 16; y0 < PARK.y1 - 10; y0 += 18) {
+      out.push({
+        x0, y0, face, colour: TEAM[k % TEAM.length], k, car: [x0 + AWN.wd / 2 + face * 0.6, y0 + AWN.dp / 2],
+      });
+      k += 1;
+    }
+  }
+  return out;
 }
 
 /* A food stall: a timber counter, a canopy, a curtain, red lanterns. */
@@ -298,16 +322,13 @@ export function paddockParts(T) {
   bank(T);
   fence(T, FENCE_BANK, [BRIDGE.x - BRIDGE.w / 2 - 0.8, BRIDGE.x + BRIDGE.w / 2 + 0.8]);
   fence(T, FENCE_STAND);
+  hoardings(T, FENCE_BANK, 1, [BRIDGE.x - BRIDGE.w / 2 - 0.8, BRIDGE.x + BRIDGE.w / 2 + 0.8]);
+  hoardings(T, FENCE_STAND, -1);
   /* The service park: three rows of awnings on the gravel, a lane down
    * the middle. */
   T.paint('rxGravelDark', PARK.x0, PARK.y0, 0, PARK.x1, PARK.y1, 0.025);
-  const TEAM = ['rxLivBlue', 'rxLivYellow', 'rxLivRed', 'rxLivGreen', 'rxLivWhite', 'rxLivOrange'];
-  let k = 0;
-  for (const x0 of [12, 58]) {
-    for (let y0 = 16; y0 < PARK.y1 - 10; y0 += 18) {
-      awning(T, x0, y0, TEAM[k % TEAM.length], k);
-      k += 1;
-    }
+  for (const a of awnings()) {
+    awning(T, a.x0, a.y0, a.colour, a.k, a.face);
   }
   /* The row of stalls west of the stand, the toilets by them. */
   for (let i = 0; i < 6; i += 1) {
@@ -322,10 +343,23 @@ export function paddockParts(T) {
   /* The car park east of the stand on the gravel. */
   T.paint('rxGravel', 262, 201, 0, 414, 226, 0.025);
   /* The marshals at the corners. */
-  const { line } = circuitLayout();
+  const { line, clearOf, barriers } = circuitLayout();
+  /* Each as near its corner as stands clear of every track and every
+   * barrier, or not at all. */
+  const offBarrier = (x, y) => Math.min(...barriers.map((b) => {
+    const dx = b.b[0] - b.a[0];
+    const dy = b.b[1] - b.a[1];
+    const t = Math.max(0, Math.min(1, ((x - b.a[0]) * dx + (y - b.a[1]) * dy) / (dx * dx + dy * dy || 1)));
+    return Math.hypot(x - b.a[0] - dx * t, y - b.a[1] - dy * t);
+  }));
   for (const [s, side, j] of [[350, -1, 0], [470, -1, 1], [700, 1, 2], [960, -1, 3], [1235, 1, 4], [90, -1, 5]]) {
-    const q = beside(line, s, side * 14);
-    marshal(T, q.x, q.y, j);
+    for (let off = 13; off <= 22; off += 1) {
+      const q = beside(line, s, side * off);
+      if (clearOf(q.x, q.y) >= 12.5 && offBarrier(q.x, q.y) >= 2.5 && q.x > 3 && q.y > BANK.foot + 2) {
+        marshal(T, q.x, q.y, j);
+        break;
+      }
+    }
   }
   /* Nobori along the farm road, both ends of the stand, and the bank's
    * crest. */

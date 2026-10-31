@@ -255,6 +255,22 @@ export const MAPS = [
     buildMs: MAP_BUILD_MS.moto,
     load: () => import('./moto/index.js'),
   },
+  /*
+   * TANADA RX, section 19 of the owner's map list of 31 October 2026: a
+   * rallycross circuit of tarmac and gravel with a jump and a joker, under
+   * a hillside of rice terraces, with a pack of rallycross cars racing it
+   * (src/maps/rally/). Built by the built map's pipeline in the town's
+   * look, flown on the five inch at life size; off the board like Ridgeline
+   * MX.
+   */
+  {
+    id: 'rally',
+    name: 'Tanada RX',
+    mode: 'freestyle',
+    note: 'A rallycross circuit of tarmac and gravel under a hillside of rice terraces. Six cars race it, sideways through the hairpins and long over the jump. Chase them over it, thread the grandstand roof, and find the gaps.',
+    buildMs: MAP_BUILD_MS.rally,
+    load: () => import('./rally/index.js'),
+  },
 ];
 
 /* The house's document id (src/maps/house/yard.js), here so the stamps can
@@ -282,6 +298,8 @@ export const DRIFT_DOC_ID = 'trk-d81f7a75';
 export const BALL_DOC_ID = 'trk-ba11b0a1';
 /* Ridgeline MX's (src/maps/moto/yard.js), the same way. */
 export const MOTO_DOC_ID = 'trk-3c07e5a1';
+/* Tanada RX's (src/maps/rally/yard.js), the same way. */
+export const RALLY_DOC_ID = 'trk-7a11c0b5';
 
 export function mapById(id) {
   return MAPS.find((m) => m.id === id) ?? MAPS[0];

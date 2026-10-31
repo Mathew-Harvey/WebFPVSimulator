@@ -356,6 +356,22 @@ export const MAPS = [
     load: () => import('./kaza/index.js'),
   },
   /*
+   * KIRIGAOKA SANATORIUM, on the owner's ask of 31 October 2026: a pre-war
+   * hill sanatorium left to the weather, a haikyo in the town's manga look,
+   * life size and flown on the five inch: the long corridor, the wards
+   * window to window, the roof holes, the clock tower, the chapel, and a
+   * park race of ten gates through the grounds (src/maps/sana/). Built by
+   * the built map's pipeline and, like the houses, off the board.
+   */
+  {
+    id: 'sana',
+    name: 'Kirigaoka Sanatorium',
+    mode: 'freestyle',
+    note: 'An abandoned sanatorium on a hill. Fly the long corridor, cross the wards window to window, dive the roof holes, thread the clock tower, and race ten gates through the overgrown grounds.',
+    buildMs: MAP_BUILD_MS.sana,
+    load: () => import('./sana/index.js'),
+  },
+  /*
    * TANADA RX, section 19 of the owner's map list of 31 October 2026: a
    * rallycross circuit of tarmac and gravel with a jump and a joker, under
    * a hillside of rice terraces, with a pack of rallycross cars racing it
@@ -407,6 +423,8 @@ export const DOME_DOC_ID = 'trk-b4d0e0e1';
 export const CEDAR_DOC_ID = 'trk-ced4a0e5';
 /* Kazahana Plain's (src/maps/kaza/yard.js), the same way. */
 export const KAZA_DOC_ID = 'trk-ca2a4a7a';
+/* Kirigaoka Sanatorium's (src/maps/sana/yard.js), the same way. */
+export const SANA_DOC_ID = 'trk-5a7a0b10';
 
 /* Raicho Ridge's (src/maps/alps/yard.js), the same way. */
 export const ALPS_DOC_ID = 'trk-a195a1e5';

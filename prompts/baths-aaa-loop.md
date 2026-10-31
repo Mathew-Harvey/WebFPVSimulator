@@ -82,7 +82,7 @@ not grade their own work.
 
 ### L. Lines (FPV)
 
-A Velocidrone indoor is flown from 20 m out. Each line has to read at
+An indoor is flown from 20 m out. Each line has to read at
 that distance, then stay honest when the craft is inside it. Inner
 clears are the authored numbers; do not shrink them.
 

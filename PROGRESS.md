@@ -73455,7 +73455,7 @@ The bug hunt thread saw together-shots' ribbon check "a bot cuts somebody's ribb
 - Ask: the owner, 09:02Z on 2026-10-31: "push everything to main, ensur ethe maps have thumbnails and never mention any other fpv sim name". Latency as stated in the Hotaru Valley entry above (draw calls under Sunnyfield, Low triangles up to 22% over Sunnyfield's highest from the forest); this push is the owner's word on it.
 - Thumbnail: `assets/thumbs/hotaru.jpg` here and in the board's picker (board main 96cdc99).
 - Names: none in this map's files or entries. The same morning another thread took every other simulator's name out of the repository ("no other simulator's name anywhere" above), and its wording won where we had both edited the house maps' comments.
-- Merged main again for Hoshino Shoji, Kazahana Plain, Kirigaoka Sanatorium, Shiokaze Point, Hamakaze Works, the rally map, Shiroyama FMX and Kazami Airfield, and kept them all.
+- Merged main again for Hoshino Shoji, Kazahana Plain, Kirigaoka Sanatorium, Shiokaze Point, Hamakaze Works, the rally map, Shiroyama FMX, Kazami Airfield, Tanada RX and Kamome Wharf, and kept them all. On main at a1297d7.
 - Merged main with Raicho Ridge, Kumoi Towers, Bakuon Dome and Kodama Onsen landing on the same registry, preload, ui and stamps lines; kept every map. Preload and fresh lists regenerated.
 - Two merges had dropped Hotaru Valley's line from `scripts/gen-preload.js`, so its modules were missing from the preload list; put back.
-- Checks after the last merge: check:hotaru, check:fresh, lint:boot, lint:preload, lint:memory, lint:partners and lint:nouns. Not run: verify, shots. Not flown.
+- Checks on main at a1297d7, all passed: check:hotaru, check:fresh, lint:boot, lint:preload, lint:memory, lint:partners and lint:nouns. Not run: verify, shots. Not flown.

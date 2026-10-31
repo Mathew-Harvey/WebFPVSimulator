@@ -209,6 +209,46 @@ export const MATERIALS = {
   mxBlue: { c: 0x2f6fd0, tint: 0x2e4a7a },
   mxGreen: { c: 0x2f9a4c, tint: 0x2e5a4a },
   mxRed: { c: 0xd8333d, tint: 0x6e2f52 },
+  /* Kazesuna Dunes (src/maps/dunes/): bamboo and its joints, the straw
+   * of a sacred rope and a sun hat, sand fence slats, two timbers, a reed
+   * thatch, two roof tiles, a rusted tin roof, the camels and their
+   * saddles, a railcar's cream and red, ballast, rail, sleepers, the lift's
+   * steel and its chairs, a paraglider's two colours, the tetrapods'
+   * concrete, dune grass green and dry, a pear, driftwood, a glass float
+   * and a lifebuoy. Every other colour it draws is one of the town's. */
+  dnSand: { c: 0xecd4a2, tint: 0x8c7a98 },
+  dnSandDark: { c: 0xc9ab78, tint: 0x7a6688 },
+  dnBamboo: { c: 0xcdb769, tint: 0x7c6c70 },
+  dnBambooDark: { c: 0x8c8646, tint: 0x56566a },
+  dnStraw: { c: 0xe2cc84, tint: 0x8a7a76 },
+  dnSlat: { c: 0xb69a62, tint: 0x6c5c70 },
+  dnTimber: { c: 0xd5ad7c, tint: 0x7e687a },
+  dnWoodDark: { c: 0x5f4333, tint: 0x3e3048 },
+  dnThatch: { c: 0xb59a5e, tint: 0x6a5a6c },
+  dnRoof: { c: 0x4d5d77, tint: 0x343957 },
+  dnRoofRidge: { c: 0x353f55, tint: 0x272a44 },
+  dnRoofRust: { c: 0xa8533e, tint: 0x5e3a52 },
+  dnCamel: { c: 0xc79a5d, tint: 0x7a5a64 },
+  dnCamelDark: { c: 0x8d653f, tint: 0x553f52 },
+  dnSaddle: { c: 0xcc3340, tint: 0x6e2f52 },
+  dnSaddleGold: { c: 0xe8b53a, tint: 0x8a6a50 },
+  dnTrainCream: { c: 0xf0e6cc, tint: 0x8a83a2 },
+  dnTrainRed: { c: 0xc9473b, tint: 0x6a3a58 },
+  dnBallast: { c: 0x8e8a86, tint: 0x5a5672 },
+  dnRail: { c: 0x7d6a5f, tint: 0x4a3e52 },
+  dnSleeper: { c: 0x6b5a4c, tint: 0x45394f },
+  dnLift: { c: 0x6f8aa2, tint: 0x4a4a6c },
+  dnChair: { c: 0xe39f38, tint: 0x7a5a50 },
+  dnWing: { c: 0xf2c32d, tint: 0x8a7050 },
+  dnWingRed: { c: 0xe1473b, tint: 0x7a3a5a },
+  dnTetra: { c: 0xbcb6ad, tint: 0x67607e },
+  dnGrass: { c: 0x7f9f55, tint: 0x4c6470 },
+  dnGrassDry: { c: 0xc2b06a, tint: 0x7a6a6a },
+  dnPear: { c: 0xd8c95a, tint: 0x7f7660 },
+  dnDrift: { c: 0xb4a48e, tint: 0x6a6078 },
+  dnFloat: { c: 0x72b89a, tint: 0x3f6a6a },
+  dnBuoy: { c: 0xf06a24, tint: 0x80482e },
+  dnPineBark: { c: 0x6a4f42, tint: 0x45354c },
   /* Bakuon Dome (src/maps/dome/): the hall's dirt and the ramps' darker
    * dirt, the concourse's paving, the cream concrete of the bowl and its
    * fascia, the outer walls' panel white, the roof's steel, the catwalk's
@@ -225,6 +265,59 @@ export const MATERIALS = {
   dmSteel: { c: 0xe9eef2, tint: 0x6f6d8a },
   dmGrate: { c: 0x6c7381, tint: 0x4d4a6c },
   dmScreenBox: { c: 0x26242e, tint: 0x1f1d28 },
+  /* Hayate Circuit (src/maps/hayate/): the armco's galvanised steel, the
+   * traps' gravel, the kerbs' red, the pen's black for lettering edges,
+   * the pit lane's and the garages' floors, the pit wall's and the pit
+   * building's paint, the tower's glass band, the bronze of the trophies,
+   * the paddock tents, the stands' roofs and their undersides, the cedar
+   * timber and roof tile of the old stand and the shrine, the grass of
+   * the spectator bank, the bridges' and the gantry's paint, the sky
+   * wheel's white and its legs, the shrine's white, its copper roof and
+   * its torii, and the stone of the lanterns and the pond's edge. Every
+   * other colour it draws is one of the town's or the families' above. */
+  hyArmco: { c: 0xc9ccd2, tint: 0x6e6c8c },
+  hyGravel: { c: 0xd8c9a4, tint: 0x8a7c8a },
+  hyGravelDark: { c: 0xbfae88, tint: 0x75687e },
+  hyKerbRed: { c: 0xd8333d, tint: 0x6e2f52 },
+  hyInk: { c: 0x1d1b26, tint: 0x15141c, noCast: true },
+  hyPitLane: { c: 0x6a6c74, tint: 0x45445e },
+  hyGreen: { c: 0x3f8c5a, tint: 0x2e5258 },
+  hyPitWall: { c: 0xeeeae2, tint: 0x938aa4 },
+  hyPitIn: { c: 0x2f6fd0, tint: 0x2e4a7a },
+  hyGarageFloor: { c: 0x8d9096, tint: 0x5a5872 },
+  hyPitRoof: { c: 0x5d6a82, tint: 0x3a3e5e },
+  hyTower: { c: 0xf2efe8, tint: 0x9a96b2 },
+  hyTowerBand: { c: 0x3a5f8c, tint: 0x283c5e },
+  hyBronze: { c: 0xd2a23a, tint: 0x806040 },
+  hyTent: { c: 0x2e4382, tint: 0x2a2e5a },
+  hyRoof: { c: 0xdfe3e8, tint: 0x8a8aa6 },
+  hyRoofUnder: { c: 0x7a7e8c, tint: 0x4a4a64 },
+  hyTimber: { c: 0x8a5a3a, tint: 0x4f3a4a },
+  hyRoofTile: { c: 0x4a5060, tint: 0x30324a },
+  hyGrassBank: { c: 0x86ab6a, tint: 0x55706a },
+  hyGrassBank2: { c: 0x76a060, tint: 0x4c6a64 },
+  hyBridge: { c: 0xe9e4d8, tint: 0x938aa4 },
+  hyBridgeRed: { c: 0xd8483a, tint: 0x6e3352 },
+  hyArch: { c: 0x2f6fd0, tint: 0x2e4a7a },
+  hyGantry: { c: 0x2b2830, tint: 0x221f2c },
+  hyWheel: { c: 0xf4f2ee, tint: 0x9a96b2 },
+  hyWheelLeg: { c: 0xe8a33a, tint: 0x80583e },
+  hyDeck: { c: 0xb8a07c, tint: 0x6e5c6a },
+  hyPink: { c: 0xf2a6bd, tint: 0x9a6a8a },
+  hyStone: { c: 0xa9a49a, tint: 0x6a6680 },
+  hyShrineWhite: { c: 0xf3ede0, tint: 0x9a90a8 },
+  hyCopper: { c: 0x5fa892, tint: 0x3a6070 },
+  hyToriiRed: { c: 0xe4472c, tint: 0x7a3a5a },
+  /* The maples' leaves, three autumn reds and an orange, which ./index.js
+   * of Hayate puts on the broadleaf trees in place of their green. */
+  hyMaple0: { c: 0xd8452c, tint: 0x7a2e48, noReceive: true, foliage: true },
+  hyMaple1: { c: 0xe8742a, tint: 0x80442e, noReceive: true, foliage: true },
+  hyMaple2: { c: 0xc22c3a, tint: 0x6a2648, noReceive: true, foliage: true },
+  hyMaple3: { c: 0xe9a23a, tint: 0x80583e, noReceive: true, foliage: true },
+  hyWater: { c: 0x5a8fb0, tint: 0x3a5a7e, noCast: true },
+  hyCarp: { c: 0xf0721e, tint: 0x80482e, noCast: true },
+  hyFuji: { c: 0x7088a8, tint: 0x5a6a90, noCast: true },
+  hyFujiSnow: { c: 0xf6f4f0, tint: 0xb8b8d0, noCast: true },
 };
 
 /*

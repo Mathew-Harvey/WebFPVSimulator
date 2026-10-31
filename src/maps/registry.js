@@ -256,6 +256,41 @@ export const MAPS = [
     load: () => import('./moto/index.js'),
   },
   /*
+   * EKIMAE DRIFT, on the owner's ask of 31 October 2026: a city map with
+   * drift cars to chase, in the manga look of the town. A street drift
+   * event round the station district of a harbour town, under an elevated
+   * expressway and a brick railway viaduct, with three tandem pairs on the
+   * course and Drift Matsuri's filming game (src/maps/ekimae/,
+   * src/game/film.js). Built by the built map's pipeline and flown on the
+   * five inch at life size; off the board like the houses.
+   */
+  {
+    id: 'ekimae',
+    name: 'Ekimae Drift',
+    mode: 'freestyle',
+    note: 'A street drift event round a station district: under the expressway, under the tracks twice, round the taxi rotary and the petrol station. Chase the tandems, or fly the arcade, the car park and the platforms.',
+    buildMs: MAP_BUILD_MS.ekimae,
+    load: () => import('./ekimae/index.js'),
+  },
+  /*
+   * KAZESUNA DUNES, on the owner's ask of 31 October 2026 (the Desert entry
+   * of the reference list, built as a coast of Japan's own: "we want the
+   * maps to feel like manga comic like the town"): a kilometre's slice of
+   * a dune coast on the Sea of Japan, its big ridge, its slip face, the
+   * pond in the hollow, the camels, the lift and the station, from real
+   * coasts and nobody's game (src/maps/dunes/). Built by the built map's
+   * pipeline, its sand the plant's floor, flown on the five inch at life
+   * size; off the board like the houses.
+   */
+  {
+    id: 'dunes',
+    name: 'Kazesuna Dunes',
+    mode: 'freestyle',
+    note: 'A dune coast on the Sea of Japan, flown on a five inch: surf the big ridge, dive its slip face to the pond, thread the sand fences, the camel hut and the chair lift, and race twelve bamboo gates from the look out to the sea and back.',
+    buildMs: MAP_BUILD_MS.dunes,
+    load: () => import('./dunes/index.js'),
+  },
+  /*
    * KAMOME WHARF, on the owner's ask of 31 October 2026 (the dock of his
    * list of new maps, "we want the maps to feel like manga comic like the
    * town"): a container terminal of our own on a Kobe style
@@ -471,6 +506,107 @@ export const MAPS = [
     load: () => import('./airfield/index.js'),
   },
   /*
+   * HOTARU VALLEY, on the owner's ask of 31 October 2026 (the Meadow map of
+   * the owner's list of new maps, "we want the maps to feel like manga comic
+   * like the town"): a countryside of Japan of our own, after Shirakawa-go,
+   * the castle ruins, the water wheels of Asakura and the boat houses of
+   * Ine, with nothing of any game's in it (src/maps/hotaru/). Built by the
+   * built map's pipeline, flown on the five inch at life size, and off the
+   * board like the houses.
+   */
+  {
+    id: 'hotaru',
+    name: 'Hotaru Valley',
+    mode: 'freestyle',
+    note: 'A valley in the Japanese countryside: rice paddies and drying racks, thatched farmhouses, a water mill, a shrine with a tunnel of torii, terraces up the hill, a castle ruin, and a fishing harbour with a torii standing in the sea.',
+    buildMs: MAP_BUILD_MS.hotaru,
+    load: () => import('./hotaru/index.js'),
+  },
+  /*
+   * MOMIJI PASS, on the owner's ask of 31 October 2026 (a mountain pass
+   * road map, "we want the maps to feel like manga comic like the town"): a
+   * Japanese touge of our own in autumn, a loop of hairpins up one face of
+   * a mountain and down the other, a gorge crossed on a red arch bridge, a
+   * tunnel under the ridge, a rest stop at the pass, and cars on the road
+   * (src/maps/touge/). Built by the built map's pipeline and flown on the
+   * five inch at life size; off the board like the houses.
+   */
+  {
+    id: 'touge',
+    name: 'Momiji Pass',
+    mode: 'freestyle',
+    note: 'A mountain pass road in autumn. Hairpins stacked up the mountain, cars to chase, a tunnel under the ridge, a red bridge over the gorge, and a tea house at the top.',
+    buildMs: MAP_BUILD_MS.touge,
+    load: () => import('./touge/index.js'),
+  },
+  /*
+   * TONBO FEST, on the owner's ask of 31 October 2026: a drone racing
+   * festival of our own on a river's sports ground under the levee, in the
+   * town's manga look: inflatable gates, the pits, the stage, the stalls,
+   * the railway bridge (src/maps/fest/). Built by the built map's pipeline
+   * and flown on the five inch at life size; off the board like the houses.
+   */
+  {
+    id: 'fest',
+    name: 'Tonbo Fest',
+    mode: 'freestyle',
+    note: 'A drone racing festival on the river ground under the levee. Sixteen gates in one lap, the pits, the main stage, the food stalls, the sluice gate and the railway bridge over the river.',
+    buildMs: MAP_BUILD_MS.fest,
+    load: () => import('./fest/index.js'),
+  },
+  /*
+   * HYOURA ISLAND, on the owner's ask of 31 October 2026 (the new
+   * maps, section 10, "we want the maps to feel like manga comic
+   * like the town"): an island of our own after the drift ice coast of
+   * Shiretoko, with its cliffs and waterfalls, its bergs and sea ice, a
+   * fishing hamlet and a lighthouse on the cape (src/maps/arctic/). Built
+   * by the built map's pipeline and flown on the five inch at life size;
+   * off the board like the houses.
+   */
+  {
+    id: 'arctic',
+    name: 'Hyoura Island',
+    mode: 'freestyle',
+    note: 'A winter island in the drift ice. Thread the iceberg arch, skim the floes, dive the cliffs beside the falls, find the grotto behind them and orbit the lighthouse on the cape.',
+    buildMs: MAP_BUILD_MS.arctic,
+    load: () => import('./arctic/index.js'),
+  },
+  /*
+   * TSUKIMI DANCHI, on the owner's ask of 31 October 2026 (a city bando,
+   * "we want the maps to feel like manga comic like the town"): an
+   * abandoned 1970s housing estate in the middle of the town's kind of
+   * city, its five storey block holed floor by floor, its annex, its water
+   * tank, its boiler house, and the viaduct and the streets round it
+   * (src/maps/haikyo/). Built by the built map's pipeline and flown on the
+   * five inch at life size; off the board like the houses.
+   */
+  {
+    id: 'haikyo',
+    name: 'Tsukimi Danchi',
+    mode: 'freestyle',
+    note: 'An abandoned housing estate in the middle of the city: a five storey block with its floors falling in, open stair towers, a bridge to the old shopping annex, a water tank on legs, a boiler house and a railway viaduct. Twelve orange plates mark a race through it.',
+    buildMs: MAP_BUILD_MS.haikyo,
+    load: () => import('./haikyo/index.js'),
+  },
+  /*
+   * HAYATE CIRCUIT, on the owner's ask of 31 October 2026 (section 14 of
+   * the map ideas, "Racetrack"): an international road circuit of our own
+   * in the Japanese hills in autumn, built from how the real ones are laid
+   * out, with GT cars lapping it, a pit building to fly through, a covered
+   * grandstand, bridges over the track, a sky wheel in the infield and a
+   * volcano on the horizon (src/maps/hayate/). Built by the built map's
+   * pipeline and flown on the five inch at life size; off the board like
+   * the houses.
+   */
+  {
+    id: 'hayate',
+    name: 'Hayate Circuit',
+    mode: 'freestyle',
+    note: 'A race circuit in the hills in autumn. GT cars lap it flat out: chase them down the straight, thread the pit garages, the grandstand roof and the tunnels under it, the bridges, the giant tyre and the sky wheel.',
+    buildMs: MAP_BUILD_MS.hayate,
+    load: () => import('./hayate/index.js'),
+  },
+  /*
    * HINODE PARK, on the owner's ask of 31 October 2026, a city park "like
    * the town", in its manga look: a Japanese ward park with a ball ground,
    * a pond and its drum bridge, a playground and the octopus mountain, and
@@ -513,6 +649,8 @@ export const DRIFT_DOC_ID = 'trk-d81f7a75';
 export const BALL_DOC_ID = 'trk-ba11b0a1';
 /* Ridgeline MX's (src/maps/moto/yard.js), the same way. */
 export const MOTO_DOC_ID = 'trk-3c07e5a1';
+/* Kazesuna Dunes' (src/maps/dunes/yard.js), the same way. */
+export const DUNES_DOC_ID = 'trk-d07e5a17';
 /* Kumoi Towers' (src/maps/towers/yard.js), the same way. */
 export const TOWERS_DOC_ID = 'trk-70e15c10';
 /* Bakuon Dome's (src/maps/dome/yard.js), the same way. */
@@ -524,6 +662,8 @@ export const FMX_DOC_ID = 'trk-f3a10c55';
 /* Kazami Airfield's (src/maps/airfield/yard.js), the same way. */
 export const AIRFIELD_DOC_ID = 'trk-a1f1e1d0';
 
+/* Ekimae Drift's (src/maps/ekimae/yard.js), the same way. */
+export const EKIMAE_DOC_ID = 'trk-e4a1d21f';
 /* Kamome Wharf's (src/maps/dock/doc.js), the same way. */
 export const DOCK_DOC_ID = 'trk-d0c4a3e7';
 
@@ -531,6 +671,8 @@ export const DOCK_DOC_ID = 'trk-d0c4a3e7';
 export const FACTORY_DOC_ID = 'trk-fac70e31';
 /* Kodama Onsen's (src/maps/cedar/yard.js), the same way. */
 export const CEDAR_DOC_ID = 'trk-ced4a0e5';
+/* Momiji Pass's (src/maps/touge/yard.js), the same way. */
+export const TOUGE_DOC_ID = 'trk-70a9e5a1';
 /* Kazahana Plain's (src/maps/kaza/yard.js), the same way. */
 export const KAZA_DOC_ID = 'trk-ca2a4a7a';
 /* Kirigaoka Sanatorium's (src/maps/sana/yard.js), the same way. */
@@ -540,12 +682,23 @@ export const SANA_DOC_ID = 'trk-5a7a0b10';
 export const ALPS_DOC_ID = 'trk-a195a1e5';
 /* Hoshino Shoji's (src/maps/office/yard.js), the same way. */
 export const OFFICE_DOC_ID = 'trk-0f1ce5a1';
+/* Tsukimi Danchi's (src/maps/haikyo/yard.js), the same way. */
+export const HAIKYO_DOC_ID = 'trk-4a1c7d0e';
 
+/* Hyoura Island's (src/maps/arctic/yard.js), the same way. */
+export const ARCTIC_DOC_ID = 'trk-a7c71c00';
 /* Tanada RX's (src/maps/rally/yard.js), the same way. */
 export const RALLY_DOC_ID = 'trk-7a11c0b5';
+/* Hotaru Valley's (src/maps/hotaru/yard.js), the same way. */
+export const HOTARU_DOC_ID = 'trk-f1ef1ae5';
 
 export function mapById(id) {
   return MAPS.find((m) => m.id === id) ?? MAPS[0];
 }
+
+/* Tonbo Fest's (src/maps/fest/yard.js), the same way. */
+export const FEST_DOC_ID = 'trk-70b0f357';
+/* Hayate Circuit's (src/maps/hayate/yard.js), the same way. */
+export const HAYATE_DOC_ID = 'trk-4a7a7e01';
 /* Hinode Park's (src/maps/park/yard.js), the same way. */
 export const PARK_DOC_ID = 'trk-b0e7a1c5';

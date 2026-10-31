@@ -358,6 +358,13 @@ const WORLDS = [
   { id: 'moto', file: 'moto.jpg', name: 'Ridgeline MX' },
   /* Hinode Park, added 31 October 2026. */
   { id: 'park', file: 'park.jpg', name: 'Hinode Park' },
+  /* Ekimae Drift, added 31 October 2026, from its default orbit. */
+  { id: 'ekimae', file: 'ekimae.jpg', name: 'Ekimae Drift' },
+  /* Hyoura Island, added 31 October 2026: the hamlet and its harbour from
+   * the hill to its west, its boats and the co-op. */
+  { id: 'arctic', file: 'arctic.jpg', name: 'Hyoura Island', shot: { tp: 0.45, tr: 0.6, ta: -0.8 } },
+  /* Kazesuna Dunes, added 31 October 2026. */
+  { id: 'dunes', file: 'dunes.jpg', name: 'Kazesuna Dunes' },
   /* Kamome Wharf, added 31 October 2026. */
   { id: 'dock', file: 'dock.jpg', name: 'Kamome Wharf' },
   /* Raicho Ridge, added 31 October 2026, from high over the valley so the
@@ -373,6 +380,9 @@ const WORLDS = [
   /* Kodama Onsen, added 31 October 2026, picked by eye: the inn from the
    * car park side, the shrine's approach and the forest behind it. */
   { id: 'cedar', file: 'cedar.jpg', name: 'Kodama Onsen', shot: { tp: 0.55, tr: 0.75, ta: -1.9 } },
+  /* Momiji Pass, added 31 October 2026: the shot is the map's own cardLens
+   * (src/maps/touge/index.js), over the valley with the red bridge in front. */
+  { id: 'touge', file: 'touge.jpg', name: 'Momiji Pass' },
   /* Hoshino Shoji, added 31 October 2026. Indoors like Thomas More's Shop,
    * so it names its own lens too (CARD_LENS in src/maps/office/office.js). */
   { id: 'office', file: 'office.jpg', name: 'Hoshino Shoji' },
@@ -386,6 +396,17 @@ const WORLDS = [
   /* Shiroyama FMX, added 31 October 2026 with its picture, from the
    * south east so the kickers, the yagura and the castle are in it. */
   { id: 'fmx', file: 'fmx.jpg', name: 'Shiroyama FMX', shot: { tp: 0.5, tr: 0.75, ta: -0.6 } },
+  { id: 'hotaru', file: 'hotaru.jpg', name: 'Hotaru Valley' },
+  /* Tonbo Fest, added 31 October 2026 with its picture, so its card is
+   * never blank: from over the race, the stage, the stalls and the railway
+   * across the river in it. */
+  { id: 'fest', file: 'fest.jpg', name: 'Tonbo Fest', shot: { tp: 0.45, tr: 0.6, ta: 0.8 } },
+  /* Tsukimi Danchi, added 31 October 2026, from the south east and high
+   * enough that the block, the yard and the viaduct are all in it. */
+  { id: 'haikyo', file: 'haikyo.jpg', name: 'Tsukimi Danchi', shot: { tp: 0.68, tr: 1.5, ta: -1.9 } },
+  /* Hayate Circuit, added 31 October 2026, picked by eye from three: the
+   * sky wheel in front, the pits, the stands and the tower behind. */
+  { id: 'hayate', file: 'hayate.jpg', name: 'Hayate Circuit', shot: { tp: 0.45, tr: 0.7, ta: 1.57 } },
 ];
 
 async function drawWorlds(opts) {

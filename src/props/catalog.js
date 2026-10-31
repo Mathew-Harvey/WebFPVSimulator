@@ -42,17 +42,22 @@ import * as WINDMILL from './windmill.js';
 import * as HOMES from './homes.js';
 import * as SUNNY from './sunny.js';
 import * as PARK from './park.js';
+import * as ARCTIC from './arctic.js';
 import * as DOCK from './dock.js';
 import * as FACTORY from './factory.js';
 import * as ALPINE from './alpine.js';
 import * as TOWERS from './towers.js';
 import * as SHIOKAZE from './shiokaze.js';
 import * as CEDAR from './cedar.js';
+import * as TOUGE from './touge.js';
 import * as OFFICE from './office.js';
 import * as KAZA from './kaza.js';
 import * as SANATORIUM from './sanatorium.js';
 import * as RALLY from './rally.js';
 import * as AIRFIELD from './airfield.js';
+import * as HOTARU from './hotaru.js';
+import * as FEST from './fest.js';
+import * as HAIKYO from './haikyo.js';
 import { buildingLayout, buildingDraw, bandoLayout, bandoDraw } from './buildings.js';
 import {
   craneLayout, craneDraw, waterLayout, waterDraw, mastLayout, mastDraw, chimneyLayout, chimneyDraw,
@@ -156,7 +161,12 @@ const FAMILIES = {
   buildings: BUILDINGS, industrial: INDUSTRIAL, street: STREET, skate: SKATE, course: COURSE, windmill: WINDMILL, homes: HOMES, sunny: SUNNY, factory: FACTORY, cedar: CEDAR, dock: DOCK, towers: TOWERS, alpine: ALPINE, office: OFFICE, kaza: KAZA,
   sanatorium: SANATORIUM,
   shiokaze: SHIOKAZE, rally: RALLY,
-  airfield: AIRFIELD, park: PARK,
+  airfield: AIRFIELD, hotaru: HOTARU,
+  fest: FEST, touge: TOUGE,
+  arctic: ARCTIC,
+  fest: FEST,
+  haikyo: HAIKYO,
+  park: PARK,
 };
 export const FAMILY_MATERIALS = {};
 export const FAMILY_PAINTERS = {};

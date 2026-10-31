@@ -497,7 +497,7 @@ const AXIS_X = new THREE.Vector3(1, 0, 0);
  * alone. The entry is written out because it has moved with the directory:
  * it was three before looks.js came and four before egg.js, and with no
  * entry then the bar sat at 75 percent until the import resolved. */
-const MAP_MODULE_COUNT = { field: 1, city: 72, custom: 1, built: 5, house: 3, heads: 4, bardwell: 4, warehouse: 3, goats: 9, sunny: 12, drift: 3 };
+const MAP_MODULE_COUNT = { field: 1, city: 72, custom: 1, built: 5, house: 3, heads: 4, bardwell: 4, warehouse: 3, goats: 9, sunny: 12, drift: 3, towers: 11 };
 /* Where a map's modules live, so the loading bar can count them. Data, not a
  * ternary: the ternary read "field or else city", so a third map counted its
  * modules under the city's prefix and the bar sat at zero.
@@ -518,6 +518,7 @@ const MAP_MODULE_PREFIX = {
   goats: '/src/maps/goats/',
   sunny: '/src/maps/sunny/',
   drift: '/src/maps/drift/',
+  cedar: '/src/maps/cedar/',
 };
 
 /*
@@ -9201,8 +9202,8 @@ export async function boot({ loading, bootStart, mapId }) {
       return;
     }
     /* Nor for Drift Matsuri: DRIFT_OFF_BOARD in src/ui/ui.js. */
-    if (view.id === 'drift' || view.id === 'moto' || view.id === 'fest') {
-      const name = { moto: 'Ridgeline MX', fest: 'Tonbo Fest' }[view.id] || 'Drift Matsuri';
+    if (view.id === 'drift' || view.id === 'moto' || view.id === 'dome' || view.id === 'towers' || view.id === 'fest') {
+      const name = { moto: 'Ridgeline MX', dome: 'Bakuon Dome', towers: 'Kumoi Towers', fest: 'Tonbo Fest' }[view.id] || 'Drift Matsuri';
       notice = {
         text: `The board keeps no runs for ${name}, so its runs stay here.`,
         untilMs: performance.now() + 4200,
@@ -9229,6 +9230,14 @@ export async function boot({ loading, bootStart, mapId }) {
     if (view.id === 'sunny') {
       notice = {
         text: 'The board keeps no runs for Sunnyfield, so its runs stay here.',
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
+    /* Nor for Kodama Onsen: CEDAR_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'cedar') {
+      notice = {
+        text: 'The board keeps no runs for Kodama Onsen, so its runs stay here.',
         untilMs: performance.now() + 4200,
       };
       return;

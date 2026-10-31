@@ -110,6 +110,8 @@ const WORLDS = {
   sunny: { name: 'Sunnyfield', thumb: 'sunny' },
   drift: { name: 'Drift Matsuri', thumb: 'drift' },
   ball: { name: 'Quad Ball', thumb: 'ball' },
+  towers: { name: 'Kumoi Towers', thumb: 'towers' },
+  cedar: { name: 'Kodama Onsen', thumb: 'cedar' },
   moto: { name: 'Ridgeline MX', thumb: 'moto' },
   fest: { name: 'Tonbo Fest', thumb: 'fest' },
   built: { name: 'Hibari Yard', thumb: 'yard' },

@@ -567,7 +567,7 @@ function quadPickCopy(craftId, rec, mapScale, mapId) {
     };
   }
   if (craftId === '5inch') {
-    const place = { house: 'house', heads: 'house', warehouse: 'shop' }[mapId];
+    const place = { house: 'house', heads: 'house', warehouse: 'shop', office: 'office' }[mapId];
     return {
       stamp: 'Tight!', rec: false, fit, fitLabel,
       says: place ? `A real five inch in a real ${place}. Loud, fast and tight.` : 'A real five inch in here. Loud, fast and tight.',
@@ -999,15 +999,16 @@ const scoringBoardBuilt = (where) => 'Scored run: two minutes from the first thi
 function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
   const built = mapId === 'built' || mapId === 'house' || mapId === 'heads' || mapId === 'bardwell' || mapId === 'warehouse'
     || mapId === 'goats' || mapId === 'sunny' || mapId === 'drift' || mapId === 'ball' || mapId === 'moto' || mapId === 'dome' || mapId === 'cedar'
-    || mapId === 'towers' || mapId === 'alps'
+    || mapId === 'towers' || mapId === 'alps' || mapId === 'office' || mapId === 'kaza'
     || mapId === 'hotaru';
   const where = mapId === 'house' ? "Nick's house"
     : mapId === 'heads' ? "Heads' house"
       : mapId === 'bardwell' ? "Joshua's house"
         : mapId === 'warehouse' ? "Thomas's shop"
+          : mapId === 'office' ? 'Hoshino Shoji'
           : mapId === 'goats' ? "Heads' street"
           : mapId === 'sunny' ? 'Sunnyfield'
-            : mapId === 'drift' ? 'Drift Matsuri' : mapId === 'ball' ? 'Quad Ball' : mapId === 'moto' ? 'Ridgeline MX' : mapId === 'dome' ? 'Bakuon Dome' : mapId === 'cedar' ? 'Kodama Onsen' : mapId === 'towers' ? 'Kumoi Towers' : mapId === 'alps' ? 'Raicho Ridge'
+            : mapId === 'drift' ? 'Drift Matsuri' : mapId === 'ball' ? 'Quad Ball' : mapId === 'moto' ? 'Ridgeline MX' : mapId === 'dome' ? 'Bakuon Dome' : mapId === 'cedar' ? 'Kodama Onsen' : mapId === 'towers' ? 'Kumoi Towers' : mapId === 'alps' ? 'Raicho Ridge' : mapId === 'kaza' ? 'Kazahana Plain'
               : mapId === 'hotaru' ? 'Hotaru Valley' : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
   if (mode === 'off') {
     return `${drawn ? '' : `${SCORING_UNDRAWN} `}${scoringOff(where)} ${built ? scoringMoreBuilt(where) : SCORING_MORE}`;
@@ -1061,6 +1062,10 @@ const BARDWELL_OFF_BOARD = "The board keeps no runs for Joshua Bardwell's house,
 const WAREHOUSE_OFF_BOARD = "The board keeps no runs for Thomas More's Shop, so a run flown there stays here."
   + ' Fly the town for a run that can go up.';
 
+/* Hoshino Shoji, the same way. */
+const OFFICE_OFF_BOARD = 'The board keeps no runs for Hoshino Shoji, so a run flown there stays here.'
+  + ' Fly the town for a run that can go up.';
+
 /* The goat map, the same way. */
 const GOATS_OFF_BOARD = 'The board keeps no runs for 90%er goat herding, so a run flown there stays here.'
   + ' Fly the town for a run that can go up.';
@@ -1083,6 +1088,7 @@ const TOWERS_OFF_BOARD = 'The board keeps no runs for Kumoi Towers, so a run flo
 const DOME_OFF_BOARD = 'The board keeps no runs for Bakuon Dome, so a run flown there stays here.'
   + ' Fly the town for a run that can go up.';
 const CEDAR_OFF_BOARD = 'The board keeps no runs for Kodama Onsen, so a run flown there stays here.';
+const KAZA_OFF_BOARD = 'The board keeps no runs for Kazahana Plain, so a run flown there stays here.';
 /* Hotaru Valley, the same way. */
 const HOTARU_OFF_BOARD = 'The board keeps no runs for Hotaru Valley, so a run flown there stays here.'
   + ' Fly the town for a run that can go up.';
@@ -11442,6 +11448,7 @@ export class Ui {
           || this.settings.map === 'bardwell' || this.settings.map === 'warehouse' || this.settings.map === 'goats'
           || this.settings.map === 'sunny' || this.settings.map === 'drift' || this.settings.map === 'ball' || this.settings.map === 'moto'
           || this.settings.map === 'dome' || this.settings.map === 'cedar' || this.settings.map === 'towers' || this.settings.map === 'alps'
+          || this.settings.map === 'office' || this.settings.map === 'kaza'
           || this.settings.map === 'hotaru';
         return [
           { label: 'Fly again', action: 'restart', primary: true },
@@ -11471,6 +11478,7 @@ export class Ui {
                 : this.settings.map === 'heads' ? HEADS_OFF_BOARD
                   : this.settings.map === 'bardwell' ? BARDWELL_OFF_BOARD
                     : this.settings.map === 'warehouse' ? WAREHOUSE_OFF_BOARD
+                    : this.settings.map === 'office' ? OFFICE_OFF_BOARD
                       : this.settings.map === 'goats' ? GOATS_OFF_BOARD
                         : this.settings.map === 'sunny' ? SUNNY_OFF_BOARD
                           : this.settings.map === 'drift' ? DRIFT_OFF_BOARD
@@ -11480,6 +11488,7 @@ export class Ui {
                           : this.settings.map === 'towers' ? TOWERS_OFF_BOARD
                           : this.settings.map === 'dome' ? DOME_OFF_BOARD
                           : this.settings.map === 'cedar' ? CEDAR_OFF_BOARD
+                          : this.settings.map === 'kaza' ? KAZA_OFF_BOARD
                           : this.settings.map === 'hotaru' ? HOTARU_OFF_BOARD
                       : (this.sharedMap ? BOARD_MAP_OFF_BOARD : BUILT_OFF_BOARD)) : (nothing
                 ? 'A run with no tricks in it is not a score. Fly one and it appears here.'

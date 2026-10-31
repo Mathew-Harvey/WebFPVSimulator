@@ -157,6 +157,6 @@ blocked in .loop/blocked.md.
 When Loop B goes green, you have a simulator that is deterministic, frame-rate independent, and physically plausible within the bands you set. You do not yet have one that feels right. That gate is human:
 
 1. Fly it yourself with your own radio and your own Betaflight diff. Does changing your rates change it in the direction you expect?
-2. Blind A and B against VelociDrone with two or three club pilots, no labels, same track shape, same rates. If they cannot reliably pick which is which on feel alone, Stage 1 is done.
+2. Blind A and B against another simulator with two or three club pilots, no labels, same track shape, same rates. If they cannot reliably pick which is which on feel alone, Stage 1 is done.
 
 If it fails that test, the useful move is not to tune by hand. It is to work out which measurable thing is wrong, add it to STAGE1.md as a new check with a band, re-run Loop A to build the check, then Loop B to make it pass. Every time your judgement catches something the harness missed, encode it. The harness is the asset. The sim is downstream of it.

@@ -52,6 +52,7 @@ import * as KAZA from './kaza.js';
 import * as SANATORIUM from './sanatorium.js';
 import * as RALLY from './rally.js';
 import * as AIRFIELD from './airfield.js';
+import * as HOTARU from './hotaru.js';
 import { buildingLayout, buildingDraw, bandoLayout, bandoDraw } from './buildings.js';
 import {
   craneLayout, craneDraw, waterLayout, waterDraw, mastLayout, mastDraw, chimneyLayout, chimneyDraw,
@@ -155,7 +156,7 @@ const FAMILIES = {
   buildings: BUILDINGS, industrial: INDUSTRIAL, street: STREET, skate: SKATE, course: COURSE, windmill: WINDMILL, homes: HOMES, sunny: SUNNY, factory: FACTORY, cedar: CEDAR, dock: DOCK, towers: TOWERS, alpine: ALPINE, office: OFFICE, kaza: KAZA,
   sanatorium: SANATORIUM,
   shiokaze: SHIOKAZE, rally: RALLY,
-  airfield: AIRFIELD,
+  airfield: AIRFIELD, hotaru: HOTARU,
 };
 export const FAMILY_MATERIALS = {};
 export const FAMILY_PAINTERS = {};

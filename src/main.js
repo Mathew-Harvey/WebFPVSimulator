@@ -530,6 +530,7 @@ const MAP_MODULE_PREFIX = {
   kaza: '/src/maps/kaza/',
   sana: '/src/maps/sana/',
   airfield: '/src/maps/airfield/',
+  hotaru: '/src/maps/hotaru/',
 };
 
 /*
@@ -6813,6 +6814,7 @@ export async function boot({ loading, bootStart, mapId }) {
     starter: 'yard', injected: 'board', canvas: 'own', house: 'house', heads: 'heads', bardwell: 'bardwell', warehouse: 'warehouse', goats: 'goats', sunny: 'sunny', factory: 'factory', office: 'office', kaza: 'kaza', sana: 'sana', shiokaze: 'shiokaze',
     airfield: 'airfield',
     dunes: 'dunes',
+    airfield: 'airfield', hotaru: 'hotaru',
   };
   function markMapWord(mark) {
     return String(mark.key).startsWith('city#') ? 'city' : (MARK_MAP_WORDS[view.source] || null);
@@ -9290,6 +9292,14 @@ export async function boot({ loading, bootStart, mapId }) {
     if (view.id === 'sana') {
       notice = {
         text: 'The board keeps no runs for Kirigaoka Sanatorium, so its runs stay here.',
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
+    /* Nor for Hotaru Valley: HOTARU_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'hotaru') {
+      notice = {
+        text: 'The board keeps no runs for Hotaru Valley, so its runs stay here.',
         untilMs: performance.now() + 4200,
       };
       return;

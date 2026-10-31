@@ -111,6 +111,7 @@ const MAP_ROOTS = {
   sana: 'src/maps/sana/index.js',
   rally: 'src/maps/rally/index.js',
   fmx: 'src/maps/fmx/index.js',
+  hotaru: 'src/maps/hotaru/index.js',
 };
 
 /* three@0.160.0's add-ons, and what each imports besides 'three'. Read off

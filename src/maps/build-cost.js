@@ -134,4 +134,8 @@ export const MAP_BUILD_MS = {
   /* Kazami Airfield (src/maps/airfield/): a valley of terraces and cedars,
    * the hangar and the field. An estimate until it is measured. */
   airfield: 2600,
+  /* Hotaru Valley (src/maps/hotaru/): the land grid, two thousand trees
+   * and a village, a castle and a harbour. An estimate until it is
+   * measured. */
+  hotaru: 2800,
 };

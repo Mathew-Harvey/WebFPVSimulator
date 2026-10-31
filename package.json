@@ -82,6 +82,7 @@
     "check:kaza": "node scripts/kaza-check.js",
     "check:sana": "node scripts/sana-check.js",
     "check:airfield": "node scripts/airfield-check.js",
+    "check:hotaru": "node scripts/hotaru-check.js",
     "check:yard": "node scripts/yardtrack-check.js",
     "check:windmill": "node scripts/windmill-check.js",
     "check:room": "node scripts/room-check.js",

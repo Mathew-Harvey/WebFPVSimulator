@@ -97,6 +97,7 @@ const MAP_ROOTS = {
   drift: 'src/maps/drift/index.js',
   ball: 'src/maps/ball/index.js',
   moto: 'src/maps/moto/index.js',
+  fmx: 'src/maps/fmx/index.js',
 };
 
 /* three@0.160.0's add-ons, and what each imports besides 'three'. Read off

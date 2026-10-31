@@ -229,6 +229,26 @@ export const CASTLE = {
   moat: { x0: 13, x1: 77, y0: 82, y1: 138, coping: 1.0, copingT: 1.4 },
   bridge: { x0: 63, x1: 77, y: 110, half: 2.2, rise: 2.8, deckT: 0.35 },
 };
+/* The ishigaki's batter: the share of its setback reached at a share t of
+ * its height. Steep at the top and flaring out at the foot, the fan curve
+ * a castle base is laid to; the solids step to it and ./dress.js draws it. */
+export function batter(t) {
+  return 1 - (1 - t) * (1 - t);
+}
+
+/* The castle path from the bridge to the riders' gate: stone lanterns down
+ * both sides, nobori on poles, and festival stalls (yatai) facing it. */
+export const PATH = { x0: 78.4, x1: 110, y0: 106, y1: 114 };
+export const LANTERNS = [];
+export const NOBORI_POLES = [];
+for (let x = 81; x < 97; x += 5) {
+  LANTERNS.push({ x, y: 104.4 }, { x: x + 2.5, y: 115.6 });
+}
+for (let x = 80; x < 110; x += 4) {
+  NOBORI_POLES.push({ x, y: 102.6, k: Math.round(x / 4) % 4 }, { x: x + 2, y: 117.4, k: (Math.round(x / 4) + 2) % 4 });
+}
+export const STALLS = [[97, 74], [104, 74], [97, 146], [104, 146]];
+
 /* The tiers' bases and tops, worked out once. */
 export const KEEP = [];
 {
@@ -428,7 +448,7 @@ function towers(P) {
 function castle(P) {
   const { x, y, base, eaveOut, moat, bridge } = CASTLE;
   for (let i = 0; i < base.steps; i += 1) {
-    const u = (i + 0.5) / base.steps;
+    const u = batter((i + 0.5) / base.steps);
     const hw = (base.w0 + (base.w1 - base.w0) * u) / 2;
     const hd = (base.d0 + (base.d1 - base.d0) * u) / 2;
     const h0 = (base.h * i) / base.steps;
@@ -489,6 +509,20 @@ export function bridgeAt(x) {
   return 0.6 + rise * v * (1.5 - 0.5 * v);
 }
 
+/* The path's lanterns and poles, and the stalls. */
+function path(P) {
+  for (const l of LANTERNS) {
+    pcap(P, 'fxStone', l.x, l.y, 0.3, l.x, l.y, 1.6, 0.3, { draw: false, kind: 'obstacle', name: 'stone lantern' });
+  }
+  for (const n of NOBORI_POLES) {
+    ppost(P, 'fxSteel', n.x, n.y, 0, 4.6, 0.04, { draw: false, kind: 'pole', name: 'nobori pole' });
+  }
+  for (const [x, y] of STALLS) {
+    pbox(P, 'fxTimber', x - 2.5, y - 1.5, 0, x + 2.5, y + 1.5, 1.0, { draw: false, name: 'stall counter' });
+    pbox(P, 'fxRoof', x - 2.9, y - 1.9, 2.4, x + 2.9, y + 1.9, 2.6, { draw: false, name: 'stall roof' });
+  }
+}
+
 /* The pits' tents, solid at their canopy and their legs. */
 function pit(P) {
   for (const [x0, y0] of PIT_TENTS) {
@@ -539,6 +573,7 @@ export function arenaLayout() {
   towers(P);
   castle(P);
   pit(P);
+  path(P);
   MEMO = { parts: P.list, zones: zones(), line: loopLine() };
   return MEMO;
 }

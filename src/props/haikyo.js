@@ -107,5 +107,4 @@ export const MATERIALS = {
   hkOrange: { c: 0xf08a34, tint: 0x80504e },
   hkInk: { c: 0x2a2632, tint: 0x22202e },
   hkDark: { f: 0x3a3646, noCast: true },
-  hkLamp: { f: 0xfff2c8, noCast: true },
 };

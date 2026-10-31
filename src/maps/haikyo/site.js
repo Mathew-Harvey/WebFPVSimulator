@@ -39,6 +39,8 @@ export const SITE = { x0: 42, x1: 152, y0: 33, y1: 124 };
 export const GATE = { x0: 92, x1: 100, open0: 96.2, post: 0.4, h: 3.0 };
 export const SWINGS = { x0: 80, x1: 86, py: 50, bar: 2.6 };
 export const MOUNTAIN = { x0: 73, x1: 83, y0: 54, y1: 64, h: 3.6, t0: 76.8, t1: 79.2, th: 2.2 };
+/* Where a tuft's blades stand round its root, as unit steps. */
+const SPLAY = [[1, 0], [-0.5, 0.87], [-0.5, -0.87], [0, 0]];
 export const SHED = { x0: 64, x1: 114, y0: 112.6, y1: 118.2, h: 2.3, bay: 5 };
 const GYM = { x0: 87, y0: 58, n: 3, s: 0.8 };
 
@@ -136,8 +138,17 @@ export function site(T) {
       if (x > 57 && x < 73 && y > 55 && y < 71) {
         continue;
       }
+      /* A tuft, not a cone: three or four thin blades of one colour,
+       * splayed round a root and none the same height, so a field of them
+       * reads as grass gone to seed and not as a field of markers. */
       const s = r.range(0.25, 0.7);
-      T.cone(r.chance(0.6) ? 'hkWeed' : 'hkWeedDry', x, y, 0, s, s * r.range(1.4, 2.6), 5);
+      const m = r.chance(0.6) ? 'hkWeed' : 'hkWeedDry';
+      const blades = r.int(3, 4);
+      for (let b = 0; b < blades; b += 1) {
+        const [ox, oy] = SPLAY[b];
+        const d = s * r.range(0.25, 0.55);
+        T.cone(m, x + d * (ox + r.range(-0.3, 0.3)), y + d * (oy + r.range(-0.3, 0.3)), 0, s * 0.32, s * r.range(1.6, 3.4), 4);
+      }
     }
   });
 

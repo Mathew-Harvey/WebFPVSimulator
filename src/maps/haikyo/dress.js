@@ -84,6 +84,8 @@ function rooms(T, r) {
       if (r.chance(0.7) && !overHole(k, xa + 4, B.yN - 0.6)) {
         T.deco('hkFridge', xa + 2.9, B.yN - 0.75, h, xa + 4.9, B.yN - 0.12, h + 0.85);
         T.deco('metal', xa + 3.4, B.yN - 0.6, h + 0.85, xa + 4.1, B.yN - 0.2, h + 0.87);
+        /* and the tiles over it, the one wipeable wall in the flat */
+        T.paint('hkBathTile', xa + 2.9, B.yN - 0.13, h + 0.87, xa + 4.9, B.yN - 0.11, h + 1.55);
       }
       /* A paper door fallen flat, a wardrobe's doors, a fridge, a
        * television on its back, a heap of bedding, boxes. */
@@ -275,21 +277,36 @@ function yard(T, r) {
 
 /* IVY up the west gable, the boiler house, the annex's south end and the
  * block walls: strips of leaf hung down the faces, each a little proud. */
+/*
+ * One climbing vine on a flat face: a stem up from the ground and leaves
+ * in clumps along it, each clump a different width and off centre by a
+ * different amount, wider at the foot where it has grown longest, so the
+ * silhouette is ragged the way a hand inks one and never reads as a
+ * letter. `face(u0, u1, h0, h1)` paints a patch on the face, `u` along it.
+ */
+function vine(face, u, top, r) {
+  face(u - 0.06, u + 0.06, 0, top);
+  for (let h = 0; h < top - 0.3; h += r.range(0.45, 0.8)) {
+    const reach = 0.35 + 1.1 * (1 - h / top);
+    const lean = r.range(-0.5, 0.5) * reach;
+    const w = r.range(0.35, 1) * reach;
+    face(u + lean - w, u + lean + w, h, Math.min(top, h + r.range(0.5, 0.9)));
+  }
+}
+
 function ivy(T, r) {
   const B = BLOCK;
-  for (let n = 0; n < 9; n += 1) {
-    const y = r.range(B.yB + 0.3, B.yC - 0.8);
-    const top = r.range(4, 13);
-    T.paint('hkIvy', B.x0 - 0.26, y, 0, B.x0 - 0.23, y + r.range(0.4, 1.1), top);
-    T.paint('hkIvy', B.x0 - 0.27, y - 0.3, top - 1.2, B.x0 - 0.24, y + 1.4, top);
+  const west = (u0, u1, h0, h1) => T.paint('hkIvy', B.x0 - 0.27, u0, h0, B.x0 - 0.23, u1, h1);
+  for (let n = 0; n < 7; n += 1) {
+    vine(west, r.range(B.yB + 1, B.yC - 1.2), r.range(4, 13), r);
   }
-  for (let n = 0; n < 6; n += 1) {
-    const x = r.range(BOILER.x0, BOILER.door0 - 0.5);
-    T.paint('hkIvy', x, BOILER.y0 - 0.16, 0, x + r.range(0.5, 1.4), BOILER.y0 - 0.13, r.range(2, BOILER.h + 0.3));
+  const boiler = (u0, u1, h0, h1) => T.paint('hkIvy', u0, BOILER.y0 - 0.16, h0, u1, BOILER.y0 - 0.13, h1);
+  for (let n = 0; n < 4; n += 1) {
+    vine(boiler, r.range(BOILER.x0 + 1, BOILER.door0 - 1.2), r.range(2, BOILER.h + 0.3), r);
   }
-  for (let n = 0; n < 5; n += 1) {
-    const x = r.range(ANNEX.x0, 124);
-    T.paint('hkIvy', x, ANNEX.y0 - 0.14, 0, x + r.range(0.4, 1.0), ANNEX.y0 - 0.11, r.range(2, 6));
+  const annexSouth = (u0, u1, h0, h1) => T.paint('hkIvy', u0, ANNEX.y0 - 0.14, h0, u1, ANNEX.y0 - 0.11, h1);
+  for (let n = 0; n < 3; n += 1) {
+    vine(annexSouth, r.range(ANNEX.x0 + 1, 123), r.range(2, 6), r);
   }
   for (let n = 0; n < 10; n += 1) {
     const y = r.range(SITE.y0 + 2, SITE.y1 - 2);

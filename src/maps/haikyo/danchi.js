@@ -403,7 +403,7 @@ export function danchi(T) {
 function stairTowers(T, r) {
   const B = BLOCK;
   const { y0, y1, w, land } = TOWER;
-  const fl = 1.4;
+  const fl = 1.45;
   for (const s of STAIRS) {
     const x0 = s.x;
     const x1 = s.x + w;
@@ -479,7 +479,7 @@ export function danchiGaps() {
     drop: { name: 'THE DROP', px: drop, py: B.yS, deg: 270, w: 3.6 - 2 * M, h0: M, h1: 2.05 - M, points: 2500 },
     pilotis: { name: 'THE PILOTIS', px: pil, py: B.yS, deg: 90, w: B.bay - B.col - 2 * M, h0: M, h1: B.fh - B.slab - B.beam - M, points: 250 },
     corridor: { name: 'THE CORRIDOR', px: bayX(5) + 3, py: (B.yN + 0.1 + B.yC - 0.2) / 2, deg: 0, w: (B.yC - 0.2) - (B.yN + 0.1) - 2 * M, h0: 2 * B.fh + M, h1: 3 * B.fh - B.slab - M, points: 500 },
-    stairwell: { name: 'THE STAIRWELL', px: west.x + TOWER.w / 2, py: TOWER.y0 + TOWER.land, deg: 270, w: TOWER.w - 0.4 - 2 * 1.4 - 0.3 - 2 * M, h0: M, h1: B.fh - 0.2 - M, points: 1000 },
+    stairwell: { name: 'THE STAIRWELL', px: west.x + TOWER.w / 2, py: TOWER.y0 + TOWER.land, deg: 270, w: TOWER.w - 0.4 - 2 * 1.45 - 0.3 - 2 * M, h0: M, h1: B.fh - 0.2 - M, points: 1000 },
     balcony: { name: 'THE BALCONIES', px: bayX(6), py: (B.yB + 0.2 + B.yS - B.col / 2) / 2, deg: 0, w: (B.yS - B.col / 2) - (B.yB + 0.2) - 2 * M, h0: B.fh + B.parapet + M, h1: 2 * B.fh - B.slab - M, points: 500 },
   };
 }

@@ -100,17 +100,21 @@ const MAP_ROOTS = {
   ball: 'src/maps/ball/index.js',
   moto: 'src/maps/moto/index.js',
   ekimae: 'src/maps/ekimae/index.js',
+  dunes: 'src/maps/dunes/index.js',
   alps: 'src/maps/alps/index.js',
   towers: 'src/maps/towers/index.js',
   dock: 'src/maps/dock/index.js',
   dome: 'src/maps/dome/index.js',
   shiokaze: 'src/maps/shiokaze/index.js',
   cedar: 'src/maps/cedar/index.js',
+  touge: 'src/maps/touge/index.js',
   office: 'src/maps/office/index.js',
   kaza: 'src/maps/kaza/index.js',
   sana: 'src/maps/sana/index.js',
   rally: 'src/maps/rally/index.js',
   fmx: 'src/maps/fmx/index.js',
+  hotaru: 'src/maps/hotaru/index.js',
+  fest: 'src/maps/fest/index.js',
 };
 
 /* three@0.160.0's add-ons, and what each imports besides 'three'. Read off

@@ -209,6 +209,46 @@ export const MATERIALS = {
   mxBlue: { c: 0x2f6fd0, tint: 0x2e4a7a },
   mxGreen: { c: 0x2f9a4c, tint: 0x2e5a4a },
   mxRed: { c: 0xd8333d, tint: 0x6e2f52 },
+  /* Kazesuna Dunes (src/maps/dunes/): bamboo and its joints, the straw
+   * of a sacred rope and a sun hat, sand fence slats, two timbers, a reed
+   * thatch, two roof tiles, a rusted tin roof, the camels and their
+   * saddles, a railcar's cream and red, ballast, rail, sleepers, the lift's
+   * steel and its chairs, a paraglider's two colours, the tetrapods'
+   * concrete, dune grass green and dry, a pear, driftwood, a glass float
+   * and a lifebuoy. Every other colour it draws is one of the town's. */
+  dnSand: { c: 0xecd4a2, tint: 0x8c7a98 },
+  dnSandDark: { c: 0xc9ab78, tint: 0x7a6688 },
+  dnBamboo: { c: 0xcdb769, tint: 0x7c6c70 },
+  dnBambooDark: { c: 0x8c8646, tint: 0x56566a },
+  dnStraw: { c: 0xe2cc84, tint: 0x8a7a76 },
+  dnSlat: { c: 0xb69a62, tint: 0x6c5c70 },
+  dnTimber: { c: 0xd5ad7c, tint: 0x7e687a },
+  dnWoodDark: { c: 0x5f4333, tint: 0x3e3048 },
+  dnThatch: { c: 0xb59a5e, tint: 0x6a5a6c },
+  dnRoof: { c: 0x4d5d77, tint: 0x343957 },
+  dnRoofRidge: { c: 0x353f55, tint: 0x272a44 },
+  dnRoofRust: { c: 0xa8533e, tint: 0x5e3a52 },
+  dnCamel: { c: 0xc79a5d, tint: 0x7a5a64 },
+  dnCamelDark: { c: 0x8d653f, tint: 0x553f52 },
+  dnSaddle: { c: 0xcc3340, tint: 0x6e2f52 },
+  dnSaddleGold: { c: 0xe8b53a, tint: 0x8a6a50 },
+  dnTrainCream: { c: 0xf0e6cc, tint: 0x8a83a2 },
+  dnTrainRed: { c: 0xc9473b, tint: 0x6a3a58 },
+  dnBallast: { c: 0x8e8a86, tint: 0x5a5672 },
+  dnRail: { c: 0x7d6a5f, tint: 0x4a3e52 },
+  dnSleeper: { c: 0x6b5a4c, tint: 0x45394f },
+  dnLift: { c: 0x6f8aa2, tint: 0x4a4a6c },
+  dnChair: { c: 0xe39f38, tint: 0x7a5a50 },
+  dnWing: { c: 0xf2c32d, tint: 0x8a7050 },
+  dnWingRed: { c: 0xe1473b, tint: 0x7a3a5a },
+  dnTetra: { c: 0xbcb6ad, tint: 0x67607e },
+  dnGrass: { c: 0x7f9f55, tint: 0x4c6470 },
+  dnGrassDry: { c: 0xc2b06a, tint: 0x7a6a6a },
+  dnPear: { c: 0xd8c95a, tint: 0x7f7660 },
+  dnDrift: { c: 0xb4a48e, tint: 0x6a6078 },
+  dnFloat: { c: 0x72b89a, tint: 0x3f6a6a },
+  dnBuoy: { c: 0xf06a24, tint: 0x80482e },
+  dnPineBark: { c: 0x6a4f42, tint: 0x45354c },
   /* Bakuon Dome (src/maps/dome/): the hall's dirt and the ramps' darker
    * dirt, the concourse's paving, the cream concrete of the bowl and its
    * fascia, the outer walls' panel white, the roof's steel, the catwalk's

@@ -116,8 +116,11 @@ const WORLDS = {
   shiokaze: { name: 'Shiokaze Point', thumb: 'shiokaze' },
   cedar: { name: 'Kodama Onsen', thumb: 'cedar' },
   ekimae: { name: 'Ekimae Drift', thumb: 'ekimae' },
+  touge: { name: 'Momiji Pass', thumb: 'touge' },
   dock: { name: 'Kamome Wharf', thumb: 'dock' },
   office: { name: 'Hoshino Shoji', thumb: 'office' },
+  hotaru: { name: 'Hotaru Valley', thumb: 'hotaru' },
+  fest: { name: 'Tonbo Fest', thumb: 'fest' },
   built: { name: 'Hibari Yard', thumb: 'yard' },
 };
 

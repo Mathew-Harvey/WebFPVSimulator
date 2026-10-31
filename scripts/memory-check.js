@@ -74,7 +74,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
  * map the only thing either can fetch is its own three files, and what the
  * default run asks of it is the release. Their borrowing is proved on its
  * own, first in a page of its own: --map=house, --map=heads. */
-const HEAVY = ['built', 'city', 'house', 'heads', 'bardwell', 'warehouse', 'goats', 'sunny', 'towers', 'kaza', 'shiokaze', 'factory', 'airfield'];
+const HEAVY = ['built', 'city', 'house', 'heads', 'bardwell', 'warehouse', 'goats', 'sunny', 'towers', 'kaza', 'shiokaze', 'factory', 'airfield', 'hotaru', 'dunes'];
 
 /*
  * WHAT BOOT MAY TAKE FROM THE PROPS LIBRARY, AND WHY IT IS NOT NOTHING.
@@ -206,6 +206,8 @@ BORROWS.goats = {
 };
 /* And Sunnyfield (src/maps/sunny/index.js). */
 BORROWS.sunny = BORROWS.house;
+/* And Kazesuna Dunes (src/maps/dunes/index.js). */
+BORROWS.dunes = BORROWS.house;
 /* And Kamome Wharf (src/maps/dock/index.js), which folds its batches with
  * Sunnyfield's palette merge. */
 BORROWS.dock = { ...BORROWS.house, sunny: ['palette.js'] };
@@ -223,6 +225,9 @@ BORROWS.kaza = { ...BORROWS.house, sunny: ['palette.js'] };
 BORROWS.shiokaze = { ...BORROWS.house, sunny: ['palette.js'] };
 /* And Kazami Airfield (src/maps/airfield/index.js), which borrows the same. */
 BORROWS.airfield = BORROWS.house;
+/* And Hotaru Valley (src/maps/hotaru/index.js), which merges its batches
+ * with Sunnyfield's palette. */
+BORROWS.hotaru = { ...BORROWS.house, sunny: ['palette.js'] };
 
 /* The URLs under another world that this one is not allowed to have. */
 function bleedOf(urls, id, other) {

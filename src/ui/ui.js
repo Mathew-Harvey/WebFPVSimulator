@@ -999,7 +999,10 @@ const scoringBoardBuilt = (where) => 'Scored run: two minutes from the first thi
 function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
   const built = mapId === 'built' || mapId === 'house' || mapId === 'heads' || mapId === 'bardwell' || mapId === 'warehouse'
     || mapId === 'goats' || mapId === 'sunny' || mapId === 'drift' || mapId === 'ball' || mapId === 'moto' || mapId === 'dome' || mapId === 'cedar'
-    || mapId === 'towers' || mapId === 'alps' || mapId === 'office' || mapId === 'kaza' || mapId === 'sana' || mapId === 'park';
+    || mapId === 'towers' || mapId === 'alps' || mapId === 'office' || mapId === 'kaza' || mapId === 'sana'
+    || mapId === 'shiokaze' || mapId === 'factory' || mapId === 'rally' || mapId === 'fmx'
+    || mapId === 'airfield'
+    || mapId === 'dock' || mapId === 'park';
   const where = mapId === 'house' ? "Nick's house"
     : mapId === 'heads' ? "Heads' house"
       : mapId === 'bardwell' ? "Joshua's house"
@@ -1008,7 +1011,10 @@ function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
           : mapId === 'goats' ? "Heads' street"
           : mapId === 'sunny' ? 'Sunnyfield'
           : mapId === 'park' ? 'Hinode Park'
-            : mapId === 'drift' ? 'Drift Matsuri' : mapId === 'ball' ? 'Quad Ball' : mapId === 'moto' ? 'Ridgeline MX' : mapId === 'dome' ? 'Bakuon Dome' : mapId === 'cedar' ? 'Kodama Onsen' : mapId === 'towers' ? 'Kumoi Towers' : mapId === 'alps' ? 'Raicho Ridge' : mapId === 'kaza' ? 'Kazahana Plain' : mapId === 'sana' ? 'Kirigaoka Sanatorium' : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
+          : mapId === 'dock' ? 'Kamome Wharf'
+          : mapId === 'factory' ? 'Hamakaze Works'
+          : mapId === 'shiokaze' ? 'Shiokaze Point'
+            : mapId === 'drift' ? 'Drift Matsuri' : mapId === 'ball' ? 'Quad Ball' : mapId === 'moto' ? 'Ridgeline MX' : mapId === 'dome' ? 'Bakuon Dome' : mapId === 'cedar' ? 'Kodama Onsen' : mapId === 'airfield' ? 'Kazami Airfield' : mapId === 'towers' ? 'Kumoi Towers' : mapId === 'alps' ? 'Raicho Ridge' : mapId === 'kaza' ? 'Kazahana Plain' : mapId === 'sana' ? 'Kirigaoka Sanatorium' : mapId === 'rally' ? 'Tanada RX' : mapId === 'fmx' ? 'Shiroyama FMX' : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
   if (mode === 'off') {
     return `${drawn ? '' : `${SCORING_UNDRAWN} `}${scoringOff(where)} ${built ? scoringMoreBuilt(where) : SCORING_MORE}`;
   }
@@ -1076,6 +1082,12 @@ const SUNNY_OFF_BOARD = 'The board keeps no runs for Sunnyfield, so a run flown 
 /* Hinode Park, the same way. */
 const PARK_OFF_BOARD = 'The board keeps no runs for Hinode Park, so a run flown there stays here.'
   + ' Fly the town for a run that can go up.';
+/* Hamakaze Works, the same way. */
+const FACTORY_OFF_BOARD = 'The board keeps no runs for Hamakaze Works, so a run flown there stays here.'
+  + ' Fly the town for a run that can go up.';
+/* Shiokaze Point, the same way. */
+const SHIOKAZE_OFF_BOARD = 'The board keeps no runs for Shiokaze Point, so a run flown there stays here.'
+  + ' Fly the town for a run that can go up.';
 
 /* Drift Matsuri, the same way. */
 /* Quad Ball, the same way. */
@@ -1083,6 +1095,10 @@ const BALL_OFF_BOARD = 'The board keeps no runs for Quad Ball, so a run flown th
   + ' Fly the town for a run that can go up.';
 
 const MOTO_OFF_BOARD = 'The board keeps no runs for Ridgeline MX, so a run flown there stays here.';
+
+/* Kamome Wharf, the same way. */
+const DOCK_OFF_BOARD = 'The board keeps no runs for Kamome Wharf, so a run flown there stays here.'
+  + ' Fly the town for a run that can go up.';
 /* Raicho Ridge, the same way. */
 const ALPS_OFF_BOARD = 'The board keeps no runs for Raicho Ridge, so a run flown there stays here.'
   + ' Fly the town for a run that can go up.';
@@ -1095,6 +1111,9 @@ const KAZA_OFF_BOARD = 'The board keeps no runs for Kazahana Plain, so a run flo
 /* Kirigaoka Sanatorium, the same way. */
 const SANA_OFF_BOARD = 'The board keeps no runs for Kirigaoka Sanatorium, so a run flown there stays here.'
   + ' Fly the town for a run that can go up.';
+const RALLY_OFF_BOARD = 'The board keeps no runs for Tanada RX, so a run flown there stays here.';
+const FMX_OFF_BOARD = 'The board keeps no runs for Shiroyama FMX, so a run flown there stays here.';
+const AIRFIELD_OFF_BOARD = 'The board keeps no runs for Kazami Airfield, so a run flown there stays here.';
 const DRIFT_OFF_BOARD = 'The board keeps no runs for Drift Matsuri, so a run flown there stays here.'
   + ' Fly the town for a run that can go up.';
 
@@ -5424,7 +5443,7 @@ const WAYS = [
      * pilot asks for them. See DEFAULTS.freestyleScoring. The maps are
      * named so the card says there is more than the town, and the board's
      * are counted in so a pilot knows the shelf keeps growing. */
-    blurb: "Every freestyle map: the town, the houses of Nick Burns, Heads and Joshua Bardwell, Thomas More's Shop, Sunnyfield, Hibari Yard, and every map pilots have built and published to the board. No clock, no gates, and trick names are a switch inside.",
+    blurb: "Every freestyle map: the town, the houses of Nick Burns, Heads and Joshua Bardwell, Thomas More's Shop, Sunnyfield, Shiokaze Point, Hibari Yard, and every map pilots have built and published to the board. No clock, no gates, and trick names are a switch inside.",
   },
 ].map((w) => ({ ...w, action: `way-${w.id}` }));
 
@@ -11451,7 +11470,11 @@ export class Ui {
           || this.settings.map === 'bardwell' || this.settings.map === 'warehouse' || this.settings.map === 'goats'
           || this.settings.map === 'sunny' || this.settings.map === 'drift' || this.settings.map === 'ball' || this.settings.map === 'moto'
           || this.settings.map === 'dome' || this.settings.map === 'cedar' || this.settings.map === 'towers' || this.settings.map === 'alps'
-          || this.settings.map === 'office' || this.settings.map === 'kaza' || this.settings.map === 'sana' || this.settings.map === 'park';
+          || this.settings.map === 'office' || this.settings.map === 'kaza' || this.settings.map === 'sana'
+          || this.settings.map === 'shiokaze' || this.settings.map === 'factory'
+          || this.settings.map === 'rally'
+          || this.settings.map === 'fmx' || this.settings.map === 'airfield'
+          || this.settings.map === 'dock' || this.settings.map === 'park';
         return [
           { label: 'Fly again', action: 'restart', primary: true },
           this.runPosted
@@ -11484,6 +11507,9 @@ export class Ui {
                       : this.settings.map === 'goats' ? GOATS_OFF_BOARD
                         : this.settings.map === 'sunny' ? SUNNY_OFF_BOARD
                         : this.settings.map === 'park' ? PARK_OFF_BOARD
+                        : this.settings.map === 'dock' ? DOCK_OFF_BOARD
+                        : this.settings.map === 'factory' ? FACTORY_OFF_BOARD
+                        : this.settings.map === 'shiokaze' ? SHIOKAZE_OFF_BOARD
                           : this.settings.map === 'drift' ? DRIFT_OFF_BOARD
                             : this.settings.map === 'ball' ? BALL_OFF_BOARD
                           : this.settings.map === 'moto' ? MOTO_OFF_BOARD
@@ -11493,6 +11519,9 @@ export class Ui {
                           : this.settings.map === 'cedar' ? CEDAR_OFF_BOARD
                           : this.settings.map === 'kaza' ? KAZA_OFF_BOARD
                           : this.settings.map === 'sana' ? SANA_OFF_BOARD
+                          : this.settings.map === 'rally' ? RALLY_OFF_BOARD
+                          : this.settings.map === 'fmx' ? FMX_OFF_BOARD
+                          : this.settings.map === 'airfield' ? AIRFIELD_OFF_BOARD
                       : (this.sharedMap ? BOARD_MAP_OFF_BOARD : BUILT_OFF_BOARD)) : (nothing
                 ? 'A run with no tricks in it is not a score. Fly one and it appears here.'
                 : (run && run.timed === false
@@ -18035,6 +18064,7 @@ export class Ui {
       && this.settings.map !== 'drift'
       && this.settings.map !== 'ball'
       && this.settings.map !== 'moto'
+      && this.settings.map !== 'fmx'
       && (this.screen === 'flight' || this.screen === 'paused'),
     );
   }

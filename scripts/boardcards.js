@@ -348,11 +348,18 @@ const WORLDS = [
   /* Hamakaze Works, added 31 October 2026, picked by eye: from over the
    * quay, the gantry, the steel shop and the stack in it. */
   { id: 'factory', file: 'factory.jpg', name: 'Hamakaze Works', shot: { tp: 0.55, tr: 0.85, ta: 2.3 } },
+  /* Kazami Airfield, added 31 October 2026: the hangar and the strip
+   * from over the paddies, with the mountains behind. */
+  { id: 'airfield', file: 'airfield.jpg', name: 'Kazami Airfield', shot: { tp: 0.5, tr: 0.8, ta: -2.0 } },
   /* Quad Ball's stadium and Ridgeline MX, added 29 October 2026 with no
    * picture, so their map cards were blank and every picker asked the
    * server for a file that was not there (found 30 October 2026). */
   { id: 'ball', file: 'ball.jpg', name: 'Quad Ball' },
   { id: 'moto', file: 'moto.jpg', name: 'Ridgeline MX' },
+  /* Kazesuna Dunes, added 31 October 2026. */
+  { id: 'dunes', file: 'dunes.jpg', name: 'Kazesuna Dunes' },
+  /* Kamome Wharf, added 31 October 2026. */
+  { id: 'dock', file: 'dock.jpg', name: 'Kamome Wharf' },
   /* Raicho Ridge, added 31 October 2026, from high over the valley so the
    * ridge, the ropeway and the lake are all in it. */
   { id: 'alps', file: 'alps.jpg', name: 'Raicho Ridge' },
@@ -376,6 +383,10 @@ const WORLDS = [
   /* Tanada RX, added 31 October 2026, from the south over the jump so
    * the stand and the terraces are in it. */
   { id: 'rally', file: 'rally.jpg', name: 'Tanada RX', shot: { tp: 0.5, tr: 0.7, ta: -1.57 } },
+  /* Shiroyama FMX, added 31 October 2026 with its picture, from the
+   * south east so the kickers, the yagura and the castle are in it. */
+  { id: 'fmx', file: 'fmx.jpg', name: 'Shiroyama FMX', shot: { tp: 0.5, tr: 0.75, ta: -0.6 } },
+  { id: 'hotaru', file: 'hotaru.jpg', name: 'Hotaru Valley' },
   /* Hayate Circuit, added 31 October 2026, picked by eye from three: the
    * sky wheel in front, the pits, the stands and the tower behind. */
   { id: 'hayate', file: 'hayate.jpg', name: 'Hayate Circuit', shot: { tp: 0.45, tr: 0.7, ta: 1.57 } },

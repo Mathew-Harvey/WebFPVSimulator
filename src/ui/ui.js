@@ -998,7 +998,8 @@ const scoringBoardBuilt = (where) => 'Scored run: two minutes from the first thi
  */
 function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
   const built = mapId === 'built' || mapId === 'house' || mapId === 'heads' || mapId === 'bardwell' || mapId === 'warehouse'
-    || mapId === 'goats' || mapId === 'sunny' || mapId === 'drift' || mapId === 'ball' || mapId === 'moto' || mapId === 'dome' || mapId === 'cedar' || mapId === 'office';
+    || mapId === 'goats' || mapId === 'sunny' || mapId === 'drift' || mapId === 'ball' || mapId === 'moto' || mapId === 'dome' || mapId === 'cedar'
+    || mapId === 'towers' || mapId === 'office';
   const where = mapId === 'house' ? "Nick's house"
     : mapId === 'heads' ? "Heads' house"
       : mapId === 'bardwell' ? "Joshua's house"
@@ -1006,7 +1007,7 @@ function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
           : mapId === 'office' ? 'Hoshino Shoji'
           : mapId === 'goats' ? "Heads' street"
           : mapId === 'sunny' ? 'Sunnyfield'
-            : mapId === 'drift' ? 'Drift Matsuri' : mapId === 'ball' ? 'Quad Ball' : mapId === 'moto' ? 'Ridgeline MX' : mapId === 'dome' ? 'Bakuon Dome' : mapId === 'cedar' ? 'Kodama Onsen' : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
+            : mapId === 'drift' ? 'Drift Matsuri' : mapId === 'ball' ? 'Quad Ball' : mapId === 'moto' ? 'Ridgeline MX' : mapId === 'dome' ? 'Bakuon Dome' : mapId === 'cedar' ? 'Kodama Onsen' : mapId === 'towers' ? 'Kumoi Towers' : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
   if (mode === 'off') {
     return `${drawn ? '' : `${SCORING_UNDRAWN} `}${scoringOff(where)} ${built ? scoringMoreBuilt(where) : SCORING_MORE}`;
   }
@@ -1077,6 +1078,7 @@ const BALL_OFF_BOARD = 'The board keeps no runs for Quad Ball, so a run flown th
   + ' Fly the town for a run that can go up.';
 
 const MOTO_OFF_BOARD = 'The board keeps no runs for Ridgeline MX, so a run flown there stays here.';
+const TOWERS_OFF_BOARD = 'The board keeps no runs for Kumoi Towers, so a run flown there stays here.';
 /* Bakuon Dome, the same way. */
 const DOME_OFF_BOARD = 'The board keeps no runs for Bakuon Dome, so a run flown there stays here.'
   + ' Fly the town for a run that can go up.';
@@ -11436,7 +11438,7 @@ export class Ui {
         const built = this.settings.map === 'built' || this.settings.map === 'house' || this.settings.map === 'heads'
           || this.settings.map === 'bardwell' || this.settings.map === 'warehouse' || this.settings.map === 'goats'
           || this.settings.map === 'sunny' || this.settings.map === 'drift' || this.settings.map === 'ball' || this.settings.map === 'moto'
-          || this.settings.map === 'dome' || this.settings.map === 'cedar'
+          || this.settings.map === 'dome' || this.settings.map === 'cedar' || this.settings.map === 'towers'
           || this.settings.map === 'office';
         return [
           { label: 'Fly again', action: 'restart', primary: true },
@@ -11472,6 +11474,7 @@ export class Ui {
                           : this.settings.map === 'drift' ? DRIFT_OFF_BOARD
                             : this.settings.map === 'ball' ? BALL_OFF_BOARD
                           : this.settings.map === 'moto' ? MOTO_OFF_BOARD
+                          : this.settings.map === 'towers' ? TOWERS_OFF_BOARD
                           : this.settings.map === 'dome' ? DOME_OFF_BOARD
                           : this.settings.map === 'cedar' ? CEDAR_OFF_BOARD
                       : (this.sharedMap ? BOARD_MAP_OFF_BOARD : BUILT_OFF_BOARD)) : (nothing

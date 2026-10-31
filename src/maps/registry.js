@@ -256,6 +256,23 @@ export const MAPS = [
     load: () => import('./moto/index.js'),
   },
   /*
+   * KUMOI TOWERS, on the owner's ask of 31 October 2026 (a tower city to
+   * dive, built by Opus, "the maps to feel like manga comic like the
+   * town"): a tower district after Nishi-Shinjuku, its old drinking lanes
+   * under the viaduct and a tower going up, in the town's cel kit and ink
+   * with the towers' window grids painted (src/maps/towers/). Built by the
+   * built map's pipeline and flown on the five inch at life size; off the
+   * board like the houses.
+   */
+  {
+    id: 'towers',
+    name: 'Kumoi Towers',
+    mode: 'freestyle',
+    note: 'A tower city to dive. Twin crowns from the very top, a sky garden with a hole in it, a narrow slot between two towers, a steel frame going up under two cranes, the expressway, the viaduct, and the old lanes under it all.',
+    buildMs: MAP_BUILD_MS.towers,
+    load: () => import('./towers/index.js'),
+  },
+  /*
    * BAKUON DOME, on the owner's ask of 31 October 2026 (a stadium map
    * with monster trucks, "the maps to feel like manga comic like the
    * town"): a dirt floored dome with four trucks running jumps under a
@@ -331,6 +348,8 @@ export const DRIFT_DOC_ID = 'trk-d81f7a75';
 export const BALL_DOC_ID = 'trk-ba11b0a1';
 /* Ridgeline MX's (src/maps/moto/yard.js), the same way. */
 export const MOTO_DOC_ID = 'trk-3c07e5a1';
+/* Kumoi Towers' (src/maps/towers/yard.js), the same way. */
+export const TOWERS_DOC_ID = 'trk-70e15c10';
 /* Bakuon Dome's (src/maps/dome/yard.js), the same way. */
 export const DOME_DOC_ID = 'trk-b4d0e0e1';
 

@@ -89,6 +89,19 @@ export const MAP_BUILD_MS = {
   /* Ridgeline MX (src/maps/moto/): a plot of trees, a track of mounds and
    * berms and ten bikes. An estimate until it is measured. */
   moto: 2400,
+  /* Raicho Ridge (src/maps/alps/): its own ground, a forest, the hut, the
+   * ropeway and the dam. An estimate until it is measured. */
+  alps: 3600,
+  /* Kumoi Towers (src/maps/towers/): Sunnyfield's pipeline on a bigger
+   * plot, measured headless when it was built. */
+  towers: 3000,
+  /* Bakuon Dome (src/maps/dome/): a hall of a few thousand boxes and
+   * capsules, its streets and four trucks. An estimate until it is
+   * measured. */
+  dome: 2400,
+  /* Kodama Onsen (src/maps/cedar/): three thousand cedars, an inn and a
+   * shrine. An estimate until it is measured. */
+  cedar: 3000,
   /* Hotaru Valley (src/maps/hotaru/): the land grid, two thousand trees
    * and a village, a castle and a harbour. An estimate until it is
    * measured. */

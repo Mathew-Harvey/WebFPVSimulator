@@ -97,6 +97,8 @@ const MAP_ROOTS = {
   drift: 'src/maps/drift/index.js',
   ball: 'src/maps/ball/index.js',
   moto: 'src/maps/moto/index.js',
+  dome: 'src/maps/dome/index.js',
+  cedar: 'src/maps/cedar/index.js',
   rally: 'src/maps/rally/index.js',
 };
 

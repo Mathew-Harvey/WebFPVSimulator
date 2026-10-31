@@ -209,6 +209,22 @@ export const MATERIALS = {
   mxBlue: { c: 0x2f6fd0, tint: 0x2e4a7a },
   mxGreen: { c: 0x2f9a4c, tint: 0x2e5a4a },
   mxRed: { c: 0xd8333d, tint: 0x6e2f52 },
+  /* Bakuon Dome (src/maps/dome/): the hall's dirt and the ramps' darker
+   * dirt, the concourse's paving, the cream concrete of the bowl and its
+   * fascia, the outer walls' panel white, the roof's steel, the catwalk's
+   * grating and the big screen's case. Everything finer (seats, people,
+   * cars, flags) is one vertex coloured batch of its own (./draw.js). */
+  dmDirt: { c: 0xb07a4c, tint: 0x6a4a5e },
+  dmDirtDark: { c: 0x8a5d3c, tint: 0x553f52 },
+  dmWalk: { c: 0xc9c2b8, tint: 0x7d7596, noReceive: true },
+  dmBarrier: { c: 0xf1ead8, tint: 0x8a83a8 },
+  dmStand: { c: 0xd9d2c4, tint: 0x7d7596 },
+  dmFascia: { c: 0x2b3554, tint: 0x232840 },
+  dmColumn: { c: 0xe6dfd0, tint: 0x8a83a8, noReceive: true },
+  dmWall: { c: 0xeee8dc, tint: 0x7d7596 },
+  dmSteel: { c: 0xe9eef2, tint: 0x6f6d8a },
+  dmGrate: { c: 0x6c7381, tint: 0x4d4a6c },
+  dmScreenBox: { c: 0x26242e, tint: 0x1f1d28 },
 };
 
 /*

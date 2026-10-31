@@ -256,6 +256,37 @@ export const MAPS = [
     load: () => import('./moto/index.js'),
   },
   /*
+   * BAKUON DOME, on the owner's ask of 31 October 2026 (a stadium map
+   * with monster trucks, "the maps to feel like manga comic like the
+   * town"): a dirt floored dome with four trucks running jumps under a
+   * trussed roof (src/maps/dome/). Built by the built map's pipeline and
+   * flown on the five inch at life size; off the board like the houses.
+   */
+  {
+    id: 'dome',
+    name: 'Bakuon Dome',
+    mode: 'freestyle',
+    note: 'A dirt floored dome with four monster trucks jumping cars and buses under its roof. Chase them over the ramps, thread the roof trusses and strafe the stands.',
+    buildMs: MAP_BUILD_MS.dome,
+    load: () => import('./dome/index.js'),
+  },
+  /*
+   * KODAMA ONSEN, on the owner's ask of 31 October 2026 (a cedar forest
+   * with an abandoned area, in the town's manga look): an abandoned hot
+   * spring inn in a Japanese cedar plantation, with a shrine up the hill
+   * behind it, our own place built from the real kind of place
+   * (src/maps/cedar/). Life size and flown on the five inch, built by the
+   * built map's pipeline and, like the houses, off the board.
+   */
+  {
+    id: 'cedar',
+    name: 'Kodama Onsen',
+    mode: 'freestyle',
+    note: 'An abandoned hot spring inn in a cedar forest, flown on a five inch: rows of cedars to slalom, the inn and its bathhouse, the storehouse, a brick chimney, a line of torii and a tunnel of them, the stream and its bridges, and the shrine up the steps.',
+    buildMs: MAP_BUILD_MS.cedar,
+    load: () => import('./cedar/index.js'),
+  },
+  /*
    * TANADA RX, section 19 of the owner's map list of 31 October 2026: a
    * rallycross circuit of tarmac and gravel with a jump and a joker, under
    * a hillside of rice terraces, with a pack of rallycross cars racing it
@@ -298,6 +329,12 @@ export const DRIFT_DOC_ID = 'trk-d81f7a75';
 export const BALL_DOC_ID = 'trk-ba11b0a1';
 /* Ridgeline MX's (src/maps/moto/yard.js), the same way. */
 export const MOTO_DOC_ID = 'trk-3c07e5a1';
+/* Bakuon Dome's (src/maps/dome/yard.js), the same way. */
+export const DOME_DOC_ID = 'trk-b4d0e0e1';
+
+/* Kodama Onsen's (src/maps/cedar/yard.js), the same way. */
+export const CEDAR_DOC_ID = 'trk-ced4a0e5';
+
 /* Tanada RX's (src/maps/rally/yard.js), the same way. */
 export const RALLY_DOC_ID = 'trk-7a11c0b5';
 

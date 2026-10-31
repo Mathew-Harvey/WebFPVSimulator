@@ -350,6 +350,9 @@ const WORLDS = [
    * server for a file that was not there (found 30 October 2026). */
   { id: 'ball', file: 'ball.jpg', name: 'Quad Ball' },
   { id: 'moto', file: 'moto.jpg', name: 'Ridgeline MX' },
+  /* Raicho Ridge, added 31 October 2026, from high over the valley so the
+   * ridge, the ropeway and the lake are all in it. */
+  { id: 'alps', file: 'alps.jpg', name: 'Raicho Ridge' },
   /* Kumoi Towers, added 31 October 2026: the plaza with the twin crowns
    * over it, from the plaza's south side, picked by eye from six shots. */
   { id: 'towers', file: 'towers.jpg', name: 'Kumoi Towers', shot: { tp: 0.25, tr: 0.6, ta: 0 } },
@@ -357,6 +360,9 @@ const WORLDS = [
   /* Kodama Onsen, added 31 October 2026, picked by eye: the inn from the
    * car park side, the shrine's approach and the forest behind it. */
   { id: 'cedar', file: 'cedar.jpg', name: 'Kodama Onsen', shot: { tp: 0.55, tr: 0.75, ta: -1.9 } },
+  /* Hoshino Shoji, added 31 October 2026. Indoors like Thomas More's Shop,
+   * so it names its own lens too (CARD_LENS in src/maps/office/office.js). */
+  { id: 'office', file: 'office.jpg', name: 'Hoshino Shoji' },
   /* Tonbo Fest, added 31 October 2026 with its picture, so its card is
    * never blank: from over the race, the stage, the stalls and the railway
    * across the river in it. */

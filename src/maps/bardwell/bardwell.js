@@ -8,8 +8,8 @@
  * Joshua's videos) was wrong, and the owner said so the same day: "you
  * didn't get bardwells house correct at all sadly, review this and fix your
  * model completely then add more detail". With that came the layout of an
- * fan made map of the place, "Joshua Bardwell House / Perfect
- * Beginner Map" (by xWallow, a fan's recreation
+ * workshop map of the place, "Joshua Bardwell House / Perfect
+ * Beginner Map" (a workshop item by xWallow, a fan's recreation
  * from public video and, in its own words, not a one to one replica), and
  * a screenshot of it. This is that place. Every position here was read off
  * that layout's transforms, in metres, the way Nick Burns' house read its

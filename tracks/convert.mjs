@@ -1,5 +1,5 @@
 /*
- * convert.mjs: turn Velocidrone .trk files, and the 2022 MultiGP GQ
+ * convert.mjs: turn .trk files, and the 2022 MultiGP GQ
  * diagram, into track documents, then optionally publish them to the
  * public board.
  *
@@ -224,7 +224,7 @@ function flagBeforeGate(doc, flag, gate) {
  * The owner's rule, in their words: "the start blocks should aways be
  * straight on to the first gate or element. not 60degrees offset". It lives
  * in polish rather than in the .trk import because it is a rule about
- * COURSES, not about Velocidrone files, and the hand built 2022 MultiGP GQ
+ * COURSES, not about .trk files, and the hand built 2022 MultiGP GQ
  * needed it just as much: its grid came off the published diagram, which
  * puts LAUNCH away to one side, and it sat 10.0 m off the timing gate's axis.
  *
@@ -729,7 +729,7 @@ function apertureTypeFor(site) {
   return flagged ? 'flaggedGate' : 'gate';
 }
 
-/* A Velocidrone flag mesh is authored at mid pole. That AGL is not a
+/* A .trk flag mesh is authored at mid pole. That AGL is not a
  * rooftop. Anything taller than the pole itself is a real elevation. */
 function plantMarkerZ(agl, role) {
   const h = ELEMENTS[role]?.dims?.height ?? 2.5;
@@ -805,7 +805,7 @@ function apertureDims(site, clearH) {
 }
 
 /*
- * A Velocidrone course as a track document.
+ * A .trk course as a track document.
  *
  * The reading is course.mjs's; this is only the translation. One SITE on the
  * field becomes one element, however many holes it has and however many times
@@ -931,7 +931,7 @@ function fromTrk(raw, displayName) {
    *
    * The grid's authored position in the barriers is not used. It is the one
    * thing in the file worth less than the property of being straight, because
-   * Velocidrone parks it wherever the designer dropped it and a grid off to
+   * the .trk author parks it wherever the designer dropped it and a grid off to
    * one side also makes the lap arrive at the finish line from in front of
    * it, which path.js turns into a zero radius cusp in the last few metres of
    * every lap.

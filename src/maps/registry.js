@@ -257,8 +257,8 @@ export const MAPS = [
   },
   /*
    * SHIOKAZE POINT, on the owner's ask of 31 October 2026 ("we want the
-   * maps to feel like manga comic like the town"), from the Riviera Unit
-   * brief: a resort on a rock island gone to ruin, five hotel blocks of
+   * maps to feel like manga comic like the town"): a map of our own,
+   * a resort on a rock island gone to ruin, five hotel blocks of
    * seven storeys over the sea with balconies to strafe and stair cores to
    * dive, a cliff line, sea stacks and an arch, and a park race of ten
    * gates (src/maps/shiokaze/). Built by the built map's pipeline and flown

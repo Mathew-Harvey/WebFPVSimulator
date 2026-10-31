@@ -350,8 +350,9 @@ const WORLDS = [
    * server for a file that was not there (found 30 October 2026). */
   { id: 'ball', file: 'ball.jpg', name: 'Quad Ball' },
   { id: 'moto', file: 'moto.jpg', name: 'Ridgeline MX' },
-  /* Shiokaze Point, added 31 October 2026. */
-  { id: 'shiokaze', file: 'shiokaze.jpg', name: 'Shiokaze Point' },
+  /* Shiokaze Point, added 31 October 2026, from the sea: the hotels, the
+   * wedded rocks and the stacks. */
+  { id: 'shiokaze', file: 'shiokaze.jpg', name: 'Shiokaze Point', shot: { tp: 0.3, tr: 1.1, ta: -1.57 } },
 ];
 
 async function drawWorlds(opts) {

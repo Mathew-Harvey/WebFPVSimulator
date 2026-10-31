@@ -92,6 +92,9 @@ export const MAP_BUILD_MS = {
   /* Raicho Ridge (src/maps/alps/): its own ground, a forest, the hut, the
    * ropeway and the dam. An estimate until it is measured. */
   alps: 3600,
+  /* Kumoi Towers (src/maps/towers/): Sunnyfield's pipeline on a bigger
+   * plot, measured headless when it was built. */
+  towers: 3000,
   /* Bakuon Dome (src/maps/dome/): a hall of a few thousand boxes and
    * capsules, its streets and four trucks. An estimate until it is
    * measured. */

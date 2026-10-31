@@ -1,5 +1,5 @@
 /*
- * trk.mjs: reading a Velocidrone .trk. Shared by convert.mjs and inspect.mjs
+ * trk.mjs: reading a .trk. Shared by convert.mjs and inspect.mjs
  * so there is exactly one place that knows the file's shape.
  *
  * WHAT THE FILE IS. AES-128-ECB over a fixed key, base64 wrapped, and inside
@@ -11,7 +11,7 @@
  * checkpoint and its `gate` field is its index in the lap, so gate 0 is the
  * start and finish line. `barriers` is scenery, which is where turn flags,
  * cones, the start grid and the dive gate hoops live. Both were confirmed
- * against dutchdronesquad/trackdraw's exporter rather than guessed.
+ * against an open source exporter rather than guessed.
  *
  * COORDINATES. Unity: left handed, Y up, metres times 100. So pos is
  * [east, up, north]. A rotation about +Y turns +Z toward +X, which is
@@ -91,7 +91,7 @@ function quat(rot) {
 }
 
 /*
- * Full orientation, not just a heading. A Velocidrone checkpoint is authored
+ * Full orientation, not just a heading. A .trk checkpoint is authored
  * lying flat and stood up with a quarter turn about X, so reading only the
  * yaw term of the quaternion loses the thing that says whether an obstacle is
  * vertical, tilted or a dive gate.
@@ -159,8 +159,8 @@ export function docYaw(unityYaw) {
 /*
  * Prefab ids seen in the tracks under tracks/, with what each one is.
  *
- * PROVENANCE. Velocidrone publishes no prefab table. The six marked
- * "trackdraw" are read off dutchdronesquad/trackdraw's exporter, which
+ * PROVENANCE. The format publishes no prefab table. The six marked
+ * "trackdraw" are read off an open source exporter, which
  * writes real files the simulator loads, so they are as good as documented.
  * The rest are inferred from how they behave in these files: what they are
  * scaled to, whether they carry a checkpoint, where they sit relative to the

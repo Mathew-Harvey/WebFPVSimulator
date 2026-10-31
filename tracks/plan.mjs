@@ -1,5 +1,5 @@
 /*
- * plan.mjs: draw a plan view of a Velocidrone .trk, and of the track
+ * plan.mjs: draw a plan view of a .trk, and of the track
  * document the converter makes from it, side by side.
  *
  * A review tool. Columns of coordinates do not tell you whether a course is

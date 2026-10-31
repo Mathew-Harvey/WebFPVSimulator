@@ -119,7 +119,7 @@ export const MATERIALS = {
   headsPatio: { c: 0xb86a50, tint: 0x6a4a66 },
   headsMaple: { c: 0x7c2a40, tint: 0x4a2a50 },
   headsPurple: { c: 0x4c3240, tint: 0x342840 },
-  /* Joshua Bardwell's house (src/maps/bardwell/), outside only, from the
+  /* Joshua Bardwell's house (src/maps/bardwell/), outside only, from a
    * community workshop map of it and its screenshots: the cream brick and
    * its mortar, the orange shingle roof and its courses, the dark split
    * rails, the gravel and the dirt, the woodshed's weathered planks and its

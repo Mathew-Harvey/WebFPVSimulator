@@ -112,6 +112,7 @@ const WORLDS = {
   ball: { name: 'Quad Ball', thumb: 'ball' },
   arctic: { name: 'Hyoura Island', thumb: 'arctic' },
   towers: { name: 'Kumoi Towers', thumb: 'towers' },
+  shiokaze: { name: 'Shiokaze Point', thumb: 'shiokaze' },
   cedar: { name: 'Kodama Onsen', thumb: 'cedar' },
   office: { name: 'Hoshino Shoji', thumb: 'office' },
   built: { name: 'Hibari Yard', thumb: 'yard' },

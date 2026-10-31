@@ -999,7 +999,8 @@ const scoringBoardBuilt = (where) => 'Scored run: two minutes from the first thi
 function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
   const built = mapId === 'built' || mapId === 'house' || mapId === 'heads' || mapId === 'bardwell' || mapId === 'warehouse'
     || mapId === 'goats' || mapId === 'sunny' || mapId === 'drift' || mapId === 'ball' || mapId === 'moto' || mapId === 'dome' || mapId === 'cedar'
-    || mapId === 'towers' || mapId === 'alps' || mapId === 'office' || mapId === 'kaza' || mapId === 'arctic';
+    || mapId === 'towers' || mapId === 'alps' || mapId === 'office' || mapId === 'kaza' || mapId === 'sana'
+    || mapId === 'shiokaze' || mapId === 'arctic';
   const where = mapId === 'house' ? "Nick's house"
     : mapId === 'heads' ? "Heads' house"
       : mapId === 'bardwell' ? "Joshua's house"
@@ -1008,7 +1009,8 @@ function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
           : mapId === 'goats' ? "Heads' street"
           : mapId === 'sunny' ? 'Sunnyfield'
           : mapId === 'arctic' ? 'Hyoura Island'
-            : mapId === 'drift' ? 'Drift Matsuri' : mapId === 'ball' ? 'Quad Ball' : mapId === 'moto' ? 'Ridgeline MX' : mapId === 'dome' ? 'Bakuon Dome' : mapId === 'cedar' ? 'Kodama Onsen' : mapId === 'towers' ? 'Kumoi Towers' : mapId === 'alps' ? 'Raicho Ridge' : mapId === 'kaza' ? 'Kazahana Plain' : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
+          : mapId === 'shiokaze' ? 'Shiokaze Point'
+            : mapId === 'drift' ? 'Drift Matsuri' : mapId === 'ball' ? 'Quad Ball' : mapId === 'moto' ? 'Ridgeline MX' : mapId === 'dome' ? 'Bakuon Dome' : mapId === 'cedar' ? 'Kodama Onsen' : mapId === 'towers' ? 'Kumoi Towers' : mapId === 'alps' ? 'Raicho Ridge' : mapId === 'kaza' ? 'Kazahana Plain' : mapId === 'sana' ? 'Kirigaoka Sanatorium' : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
   if (mode === 'off') {
     return `${drawn ? '' : `${SCORING_UNDRAWN} `}${scoringOff(where)} ${built ? scoringMoreBuilt(where) : SCORING_MORE}`;
   }
@@ -1073,6 +1075,10 @@ const GOATS_OFF_BOARD = 'The board keeps no runs for 90%er goat herding, so a ru
 const SUNNY_OFF_BOARD = 'The board keeps no runs for Sunnyfield, so a run flown there stays here.'
   + ' Fly the town for a run that can go up.';
 
+/* Shiokaze Point, the same way. */
+const SHIOKAZE_OFF_BOARD = 'The board keeps no runs for Shiokaze Point, so a run flown there stays here.'
+  + ' Fly the town for a run that can go up.';
+
 /* Hyoura Island, the same way. */
 const ARCTIC_OFF_BOARD = 'The board keeps no runs for Hyoura Island, so a run flown there stays here.'
   + ' Fly the town for a run that can go up.';
@@ -1092,6 +1098,9 @@ const DOME_OFF_BOARD = 'The board keeps no runs for Bakuon Dome, so a run flown 
   + ' Fly the town for a run that can go up.';
 const CEDAR_OFF_BOARD = 'The board keeps no runs for Kodama Onsen, so a run flown there stays here.';
 const KAZA_OFF_BOARD = 'The board keeps no runs for Kazahana Plain, so a run flown there stays here.';
+/* Kirigaoka Sanatorium, the same way. */
+const SANA_OFF_BOARD = 'The board keeps no runs for Kirigaoka Sanatorium, so a run flown there stays here.'
+  + ' Fly the town for a run that can go up.';
 const DRIFT_OFF_BOARD = 'The board keeps no runs for Drift Matsuri, so a run flown there stays here.'
   + ' Fly the town for a run that can go up.';
 
@@ -5421,7 +5430,7 @@ const WAYS = [
      * pilot asks for them. See DEFAULTS.freestyleScoring. The maps are
      * named so the card says there is more than the town, and the board's
      * are counted in so a pilot knows the shelf keeps growing. */
-    blurb: "Every freestyle map: the town, the houses of Nick Burns, Heads and Joshua Bardwell, Thomas More's Shop, Sunnyfield, Hibari Yard, and every map pilots have built and published to the board. No clock, no gates, and trick names are a switch inside.",
+    blurb: "Every freestyle map: the town, the houses of Nick Burns, Heads and Joshua Bardwell, Thomas More's Shop, Sunnyfield, Shiokaze Point, Hibari Yard, and every map pilots have built and published to the board. No clock, no gates, and trick names are a switch inside.",
   },
 ].map((w) => ({ ...w, action: `way-${w.id}` }));
 
@@ -11448,7 +11457,8 @@ export class Ui {
           || this.settings.map === 'bardwell' || this.settings.map === 'warehouse' || this.settings.map === 'goats'
           || this.settings.map === 'sunny' || this.settings.map === 'drift' || this.settings.map === 'ball' || this.settings.map === 'moto'
           || this.settings.map === 'dome' || this.settings.map === 'cedar' || this.settings.map === 'towers' || this.settings.map === 'alps'
-          || this.settings.map === 'office' || this.settings.map === 'kaza'
+          || this.settings.map === 'office' || this.settings.map === 'kaza' || this.settings.map === 'sana'
+          || this.settings.map === 'shiokaze'
           || this.settings.map === 'arctic';
         return [
           { label: 'Fly again', action: 'restart', primary: true },
@@ -11481,6 +11491,7 @@ export class Ui {
                     : this.settings.map === 'office' ? OFFICE_OFF_BOARD
                       : this.settings.map === 'goats' ? GOATS_OFF_BOARD
                         : this.settings.map === 'sunny' ? SUNNY_OFF_BOARD
+                        : this.settings.map === 'shiokaze' ? SHIOKAZE_OFF_BOARD
                         : this.settings.map === 'arctic' ? ARCTIC_OFF_BOARD
                           : this.settings.map === 'drift' ? DRIFT_OFF_BOARD
                             : this.settings.map === 'ball' ? BALL_OFF_BOARD
@@ -11490,6 +11501,7 @@ export class Ui {
                           : this.settings.map === 'dome' ? DOME_OFF_BOARD
                           : this.settings.map === 'cedar' ? CEDAR_OFF_BOARD
                           : this.settings.map === 'kaza' ? KAZA_OFF_BOARD
+                          : this.settings.map === 'sana' ? SANA_OFF_BOARD
                       : (this.sharedMap ? BOARD_MAP_OFF_BOARD : BUILT_OFF_BOARD)) : (nothing
                 ? 'A run with no tricks in it is not a score. Fly one and it appears here.'
                 : (run && run.timed === false

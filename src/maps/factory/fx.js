@@ -1,0 +1,123 @@
+/*
+ * fx.js: the works breathing. Steam off the cooling tower's three fans,
+ * a thin grey drift from the red and white stack, and the flare burning
+ * at the top of its lattice. Sunnyfield's plumes and fire (../sunny/fx.js)
+ * pointed at this map's places: two instanced meshes, so the whole of it
+ * is two draw calls, every puff a pure function of the physics' step
+ * count and nothing solid.
+ *
+ * This file is part of WebFPVSimulator.
+ *
+ * WebFPVSimulator is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or (at
+ * your option) any later version.
+ *
+ * WebFPVSimulator is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY, without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+import { worldAt } from './frame.js';
+import { STACK } from './works.js';
+import { COOLER, FLARE } from './plant.js';
+import { cel, flat } from '../city/vendored/core/toon.js';
+
+/* The physics' rate: a step is a millisecond. */
+const STEP_S = 0.001;
+
+/*
+ * The plumes, each { at, n, life, rise, drift, r0, r1, c0, c1, spread }:
+ * where it starts in the world, how many puffs, how long one lives in
+ * seconds, how high it climbs and how far the wind carries it east and
+ * south in that time, its radius at birth and at death, and its colour.
+ */
+function plumes() {
+  const out = COOLER.fans.map((x) => ({
+    at: worldAt(x, COOLER.fanY, COOLER.h + COOLER.stack), n: 9, life: 9, rise: 14, drift: [6, 2], r0: 2.2, r1: 5.5, c0: 0xffffff, c1: 0xeceaf2, spread: 1.2,
+  }));
+  out.push({ at: worldAt(STACK.px, STACK.py, STACK.h + 0.5), n: 10, life: 13, rise: 20, drift: [10, 3], r0: 1.4, r1: 5.0, c0: 0xd6d3dc, c1: 0xb4b0c0, spread: 0.6 });
+  return out;
+}
+
+export function makeFx(THREE) {
+  const list = plumes();
+  const count = list.reduce((a, p) => a + p.n, 0);
+  const puffGeo = new THREE.IcosahedronGeometry(1, 1);
+  const puffs = new THREE.InstancedMesh(puffGeo, cel({ color: 0xffffff, bands: 3, tint: 0x8a83a8, cache: false }), count);
+  puffs.name = 'factory plumes';
+  puffs.castShadow = false;
+  puffs.receiveShadow = false;
+  puffs.frustumCulled = false;
+  /* Each puff's own place in its plume, and its own small lean and size,
+   * from a seeded scramble so the plume reads as cloud and not a stack. */
+  const each = [];
+  let i = 0;
+  for (const p of list) {
+    for (let k = 0; k < p.n; k += 1) {
+      const h = Math.imul(i + 1, 0x9e3779b1) >>> 0;
+      each.push({ p, k, ox: ((h & 0xff) / 255 - 0.5) * 2, oz: (((h >>> 8) & 0xff) / 255 - 0.5) * 2, s: 0.8 + ((h >>> 16) & 0xff) / 255 * 0.45 });
+      i += 1;
+    }
+  }
+  /* The flames: cones round the pile's top, flickering in turn. */
+  const FLAMES = 9;
+  const flameGeo = new THREE.ConeGeometry(1, 1, 6, 1);
+  flameGeo.translate(0, 0.5, 0);
+  const flames = new THREE.InstancedMesh(flameGeo, flat({ color: 0xffffff, cache: false }), FLAMES);
+  flames.name = 'factory flare';
+  flames.castShadow = false;
+  flames.receiveShadow = false;
+  flames.frustumCulled = false;
+  const [fx, fy, fz] = worldAt(FLARE.px, FLARE.py, FLARE.h + 0.7);
+  const col = new THREE.Color();
+  for (let k = 0; k < FLAMES; k += 1) {
+    flames.setColorAt(k, col.set(k % 3 === 0 ? 0xffd23c : k % 3 === 1 ? 0xff8a2a : 0xff5a2a));
+  }
+  flames.instanceColor.needsUpdate = true;
+
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const v = new THREE.Vector3();
+  const sc = new THREE.Vector3();
+  const c0 = new THREE.Color();
+  const c1 = new THREE.Color();
+
+  function update(step) {
+    const t = step * STEP_S;
+    each.forEach((e, j) => {
+      const p = e.p;
+      const f = (((t / p.life + e.k / p.n) % 1) + 1) % 1;
+      const ease = Math.sqrt(f);
+      const r = (p.r0 + (p.r1 - p.r0) * ease) * e.s * Math.min(1, (1 - f) * 6, f * 12 + 0.2);
+      v.set(
+        p.at[0] + p.drift[0] * f + e.ox * p.spread * (0.5 + f),
+        p.at[1] + p.rise * ease,
+        p.at[2] + p.drift[1] * f + e.oz * p.spread * (0.5 + f),
+      );
+      sc.set(r, r * 0.86, r);
+      m.compose(v, q, sc);
+      puffs.setMatrixAt(j, m);
+      puffs.setColorAt(j, c0.set(p.c0).lerp(c1.set(p.c1), f));
+    });
+    puffs.instanceMatrix.needsUpdate = true;
+    puffs.instanceColor.needsUpdate = true;
+    for (let k = 0; k < FLAMES; k += 1) {
+      const a = (k / FLAMES) * Math.PI * 2;
+      const rr = k === 0 ? 0 : 0.35 + (k % 2) * 0.25;
+      const flick = 0.75 + 0.25 * Math.sin(t * (9 + k) + k * 1.7);
+      const hgt = (k === 0 ? 5.2 : 2.8 + (k % 3) * 0.7) * flick;
+      v.set(fx + Math.cos(a) * rr, fy, fz + Math.sin(a) * rr);
+      sc.set(0.55 + (k % 2) * 0.2, hgt, 0.55 + (k % 2) * 0.2);
+      m.compose(v, q, sc);
+      flames.setMatrixAt(k, m);
+    }
+    flames.instanceMatrix.needsUpdate = true;
+  }
+  update(0);
+  return { meshes: [puffs, flames], update };
+}

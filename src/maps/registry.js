@@ -256,6 +256,22 @@ export const MAPS = [
     load: () => import('./moto/index.js'),
   },
   /*
+   * HAMAKAZE WORKS, on the owner's ask of 31 October 2026 ("we want the
+   * maps to feel like manga comic like the town"): a steel and chemical
+   * works on a canal basin, of the kind that lines the Keihin coast, life
+   * size and flown on the five inch, in the town's cel kit and ink
+   * (src/maps/factory/). Built by the built map's pipeline and, like the
+   * houses, off the board.
+   */
+  {
+    id: 'factory',
+    name: 'Hamakaze Works',
+    mode: 'freestyle',
+    note: 'Hamakaze Works, flown on a five inch: the steel shop and its crane, the pipe racks and the pipe bridge, the belt gallery, the gas spheres, the tank farm, the control house, the red and white stack and the gantry on the quay.',
+    buildMs: MAP_BUILD_MS.factory,
+    load: () => import('./factory/index.js'),
+  },
+  /*
    * SHIOKAZE POINT, on the owner's ask of 31 October 2026 ("we want the
    * maps to feel like manga comic like the town"): a map of our own,
    * a resort on a rock island gone to ruin, five hotel blocks of
@@ -438,6 +454,8 @@ export const DOME_DOC_ID = 'trk-b4d0e0e1';
 /* Shiokaze Point's (src/maps/shiokaze/yard.js), the same way. */
 export const SHIOKAZE_DOC_ID = 'trk-5e1a0ca2';
 
+/* Hamakaze Works' (src/maps/factory/yard.js), the same way. */
+export const FACTORY_DOC_ID = 'trk-fac70e31';
 /* Kodama Onsen's (src/maps/cedar/yard.js), the same way. */
 export const CEDAR_DOC_ID = 'trk-ced4a0e5';
 /* Kazahana Plain's (src/maps/kaza/yard.js), the same way. */

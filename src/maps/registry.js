@@ -137,8 +137,8 @@ export const MAPS = [
    * JOSHUA BARDWELL'S HOUSE, on the owner's ask of 21 October 2026: the
    * house and yard of Joshua Bardwell, outside only, at life size and
    * flown on the five inch, "no need to blow it up to make it feel like a
-   * whoop map". Rebuilt the same day from the layout of the Uncrashed
-   * Workshop map of it the owner sent, when the first build from stills
+   * whoop map". Rebuilt the same day from a layout of it the owner
+   * sent, when the first build from stills
    * was wrong. Built by the same pipeline (src/maps/bardwell/) and, like
    * the houses, off the board.
    */
@@ -256,9 +256,9 @@ export const MAPS = [
     load: () => import('./moto/index.js'),
   },
   /*
-   * KAMOME WHARF, on the owner's ask of 31 October 2026 (the dock of the
-   * Uncrashed inspired list, "we want the maps to feel like manga comic
-   * like the town"): a container terminal of our own on a Kobe style
+   * KAMOME WHARF, on the owner's ask of 31 October 2026 (the dock of his
+   * list of new maps, "we want the maps to feel like manga comic like the
+   * town"): a container terminal of our own on a Kobe style
    * waterfront at night, built from real terminals' sizes and nothing of
    * anybody's game (src/maps/dock/). Built by the built map's pipeline and
    * flown on the five inch at life size; off the board like the houses.

@@ -350,8 +350,9 @@ const WORLDS = [
    * server for a file that was not there (found 30 October 2026). */
   { id: 'ball', file: 'ball.jpg', name: 'Quad Ball' },
   { id: 'moto', file: 'moto.jpg', name: 'Ridgeline MX' },
-  /* Tanada RX, added 31 October 2026. */
-  { id: 'rally', file: 'rally.jpg', name: 'Tanada RX' },
+  /* Tanada RX, added 31 October 2026, from the south over the jump so
+   * the stand and the terraces are in it. */
+  { id: 'rally', file: 'rally.jpg', name: 'Tanada RX', shot: { tp: 0.5, tr: 0.7, ta: -1.57 } },
 ];
 
 async function drawWorlds(opts) {

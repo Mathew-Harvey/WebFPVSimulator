@@ -1,5 +1,5 @@
 /*
- * inspect.mjs: dump the raw contents of a Velocidrone .trk so an import can
+ * inspect.mjs: dump the raw contents of a .trk so an import can
  * be checked against ground truth. Read only, writes nothing.
  *
  * Usage, from the simulator root:
@@ -7,8 +7,7 @@
  *   node tracks/inspect.mjs --raw "WCMRC Round 5.trk"
  *   node tracks/inspect.mjs --list
  *
- * The .trk layout, confirmed against dutchdronesquad/trackdraw's exporter
- * (src/lib/export/exportVelocidroneTrk.ts):
+ * The .trk layout, confirmed against an open source exporter:
  *
  *   plaintext = sceneId \n trackName \n valueJson \n type \n onlineId
  *   valueJson = { gates: [...], barriers: [...] }

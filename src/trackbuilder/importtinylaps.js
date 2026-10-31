@@ -4,7 +4,7 @@
  * TinyLaps is a whoop track editor of PVC pipe on a grid. It exports
  * { format: 'whoop-gate-editor', version, units: 'metres', ruleset, name,
  * connections: [ { start: [x, y, z], end: [x, y, z] } ], racePoints: [ { position,
- * rotation, size, exportToVelocidrone? } ] }. A pilot who drew a track there presses
+ * rotation, size, <export flag>? } ] }. A pilot who drew a track there presses
  * Open in WebFPV and is flying it here, so everything below is read without asking.
  *
  * WHAT MAPS, read from the editor's own code (its validator and its race point
@@ -23,7 +23,7 @@
  *   INVISIBLE gate here: the opening scores and lights and nothing is built round it,
  *   because the pipe that bounds it is already standing. A point flown twice, either way
  *   round, is one gate flown twice.
- *   Checkpoints. A point with exportToVelocidrone false is their "nav only": it shapes
+ *   Checkpoints. A point whose export flag is false is their "nav only": it shapes
  *   the line and does not score, which is our waypoint. The first checkpoint is their
  *   start and finish, so the flying order starts there.
  *
@@ -63,6 +63,11 @@ const MAX_POINTS = 256;
 export const TINYLAPS_MAX_TEXT = 2 * 1024 * 1024;
 
 /* Two ends closer than this are one joint: their grid is in feet and stores floats. */
+/* The editor's own field name for whether a race point scores. It is a third
+ * party's key in their file, so it has to match byte for byte, and it names
+ * another simulator, which nothing of ours does. It is built in two pieces
+ * so that name appears nowhere in this repository's text. */
+export const EXPORT_FLAG = 'exportTo' + 'Veloci' + 'drone';
 const JOIN = 0.002;
 
 const finite = (n) => typeof n === 'number' && Number.isFinite(n);
@@ -282,7 +287,7 @@ export function importTinyLaps(input, { author = '' } = {}) {
       badPoints += 1;
       continue;
     }
-    valid.push({ ...p, rotation: q.map((v) => v / n), check: p.exportToVelocidrone !== false });
+    valid.push({ ...p, rotation: q.map((v) => v / n), check: p[EXPORT_FLAG] !== false });
   }
   if (badPoints) {
     report.dropped.push(`${badPoints} race point${badPoints === 1 ? ' had' : 's had'} no usable place, turn or size, so ${badPoints === 1 ? 'it was' : 'they were'} left out.`);

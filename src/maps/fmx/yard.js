@@ -63,24 +63,17 @@ function hash(i, salt) {
 }
 
 /*
- * THE TOWN, a row a side: [x, width, style, floors, variant], each row at
- * its own street line. The near row is shops and low flats, the far row
- * taller, so the skyline steps up away from the park.
+ * THE TOWN, a row a side across the street from the park: [x, width,
+ * style, floors, variant]. Shops and low flats, with an office in the
+ * middle, so the castle is the skyline.
  */
 const NORTH_NEAR = 186;
-const NORTH_FAR = 210;
 const SOUTH_NEAR = 38;
-const SOUTH_FAR = 15;
 const ROW_NEAR = [
   [18, 14, 'shop', 2, 1], [36, 16, 'shop', 3, 2], [55, 14, 'flats', 4, 3], [74, 16, 'shop', 2, 4], [94, 18, 'flats', 5, 5],
   [116, 14, 'shop', 2, 6], [134, 16, 'shop', 3, 7], [154, 18, 'office', 5, 8], [176, 16, 'shop', 2, 9], [195, 14, 'shop', 3, 10],
   [214, 18, 'flats', 4, 11], [236, 16, 'shop', 2, 12], [256, 18, 'flats', 5, 13], [278, 16, 'shop', 3, 14], [298, 14, 'shop', 2, 15],
   [316, 16, 'flats', 4, 16],
-];
-const ROW_FAR = [
-  [22, 22, 'flats', 7, 21], [50, 20, 'office', 8, 22], [78, 24, 'flats', 6, 23], [108, 22, 'office', 9, 24], [136, 20, 'flats', 7, 25],
-  [164, 24, 'office', 10, 26], [194, 20, 'flats', 6, 27], [222, 22, 'office', 8, 28], [250, 24, 'flats', 7, 29], [280, 20, 'office', 9, 30],
-  [308, 22, 'flats', 6, 31],
 ];
 
 function townRows(out, solidsOut) {
@@ -93,9 +86,10 @@ function townRows(out, solidsOut) {
     }
   };
   put(ROW_NEAR, NORTH_NEAR, 12, Math.PI, 0);
-  put(ROW_FAR, NORTH_FAR, 16, Math.PI, 0);
   put(ROW_NEAR, SOUTH_NEAR, 12, 0, 40);
-  put(ROW_FAR, SOUTH_FAR, 16, 0, 40);
+  /* A taller row behind each was drawn too, and cost two triangles in five
+   * of the whole map on Low for a skyline the castle already is: measured
+   * on 31 October 2026 and left out. */
 }
 
 /* Rectangles in the plan no tree may stand in. */

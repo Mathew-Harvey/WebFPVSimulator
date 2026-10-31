@@ -662,10 +662,13 @@ class Hand {
         }
       }
     }
+    /* A chochin: a paper drum, fat in the middle, black rims top and
+     * bottom. Eight sides: round to the ink pass, cheap to the kit. */
     for (const [lx, ly, lh] of lanterns) {
-      this.box('drNoboriRed', lx - 0.2, ly - 0.2, lh - 0.32, lx + 0.2, ly + 0.2, lh + 0.32);
-      this.box('drToriiBlack', lx - 0.14, ly - 0.14, lh + 0.32, lx + 0.14, ly + 0.14, lh + 0.42);
-      this.box('drToriiBlack', lx - 0.14, ly - 0.14, lh - 0.42, lx + 0.14, ly + 0.14, lh - 0.32);
+      this.k.cyl('drNoboriRed', w(lx, ly, lh), w(lx, ly, lh + 0.3), 0.22, 8, 0.15);
+      this.k.cyl('drNoboriRed', w(lx, ly, lh - 0.3), w(lx, ly, lh), 0.15, 8, 0.22);
+      this.tube('drToriiBlack', lx, ly, lh + 0.3, lx, ly, lh + 0.4, 0.13, 8);
+      this.tube('drToriiBlack', lx, ly, lh - 0.4, lx, ly, lh - 0.3, 0.13, 8);
     }
     /* The stands' fronts strung with bunting in the show's colours. */
     const flags = ['mxOrange', 'white', 'drIndigo', 'drNoboriRed'];

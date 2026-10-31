@@ -89,7 +89,7 @@ export const MAP_BUILD_MS = {
   /* Ridgeline MX (src/maps/moto/): a plot of trees, a track of mounds and
    * berms and ten bikes. An estimate until it is measured. */
   moto: 2400,
-  /* Shiroyama FMX (src/maps/fmx/), the same pipeline. An estimate from
-   * Ridgeline MX until it is measured. */
-  fmx: 2600,
+  /* Shiroyama FMX (src/maps/fmx/), the same pipeline: 2.8 s on Low and
+   * 3.6 s on High, headless, measured 31 October 2026. */
+  fmx: 3200,
 };

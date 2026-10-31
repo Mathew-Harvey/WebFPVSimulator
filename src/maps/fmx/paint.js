@@ -105,7 +105,7 @@ const BOARDS = [
   { bg: '#e4472c', fg: '#fff7ec', jp: '城山 FMX', en: 'SHIROYAMA FREESTYLE MOTOCROSS' },
   { bg: '#f4efe4', fg: INK, jp: '空中戦', en: 'BATTLE IN THE AIR', sun: true },
   { bg: '#2e4382', fg: '#fff7ec', jp: '大技', en: 'BIG TRICKS ONLY' },
-  { bg: '#f2c230', fg: INK, jp: 'FMX', en: 'TWENTY SIX METRES', chevrons: true },
+  { bg: '#f2c230', fg: INK, jp: 'FMX', en: 'SEND IT', chevrons: true },
   { bg: '#26232c', fg: '#fff7ec', jp: '宙返り', en: 'BACKFLIP' },
   { bg: '#f2a6bd', fg: INK, jp: '祭', en: 'AIR MATSURI' },
   { bg: '#8fe0b8', fg: INK, jp: '城下町', en: 'CASTLE TOWN JAM' },

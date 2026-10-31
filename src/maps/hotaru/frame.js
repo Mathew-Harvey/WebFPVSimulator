@@ -118,6 +118,7 @@ export function hash2(i, j) {
  *   balls    a drawn sphere: a lamp, a float, a persimmon
  *   rods     a drawn box turned to any plan heading: a plank, a bamboo pole
  *            laid along a rack, an oar. Drawn only, never solid
+ *   slabs    a plan polygon stood up: a hull, a bow
  *   frusta   a rectangle rising to a smaller one: a stone lantern's cap, a
  *            hipped roof
  *   wires    a cable hung between two plan points, sagging
@@ -138,6 +139,7 @@ export class Vale {
     this.cones = [];
     this.balls = [];
     this.rods = [];
+    this.slabs = [];
     this.frusta = [];
     this.wires = [];
     this.scaled = [];
@@ -250,6 +252,13 @@ export class Vale {
    * Drawn only. `up` true stands its t across the run and its w up. */
   rod(m, a, b, w, t, fine = false) {
     this.rods.push({ m, a: worldAt(a[0], a[1], a[2]), b: worldAt(b[0], b[1], b[2]), w, t, fine: fine || this.dressing, near: this.near });
+  }
+
+  /* A plan polygon ([[px, py], ...], counter clockwise seen from above)
+   * stood up from h0 to h1: a boat's hull, a bow, a pier's end. Drawn
+   * only; its solid is the caller's. */
+  slab(m, pts, h0, h1, fine = false) {
+    this.slabs.push({ m, pts, h0, h1, fine: fine || this.dressing, near: this.near });
   }
 
   frustum(m, o, h0, i, h1, fine = false) {

@@ -133,10 +133,10 @@ export const MILL_POND = { px: 207, py: 290, r: 13 };
 
 /*
  * THE SHORE. South of it is the bay. Along the fishing hamlet it is the
- * quay's straight stone face (QUAY), a metre over the water; west of the
+ * quay's straight stone face (QUAY), 1.3 m over the water; west of the
  * hamlet it is a beach that curls round under the headland.
  */
-export const QUAY = { x0: 288, x1: 446, py: 48, h: 1.0 };
+export const QUAY = { x0: 306, x1: 446, py: 48, h: 0.6 };
 export function shoreAt(px) {
   if (px >= QUAY.x0 - 4 && px <= QUAY.x1 + 4) {
     return QUAY.py;
@@ -241,6 +241,11 @@ function hills(px, py) {
 /* The full shape, metres up at a plan point. */
 export function shape(px, py) {
   let h = hills(px, py);
+  /* The hamlet's apron behind the quay, at the quay's height. */
+  if (px > QUAY.x0 - 12 && px < QUAY.x1 + 8 && py < 84) {
+    const k = smooth((px - (QUAY.x0 - 12)) / 10) * smooth((QUAY.x1 + 8 - px) / 6) * smooth((84 - py) / 14);
+    h = Math.max(h, QUAY.h * k);
+  }
   /* Over the terraces' footprint the floor is the valley's: they are boxes. */
   if (px > TERRACES.x0 - 1 && px < TERRACES.x1 - 6 && py > TERRACES.y0 - 1 && py < TERRACES.y1 + 1) {
     h = 0;
@@ -261,7 +266,12 @@ export function shape(px, py) {
   const sy = shoreAt(px);
   if (py < sy + 10) {
     const along = py - sy;
-    const sea = along >= 10 ? Infinity : along >= 0 ? -0.9 + 1.1 * smooth(along / 10) : -0.9 + along * 0.18;
+    /* Along the quay the land keeps its height to the stone face and the
+     * bed drops away in front of it; the face is a box (./harbour.js). */
+    const quay = px >= QUAY.x0 && px <= QUAY.x1;
+    const sea = along >= 10 ? Infinity
+      : quay ? (along >= 0 ? Infinity : -3.2)
+        : along >= 0 ? -0.9 + 1.1 * smooth(along / 10) : -0.9 + along * 0.18;
     h = Math.min(h, Math.max(-6.5, sea));
   }
   return h;

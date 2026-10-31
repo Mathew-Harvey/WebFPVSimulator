@@ -506,6 +506,23 @@ export const MAPS = [
     load: () => import('./hotaru/index.js'),
   },
   /*
+   * MOMIJI PASS, on the owner's ask of 31 October 2026 (a mountain pass
+   * road map, "we want the maps to feel like manga comic like the town"): a
+   * Japanese touge of our own in autumn, a loop of hairpins up one face of
+   * a mountain and down the other, a gorge crossed on a red arch bridge, a
+   * tunnel under the ridge, a rest stop at the pass, and cars on the road
+   * (src/maps/touge/). Built by the built map's pipeline and flown on the
+   * five inch at life size; off the board like the houses.
+   */
+  {
+    id: 'touge',
+    name: 'Momiji Pass',
+    mode: 'freestyle',
+    note: 'A mountain pass road in autumn. Hairpins stacked up the mountain, cars to chase, a tunnel under the ridge, a red bridge over the gorge, and a tea house at the top.',
+    buildMs: MAP_BUILD_MS.touge,
+    load: () => import('./touge/index.js'),
+  },
+  /*
    * TONBO FEST, on the owner's ask of 31 October 2026: a drone racing
    * festival of our own on a river's sports ground under the levee, in the
    * town's manga look: inflatable gates, the pits, the stage, the stalls,
@@ -584,6 +601,8 @@ export const DOCK_DOC_ID = 'trk-d0c4a3e7';
 export const FACTORY_DOC_ID = 'trk-fac70e31';
 /* Kodama Onsen's (src/maps/cedar/yard.js), the same way. */
 export const CEDAR_DOC_ID = 'trk-ced4a0e5';
+/* Momiji Pass's (src/maps/touge/yard.js), the same way. */
+export const TOUGE_DOC_ID = 'trk-70a9e5a1';
 /* Kazahana Plain's (src/maps/kaza/yard.js), the same way. */
 export const KAZA_DOC_ID = 'trk-ca2a4a7a';
 /* Kirigaoka Sanatorium's (src/maps/sana/yard.js), the same way. */

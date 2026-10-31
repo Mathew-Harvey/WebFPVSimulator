@@ -48,6 +48,7 @@ import * as ALPINE from './alpine.js';
 import * as TOWERS from './towers.js';
 import * as SHIOKAZE from './shiokaze.js';
 import * as CEDAR from './cedar.js';
+import * as TOUGE from './touge.js';
 import * as OFFICE from './office.js';
 import * as KAZA from './kaza.js';
 import * as SANATORIUM from './sanatorium.js';
@@ -159,7 +160,7 @@ const FAMILIES = {
   sanatorium: SANATORIUM,
   shiokaze: SHIOKAZE, rally: RALLY,
   airfield: AIRFIELD, hotaru: HOTARU,
-  fest: FEST,
+  fest: FEST, touge: TOUGE,
   arctic: ARCTIC,
 };
 export const FAMILY_MATERIALS = {};

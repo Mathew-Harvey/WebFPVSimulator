@@ -526,6 +526,7 @@ const MAP_MODULE_PREFIX = {
   alps: '/src/maps/alps/',
   shiokaze: '/src/maps/shiokaze/',
   cedar: '/src/maps/cedar/',
+  touge: '/src/maps/touge/',
   office: '/src/maps/office/',
   kaza: '/src/maps/kaza/',
   sana: '/src/maps/sana/',
@@ -9334,6 +9335,14 @@ export async function boot({ loading, bootStart, mapId }) {
     if (view.id === 'cedar') {
       notice = {
         text: 'The board keeps no runs for Kodama Onsen, so its runs stay here.',
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
+    /* Nor for Momiji Pass: TOUGE_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'touge') {
+      notice = {
+        text: 'The board keeps no runs for Momiji Pass, so its runs stay here.',
         untilMs: performance.now() + 4200,
       };
       return;

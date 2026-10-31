@@ -1001,7 +1001,7 @@ function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
     || mapId === 'goats' || mapId === 'sunny' || mapId === 'drift' || mapId === 'ball' || mapId === 'moto' || mapId === 'dome' || mapId === 'cedar'
     || mapId === 'towers' || mapId === 'alps' || mapId === 'office' || mapId === 'kaza' || mapId === 'sana'
     || mapId === 'shiokaze' || mapId === 'factory' || mapId === 'rally' || mapId === 'fmx'
-    || mapId === 'airfield'
+    || mapId === 'airfield' || mapId === 'touge'
     || mapId === 'dock'
     || mapId === 'hotaru' || mapId === 'dunes' || mapId === 'fest' || mapId === 'arctic';
   const where = mapId === 'house' ? "Nick's house"
@@ -1015,7 +1015,7 @@ function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
           : mapId === 'dock' ? 'Kamome Wharf'
           : mapId === 'factory' ? 'Hamakaze Works'
           : mapId === 'shiokaze' ? 'Shiokaze Point'
-            : mapId === 'drift' ? 'Drift Matsuri' : mapId === 'ball' ? 'Quad Ball' : mapId === 'moto' ? 'Ridgeline MX' : mapId === 'dome' ? 'Bakuon Dome' : mapId === 'dunes' ? 'Kazesuna Dunes' : mapId === 'cedar' ? 'Kodama Onsen' : mapId === 'airfield' ? 'Kazami Airfield' : mapId === 'towers' ? 'Kumoi Towers' : mapId === 'alps' ? 'Raicho Ridge' : mapId === 'kaza' ? 'Kazahana Plain' : mapId === 'sana' ? 'Kirigaoka Sanatorium' : mapId === 'rally' ? 'Tanada RX' : mapId === 'fmx' ? 'Shiroyama FMX' : mapId === 'hotaru' ? 'Hotaru Valley' : mapId === 'fest' ? 'Tonbo Fest' : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
+            : mapId === 'drift' ? 'Drift Matsuri' : mapId === 'ball' ? 'Quad Ball' : mapId === 'moto' ? 'Ridgeline MX' : mapId === 'dome' ? 'Bakuon Dome' : mapId === 'dunes' ? 'Kazesuna Dunes' : mapId === 'cedar' ? 'Kodama Onsen' : mapId === 'airfield' ? 'Kazami Airfield' : mapId === 'towers' ? 'Kumoi Towers' : mapId === 'alps' ? 'Raicho Ridge' : mapId === 'kaza' ? 'Kazahana Plain' : mapId === 'sana' ? 'Kirigaoka Sanatorium' : mapId === 'rally' ? 'Tanada RX' : mapId === 'fmx' ? 'Shiroyama FMX' : mapId === 'hotaru' ? 'Hotaru Valley' : mapId === 'fest' ? 'Tonbo Fest' : mapId === 'touge' ? 'Momiji Pass' : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
   if (mode === 'off') {
     return `${drawn ? '' : `${SCORING_UNDRAWN} `}${scoringOff(where)} ${built ? scoringMoreBuilt(where) : SCORING_MORE}`;
   }
@@ -1113,6 +1113,9 @@ const TOWERS_OFF_BOARD = 'The board keeps no runs for Kumoi Towers, so a run flo
 const DOME_OFF_BOARD = 'The board keeps no runs for Bakuon Dome, so a run flown there stays here.'
   + ' Fly the town for a run that can go up.';
 const CEDAR_OFF_BOARD = 'The board keeps no runs for Kodama Onsen, so a run flown there stays here.';
+/* Momiji Pass, the same way. */
+const TOUGE_OFF_BOARD = 'The board keeps no runs for Momiji Pass, so a run flown there stays here.'
+  + ' Fly the town for a run that can go up.';
 const KAZA_OFF_BOARD = 'The board keeps no runs for Kazahana Plain, so a run flown there stays here.';
 /* Kirigaoka Sanatorium, the same way. */
 const SANA_OFF_BOARD = 'The board keeps no runs for Kirigaoka Sanatorium, so a run flown there stays here.'
@@ -11479,7 +11482,7 @@ export class Ui {
         const built = this.settings.map === 'built' || this.settings.map === 'house' || this.settings.map === 'heads'
           || this.settings.map === 'bardwell' || this.settings.map === 'warehouse' || this.settings.map === 'goats'
           || this.settings.map === 'sunny' || this.settings.map === 'drift' || this.settings.map === 'ball' || this.settings.map === 'moto'
-          || this.settings.map === 'dome' || this.settings.map === 'cedar' || this.settings.map === 'towers' || this.settings.map === 'alps'
+          || this.settings.map === 'dome' || this.settings.map === 'cedar' || this.settings.map === 'touge' || this.settings.map === 'towers' || this.settings.map === 'alps'
           || this.settings.map === 'office' || this.settings.map === 'kaza' || this.settings.map === 'sana'
           || this.settings.map === 'shiokaze' || this.settings.map === 'factory'
           || this.settings.map === 'rally'
@@ -11530,6 +11533,7 @@ export class Ui {
                           : this.settings.map === 'towers' ? TOWERS_OFF_BOARD
                           : this.settings.map === 'dome' ? DOME_OFF_BOARD
                           : this.settings.map === 'cedar' ? CEDAR_OFF_BOARD
+                          : this.settings.map === 'touge' ? TOUGE_OFF_BOARD
                           : this.settings.map === 'kaza' ? KAZA_OFF_BOARD
                           : this.settings.map === 'sana' ? SANA_OFF_BOARD
                           : this.settings.map === 'rally' ? RALLY_OFF_BOARD

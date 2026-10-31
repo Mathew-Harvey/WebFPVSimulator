@@ -120,6 +120,9 @@ export const MAP_BUILD_MS = {
   /* Tanada RX (src/maps/rally/): a circuit, a hillside of terraces, a
    * paddock and six cars. An estimate until it is measured. */
   rally: 2800,
+  /* Shiroyama FMX (src/maps/fmx/), the same pipeline: 2.8 s on Low and
+   * 3.6 s on High, headless, measured 31 October 2026. */
+  fmx: 3200,
   /* Kazami Airfield (src/maps/airfield/): a valley of terraces and cedars,
    * the hangar and the field. An estimate until it is measured. */
   airfield: 2600,

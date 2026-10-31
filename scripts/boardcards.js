@@ -379,6 +379,9 @@ const WORLDS = [
   /* Tanada RX, added 31 October 2026, from the south over the jump so
    * the stand and the terraces are in it. */
   { id: 'rally', file: 'rally.jpg', name: 'Tanada RX', shot: { tp: 0.5, tr: 0.7, ta: -1.57 } },
+  /* Shiroyama FMX, added 31 October 2026 with its picture, from the
+   * south east so the kickers, the yagura and the castle are in it. */
+  { id: 'fmx', file: 'fmx.jpg', name: 'Shiroyama FMX', shot: { tp: 0.5, tr: 0.75, ta: -0.6 } },
 ];
 
 async function drawWorlds(opts) {

@@ -255,6 +255,23 @@ export const MAPS = [
     buildMs: MAP_BUILD_MS.moto,
     load: () => import('./moto/index.js'),
   },
+  /*
+   * SHIOKAZE POINT, on the owner's ask of 31 October 2026 ("we want the
+   * maps to feel like manga comic like the town"), from the Riviera Unit
+   * brief: a resort on a rock island gone to ruin, five hotel blocks of
+   * seven storeys over the sea with balconies to strafe and stair cores to
+   * dive, a cliff line, sea stacks and an arch, and a park race of ten
+   * gates (src/maps/shiokaze/). Built by the built map's pipeline and flown
+   * on the five inch at life size; off the board like the houses.
+   */
+  {
+    id: 'shiokaze',
+    name: 'Shiokaze Point',
+    mode: 'freestyle',
+    note: 'A seaside resort on a rock island, closed for years. Strafe the hotel balconies, dive the stair cores, thread the sea stacks and the arch, and race the ten gates in the park.',
+    buildMs: MAP_BUILD_MS.shiokaze,
+    load: () => import('./shiokaze/index.js'),
+  },
 ];
 
 /* The house's document id (src/maps/house/yard.js), here so the stamps can
@@ -282,6 +299,8 @@ export const DRIFT_DOC_ID = 'trk-d81f7a75';
 export const BALL_DOC_ID = 'trk-ba11b0a1';
 /* Ridgeline MX's (src/maps/moto/yard.js), the same way. */
 export const MOTO_DOC_ID = 'trk-3c07e5a1';
+/* Shiokaze Point's (src/maps/shiokaze/yard.js), the same way. */
+export const SHIOKAZE_DOC_ID = 'trk-5e1a0ca2';
 
 export function mapById(id) {
   return MAPS.find((m) => m.id === id) ?? MAPS[0];

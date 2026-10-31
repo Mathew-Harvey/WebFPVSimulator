@@ -112,9 +112,9 @@ export const WEDDED = [
   { px: 170, py: 110, r: 4.2, h: 7.5, taper: 0.3, seed: 37, n: 9 },
 ];
 export const STACKS = [
-  { px: 222, py: 98, r: 5.2, h: 22, taper: 0.4, seed: 41, n: 9 },
-  { px: 235, py: 92, r: 4.0, h: 15, taper: 0.35, seed: 43, n: 8 },
-  { px: 270, py: 114, r: 6.5, h: 10, taper: 0.3, seed: 47, n: 10 },
+  { px: 222, py: 98, r: 5.2, h: 22, taper: 0.4, seed: 41, n: 9, pine: [0.6, 0.8] },
+  { px: 235, py: 92, r: 4.0, h: 15, taper: 0.35, seed: 43, n: 8, pine: [0.8, 0.6] },
+  { px: 270, py: 114, r: 6.5, h: 10, taper: 0.3, seed: 47, n: 10, pine: [0.6, 0.8] },
   { px: 92, py: 116, r: 3.4, h: 6, taper: 0.3, seed: 53, n: 8 },
   { px: 312, py: 122, r: 3.0, h: 4.5, taper: 0.25, seed: 59, n: 7 },
 ];
@@ -137,6 +137,26 @@ export function inPoly(poly, x, y) {
     }
   }
   return inside;
+}
+
+/* Whether a point is on a polygon's edge, to a micrometre. Two terraces
+ * that share an edge both own the corners on it, or the raster leaves a
+ * cell's slot between them (rasterBoxes). */
+function onEdge(poly, x, y) {
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i, i += 1) {
+    const [xi, yi] = poly[i];
+    const [xj, yj] = poly[j];
+    const dx = xj - xi;
+    const dy = yj - yi;
+    const L = dx * dx + dy * dy;
+    const t = L > 0 ? Math.max(0, Math.min(1, ((x - xi) * dx + (y - yi) * dy) / L)) : 0;
+    const ex = xi + dx * t - x;
+    const ey = yi + dy * t - y;
+    if (ex * ex + ey * ey < 1e-12) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /* Twice the signed area: positive when CCW. */
@@ -225,7 +245,9 @@ export function rasterBoxes(poly, h0, h1, emit, cell = RASTER) {
   const corner = new Uint8Array((nx + 1) * (ny + 1));
   for (let i = 0; i <= nx; i += 1) {
     for (let j = 0; j <= ny; j += 1) {
-      corner[i * (ny + 1) + j] = inPoly(poly, gx0 + i * cell, gy0 + j * cell) ? 1 : 0;
+      const x = gx0 + i * cell;
+      const y = gy0 + j * cell;
+      corner[i * (ny + 1) + j] = inPoly(poly, x, y) || onEdge(poly, x, y) ? 1 : 0;
     }
   }
   const at = (i, j) => corner[i * (ny + 1) + j];
@@ -444,7 +466,33 @@ function seaRock(T, s, name) {
     const p = poly.map(([x, y]) => [s.px + (x - s.px) * sc, s.py + (y - s.py) * sc]);
     rasterBoxes(p, k === 0 ? -1 : ha, hb, (x0, y0, x1, y1, a, b) => T.hidden(x0, y0, a, x1, y1, b, 'wall', name));
   }
+  if (s.pine) {
+    rockPine(T, s.px, s.py, s.h, s.pine);
+  }
   return poly;
+}
+
+/*
+ * A PINE ON A SEA ROCK, the one every print of this coast has: a trunk
+ * bent by the wind off the sea and its needles in flat pads, the way an
+ * ink brush lays them. `lean` is the plan direction the wind pushed it.
+ * The trunk is solid; the pads are drawn only, as a tree's crown is.
+ */
+function rockPine(T, px, py, h, lean) {
+  const [lx, ly] = lean;
+  const base = [px - lx * 0.8, py - ly * 0.8, h - 0.3];
+  const top = [px + lx * 1.6, py + ly * 1.6, h + 3.4];
+  T.cap('skBark', base, top, 0.17, { kind: 'pole', name: 'rock pine' });
+  const pads = [
+    [top[0], top[1], top[2], 1.7],
+    [px + lx * 2.6 - ly * 0.9, py + ly * 2.6 + lx * 0.9, h + 2.3, 1.2],
+    [px - lx * 0.2 + ly * 1.0, py - ly * 0.2 - lx * 1.0, h + 1.9, 1.0],
+  ];
+  for (const [x, y, z, r] of pads) {
+    T.cyl('skBark', [px + lx * 0.6, py + ly * 0.6, h + 1.6], [x, y, z], 0.07, 4);
+    T.disc('skPineLeaf', x, y, r, z - 0.15, z + 0.4, 7);
+    T.disc('skPineLeaf', x + lx * 0.2, y + ly * 0.2, r * 0.62, z + 0.4, z + 0.75, 7);
+  }
 }
 
 /* The unit circle's points for the n a rock may have, by the half angle

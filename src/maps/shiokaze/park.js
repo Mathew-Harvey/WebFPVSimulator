@@ -54,7 +54,7 @@ export const GATES = [
 export const PERGOLA = { x0: 58, x1: 62.4, y0: 243, y1: 263, h: 3.0 };
 export const FOUNTAIN = { px: 72, py: 196, r: 4.2 };
 /* The wheel: its axle, its radius, the leg frames' plan y and foot span. */
-export const WHEEL = { px: 100, py: 272, h: TOP + 11, R: 9, legY: [269.5, 274.5], foot: 4 };
+export const WHEEL = { px: 100, py: 272, h: TOP + 11.6, R: 9, legY: [269.5, 274.5], foot: 4 };
 
 const SC = { s: 0, c: 1 };
 const unit = (deg) => {
@@ -75,6 +75,7 @@ export function park(T) {
   fountain(T, r);
   wheel(T, r);
   climbingFrame(T, 92, 224);
+  sandpit(T, 90.6, 222.6, 96.4, 227.4);
   pines(T, r);
   garden(T, r);
 }
@@ -220,6 +221,15 @@ function wheel(T, r) {
   T.dress(() => {
     T.torus('skIron', W.px, yMid, W.h, 1.0, 0.12, 0, 1, 6, 16);
   });
+}
+
+/* The sandpit under the climbing frame, in its timber edge. */
+function sandpit(T, x0, y0, x1, y1) {
+  T.paint('skSand', x0, y0, TOP + 0.005, x1, y1, TOP + 0.05);
+  T.deco('skWood', x0 - 0.15, y0 - 0.15, TOP, x1 + 0.15, y0, TOP + 0.2);
+  T.deco('skWood', x0 - 0.15, y1, TOP, x1 + 0.15, y1 + 0.15, TOP + 0.2);
+  T.deco('skWood', x0 - 0.15, y0, TOP, x0, y1, TOP + 0.2);
+  T.deco('skWood', x1, y0, TOP, x1 + 0.15, y1, TOP + 0.2);
 }
 
 /* A climbing frame: a box of bars, three by two by two. */

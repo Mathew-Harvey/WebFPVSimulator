@@ -242,7 +242,7 @@ function workshop(T, r) {
       T.disc(r.chance(0.5) ? 'skBlue' : 'skRust', px, py, 0.3, TOP, TOP + 0.9, 10);
     }
   });
-  T.box('skMint', rx + 3, S.y1 - 2.4, TOP, rx + 6, S.y1 - 1.2, TOP + 1.3, { kind: 'wall', name: 'lathe' });
+  T.box('skMint', rx + 3, S.y1 - 3.4, TOP, rx + 6, S.y1 - 2.2, TOP + 1.3, { kind: 'wall', name: 'lathe' });
 }
 
 /* THE STEPS AND THE TORII: stone steps up to the hill, solid each to the
@@ -314,7 +314,7 @@ function shrine(T, r) {
   for (const px of [S.x0 + 0.3, S.x1 - 0.3]) {
     T.post('skVermilion', px, S.y0 - 0.3, h + 0.6, h + 3.4, 0.14, { kind: 'pole', name: 'shrine post' });
   }
-  T.box('skWoodDark', (S.x0 + S.x1) / 2 - 1, S.y0 - 1.4, h + 0.6, (S.x0 + S.x1) / 2 + 1, S.y0 - 0.6, h + 1.4, { kind: 'wall', name: 'offering box' });
+  T.box('skWoodDark', (S.x0 + S.x1) / 2 - 1, S.y0 - 0.8, h + 0.6, (S.x0 + S.x1) / 2 + 1, S.y0, h + 1.4, { kind: 'wall', name: 'offering box' });
   T.paint('skVoid', S.x0 + 1.5, S.y0 - 0.03, h + 0.8, S.x1 - 1.5, S.y0, h + 3.0);
   T.dress(() => {
     T.cyl('skRope', [(S.x0 + S.x1) / 2 - 2.5, S.y0 - 0.4, h + 3.2], [(S.x0 + S.x1) / 2 + 2.5, S.y0 - 0.4, h + 3.2], 0.09, 6);
@@ -371,6 +371,18 @@ function machines(T, r) {
   T.asset({ type: 'vending', dims: { count: 2, variant: 3 } }, 1, 236, 208.6, TOP, (3 * Math.PI) / 2);
   T.asset({ type: 'vending', dims: { count: 1, variant: 7 } }, 1, 116, 208.6, TOP, (3 * Math.PI) / 2);
   T.asset({ type: 'vending', dims: { count: 3, variant: 11 } }, 1, 362, 166.5, TOP, Math.PI);
+  /* The empties round them, nobody to sweep them up. */
+  T.dress(() => {
+    for (const [cx, cy] of [[236, 207.2], [116, 207.2], [360.8, 166.5]]) {
+      for (let i = 0; i < 6; i += 1) {
+        const x = cx + r.range(-1.6, 1.6);
+        const y = cy + r.range(-0.9, 0.9);
+        const along = r.chance(0.5);
+        const [dx, dy] = along ? [0.06, 0] : [0, 0.06];
+        T.cyl(r.chance(0.5) ? 'skCan' : 'skCanBlue', [x - dx, y - dy, TOP + 0.033], [x + dx, y + dy, TOP + 0.033], 0.033, 6);
+      }
+    }
+  });
 }
 
 /* The cars left in the car park, the town's own kei cars and vans, and

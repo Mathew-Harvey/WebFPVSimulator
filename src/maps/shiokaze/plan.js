@@ -139,7 +139,7 @@ function billboard(T, b) {
     for (let k = 0; k < 5; k += 1) {
       const u = -hw + 0.6 + k * 1.3;
       const [px, py] = alongX ? [b.px + u, b.py + out[1] * (ht + 0.01)] : [b.px + out[0] * (ht + 0.01), b.py + u];
-      T.paint('skRust', px - 0.05, py - 0.05, top - 0.9 - k * 0.1, px + 0.05, py + 0.05, top - 0.12);
+      T.paint('skRustDark', px - 0.05, py - 0.05, top - 0.9 - k * 0.1, px + 0.05, py + 0.05, top - 0.12);
     }
   });
 }
@@ -198,7 +198,7 @@ export function shiokazeGaps() {
     if (g.pergola) {
       out.push({ name, px: g.px, py: g.py, deg: g.deg, w: PERGOLA.x1 - PERGOLA.x0 - 0.24 - 2 * M, h0: TOP + M, h1: TOP + PERGOLA.h - M, points: 100 });
     } else if (g.wheel) {
-      out.push({ name, px: g.px, py: g.py, deg: g.deg, w: 3.0, h0: TOP + M, h1: WHEEL.h - WHEEL.R + 0.6 - M, points: 250 });
+      out.push({ name, px: g.px, py: g.py, deg: g.deg, w: 3.0, h0: TOP + M, h1: WHEEL.h - WHEEL.R - 0.14 - M, points: 250 });
     } else {
       out.push({ name, px: g.px, py: g.py, deg: g.deg, w: ARCH_W - 2 * M, h0: TOP + M, h1: TOP + ARCH_H - M, points: 100 });
     }
@@ -239,7 +239,9 @@ export function shiokazeGaps() {
 }
 
 /* Under the rope between the wedded rocks: flown across the line between
- * their middles, at the middle of the water between them. */
+ * their middles, at the middle of the water between them, its top under
+ * the rope's lowest point over the window's width (the sag's parabola,
+ * which is under the chords the rope is drawn as). */
 function weddedGap(M) {
   const [a, b] = WEDDED;
   const dx = b.px - a.px;
@@ -253,8 +255,20 @@ function weddedGap(M) {
   const py = a.py + dy * t;
   /* The rope's lowest point over the window: the sag's parabola at the
    * window's share of the rope's length. */
-  const u = (px - ROPE.a[0]) / (ROPE.b[0] - ROPE.a[0]);
-  const z = ROPE.a[2] + (ROPE.b[2] - ROPE.a[2]) * u - 4 * ROPE.sag * u * (1 - u);
+  const ux = dx / L;
+  const uy = dy / L;
+  const half = clear / 2 - M;
+  let z = Infinity;
+  const rx = ROPE.b[0] - ROPE.a[0];
+  const ry = ROPE.b[1] - ROPE.a[1];
+  const R2 = rx * rx + ry * ry;
+  for (let k = 0; k <= 64; k += 1) {
+    const s = -half + (2 * half * k) / 64;
+    const qx = px + ux * s;
+    const qy = py + uy * s;
+    const u = Math.max(0, Math.min(1, ((qx - ROPE.a[0]) * rx + (qy - ROPE.a[1]) * ry) / R2));
+    z = Math.min(z, ROPE.a[2] + (ROPE.b[2] - ROPE.a[2]) * u - 4 * ROPE.sag * u * (1 - u));
+  }
   return { name: 'WEDDED ROCKS', px, py, deg: 101, w: clear - 2 * M, h0: 0.6, h1: z - ROPE.r - M, points: 1000 };
 }
 

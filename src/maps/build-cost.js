@@ -89,4 +89,7 @@ export const MAP_BUILD_MS = {
   /* Ridgeline MX (src/maps/moto/): a plot of trees, a track of mounds and
    * berms and ten bikes. An estimate until it is measured. */
   moto: 2400,
+  /* Shiokaze Point (src/maps/shiokaze/): the island, five hotel blocks and
+   * the streets behind them. An estimate until it is measured. */
+  shiokaze: 2400,
 };

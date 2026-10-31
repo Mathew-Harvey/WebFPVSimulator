@@ -174,6 +174,9 @@ function painter(key) {
   }
 }
 
+/* Whether ./index.js can paint a sign, for scripts/dunes-check.js. */
+export const signPainted = (key) => painter(key) !== null;
+
 /*
  * The atlas: every distinct key once, at 80 pixels to the metre of its
  * board's height (48 to 160), packed in rows. Returns { canvas, cells, w, h },

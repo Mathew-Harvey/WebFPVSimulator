@@ -68,6 +68,7 @@
     "check:career:rig": "node --test tests/career/rig.test.js",
     "check:bardwell": "node scripts/bardwell-check.js",
     "check:sunny": "node scripts/sunny-check.js",
+    "check:dunes": "node scripts/dunes-check.js",
     "check:yard": "node scripts/yardtrack-check.js",
     "check:windmill": "node scripts/windmill-check.js",
     "check:room": "node scripts/room-check.js",

@@ -50,7 +50,7 @@ import { partsOf } from '../../props/catalog.js';
 import { loblollyLayout } from '../../props/street.js';
 import { sincos, quarterTurns, quarterSinCos } from '../../props/trig.js';
 import {
-  W, D, w, groundAt, sandAt, crestY, crestH, shoreY, TERRACE, POND, BARCHANS,
+  W, D, w, groundAt, sandAt, crestY, shoreY, TERRACE, POND, BARCHANS,
 } from './terrain.js';
 
 /* ---- the cull chunks: 128 m squares of the plan ---- */
@@ -139,15 +139,6 @@ function lowest(x0, y0, x1, y1) {
   }
   return h;
 }
-function highest(x0, y0, x1, y1) {
-  let h = -Infinity;
-  for (let i = 0; i <= 4; i += 1) {
-    for (let j = 0; j <= 4; j += 1) {
-      h = Math.max(h, g(x0 + ((x1 - x0) * i) / 4, y0 + ((y1 - y0) * j) / 4));
-    }
-  }
-  return h;
-}
 
 /* Normals in the world for a face looking along the plan's axes. */
 const N_NORTH = [0, 0, -1];
@@ -213,7 +204,7 @@ function lookout(C) {
   C.sign('lookout', 540, 100.3, d.top + 1.6, N_SOUTH, 2.2, 0.75);
   C.post('dnWoodDark', 538.6, 100.3, d.top, d.top + 1.95, 0.05, { kind: 'pole' });
   C.post('dnWoodDark', 541.4, 100.3, d.top, d.top + 1.95, 0.05, { kind: 'pole' });
-  C.gap('UNDER THE LOOK OUT', 540, 117.5, 0, 6.4, g(540, 115) + 0.35, d.top - d.slab - 0.3, 500);
+  C.gap('UNDER THE LOOK OUT', 535, 118.6, 0, 3, g(535, 117.1) + 0.35, d.top - d.slab - 0.3, 500);
 }
 
 /* ================================================================== */
@@ -523,14 +514,16 @@ function station(C) {
       K.begin(0, 0, 0, 0, chunkAt(x, p.y0));
     }
   });
-  /* The waiting shelter: a back wall, two ends, a lean to roof, a bench,
-   * open to the track. */
+  /* The waiting shelter: a back wall, two short wind screens at its ends,
+   * a lean to roof, a bench, open to the track. The screens stop short of
+   * the front so the shelter is a tunnel a whoop flies end to end, under
+   * the roof and past the bench, and not a slot under a wall. */
   const S = { x0: 96, x1: 106, y0: 32.4, y1: 35.0, h: 2.6 };
   C.box('dnTimber', S.x0, S.y1 - 0.15, p.top, S.x1, S.y1, p.top + S.h, { kind: 'wall', name: 'shelter' });
-  C.box('dnTimber', S.x0, S.y0, p.top + 1.1, S.x0 + 0.12, S.y1, p.top + S.h, { kind: 'wall', name: 'shelter end' });
-  C.box('dnTimber', S.x1 - 0.12, S.y0, p.top + 1.1, S.x1, S.y1, p.top + S.h, { kind: 'wall', name: 'shelter end' });
-  C.post('dnWoodDark', S.x0 + 0.06, S.y0 + 0.06, p.top, p.top + 1.1, 0.06, { kind: 'pole' });
-  C.post('dnWoodDark', S.x1 - 0.06, S.y0 + 0.06, p.top, p.top + 1.1, 0.06, { kind: 'pole' });
+  C.box('dnTimber', S.x0, S.y1 - 0.8, p.top, S.x0 + 0.12, S.y1, p.top + S.h, { kind: 'wall', name: 'shelter end' });
+  C.box('dnTimber', S.x1 - 0.12, S.y1 - 0.8, p.top, S.x1, S.y1, p.top + S.h, { kind: 'wall', name: 'shelter end' });
+  C.post('dnWoodDark', S.x0 + 0.06, S.y0 + 0.06, p.top, p.top + S.h, 0.06, { kind: 'pole', name: 'shelter post' });
+  C.post('dnWoodDark', S.x1 - 0.06, S.y0 + 0.06, p.top, p.top + S.h, 0.06, { kind: 'pole', name: 'shelter post' });
   C.box('dnRoofRust', S.x0 - 0.4, S.y0 - 0.6, p.top + S.h, S.x1 + 0.4, S.y1 + 0.2, p.top + S.h + 0.18, { kind: 'wall', name: 'shelter roof' });
   C.deco('dnWoodDark', S.x0 + 0.6, S.y1 - 0.6, p.top + 0.42, S.x1 - 0.6, S.y1 - 0.15, p.top + 0.48);
   C.draw(101, 34, (K) => {
@@ -540,7 +533,7 @@ function station(C) {
       K.box('dnWoodDark', a[0], a[1], b[2], b[0], b[1], a[2]);
     }
   }, true);
-  C.gap('THE SHELTER', 101, 33.6, 0, 1.4, p.top + 0.55, p.top + S.h - 0.35, 1000);
+  C.gap('THE SHELTER', 101, 33.35, 0, 1.4, p.top + 0.55, p.top + S.h - 0.35, 1000);
   /* The station house: one room, a tin roof, its name over the door. */
   const H = { x0: 66, x1: 76, y0: 35.2, y1: 42, h: 3.2 };
   C.box('dnTimber', H.x0, H.y0, TERRACE - 0.3, H.x1, H.y1, p.top + H.h, { kind: 'wall', name: 'station' });
@@ -738,7 +731,7 @@ function chairLift(C) {
     }
   }
   /* Under the cable between the bluff's two towers is the line. */
-  C.gap('UNDER THE LIFT', L.x, 139, 0, 2.6, g(L.x, 139) + 0.4, liftHeight(139) - 2.4, 250);
+  C.gap('UNDER THE LIFT', L.x, 139, 0, 2.6, Math.max(g(L.x, 137.7), g(L.x, 140.3)) + 0.4, liftHeight(139) - 2.4, 250);
 }
 
 /* ================================================================== */
@@ -792,8 +785,8 @@ function camels(C) {
    * counter, a roof, and an awning back to the hut's corner. */
   const k = KIOSK;
   const kb = lowest(k.x0, k.y0, k.x1, k.y1);
-  const door0 = 0.95;
-  const door1 = 2.55;
+  const door0 = 0.7;
+  const door1 = 2.8;
   for (const y of [k.y0, k.y1 - 0.12]) {
     C.box('wallWhite', k.x0, y, kb - 0.3, k.x0 + door0, y + 0.12, kb + k.h, { kind: 'wall', name: 'kiosk' });
     C.box('wallWhite', k.x0 + door1, y, kb - 0.3, k.x1, y + 0.12, kb + k.h, { kind: 'wall', name: 'kiosk' });
@@ -954,7 +947,9 @@ function fences(C) {
     if (f.named) {
       const [k, name] = f.named;
       const x = f.x0 + k * step + 1;
-      C.gap(name, x, f.y, 90, step - 0.5, g(x, f.y) + 0.25, g(x, f.y) + FENCE_H - 0.05, 500);
+      /* Open to the sky, so the window stands past the slats' tops: the
+       * gap is the notch, and a whoop threads it low. */
+      C.gap(name, x, f.y, 90, step - 0.5, g(x, f.y) + 0.25, g(x, f.y) + FENCE_H + 0.5, 500);
     }
   }
 }
@@ -1027,7 +1022,7 @@ function people(C) {
     }, true);
   }
   /* A summit post on the crest's high point. */
-  const px = 372;
+  const px = 381;
   const py = crestY(px);
   C.post('dnWoodDark', px, py, g(px, py) - 0.5, g(px, py) + 1.6, 0.08, { kind: 'pole', name: 'summit post' });
   C.sign('summit', px, py - 0.09, g(px, py) + 1.2, N_SOUTH, 0.3, 0.75, 0.0);
@@ -1323,9 +1318,10 @@ function blackPine(C, x, y, size, seed) {
     }
     pads.forEach(([px, py, ph, pr], i) => {
       const spin = [0, (seed * 1.7 + i) % 6.28, 0];
-      /* A cloud is two clumps: a dark under layer and a lit top. */
-      K.leaf('stCedar2', W3([px, py, ph - 0.15 * pr]), pr, pr * 0.32, spin);
-      K.leaf(i % 2 ? 'stCedar0' : 'stCedar1', W3([px + 0.15, py - 0.1, ph + 0.12 * pr]), pr * 0.82, pr * 0.3, spin);
+      /* One squashed clump a cloud: the cel ramp and its ink already give
+       * it a lit top and a dark underside, and a second clump under it
+       * cost a third of the map's triangles for a band nobody could see. */
+      K.leaf(i % 3 === 0 ? 'stCedar2' : i % 2 ? 'stCedar0' : 'stCedar1', W3([px, py, ph]), pr, pr * 0.34, spin);
     });
   });
 }
@@ -1344,6 +1340,19 @@ function blackPine(C, x, y, size, seed) {
  * streamers hanging, and a number on the bar; its opening is a named gap.
  */
 export const GATE = { w: 3.2, h: 2.7 };
+
+/* A frame stands on the highest sand across its width, so on a slope its
+ * opening never dips under the dune. */
+function footOf(x, y, deg) {
+  const sc = { s: 0, c: 1 };
+  sincos((deg * Math.PI) / 180, sc);
+  let h = -Infinity;
+  for (let k = -4; k <= 4; k += 1) {
+    const t = (k / 4) * (GATE.w / 2);
+    h = Math.max(h, g(x - sc.s * t, y + sc.c * t));
+  }
+  return h;
+}
 export function raceGates() {
   const pts = [
     ['1 OFF THE BLUFF', 528, 146],
@@ -1365,7 +1374,7 @@ export function raceGates() {
     /* Faced along the line from the gate before it to the one after, to
      * the nearest five degrees, so a heading is a product. */
     const deg = Math.round((Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI / 5) * 5;
-    return { ...p, deg, base: g(p.x, p.y) };
+    return { ...p, deg, base: footOf(p.x, p.y, deg) };
   });
 }
 
@@ -1408,7 +1417,6 @@ function race(C) {
           K.cyl('dnBambooDark', W3([x, y, hh]), W3([x, y, hh + 0.05]), 0.085, 6);
         }
       }
-      void n;
     });
     C.sign(`gate:${i + 1}`, gt.x, gt.y, top + 0.12, n, 0.6, 0.42, 0.09);
     C.sign(`gate:${i + 1}`, gt.x, gt.y, top + 0.12, [-n[0], 0, -n[2]], 0.6, 0.42, 0.09);
@@ -1519,6 +1527,3 @@ export function tourPoints() {
   ];
 }
 
-void N_EAST;
-void highest;
-void crestH;

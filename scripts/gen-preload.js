@@ -100,6 +100,7 @@ const MAP_ROOTS = {
   alps: 'src/maps/alps/index.js',
   towers: 'src/maps/towers/index.js',
   dome: 'src/maps/dome/index.js',
+  shiokaze: 'src/maps/shiokaze/index.js',
   cedar: 'src/maps/cedar/index.js',
   office: 'src/maps/office/index.js',
   kaza: 'src/maps/kaza/index.js',

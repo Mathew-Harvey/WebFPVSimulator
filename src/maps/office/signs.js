@@ -54,7 +54,7 @@ const MINCHO = `700 {px}px "Yu Mincho", "YuMincho", "Hiragino Mincho ProN", "Not
 /* The atlas is this wide; a cell is this many pixels high unless its key
  * says otherwise. */
 const ATLAS_W = 1024;
-const CELL_H = 64;
+const CELL_H = 48;
 const PAD = 3;
 
 /* ---- the painter's hand ---- */
@@ -265,7 +265,7 @@ const vending = (body, cans, title) => (g, w, h) => {
 const SIGNS = {
   /* The glass: two white streaks and a bright corner on nothing. */
   glass: {
-    h: 128,
+    h: 112,
     paint(g, w, h) {
       g.clearRect(0, 0, w, h);
       g.fillStyle = 'rgba(255,255,255,0.95)';
@@ -330,7 +330,7 @@ const SIGNS = {
   },
   /* The works' notice taped over the lift: yellow and black, a man bowing. */
   liftWorks: {
-    h: 128,
+    h: 112,
     paint(g, w, h) {
       rect(g, 0, 0, w, h, YELLOW);
       g.save();
@@ -406,7 +406,7 @@ const SIGNS = {
   rack5: { paint: rackNo('C-5') },
   /* The time card rack by the door: two columns of cards in their slots. */
   timeCards: {
-    h: 128,
+    h: 112,
     paint(g, w, h) {
       panel(g, w, h, '#c9ccd0', INK, 3, 3);
       words(g, 'タイムカード', w / 2, h * 0.08, w * 0.9, h * 0.08, INK, JPH);
@@ -431,7 +431,7 @@ const SIGNS = {
   },
   /* The goods in board: the day's deliveries in marker. */
   delivery: {
-    h: 128,
+    h: 112,
     paint(g, w, h) {
       panel(g, w, h, '#fdfdf8', '#8a8f99', 3, 6);
       words(g, '入荷・出荷予定', w * 0.3, h * 0.14, w * 0.5, h * 0.14, INK, JPH);
@@ -469,7 +469,7 @@ const SIGNS = {
   },
   /* The 5S poster: the five words a Japanese workplace keeps tidy by. */
   fiveS: {
-    h: 160,
+    h: 128,
     paint(g, w, h) {
       panel(g, w, h, '#fbfaf2', INK, 2, 4);
       lettered(g, '5S', w * 0.3, h * 0.13, w * 0.4, h * 0.2, '#e8792a');
@@ -507,7 +507,7 @@ const SIGNS = {
   fireEscape: { paint: fascia(GREEN, CREAM, '避難階段') },
   /* The month on the wall, Sundays in red, a day ringed. */
   calendar: {
-    h: 128,
+    h: 112,
     paint(g, w, h) {
       rect(g, 0, 0, w, h, '#fbfaf2', INK, 3);
       rect(g, 0, 0, w, h * 0.3, '#6fa3c7');
@@ -573,7 +573,7 @@ const SIGNS = {
   },
   /* The team's photo on a poster, everyone's peace sign. */
   posterTeam: {
-    h: 128,
+    h: 112,
     paint(g, w, h) {
       panel(g, w, h, '#fbfaf2', INK, 2, 3);
       rect(g, w * 0.08, h * 0.08, w * 0.84, h * 0.5, '#9cc8e8', INK, 2);
@@ -589,11 +589,11 @@ const SIGNS = {
       words(g, 'ファイト！', w / 2, h * 0.86, w * 0.8, h * 0.12, RED, JPH);
     },
   },
-  scribbles: { h: 128, paint: scribbles(21, ['売上', '目標', '会議', '次回']) },
-  scribbles2: { h: 128, paint: scribbles(42, ['予算', '新規', '確認', '!!']) },
+  scribbles: { h: 96, paint: scribbles(21, ['売上', '目標', '会議', '次回']) },
+  scribbles2: { h: 96, paint: scribbles(42, ['予算', '新規', '確認', '!!']) },
   /* The schedule board: every name, where they are, a magnet each. */
   schedule: {
-    h: 128,
+    h: 112,
     paint(g, w, h) {
       panel(g, w, h, '#fdfdf8', '#8a8f99', 3, 6);
       words(g, '行動予定表', w * 0.5, h * 0.09, w * 0.4, h * 0.1, INK, JPH);
@@ -625,7 +625,7 @@ const SIGNS = {
   /* The sales chart: a bar a person, the leaders crowned with paper
    * roses, the comic's sign of a sales floor. */
   salesChart: {
-    h: 160,
+    h: 128,
     paint(g, w, h) {
       panel(g, w, h, '#fbfaf2', INK, 2, 4);
       words(g, '営業成績', w / 2, h * 0.07, w * 0.8, h * 0.08, INK, JPH);
@@ -658,7 +658,7 @@ const SIGNS = {
   },
   /* 必勝: the hachimaki slogan for the end of the year. */
   goal: {
-    h: 128,
+    h: 112,
     paint(g, w, h) {
       panel(g, w, h, '#fbfaf2', INK, 2, 4);
       disc(g, w / 2, h * 0.38, w * 0.32, RED);
@@ -669,7 +669,7 @@ const SIGNS = {
   },
   /* A poster for the safety week, a hard hat and a green cross. */
   posterSafety: {
-    h: 128,
+    h: 112,
     paint(g, w, h) {
       panel(g, w, h, '#f6f0d8', INK, 2, 3);
       rect(g, w * 0.4, h * 0.12, w * 0.2, h * 0.36, GREEN);
@@ -679,7 +679,7 @@ const SIGNS = {
     },
   },
   poster: {
-    h: 128,
+    h: 112,
     paint(g, w, h) {
       panel(g, w, h, '#e7f1f6', INK, 2, 3);
       disc(g, w / 2, h * 0.36, w * 0.28, '#f2c52c', INK, 2);
@@ -741,7 +741,7 @@ const SIGNS = {
   },
   /* The president's hanging scroll: 誠心誠意 down the paper. */
   scroll: {
-    h: 192,
+    h: 128,
     paint(g, w, h) {
       rect(g, 0, 0, w, h, '#8a6a46');
       rect(g, w * 0.14, h * 0.06, w * 0.72, h * 0.86, '#f6efdc');
@@ -760,9 +760,9 @@ const SIGNS = {
       rect(g, w * 0.78, h * 0.66, h * 0.12, h * 0.12, RED);
     },
   },
-  vendDrinks: { h: 192, paint: vending('#d8343a', ['#2f62b0', '#e8792a', '#f2c52c', '#3fb06a', '#d43c33', '#7a4aa0'], 'つめた〜い') },
-  vendCoffee: { h: 192, paint: vending('#2a2a32', ['#5a3426', '#8a6a46', '#2f2a26', '#c9a76a', '#d43c33'], 'あったか〜い') },
-  vendTea: { h: 192, paint: vending('#2f8a4a', ['#6fa35a', '#3f7a3a', '#c9d27a', '#2f62b0'], 'お茶') },
+  vendDrinks: { h: 128, paint: vending('#d8343a', ['#2f62b0', '#e8792a', '#f2c52c', '#3fb06a', '#d43c33', '#7a4aa0'], 'つめた〜い') },
+  vendCoffee: { h: 128, paint: vending('#2a2a32', ['#5a3426', '#8a6a46', '#2f2a26', '#c9a76a', '#d43c33'], 'あったか〜い') },
+  vendTea: { h: 128, paint: vending('#2f8a4a', ['#6fa35a', '#3f7a3a', '#c9d27a', '#2f62b0'], 'お茶') },
   /* The break room's TV: the night game, the field and the score. */
   tvShow: {
     h: 96,
@@ -785,7 +785,7 @@ const SIGNS = {
   },
   /* The company trip's poster: 社員旅行, the sea and a palm. */
   posterTrip: {
-    h: 128,
+    h: 112,
     paint(g, w, h) {
       panel(g, w, h, '#7fd0e8', INK, 2, 3);
       rect(g, 3, h * 0.48, w - 6, h * 0.2, '#2f8ac0');
@@ -815,7 +815,7 @@ const SIGNS = {
   },
   /* The company's name over the street, the star its mark. */
   roofSign: {
-    h: 128,
+    h: 112,
     paint(g, w, h) {
       panel(g, w, h, '#fbf8f0', INK, 2, 6);
       rect(g, 6, h * 0.82, w - 12, h * 0.12, BLUE);
@@ -826,7 +826,7 @@ const SIGNS = {
   },
   /* The road's 止まれ, painted to be read by a driver coming up to it. */
   tomare: {
-    h: 192,
+    h: 128,
     paint(g, w, h) {
       g.clearRect(0, 0, w, h);
       g.save();
@@ -925,7 +925,7 @@ const SIGNS = {
   /* The tenants' sign down a mixed block: a bar, a mahjong room, a
    * dentist, an English school, one floor each. */
   tenants: {
-    h: 320,
+    h: 224,
     paint(g, w, h) {
       const t = [['スナック夢', '#7a4aa0'], ['麻雀', GREEN], ['歯科', BLUE], ['英会話', '#e8792a'], ['居酒屋', RED]];
       const u = h / t.length;
@@ -1075,21 +1075,22 @@ export function packSigns(signs) {
     return { key, w: Math.min(ATLAS_W, Math.max(8, Math.round(ch * a))), h: ch };
   });
   items.sort((a, b) => b.h - a.h || b.w - a.w || (a.key < b.key ? -1 : 1));
+  /* Each into the first row with room for it, a shorter cell in what a
+   * taller row left at its end, so the picture is one power of two and
+   * not the next. */
   const cells = {};
-  let x = 0;
-  let y = 0;
-  let row = 0;
+  const rows = [];
+  let used = 0;
   for (const it of items) {
-    if (x + it.w > ATLAS_W) {
-      x = 0;
-      y += row + PAD;
-      row = 0;
+    let row = rows.find((r) => r.h >= it.h && r.x + it.w <= ATLAS_W);
+    if (!row) {
+      row = { y: used, h: it.h, x: 0 };
+      rows.push(row);
+      used += it.h + PAD;
     }
-    cells[it.key] = { x, y, w: it.w, h: it.h };
-    x += it.w + PAD;
-    row = Math.max(row, it.h);
+    cells[it.key] = { x: row.x, y: row.y, w: it.w, h: it.h };
+    row.x += it.w + PAD;
   }
-  const used = y + row;
   let h = 64;
   while (h < used) {
     h *= 2;

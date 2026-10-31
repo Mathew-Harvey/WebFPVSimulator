@@ -860,7 +860,11 @@ function shell(O) {
   for (const fl of FLOORS) {
     O.chunk = fl.chunk;
     const top = fl.n === 3 ? ROOF : (fl.n === 1 ? F2 : F3);
+    /* The roof slab is the roof's: it is the one that shades the street,
+     * and the roof's chunk is drawn from every floor (./index.js). */
+    O.chunk = fl.n === 3 ? 'ofRoof' : fl.chunk;
     slab(fl.n === 1 ? 'ofBeam' : 'ofCeiling', fl.c, top, coreHoles, 'slab');
+    O.chunk = fl.chunk;
     const f = fl.f;
     const sh = fl.n === 1 ? southHoles.filter((h) => h[3] < B2) : southHoles.filter((h) => h[2] >= f && h[3] <= fl.c);
     const eh = eastHoles.filter((h) => h[2] >= f - 0.06 && h[3] <= fl.c);

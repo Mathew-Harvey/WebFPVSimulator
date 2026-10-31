@@ -345,6 +345,9 @@ const WORLDS = [
   /* Sunnyfield, added 28 October 2026, picked by eye from four sides: the
    * one with the hill's letters, the town hall and the gorge in it. */
   { id: 'sunny', file: 'sunny.jpg', name: 'Sunnyfield', shot: { tp: 0.62, tr: 0.9, ta: -2.4 } },
+  /* Hamakaze Works, added 31 October 2026, picked by eye: from over the
+   * quay, the gantry, the steel shop and the stack in it. */
+  { id: 'factory', file: 'factory.jpg', name: 'Hamakaze Works', shot: { tp: 0.55, tr: 0.85, ta: 2.3 } },
   /* Quad Ball's stadium and Ridgeline MX, added 29 October 2026 with no
    * picture, so their map cards were blank and every picker asked the
    * server for a file that was not there (found 30 October 2026). */
@@ -357,6 +360,9 @@ const WORLDS = [
    * over it, from the plaza's south side, picked by eye from six shots. */
   { id: 'towers', file: 'towers.jpg', name: 'Kumoi Towers', shot: { tp: 0.25, tr: 0.6, ta: 0 } },
   { id: 'dome', file: 'dome.jpg', name: 'Bakuon Dome' },
+  /* Shiokaze Point, added 31 October 2026, from the sea: the hotels, the
+   * wedded rocks and the stacks. */
+  { id: 'shiokaze', file: 'shiokaze.jpg', name: 'Shiokaze Point', shot: { tp: 0.3, tr: 1.1, ta: -1.57 } },
   /* Kodama Onsen, added 31 October 2026, picked by eye: the inn from the
    * car park side, the shrine's approach and the forest behind it. */
   { id: 'cedar', file: 'cedar.jpg', name: 'Kodama Onsen', shot: { tp: 0.55, tr: 0.75, ta: -1.9 } },

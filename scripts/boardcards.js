@@ -363,6 +363,7 @@ const WORLDS = [
   /* Hoshino Shoji, added 31 October 2026. Indoors like Thomas More's Shop,
    * so it names its own lens too (CARD_LENS in src/maps/office/office.js). */
   { id: 'office', file: 'office.jpg', name: 'Hoshino Shoji' },
+  { id: 'kaza', file: 'kaza.jpg', name: 'Kazahana Plain' },
   /* Tanada RX, added 31 October 2026, from the south over the jump so
    * the stand and the terraces are in it. */
   { id: 'rally', file: 'rally.jpg', name: 'Tanada RX', shot: { tp: 0.5, tr: 0.7, ta: -1.57 } },

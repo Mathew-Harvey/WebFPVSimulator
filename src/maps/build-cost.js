@@ -105,6 +105,9 @@ export const MAP_BUILD_MS = {
   /* Hoshino Shoji (src/maps/office/), the warehouse's pipeline with three
    * floors of furniture. An estimate until it is measured. */
   office: 2400,
+  /* Kazahana Plain (src/maps/kaza/): Sunnyfield's pipeline over a plot
+   * four times its size. An estimate until it is measured. */
+  kaza: 2800,
   /* Tanada RX (src/maps/rally/): a circuit, a hillside of terraces, a
    * paddock and six cars. An estimate until it is measured. */
   rally: 2800,

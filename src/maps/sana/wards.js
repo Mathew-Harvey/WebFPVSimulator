@@ -272,6 +272,18 @@ function wingOf(T, wing, r) {
     /* The north wall: a window opposite every door. */
     const north = bays.map((b) => ({ a0: b.mid - NORTH_W / 2, a1: b.mid + NORTH_W / 2, s: z + OPEN.north.s, e: z + OPEN.north.e }));
     wall(T, 'wallCream', 'x', x0, x1, SEC.n0, SEC.n1, z, ceil, north, { kind: 'wall', name: 'north wall' });
+    /* The corridor's dado, the hospital green to a hand's height above
+     * a bed, on both faces and broken by every door and window, and a
+     * lamp shade over each door. Paint, never solid, and merged into the
+     * chunk's one draw (../sunny/palette.js), so it costs vertices only. */
+    const dado = { solid: false, cast: false };
+    wall(T, 'kiFrame', 'x', x0 + END, x1 - END, SEC.c1, SEC.c1 + 0.015, z, z + 1.2, doors, dado);
+    wall(T, 'kiFrame', 'x', x0 + END, x1 - END, SEC.n0 - 0.015, SEC.n0, z, z + 1.2, north, dado);
+    for (const b of bays) {
+      const ym = (SEC.c1 + SEC.n0) / 2;
+      T.box('metalDark', b.mid - 0.02, ym - 0.02, ceil - 0.45, b.mid + 0.02, ym + 0.02, ceil, dado);
+      T.box('kiBed', b.mid - 0.22, ym - 0.22, ceil - 0.55, b.mid + 0.22, ym + 0.22, ceil - 0.45, dado);
+    }
     /* The wards' partitions, on the bays' lines. */
     for (let k = 1; k < BAYS; k += 1) {
       const a = bays[k].a0;

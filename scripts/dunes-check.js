@@ -271,7 +271,9 @@ async function placedBlock(L) {
   check('a ball a metre across over the start is clear', !hit, hit ? hit.name : 'clear');
   /* The first line: on the start's heading, two metres up (the pilot
    * lifts off first, and the rail round the out end is waist high), 30 m. */
+  /* The start's yaw is its heading in the plan, degrees from east. */
   const sc = sincos((SPAWN.yaw * Math.PI) / 180, { s: 0, c: 0 });
+  check('the start faces north, over the dunes', Math.abs(sc.s - 1) < 1e-9, `${r3(sc.c)}, ${r3(sc.s)}`);
   let block = null;
   for (let d = 0; d <= 30 && !block; d += 0.1) {
     const p = w(SPAWN.x + sc.c * d, SPAWN.y + sc.s * d, DECK.top + 2);

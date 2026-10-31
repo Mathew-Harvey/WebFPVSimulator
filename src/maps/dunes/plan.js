@@ -151,6 +151,9 @@ const N_WEST = [-1, 0, 0];
 /* ================================================================== */
 
 export const DECK = { x0: 530, x1: 550, y0: 100, y1: 121, top: 33.2, slab: 0.3 };
+/* The start's heading in the plan, degrees from east: 90 is due north,
+ * over the dunes to the sea. (spawnFrom in src/maps/built/place.js takes a
+ * quarter turn off it, and the shell's yaw 0 is north.) */
 export const SPAWN = { x: 540, y: 104, yaw: 90 };
 
 function lookout(C) {

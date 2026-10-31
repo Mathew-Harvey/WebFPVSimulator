@@ -59,7 +59,7 @@ function rows() {
     out.push(['gap', g.x, g.y, g.deg * DEG, { width: g.w, height: g.h1 - g.h0 }, { z: g.h0, name: g.name, points: g.points }]);
   }
   /* The rest stop's parked cars, nose to the wall, and its machines. */
-  [['kei', 3, 172], ['minivan', 6, 178], ['sedan', 1, 190], ['wagon', 9, 202], ['hatch', 4, 208]].forEach(([style, variant, x]) => {
+  [['kei', 3, 167.5], ['minivan', 6, 176.5], ['sedan', 1, 188.5], ['wagon', 9, 200.5], ['hatch', 4, 209.5]].forEach(([style, variant, x]) => {
     out.push(['car', x, REST.y0 + 9, 90 * DEG, { variant }, { style, z: SUMMIT }]);
   });
   out.push(['vending', 172, REST.y1 - 1.2, -90 * DEG, { count: 3, variant: 2 }, { z: SUMMIT }]);

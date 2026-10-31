@@ -371,16 +371,28 @@ function shed(B) {
 
 /* The tea house, on the car park's north east corner, facing south. */
 export const TEA = { x0: 176, x1: 196, y0: 306, y1: 318, h: 3.4 };
-export const TORII = { x: 150, y: 329, span: 4.4, h: 5.2 };
+/* On the car park, three metres short of the stair's foot. */
+export const TORII = { x: 150, y: 323, span: 4.4, h: 5.2 };
 
 function restStop(B) {
   const e = SUMMIT;
   const { x0, x1, y0, y1 } = REST;
   /* The stone wall along the back, ishigaki laid in courses. */
-  B.box('tgStone', x0, y1, e - 0.5, x1, y1 + 1.6, e + 3.2, { name: 'stone wall' });
-  for (let h = e + 0.5; h < e + 3.1; h += 0.6) {
-    B.paint('tgStoneDark', x0, y1 - 0.02, h, x1, y1 + 0.0, h + 0.07);
+  /* It stops either side of the shrine's stair, whose own walls carry
+   * the line through. */
+  const gap0 = SHRINE.x - 2.1;
+  const gap1 = SHRINE.x + 2.1;
+  for (const [a, b] of [[x0, gap0], [gap1, x1]]) {
+    B.box('tgStone', a, y1, e - 0.5, b, y1 + 1.6, e + 3.2, { name: 'stone wall' });
+    for (let h = e + 0.5; h < e + 3.1; h += 0.6) {
+      B.paint('tgStoneDark', a, y1 - 0.02, h, b, y1 + 0.0, h + 0.07);
+    }
   }
+  /* The car park's bays, white lines every 3 m, and the aisle's edge. */
+  for (let x = x0 + 4; x <= x1 - 2 + 1e-6; x += 3) {
+    B.deco('tgLineWhite', x - 0.06, y0 + 6.2, e + 0.02, x + 0.06, y0 + 11.8, e + 0.035);
+  }
+  B.deco('tgLineWhite', x0 + 4, y0 + 6.1, e + 0.02, x1 - 2, y0 + 6.25, e + 0.035);
   /* The tea house: plaster walls on a timber frame, a deep tiled roof,
    * open on the car park side under its eaves, a noren in the doorway. */
   const T = TEA;
@@ -409,8 +421,10 @@ function restStop(B) {
   B.post('tgWoodDark', T.x0 + 4.5, T.y0 - 3.6, e, e + 2.6, 0.04, { name: 'parasol pole' });
   B.cone('tgRed', T.x0 + 4.5, T.y0 - 3.6, e + 2.15, 1.5, 0.55, 16);
   /* The toilets, a small concrete block with a flat roof, west. */
-  B.box('tgConcrete', x0 + 4, y1 - 9, e, x0 + 14, y1 - 1, e + 3.2, { name: 'toilets' });
-  B.box('tgConcreteDark', x0 + 3.6, y1 - 9.4, e + 3.2, x0 + 14.4, y1 - 0.6, e + 3.5, { name: 'toilets roof' });
+  /* Two and a half metres off the stone wall: a metre was a slot a pilot
+   * would try and could not pass. */
+  B.box('tgConcrete', x0 + 4, y1 - 10.6, e, x0 + 14, y1 - 2.6, e + 3.2, { name: 'toilets' });
+  B.box('tgConcreteDark', x0 + 3.6, y1 - 11, e + 3.2, x0 + 14.4, y1 - 2.2, e + 3.5, { name: 'toilets roof' });
   B.paint('tgWoodDark', x0 + 8.2, y1 - 9.03, e, x0 + 9.8, y1 - 9, e + 2.1, true);
   /* The pass stone: a tall slab on a plinth, its name cut into it. */
   B.box('tgStone', 158, 288, e, 162, 291, e + 0.5, { name: 'pass stone plinth' });
@@ -773,9 +787,9 @@ export function gaps() {
   const shedE = heightAt(shedS);
   const mid = (GORGE.y0 + GORGE.y1) / 2;
   return [
-    { name: 'THE TUNNEL', x: (TUNNEL.x0 + TUNNEL.x1) / 2 + 6, y: TUNNEL.y, deg: 0, w: TUNNEL.w - 2 * M, h0: e + M, h1: e + TUNNEL.h - 1.45 - M, points: 500 },
+    { name: 'THE TUNNEL', x: (TUNNEL.x0 + TUNNEL.x1) / 2 + 6, y: TUNNEL.y, deg: 0, w: TUNNEL.w - 1.6 - 2 * M, h0: e + M, h1: e + TUNNEL.h - 1.45 - M, points: 500 },
     { name: 'UNDER THE RED BRIDGE', x: RED.x, y: mid, deg: 0, w: 15, h0: GORGE.floor + 1.2, h1: archAt(mid + 7.5) - 0.42 - M, points: 1000 },
-    { name: 'THE OLD PIERS', x: OLD.x, y: mid, deg: 0, w: OLD.piers[1] - OLD.piers[0] - 2 - 2 * M, h0: GORGE.floor + 1.2, h1: -1.5 - M, points: 500 },
+    { name: 'THE OLD PIERS', x: OLD.x, y: mid, deg: 0, w: OLD.piers[1] - OLD.piers[0] - 2.6 - 2 * M, h0: GORGE.floor + 1.2, h1: -2.2 - M, points: 500 },
     { name: 'UNDER THE FOOTBRIDGE', x: FOOT.x, y: mid, deg: 0, w: 22, h0: GORGE.floor + 1.2, h1: FOOT.deck - 1.2 - 0.12 - M, points: 250 },
     { name: 'ROCK SHED', x: (SHED.x0 + SHED.x1) / 2, y: SHED.y, deg: 0, w: 2 * HALF - 2 * M, h0: shedE + 0.8, h1: shedE + 5.2, points: 500 },
     { name: 'TORII', x: TORII.x, y: TORII.y, deg: 90, w: TORII.span - 0.44 - 2 * M, h0: e + M, h1: e + TORII.h - 1.35 - M, points: 250 },

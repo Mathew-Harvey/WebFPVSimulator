@@ -94,7 +94,10 @@ export const HAIRPINS = [[3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14]];
 export const GORGE = { y0: 100, y1: 134, floor: -18, water: -17.4 };
 
 /* The tunnel under the ridge: its bore along the top road, px x0 to x1. */
-export const TUNNEL = { x0: 232, x1: 302, y: 276, w: 9.6, h: 5.8, wall: 1.2, roof: 1.6 };
+/* Both portals on a node of the ground's 4 m grid (./terrain.js FINE): a
+ * portal between two nodes left a ground triangle sloping from the ridge
+ * down over the road in front of the mouth, three metres over the road. */
+export const TUNNEL = { x0: 232, x1: 300, y: 276, w: 9.6, h: 5.8, wall: 1.2, roof: 1.6 };
 
 /* The rest stop at the pass: the car park north of the road. */
 export const REST = { x0: 120, x1: 214, y0: 284, y1: 326 };

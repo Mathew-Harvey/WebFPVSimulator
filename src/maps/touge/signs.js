@@ -191,6 +191,9 @@ for (let k = 1; k <= 6; k += 1) {
   };
 }
 
+/* Every sign this file can paint, for scripts/touge-check.js. */
+export const SIGN_KEYS = Object.keys(SIGNS);
+
 /* The atlas: every sign used, in rows. { canvas, cells, w, h }. */
 export function paintSigns(keys) {
   const used = [...new Set(keys)].filter((k) => SIGNS[k]);

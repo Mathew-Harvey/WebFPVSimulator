@@ -350,6 +350,9 @@ const WORLDS = [
    * server for a file that was not there (found 30 October 2026). */
   { id: 'ball', file: 'ball.jpg', name: 'Quad Ball' },
   { id: 'moto', file: 'moto.jpg', name: 'Ridgeline MX' },
+  /* Kodama Onsen, added 31 October 2026, picked by eye: the inn from the
+   * car park side, the shrine's approach and the forest behind it. */
+  { id: 'cedar', file: 'cedar.jpg', name: 'Kodama Onsen', shot: { tp: 0.55, tr: 0.75, ta: -1.9 } },
   /* Shiroyama FMX, added 31 October 2026 with its picture, from the
    * south east so the kickers, the yagura and the castle are in it. */
   { id: 'fmx', file: 'fmx.jpg', name: 'Shiroyama FMX', shot: { tp: 0.5, tr: 0.75, ta: -0.6 } },

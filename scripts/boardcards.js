@@ -350,6 +350,9 @@ const WORLDS = [
    * server for a file that was not there (found 30 October 2026). */
   { id: 'ball', file: 'ball.jpg', name: 'Quad Ball' },
   { id: 'moto', file: 'moto.jpg', name: 'Ridgeline MX' },
+  /* Tsukimi Danchi, added 31 October 2026, from the south east and high
+   * enough that the block, the yard and the viaduct are all in it. */
+  { id: 'haikyo', file: 'haikyo.jpg', name: 'Tsukimi Danchi', shot: { tp: 0.68, tr: 1.5, ta: -1.9 } },
 ];
 
 async function drawWorlds(opts) {

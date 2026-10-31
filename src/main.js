@@ -6799,7 +6799,7 @@ export async function boot({ loading, bootStart, mapId }) {
    * word went out before this one. So has the goat map since 2026-10-28,
    * the same way. */
   const MARK_MAP_WORDS = {
-    starter: 'yard', injected: 'board', canvas: 'own', house: 'house', heads: 'heads', bardwell: 'bardwell', warehouse: 'warehouse', goats: 'goats', sunny: 'sunny',
+    starter: 'yard', injected: 'board', canvas: 'own', house: 'house', heads: 'heads', bardwell: 'bardwell', warehouse: 'warehouse', goats: 'goats', sunny: 'sunny', haikyo: 'haikyo',
   };
   function markMapWord(mark) {
     return String(mark.key).startsWith('city#') ? 'city' : (MARK_MAP_WORDS[view.source] || null);

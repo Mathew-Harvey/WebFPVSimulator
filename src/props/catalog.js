@@ -41,6 +41,7 @@ import * as COURSE from './course.js';
 import * as WINDMILL from './windmill.js';
 import * as HOMES from './homes.js';
 import * as SUNNY from './sunny.js';
+import * as SANATORIUM from './sanatorium.js';
 import { buildingLayout, buildingDraw, bandoLayout, bandoDraw } from './buildings.js';
 import {
   craneLayout, craneDraw, waterLayout, waterDraw, mastLayout, mastDraw, chimneyLayout, chimneyDraw,
@@ -142,6 +143,7 @@ export const FURNITURE = {
  */
 const FAMILIES = {
   buildings: BUILDINGS, industrial: INDUSTRIAL, street: STREET, skate: SKATE, course: COURSE, windmill: WINDMILL, homes: HOMES, sunny: SUNNY,
+  sanatorium: SANATORIUM,
 };
 export const FAMILY_MATERIALS = {};
 export const FAMILY_PAINTERS = {};

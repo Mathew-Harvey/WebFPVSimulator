@@ -255,6 +255,22 @@ export const MAPS = [
     buildMs: MAP_BUILD_MS.moto,
     load: () => import('./moto/index.js'),
   },
+  /*
+   * KIRIGAOKA SANATORIUM, on the owner's ask of 31 October 2026: a pre-war
+   * hill sanatorium left to the weather, a haikyo in the town's manga look,
+   * life size and flown on the five inch: the long corridor, the wards
+   * window to window, the roof holes, the clock tower, the chapel, and a
+   * park race of ten gates through the grounds (src/maps/sana/). Built by
+   * the built map's pipeline and, like the houses, off the board.
+   */
+  {
+    id: 'sana',
+    name: 'Kirigaoka Sanatorium',
+    mode: 'freestyle',
+    note: 'An abandoned sanatorium on a hill. Fly the long corridor, cross the wards window to window, dive the roof holes, thread the clock tower, and race ten gates through the overgrown grounds.',
+    buildMs: MAP_BUILD_MS.sana,
+    load: () => import('./sana/index.js'),
+  },
 ];
 
 /* The house's document id (src/maps/house/yard.js), here so the stamps can
@@ -282,6 +298,8 @@ export const DRIFT_DOC_ID = 'trk-d81f7a75';
 export const BALL_DOC_ID = 'trk-ba11b0a1';
 /* Ridgeline MX's (src/maps/moto/yard.js), the same way. */
 export const MOTO_DOC_ID = 'trk-3c07e5a1';
+/* Kirigaoka Sanatorium's (src/maps/sana/yard.js), the same way. */
+export const SANA_DOC_ID = 'trk-5a7a0b10';
 
 export function mapById(id) {
   return MAPS.find((m) => m.id === id) ?? MAPS[0];

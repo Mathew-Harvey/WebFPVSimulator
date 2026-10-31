@@ -255,6 +255,22 @@ export const MAPS = [
     buildMs: MAP_BUILD_MS.moto,
     load: () => import('./moto/index.js'),
   },
+  /*
+   * RAICHO RIDGE, on the owner's ask of 31 October 2026 (the map doc's
+   * section 1, "Mountain Open", built on the town's manga look): a Japanese
+   * Alps ridge of our own with a mountain hut on the col, a ropeway down
+   * the south face, a lake and its dam in the valley (src/maps/alps/).
+   * Built by the built map's pipeline on its own ground and flown on the
+   * five inch at life size; off the board like the houses.
+   */
+  {
+    id: 'alps',
+    name: 'Raicho Ridge',
+    mode: 'freestyle',
+    note: 'A high ridge in the Japanese Alps. Dive the south face from the col, slalom the ropeway towers, thread the mountain hut, and drop to the lake to gap the dam spillway.',
+    buildMs: MAP_BUILD_MS.alps,
+    load: () => import('./alps/index.js'),
+  },
 ];
 
 /* The house's document id (src/maps/house/yard.js), here so the stamps can
@@ -282,6 +298,9 @@ export const DRIFT_DOC_ID = 'trk-d81f7a75';
 export const BALL_DOC_ID = 'trk-ba11b0a1';
 /* Ridgeline MX's (src/maps/moto/yard.js), the same way. */
 export const MOTO_DOC_ID = 'trk-3c07e5a1';
+
+/* Raicho Ridge's (src/maps/alps/yard.js), the same way. */
+export const ALPS_DOC_ID = 'trk-a195a1e5';
 
 export function mapById(id) {
   return MAPS.find((m) => m.id === id) ?? MAPS[0];

@@ -105,7 +105,7 @@ export const PADS = {
   heli: { x0: -136, x1: -104, z0: -328, z1: -296, y: null, ease: 24 },
   top: { x0: -184, x1: -136, z0: -280, z1: -240, y: null, ease: 18 },
   valley: { x0: -232, x1: -88, z0: 152, z1: 192, y: 84.6, ease: 26 },
-  shrine: { x0: 112, x1: 128, z0: -352, z1: -336, y: null, ease: 14 },
+  shrine: { x0: 112, x1: 128, z0: -352, z1: -336, y: null, ease: 32 },
   overlook: { x0: 496, x1: 528, z0: 96, z1: 128, y: 70, ease: 18 },
   damSouth: { x0: 528, x1: 560, z0: 304, z1: 328, y: DAM_CREST, ease: 18 },
 };
@@ -405,6 +405,13 @@ export function heights() {
         if (o < p.ease) {
           const k = o === 0 ? 1 : 1 - smooth(o / p.ease);
           h += (p.y - h) * k;
+        }
+      }
+      /* A pad's own rectangle is its level exactly, whatever the eases of
+       * the pads and the road round it did to it. */
+      for (const p of pads) {
+        if (outside(p, x, z) === 0) {
+          h = p.y;
         }
       }
       /* The lake, held up to its level in its basin. */

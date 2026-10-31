@@ -67,6 +67,8 @@ export const MATERIALS = {
   alPine1: { c: 0x4e7a5c, tint: 0x4b5d84, noReceive: true, foliage: true },
   alPine2: { c: 0x3d6450, tint: 0x43547c, noReceive: true, foliage: true },
   alBirch: { c: 0xeee8de, tint: 0x8a83a8 },
+  alBroad0: { c: 0x86ad78, tint: 0x55678a, noReceive: true, foliage: true },
+  alBroad1: { c: 0x9cbd82, tint: 0x5c6c8c, noReceive: true, foliage: true },
   /* glass, water, paint */
   alGlass: { f: 0x9dc0d4, noCast: true },
   alGlassDark: { f: 0x53627a, noCast: true },

@@ -158,6 +158,13 @@ function hut(B) {
   for (const ze of [z0 + T / 2, z1 - T / 2]) {
     B.wall('alTimber', { axis: 'x', at: ze, t: T, from: x0, to: x1, y0: g, y1: f1, holes: wins }, { name: 'hut wall' });
   }
+  /* The two lines through the hut, each a named gap. A gap is a metre
+   * wide at the least (the builder's limit, src/props/types.js), which is
+   * a tenth more than the door: its rectangle's outer five centimetres
+   * each side are inside the jambs, where nothing flies, so it counts the
+   * door and nothing else. Its top and its sill are held 0.1 m inside. */
+  B.gap('HUT DOOR', x1 - T / 2, g + 0.1, HUT_DOOR_Z, 1.0, 1.9 - 0.2, 'x', 3);
+  B.gap('HUT WINDOW', HUT_WIN_X, g + 0.9 + 0.1, z1 - T / 2, 1.2 - 0.2, 1.2 - 0.2, 'z', 3);
   /* The upper floor, its plastered walls closed, the rooms behind them. */
   B.box('alTimberDark', x0, f1, z0, x1, f1 + 0.22, z1, { name: 'hut floor' });
   B.box('alPlaster', x0, f1 + 0.22, z0, x1, f2, z0 + T, { name: 'hut wall' });
@@ -490,8 +497,8 @@ function valleySquare(B) {
       K.box('alLine', bx - 0.06, y + 0.06, 184, bx + 0.06, y + 0.075, 189);
     }
   });
-  const CARS = ['kei', 'kei', 'van', 'kei', 'van', 'kei', 'kei', 'van'];
-  const COLS = ['white', 'red', 'blue', 'white', 'yellow', 'white', 'green', 'white'];
+  const CARS = ['kei', 'kei', 'keivan', 'kei', 'van', 'kei', 'kei', 'keivan'];
+  const COLS = ['white', 'silver', 'skyblue', 'pearl', 'cream', 'white', 'mint', 'slate'];
   let k = 0;
   for (const [row, ry] of [[159.5, Math.PI / 2], [186.5, -Math.PI / 2]]) {
     for (let i = 0; i < 4; i += 1) {

@@ -1,12 +1,12 @@
 /*
- * course.mjs: one faithful reading of a Velocidrone .trk into a course.
+ * course.mjs: one faithful reading of a .trk into a course.
  *
  * All of the import's judgement is here, so that convert.mjs downstream is
  * only a translation into the track document's vocabulary and the review
  * tools can look at exactly what the converter looked at.
  *
  * WHAT THE FILE SAYS, established from the twelve tracks under tracks/ and
- * cross checked against dutchdronesquad/trackdraw's exporter.
+ * cross checked against an open source exporter.
  *
  * ORDER. `gates` is the flying order and the `gate` field is the index. It
  * beats file order on every one of the twelve tracks, by 25 to 180 percent of
@@ -14,7 +14,7 @@
  *
  * ROLES. Three kinds of thing end up in `gates`: a gate mesh, which is a hole
  * you fly through; a flag or cone mesh, which is a turn marker you fly
- * around; and prefab 88, Velocidrone's invisible CHECKPOINT volume, which is
+ * around; and prefab 88, the format's invisible CHECKPOINT volume, which is
  * a box the lap has to pass through and which has no geometry at all. Turn
  * flags, cones, the start grid and every prop live in `barriers`, which is
  * never part of the order.
@@ -120,7 +120,7 @@ const DIVE_TILT = Math.PI / 6;
  * confirms independently, and it crosses gate 3 east to west. The file is
  * consistent and the course still cannot be flown through gate 3 on that
  * heading, so the heading is not what the designer meant for that pass. In
- * Velocidrone it does not have to be: a gate's collision is its frame, the
+ * a .trk course it does not have to be: a gate's collision is its frame, the
  * checkpoint that scores it is a separate volume, and an object dropped at
  * the default rotation still counts if you fly past the trigger.
  */

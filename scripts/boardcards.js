@@ -345,6 +345,9 @@ const WORLDS = [
   /* Sunnyfield, added 28 October 2026, picked by eye from four sides: the
    * one with the hill's letters, the town hall and the gorge in it. */
   { id: 'sunny', file: 'sunny.jpg', name: 'Sunnyfield', shot: { tp: 0.62, tr: 0.9, ta: -2.4 } },
+  /* Hamakaze Works, added 31 October 2026, picked by eye: from over the
+   * quay, the gantry, the steel shop and the stack in it. */
+  { id: 'factory', file: 'factory.jpg', name: 'Hamakaze Works', shot: { tp: 0.55, tr: 0.85, ta: 2.3 } },
   /* Kazami Airfield, added 31 October 2026: the hangar and the strip
    * from over the paddies, with the mountains behind. */
   { id: 'airfield', file: 'airfield.jpg', name: 'Kazami Airfield', shot: { tp: 0.5, tr: 0.8, ta: -2.0 } },
@@ -353,9 +356,26 @@ const WORLDS = [
    * server for a file that was not there (found 30 October 2026). */
   { id: 'ball', file: 'ball.jpg', name: 'Quad Ball' },
   { id: 'moto', file: 'moto.jpg', name: 'Ridgeline MX' },
+  /* Raicho Ridge, added 31 October 2026, from high over the valley so the
+   * ridge, the ropeway and the lake are all in it. */
+  { id: 'alps', file: 'alps.jpg', name: 'Raicho Ridge' },
+  /* Kumoi Towers, added 31 October 2026: the plaza with the twin crowns
+   * over it, from the plaza's south side, picked by eye from six shots. */
+  { id: 'towers', file: 'towers.jpg', name: 'Kumoi Towers', shot: { tp: 0.25, tr: 0.6, ta: 0 } },
+  { id: 'dome', file: 'dome.jpg', name: 'Bakuon Dome' },
+  /* Shiokaze Point, added 31 October 2026, from the sea: the hotels, the
+   * wedded rocks and the stacks. */
+  { id: 'shiokaze', file: 'shiokaze.jpg', name: 'Shiokaze Point', shot: { tp: 0.3, tr: 1.1, ta: -1.57 } },
   /* Kodama Onsen, added 31 October 2026, picked by eye: the inn from the
    * car park side, the shrine's approach and the forest behind it. */
   { id: 'cedar', file: 'cedar.jpg', name: 'Kodama Onsen', shot: { tp: 0.55, tr: 0.75, ta: -1.9 } },
+  /* Hoshino Shoji, added 31 October 2026. Indoors like Thomas More's Shop,
+   * so it names its own lens too (CARD_LENS in src/maps/office/office.js). */
+  { id: 'office', file: 'office.jpg', name: 'Hoshino Shoji' },
+  { id: 'kaza', file: 'kaza.jpg', name: 'Kazahana Plain' },
+  /* Kirigaoka Sanatorium, added 31 October 2026, from the avenue's side
+   * so the wings, the tower and the terrace stair are in it. */
+  { id: 'sana', file: 'sana.jpg', name: 'Kirigaoka Sanatorium', shot: { tp: 0.45, tr: 0.9, ta: -1.57 } },
 ];
 
 async function drawWorlds(opts) {

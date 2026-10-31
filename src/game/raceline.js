@@ -48,8 +48,8 @@
  *      direction to shorten your line. For example if you have to go past a
  *      gate and then back through it, you cannot just fly through it backward
  *      and then spin 180 back through the gate like a "cheese" move that many
- *      angle pilots use in place of a split-S or corkscrew type maneuver on
- *      Velocidrone."
+ *      angle pilots use in place of a split-S or corkscrew type maneuver in
+ *      other simulators."
  *
  * There is no penalty and no gate miss rule, and no word about an opening
  * with no pipe round it (Gate Rule 2 says a gate is "fully enclosed"), so the

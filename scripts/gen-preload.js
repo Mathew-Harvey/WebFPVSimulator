@@ -95,6 +95,7 @@ const MAP_ROOTS = {
   goats: 'src/maps/goats/index.js',
   sunny: 'src/maps/sunny/index.js',
   factory: 'src/maps/factory/index.js',
+  airfield: 'src/maps/airfield/index.js',
   drift: 'src/maps/drift/index.js',
   ball: 'src/maps/ball/index.js',
   moto: 'src/maps/moto/index.js',

@@ -348,6 +348,9 @@ const WORLDS = [
   /* Hamakaze Works, added 31 October 2026, picked by eye: from over the
    * quay, the gantry, the steel shop and the stack in it. */
   { id: 'factory', file: 'factory.jpg', name: 'Hamakaze Works', shot: { tp: 0.55, tr: 0.85, ta: 2.3 } },
+  /* Kazami Airfield, added 31 October 2026: the hangar and the strip
+   * from over the paddies, with the mountains behind. */
+  { id: 'airfield', file: 'airfield.jpg', name: 'Kazami Airfield', shot: { tp: 0.5, tr: 0.8, ta: -2.0 } },
   /* Quad Ball's stadium and Ridgeline MX, added 29 October 2026 with no
    * picture, so their map cards were blank and every picker asked the
    * server for a file that was not there (found 30 October 2026). */

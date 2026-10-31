@@ -1001,6 +1001,7 @@ function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
     || mapId === 'goats' || mapId === 'sunny' || mapId === 'drift' || mapId === 'ball' || mapId === 'moto' || mapId === 'dome' || mapId === 'cedar'
     || mapId === 'towers' || mapId === 'alps' || mapId === 'office' || mapId === 'kaza' || mapId === 'sana'
     || mapId === 'shiokaze' || mapId === 'factory' || mapId === 'rally' || mapId === 'fmx'
+    || mapId === 'airfield'
     || mapId === 'dock';
   const where = mapId === 'house' ? "Nick's house"
     : mapId === 'heads' ? "Heads' house"
@@ -1012,7 +1013,7 @@ function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
           : mapId === 'dock' ? 'Kamome Wharf'
           : mapId === 'factory' ? 'Hamakaze Works'
           : mapId === 'shiokaze' ? 'Shiokaze Point'
-            : mapId === 'drift' ? 'Drift Matsuri' : mapId === 'ball' ? 'Quad Ball' : mapId === 'moto' ? 'Ridgeline MX' : mapId === 'dome' ? 'Bakuon Dome' : mapId === 'cedar' ? 'Kodama Onsen' : mapId === 'towers' ? 'Kumoi Towers' : mapId === 'alps' ? 'Raicho Ridge' : mapId === 'kaza' ? 'Kazahana Plain' : mapId === 'sana' ? 'Kirigaoka Sanatorium' : mapId === 'rally' ? 'Tanada RX' : mapId === 'fmx' ? 'Shiroyama FMX' : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
+            : mapId === 'drift' ? 'Drift Matsuri' : mapId === 'ball' ? 'Quad Ball' : mapId === 'moto' ? 'Ridgeline MX' : mapId === 'dome' ? 'Bakuon Dome' : mapId === 'cedar' ? 'Kodama Onsen' : mapId === 'airfield' ? 'Kazami Airfield' : mapId === 'towers' ? 'Kumoi Towers' : mapId === 'alps' ? 'Raicho Ridge' : mapId === 'kaza' ? 'Kazahana Plain' : mapId === 'sana' ? 'Kirigaoka Sanatorium' : mapId === 'rally' ? 'Tanada RX' : mapId === 'fmx' ? 'Shiroyama FMX' : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
   if (mode === 'off') {
     return `${drawn ? '' : `${SCORING_UNDRAWN} `}${scoringOff(where)} ${built ? scoringMoreBuilt(where) : SCORING_MORE}`;
   }
@@ -1108,6 +1109,7 @@ const SANA_OFF_BOARD = 'The board keeps no runs for Kirigaoka Sanatorium, so a r
   + ' Fly the town for a run that can go up.';
 const RALLY_OFF_BOARD = 'The board keeps no runs for Tanada RX, so a run flown there stays here.';
 const FMX_OFF_BOARD = 'The board keeps no runs for Shiroyama FMX, so a run flown there stays here.';
+const AIRFIELD_OFF_BOARD = 'The board keeps no runs for Kazami Airfield, so a run flown there stays here.';
 const DRIFT_OFF_BOARD = 'The board keeps no runs for Drift Matsuri, so a run flown there stays here.'
   + ' Fly the town for a run that can go up.';
 
@@ -11467,7 +11469,7 @@ export class Ui {
           || this.settings.map === 'office' || this.settings.map === 'kaza' || this.settings.map === 'sana'
           || this.settings.map === 'shiokaze' || this.settings.map === 'factory'
           || this.settings.map === 'rally'
-          || this.settings.map === 'fmx'
+          || this.settings.map === 'fmx' || this.settings.map === 'airfield'
           || this.settings.map === 'dock';
         return [
           { label: 'Fly again', action: 'restart', primary: true },
@@ -11514,6 +11516,7 @@ export class Ui {
                           : this.settings.map === 'sana' ? SANA_OFF_BOARD
                           : this.settings.map === 'rally' ? RALLY_OFF_BOARD
                           : this.settings.map === 'fmx' ? FMX_OFF_BOARD
+                          : this.settings.map === 'airfield' ? AIRFIELD_OFF_BOARD
                       : (this.sharedMap ? BOARD_MAP_OFF_BOARD : BUILT_OFF_BOARD)) : (nothing
                 ? 'A run with no tricks in it is not a score. Fly one and it appears here.'
                 : (run && run.timed === false

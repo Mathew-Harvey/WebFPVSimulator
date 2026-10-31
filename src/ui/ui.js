@@ -5586,6 +5586,30 @@ const OSD_NUMBERS_MS = 62;
 const OSD_CLOCK_MS = 31;
 
 export class Ui {
+  /*
+   * PLAYING A MINI GAME THROUGH THE MAP CARDS (playMapGame): the cards are
+   * only how a one map game is flown, never a place the pilot chose, so
+   * while its pages are up (how to play, Set the match, the quad, the
+   * room's sheet) the cards are not drawn behind them. They were, and a
+   * pilot who chose Mini games saw Freestyle maps and thought the menu had
+   * sent them to the wrong place (the owner, 2026-10-31). index.html hides
+   * them only while one of those pages is open, so a page that failed to
+   * load can never leave an empty screen.
+   */
+  get mapGamePick() {
+    return Boolean(this.mapGamePickOn);
+  }
+
+  set mapGamePick(on) {
+    this.mapGamePickOn = Boolean(on);
+    const screens = this.screens || {};
+    for (const sc of [screens.freestyle, screens.courses]) {
+      if (sc) {
+        sc.classList.toggle('is-gamepick', this.mapGamePickOn);
+      }
+    }
+  }
+
   constructor(root) {
     this.root = root;
     this.settings = loadSettings();
@@ -5836,11 +5860,13 @@ export class Ui {
     this.gatePage = null;
     this.gateTurn = '';
     this.gateSide = '';
-    /* The mini games page: with friends or not, the panel last played, and
-     * whether the picker open now was opened from it, so Back from the
-     * picker turns to it rather than to the cover. */
-    this.gameFriends = false;
+    /* The mini games page: the panel last played, and whether the picker
+     * open now was opened from it, so Back from the picker turns to it
+     * rather than to the cover. ballHow: Quad Ball's door, answered on the
+     * page (gameDoor), for the room's way to carry on from. */
     this.gameLast = '';
+    this.ballHow = '';
+    this.gameDooring = false;
     this.gameReturn = false;
     this.mapGamePick = false;
     /*
@@ -9712,18 +9738,14 @@ export class Ui {
             ...tail,
           ];
         }
-        /* The mini games: the switch, then a panel a game, each panel's
-         * action the way alone or the way with friends as the switch says
-         * (gatepages.js GATE_GAMES). */
+        /* The mini games: a panel a game (gatepages.js GATE_GAMES). Each
+         * asks how to play first, with bots or with friends, on a page of
+         * its own (gameDoor). There used to be a small switch across the
+         * top for that, and a pilot who missed it landed on a map picker
+         * not knowing which way a double click would go (the owner,
+         * 2026-10-31). */
         if (page === 'games') {
-          const friends = Boolean(this.gameFriends);
           return [
-            {
-              label: friends ? 'With friends' : 'Just me',
-              card: 'mg-switch',
-              caption: friends ? 'Playing with friends. Switch to just me.' : 'Playing just me. Switch to with friends.',
-              action: 'mg-friends',
-            },
             ...GATE_GAMES.map((c) => ({
               label: c.label,
               card: c.id,
@@ -9731,7 +9753,7 @@ export class Ui {
               kicker: c.kicker,
               caption: c.caption,
               chips: c.chips,
-              action: friends ? c.room : c.action,
+              action: `mg-play:${c.id}`,
             })),
             ...tail,
           ];
@@ -11212,7 +11234,11 @@ export class Ui {
       const r = this.roomInfo;
       return [
         { label: 'Resume', action: 'resume', primary: true },
-        { label: 'Restart run', action: 'restart' },
+        /* A Quad Ball match has no run to restart: the row puts the quad
+         * back on the ground at its own end, and the match goes on. */
+        r.ball
+          ? { label: 'Back to your end', action: 'restart', note: 'On the ground at your own end. The match carries on.' }
+          : { label: 'Restart run', action: 'restart' },
         ...this.goatItems(),
         ...ribbonRoomItems(r),
         ...dogfightRoomItems(r),
@@ -13468,9 +13494,6 @@ export class Ui {
       host.append(this.gateHead(page));
       const grid = el('div', 'gate-grid');
       this.titleCards = items.map((it, i) => {
-        if (it.card === 'mg-switch') {
-          return this.gameSwitch(grid, i);
-        }
         const card = el('div', `gate-card gate-card-${it.card}`);
         card.setAttribute('role', 'button');
         card.setAttribute('aria-label', it.caption ? `${it.label}. ${it.caption}` : it.label);
@@ -13589,33 +13612,6 @@ export class Ui {
     this.letterGateNames();
   }
 
-  /*
-   * THE MINI GAMES PAGE'S SWITCH, Just me or With friends, a stop like the
-   * panels so a radio or a pad reaches it with the cursor (they have no
-   * Tab), across the top of the page where the mockup put it. Choosing it
-   * flips it; Tab flips it from anywhere on the page (handleKey).
-   */
-  gameSwitch(grid, i) {
-    const friends = Boolean(this.gameFriends);
-    const card = el('div', 'gate-card gate-card-mg-switch');
-    card.setAttribute('role', 'switch');
-    card.setAttribute('aria-checked', friends ? 'true' : 'false');
-    card.setAttribute('aria-label', 'With friends');
-    const me = el('span', `mg-side${friends ? '' : ' is-on'}`, 'Just me');
-    const them = el('span', `mg-side${friends ? ' is-on' : ''}`, 'With friends');
-    const line = el('span', 'mg-line', friends
-      ? 'The game you pick opens a room. Friends come in by the code or the link, and bots can fill the empty seats.'
-      : 'Just you, and as many bots as you like.');
-    card.append(me, them, line);
-    card.addEventListener('mousemove', (e) => this.hoverCursor(e, i));
-    card.addEventListener('click', () => {
-      this.cursor = i;
-      this.select();
-    });
-    grid.append(card);
-    return { card };
-  }
-
   /* 'games' when the picker being left was opened from the mini games
    * page, once: the next picker opened from anywhere else forgets it. */
   backToGames() {
@@ -13653,6 +13649,58 @@ export class Ui {
     this.setCursor(this.titleStop());
     this.renderMenu();
     return true;
+  }
+
+  /*
+   * A MINI GAMES PANEL, CHOSEN: how to play it, asked over the Mini games
+   * page itself (dogfightpages.js askPlayHow), so nothing behind the
+   * question changes until it is answered and Back leaves the pilot where
+   * they were. With bots is the panel's way alone, as before; with friends
+   * is its way with friends (a room, set up as the solo game is); a code
+   * joins that friend's room; Quad Ball's quick match is its own. Without
+   * rooms there is no question to ask.
+   */
+  async gameDoor(id) {
+    const c = GATE_GAMES.find((g) => g.id === id);
+    if (!c || this.gameDooring) {
+      return;
+    }
+    if (!this.roomsOn || !this.onFlyTogether) {
+      this.act(c.action);
+      return;
+    }
+    this.gameDooring = true;
+    let how = null;
+    try {
+      const pages = await this.fightPages();
+      if (this.onUiSound) {
+        this.onUiSound('select');
+      }
+      how = await pages.askPlayHow(this, { letterHeading }, {
+        game: c.label,
+        quick: id === 'mg-ball',
+        label: `${c.label}: how do you want to play?`,
+        bots: id === 'mg-ball' ? 'Pick your side and the bots fill every other seat. Starts in seconds, nobody to wait for.' : '',
+      });
+    } catch (e) {
+      console.warn('mini games: the pages did not load', e);
+    } finally {
+      this.gameDooring = false;
+    }
+    if (!how || !this.onGate()) {
+      return;
+    }
+    if (how.how === 'join') {
+      if (this.onJoinCode) {
+        this.onJoinCode(how.code);
+      }
+      return;
+    }
+    if (id === 'mg-ball' && how.how !== 'bots') {
+      /* Quad Ball's room way is its door's: the door has been answered. */
+      this.ballHow = how.how;
+    }
+    this.act(how.how === 'bots' ? c.action : c.room);
   }
 
   /*
@@ -13711,9 +13759,12 @@ export class Ui {
          * and the room opens with those bots and starts the first round,
          * as a dogfight room does (armRoomGame). */
         if (game === 'ball') {
-          /* With friends on the Mini games page is the door's middle
-           * card: make a game, a friend's code, or a quick match. */
-          this.ballDoor('fly', entry, null, false, 1);
+          /* With friends on the Mini games page: the door was answered
+           * there (gameDoor), so straight on to Set the match. Called any
+           * other way, the door opens on its middle card. */
+          const how = this.ballHow || '';
+          this.ballHow = '';
+          this.ballDoor('fly', entry, null, false, 1, how);
         } else if (game === 'goats' || game === 'drift') {
           this.armRoomGame(world, entry, game, false);
         } else {
@@ -13729,20 +13780,6 @@ export class Ui {
       this.fightArmed = false;
     }
     this.pickerAction('fly', entry);
-  }
-
-  /* Flip the mini games page between alone and with friends, the cursor
-   * staying on the panel it was on. */
-  flipGameFriends() {
-    const at = this.items()[this.cursor];
-    const want = at && at.card;
-    this.gameFriends = !this.gameFriends;
-    if (this.onUiSound) {
-      this.onUiSound('adjust');
-    }
-    this.renderMenu();
-    const i = this.items().findIndex((it) => it.card === want);
-    this.setCursor(i >= 0 ? i : this.titleStop());
   }
 
   /*
@@ -15053,7 +15090,11 @@ export class Ui {
          * for, is still Quad Ball: a room on it with no ball is an empty
          * stadium. Same pages as the mini games page (owner, 2026-10-30). */
         if (!(hp && hp.move) && !(hp && hp.game) && entry.item && entry.item.action === 'map:ball') {
-          this.ballDoor(id, entry, ev, Boolean(hp));
+          /* Hosting a room (Multiplayer, Host a room) has already said
+           * how: with friends. The door used to open on Play with bots
+           * here, and its Kick off flew a solo match from the host's
+           * picker. The card's own Fly together opens it on with friends. */
+          this.ballDoor(id, entry, ev, Boolean(hp), 1, hp ? 'make' : '');
           return;
         }
         this.onFlyTogether(hp && hp.move ? { ...world, move: true } : hp && hp.game ? { ...world, game: hp.game } : world);
@@ -15301,7 +15342,7 @@ export class Ui {
    * quick match opens or joins a listed room (together.js quickBall).
    * Back on any page leaves the pilot on the map cards.
    */
-  async ballDoor(id, entry, ev, picker = false, at = 0) {
+  async ballDoor(id, entry, ev, picker = false, at = 0, preset = '') {
     if (this.ballDooring) {
       return;
     }
@@ -15311,7 +15352,9 @@ export class Ui {
       const kit = { letterHeading };
       const world = this.roomsOn && this.onFlyTogether ? this.roomWorldOf(entry) : null;
       const name = (world && world.name) || entry.name || 'Quad Ball';
-      const how = await pages.askBallHow(this, kit, name, { rooms: Boolean(world), at });
+      /* `preset`: the door already answered (the Mini games page's, or
+       * hosting a room), so it is not asked twice. */
+      const how = preset && world ? { how: preset } : await pages.askBallHow(this, kit, name, { rooms: Boolean(world), at });
       if (!how) {
         this.leaveMapGamePick();
         return;
@@ -15334,7 +15377,9 @@ export class Ui {
         return;
       }
       if (how.how === 'make') {
-        this.onFlyTogether({ ...world, game: 'ball', rules: got.rules });
+        this.onFlyTogether({
+          ...world, game: 'ball', rules: got.rules, fromGames: this.mapGamePick,
+        });
       } else if (how.how === 'quick') {
         this.onQuickBall({ ...world, game: 'ball', rules: got.rules });
       } else {
@@ -15384,7 +15429,9 @@ export class Ui {
           return;
         }
       }
-      this.onFlyTogether({ ...world, game, rules: got.rules });
+      this.onFlyTogether({
+        ...world, game, rules: got.rules, fromGames: this.mapGamePick,
+      });
     } catch (e) {
       console.warn('dogfight: the pages did not load', e);
     } finally {
@@ -20477,9 +20524,6 @@ export class Ui {
     if (this.screen !== 'title') {
       out.push({ keys: [pad ? 'B' : 'Esc'], text: 'Back', action: 'back' });
     } else if (this.onGate()) {
-      if (this.gatePageNow() === 'games' && !pad) {
-        out.push({ keys: ['Tab'], text: this.gameFriends ? 'Just me' : 'With friends', action: 'mg-friends' });
-      }
       if (this.gatePageNow() !== this.gateRoot()) {
         out.push({ keys: [pad ? 'B' : 'Esc'], text: 'Back', action: 'back' });
       } else {
@@ -21375,10 +21419,21 @@ export class Ui {
      * title from a room leaves the room and then quits as Quit does. */
     if (typeof action === 'string' && action.startsWith('room-')) {
       if (action === 'room-title') {
+        /* A game room's Quit to title is back on the Mini games page, as
+         * the game's solo Quit is: read before the room is left. */
+        const r = this.roomInfo;
+        const game = Boolean(r && (r.ball || r.goats || r.drift || r.dogfight || r.ribbon));
+        if (game) {
+          /* On the panel of the game just left. */
+          this.gameLast = r.ball ? 'mg-ball' : r.goats ? 'mg-goats' : r.drift ? (this.settings.map === 'moto' ? 'mg-moto' : 'mg-drift')
+            : r.ribbon ? 'mg-ribbon' : 'mg-dogfight';
+        }
         if (this.onRoom) {
           this.onRoom('room-quit');
         }
+        this.quitToGames = game;
         this.act('title');
+        this.quitToGames = false;
         return;
       }
       if (this.onRoom) {
@@ -21444,8 +21499,8 @@ export class Ui {
       this.turnGate('games');
       return;
     }
-    if (action === 'mg-friends') {
-      this.flipGameFriends();
+    if (action.startsWith('mg-play:')) {
+      this.gameDoor(action.slice('mg-play:'.length));
       return;
     }
     if (this.onGate()) {
@@ -22313,8 +22368,14 @@ export class Ui {
      * does. It used to fight on behind the title, the bots shooting each
      * other over the menus, and a Fly from there was back in it, score
      * and all, where the pilot had chosen to stop. */
+    /* Any mini game, whichever door it was reached by (the Mini games
+     * page, Host a room, a map card, a friend's code): Quit to title used
+     * to land on the menu of the way the game seated, a list with a Fly on
+     * it that flew the empty stadium, unless the game had happened to
+     * start from the Mini games page. */
     const fromGame = action === 'title' && (from === 'paused' || from === 'flight' || from === 'results')
-      && this.roomsOn && this.gatePage === 'games' && Boolean(this.dogfight || this.gameLast);
+      && this.roomsOn && (Boolean(this.dogfight) || Boolean(this.quitToGames)
+        || (this.gatePage === 'games' && Boolean(this.gameLast)));
     if (action === 'title' && this.dogfight && (from === 'paused' || from === 'flight' || from === 'results')) {
       this.dogfight = null;
       this.fightArmed = false;
@@ -22328,6 +22389,8 @@ export class Ui {
     if (fromGame) {
       this.mode = null;
       this.craftGate = true;
+      this.gatePage = 'games';
+      this.gateTurn = 'back';
       this.setCursor(this.titleStop());
       this.renderMenu();
     }
@@ -22489,11 +22552,6 @@ export class Ui {
         this.back();
         return true;
       }
-    }
-    /* The mini games page's switch, from anywhere on the page. */
-    if (code === 'Tab' && this.screen === 'title' && this.onGate() && this.gatePageNow() === 'games') {
-      this.flipGameFriends();
-      return true;
     }
     this.lastInput = 'key';
     if (PICKER_KEYS[code] && this.pickerNav(PICKER_KEYS[code])) {

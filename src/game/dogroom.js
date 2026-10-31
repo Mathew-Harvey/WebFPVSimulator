@@ -53,6 +53,20 @@ import {
 export const ROOM_SLOTS = 64;
 /* A pilot not drawn for this long has left, or is in the menus. */
 const GONE_MS = 1500;
+
+/*
+ * WHERE A ROOM GAME'S OWN CLOCK STARTS, ms. The board says when a round
+ * began, and heard() puts that on this page's clock as clockMs plus how
+ * long ago it was. A page that joins a round already under way (a friend
+ * by the code, a quick match, or the host whose round the board started
+ * while the room's sheet was still up) builds its game after goAt, so a
+ * clock that starts at 0 put the start below zero, and below zero is how
+ * the game says "not started": the round was live on the board and frozen
+ * on the page, the clock on 3:00 and the ball held in the air for good.
+ * Starting the clock a day and a half in keeps every start the board can
+ * name above zero. Only differences of this clock are ever used.
+ */
+const CLOCK_START = 1.296e8;
 /* The most damage one hit can be sent as: the board's DF_DAMAGE. */
 const MOST = { gun: 14, missile: 55 };
 /* How long a bot's gun has to be quiet before the others are told. */
@@ -99,6 +113,7 @@ export class DogfightRoom extends Dogfight {
     this.tNow = now();
     this.inFight[ME] = 0;
     this.alive[ME] = 0;
+    this.clockMs = CLOCK_START;
   }
 
   /* A round is the board's to start: nothing here after the first. */

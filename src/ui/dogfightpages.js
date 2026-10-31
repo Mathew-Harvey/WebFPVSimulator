@@ -89,19 +89,25 @@ const CSS = `
 .df-doorcard p { margin: 0; padding: 8px 10px; background: #fff; border: 3px solid var(--ink-line); font: 700 14px/1.3 var(--ui-font); }
 .df-doorcard .df-tag { margin-bottom: auto; align-self: flex-start; padding: 5px 8px; font: 800 11px/1 var(--ui-font); letter-spacing: .14em; text-transform: uppercase; background: var(--ink-line); color: var(--sakura); }
 .df-doorcard .df-chips { gap: 8px; }
+.df-door.df-door-two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.df-doorcard .df-sfx { position: absolute; right: 14px; top: 8px; transform: rotate(-6deg); font: 900 italic 36px/1 var(--ui-font); letter-spacing: .02em; color: var(--amber); -webkit-text-stroke: 2px var(--ink-line); paint-order: stroke fill; text-shadow: 4px 4px 0 var(--ink-line); pointer-events: none; }
+.df-doorcard:nth-child(1) .df-sfx { color: #8fe0ff; }
+.df-doorcard:nth-child(3) .df-sfx { color: var(--bail, #ff7d96); }
 .df-code { box-sizing: border-box; width: 100%; padding: 9px 10px; font: 900 22px/1 ui-monospace, Menlo, Consolas, monospace; letter-spacing: .18em; text-transform: uppercase; border: 3px solid var(--ink-line); background: #fff; color: var(--ink-line); }
 .df-code.is-bad { background: #ffe4e0; }
 /* A phone upright: one card under another, each as tall as its words
  * (max-content, or the column squeezes them over each other). A phone on
  * its side: three short cards in a row, the words smaller. */
 @media (max-width: 600px) {
-  .df-door { grid-template-columns: 1fr; grid-auto-rows: max-content; gap: 12px; padding: 12px; }
+  .df-door, .df-door.df-door-two { grid-template-columns: 1fr; grid-auto-rows: max-content; gap: 12px; padding: 12px; }
   .df-doorcard { min-height: 0; }
+  .df-doorcard .df-sfx { display: none; }
 }
 @media (max-height: 520px) and (min-width: 601px) {
   .df-door { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: max-content; gap: 10px; padding: 10px 12px; }
   .df-doorcard { min-height: 0; padding: 8px 10px; gap: 6px; border-top-width: 8px; }
-  .df-doorcard .df-tag { display: none; }
+  .df-doorcard .df-tag, .df-doorcard .df-sfx { display: none; }
+  .df-door.df-door-two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .df-doorcard h3 { font-size: 19px; }
   .df-doorcard p { padding: 5px 7px; font-size: 12px; line-height: 1.25; }
   .df-doorcard .df-chip { padding: 6px 8px; font-size: 12px; }
@@ -459,13 +465,33 @@ export function askGoats(ui, kit, mapName) {
  * the first one is offered without rooms. `at` is the card it opens on.
  * Resolves { how: 'bots' | 'make' | 'join' | 'quick', code } or null.
  */
-export function askBallHow(ui, kit, mapName, { rooms = false, at: first = 0 } = {}) {
+export function askBallHow(ui, kit, mapName, { rooms = false, at = 0 } = {}) {
+  return askPlayHow(ui, kit, {
+    rooms, at, quick: true, game: 'Quad Ball', label: `Quad Ball on ${mapName}`,
+    bots: 'Pick your side and the bots fill every other seat. Starts in seconds, nobody to wait for.',
+  });
+}
+
+/*
+ * EVERY MINI GAME'S DOOR, the owner's ask of 2026-10-31 ("i click on mini
+ * games and i go to maps ... hard to know if double clicking on a map is
+ * for single player or multi"). The Mini games page used to carry a small
+ * Just me / With friends switch across its top, and the panel took the
+ * pilot straight to a map picker in whichever way the switch happened to
+ * say. Now each panel asks this one question first, in big cards, and
+ * nothing behind it changes until it is answered: Back is the Mini games
+ * page, as it was. Quad Ball adds its quick match. Resolves
+ * { how: 'bots' | 'make' | 'join' | 'quick', code } or null.
+ */
+export function askPlayHow(ui, kit, {
+  rooms = true, at: first = 0, quick = false, game = 'Mini game', label = '', bots: botsLine = '',
+} = {}) {
   if (!rooms) {
     return Promise.resolve({ how: 'bots' });
   }
   return new Promise((resolve) => {
-    const p = page(ui, 'Quad Ball', 'How do you', 'want to play?', `Quad Ball on ${mapName}`);
-    const body = el('div', 'df-door');
+    const p = page(ui, game, 'How do you', 'want to play?', label || `${game}: how do you want to play?`);
+    const body = el('div', quick ? 'df-door' : 'df-door df-door-two');
     const code = el('input', 'df-code');
     code.maxLength = 7;
     code.placeholder = 'CODE';
@@ -473,26 +499,31 @@ export function askBallHow(ui, kit, mapName, { rooms = false, at: first = 0 } = 
     code.autocomplete = 'off';
     code.spellcheck = false;
     code.dataset.osk = 'code';
-    const mk = (tag, name, line, ...extra) => {
+    /* `sfx` is the panel's sound effect, lettered where the mockup had
+     * its picture: words, so it costs nothing to fetch. */
+    const mk = (tag, sfx, name, line, ...extra) => {
       const c = el('div', 'df-doorcard');
       c.tabIndex = 0;
       c.setAttribute('role', 'button');
-      c.append(el('span', 'df-tag', tag), el('h3', null, name), el('p', null, line), ...extra);
+      const fx = el('span', 'df-sfx', sfx);
+      fx.setAttribute('aria-hidden', 'true');
+      c.append(el('span', 'df-tag', tag), fx, el('h3', null, name), el('p', null, line), ...extra);
       body.append(c);
       return c;
     };
     const go = (how) => close({ how, code: code.value.trim() });
-    const bots = mk('Just you', 'Play with bots', 'Pick your side and the bots fill every other seat. Starts in seconds, nobody to wait for.');
+    const bots = mk('Just you', 'VS BOTS!', 'Play with bots', botsLine || 'You and as many bots as you like. Starts in seconds, nobody to wait for.');
     const row = el('div', 'df-chips');
     const make = btn('df-chip is-on', 'Make a game');
     const join = btn('df-chip', 'Join');
     row.append(make, join);
-    const friends = mk('With friends', 'Play with friends', 'Make a private game and send its code, or type a friend\'s code. Bots keep the empty seats, and a friend who joins takes one.', row, code);
-    const quick = mk('Real pilots', 'Quick match', 'Kick off now with bots. Another pilot who picks Quick match on this map takes a bot\'s seat. Preset chat and made up names only.');
-    const cards = [bots, friends, quick];
+    const friends = mk('With friends', 'GG!', 'Play with friends', 'Make a private game and send its code, or type a friend\'s code. Bots keep the empty seats, and a friend who joins takes one.', row, code);
+    const quickCard = quick ? mk('Real pilots', 'GO!', 'Quick match', 'Kick off now with bots. Another pilot who picks Quick match takes a bot\'s seat. Preset chat and made up names only.') : null;
+    const cards = quickCard ? [bots, friends, quickCard] : [bots, friends];
+    const n = cards.length;
     const goBtn = btn('qp-btn qp-fly', 'Play with bots');
     const back = btn('qp-btn', 'Back');
-    let at = Math.max(0, Math.min(2, first | 0));
+    let at = Math.max(0, Math.min(n - 1, first | 0));
     /* The big button says what it will do, so Enter is never a guess. */
     const paint = () => {
       cards.forEach((c, i) => c.classList.toggle('is-at', i === at));
@@ -524,7 +555,9 @@ export function askBallHow(ui, kit, mapName, { rooms = false, at: first = 0 } = 
     };
     cards.forEach((c, i) => c.addEventListener('focus', () => pick(i)));
     bots.addEventListener('click', () => go('bots'));
-    quick.addEventListener('click', () => go('quick'));
+    if (quickCard) {
+      quickCard.addEventListener('click', () => go('quick'));
+    }
     friends.addEventListener('click', () => pick(1));
     make.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -564,7 +597,7 @@ export function askBallHow(ui, kit, mapName, { rooms = false, at: first = 0 } = 
         return false;
       }
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-        pick((at + (e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : 2)) % 3);
+        pick((at + (e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : n - 1)) % n);
         goBtn.focus();
         return true;
       }

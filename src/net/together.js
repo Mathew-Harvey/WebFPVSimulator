@@ -3294,7 +3294,7 @@ export function createTogether(shell) {
       };
       return scrimmed(h('div.page.fit.sheet.halftone', null,
         h('div.page-head', null, h('div.grow', null, h('span.kicker', { text: entry.game === 'ribbon' ? `Host ribbon cutting on ${entry.name}` : (entry.game === 'dogfight' ? `Host a dogfight on ${entry.name}` : `Host a room on ${entry.name}`) }), lettered('OPEN YOUR ROOM', [INKS.cream, INKS.sakura], 50, 620)),
-          btn('Back to the maps', 'small ghost', () => back(), { 'data-k': 'cancel' })),
+          btn(entry.fromGames ? 'Back' : 'Back to the maps', 'small ghost', () => back(), { 'data-k': 'cancel' })),
         h('div.rule'),
         h('div.page-body', null, h('div.tg-cols', null,
           h('div.stack', null,
@@ -3335,7 +3335,16 @@ export function createTogether(shell) {
         h('div.footer-row', null, btn('Open room', '', openRoom, { 'data-k': 'open', 'data-autofocus': true }),
           h('span.note', { text: f.streamer ? 'Nobody can come in until you show the code on your stream or send the link.'
             : `Nobody can come in until you send the link${f.listed ? ' or they find it under Rooms' : ''}.` }))));
-    }, { replace: opts.replace });
+    }, {
+      replace: opts.replace,
+      /* A mini game's room, chosen on the Mini games page: the map cards
+       * under this sheet were never the pilot's choice, so Back is the
+       * Mini games page, not the cards. */
+      back: entry.fromGames && shell.gameBack ? () => {
+        pop();
+        shell.gameBack();
+      } : null,
+    });
   }
 
   function copyText(text, input, said = { done: 'Link copied', fail: 'Select the link and copy it' }) {
@@ -3393,7 +3402,7 @@ export function createTogether(shell) {
         h('div.page-body', null, h('div.tg-cols', null,
           h('div.stack', null,
             h('div.field', null, h('span.lab', { text: 'Room code' }), h('div.code-big', { 'aria-label': r.code }, r.code.split('').map((c) => h('span', { text: c }))),
-              h('span.help', { text: 'Typed into Join under Rooms, on the web or on Steam.' })),
+              h('span.help', { text: 'Friends type it into Join with a code, under Multiplayer.' })),
             h('div.field', null, h('span.lab', { text: 'Room link' }), h('div.copyrow', null, linkIn, btn('Copy', 'small', () => copyText(link, linkIn), { 'data-k': 'copy' }))),
             r.lock && invite ? h('div.field', null, h('span.lab', { text: 'Invite link, skips the password' }),
               h('div.copyrow', null, invIn, btn('Copy', 'small', () => copyText(invite, invIn), { 'data-k': 'copy-inv' })),
@@ -4619,10 +4628,15 @@ export function createTogether(shell) {
    * pilot's eye when the line goes. */
   function placeBanner() {
     const b = bannerBox.firstElementChild;
-    if (!b || !lineBottom) {
+    /* A mini game's score bar sits where the lap clock does, a little
+     * lower, so a welcome banner landed on the score and the clock. Under
+     * it instead. Read once a banner, never a frame. */
+    const score = document.querySelector('#ui.df-on .df-score');
+    const scoreBottom = score && score.offsetParent ? score.getBoundingClientRect().bottom : 0;
+    if (!b || (!lineBottom && !scoreBottom)) {
       return;
     }
-    const top = Math.round(lineBottom + 14);
+    const top = Math.round(Math.max(lineBottom, scoreBottom) + 14);
     if (top > (parseFloat(b.style.top) || b.offsetTop)) {
       b.style.top = `${top}px`;
     }

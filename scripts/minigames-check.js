@@ -296,14 +296,14 @@ async function sceneMenu() {
     await ev("window.__ui.act('gate-games'); return 1;");
     check('Mini games turns to its page', await until("return window.__ui.gatePageNow() === 'games'", 5000));
     const cards = await ev("return window.__ui.items().map((i) => i.card).join(',')");
-    check('with the switch and six games', cards === 'mg-switch,mg-dogfight,mg-ribbon,mg-goats,mg-drift,mg-ball,mg-moto', cards);
+    check('with six games and no switch', cards === 'mg-dogfight,mg-ribbon,mg-goats,mg-drift,mg-ball,mg-moto', cards);
     /* The list above is the page's model, which the grid can hide a card
      * from: Quad Ball and Ridgeline MX were in it for a day with no grid
      * area, and sat in an implicit row nobody could see (2026-10-30). So
      * the cards are read where they are drawn: every one has a real size
      * and lies inside the window, at the two sizes a pilot has. */
     const drawn = `const out = []; for (const e of document.querySelectorAll('.gate-card')) { const m = [...e.classList].map((c) => /^gate-card-(mg-[a-z]+)$/.exec(c)).find(Boolean); if (!m) continue; const r = e.getBoundingClientRect(); out.push(m[1] + ':' + (r.width >= 120 && r.height >= 30 && r.left >= -1 && r.top >= -1 && r.right <= innerWidth + 2 && r.bottom <= innerHeight + 2 ? 'ok' : 'hidden ' + [r.left, r.top, r.right, r.bottom].map(Math.round).join('/'))); } return out.join(' ');`;
-    const wanted = 'mg-switch,mg-dogfight,mg-ribbon,mg-goats,mg-drift,mg-ball,mg-moto'.split(',');
+    const wanted = 'mg-dogfight,mg-ribbon,mg-goats,mg-drift,mg-ball,mg-moto'.split(',');
     for (const [w, h] of [[1280, 720], [1024, 600]]) {
       await page.cdp.send('Emulation.setDeviceMetricsOverride', {
         width: w, height: h, deviceScaleFactor: 1, mobile: false,
@@ -316,13 +316,29 @@ async function sceneMenu() {
         await sleep(500);
         got = await ev(drawn);
       }
-      check(`all seven cards are drawn inside the window at ${w}x${h}`, wanted.every((id) => got.includes(`${id}:ok`)), got);
+      check(`all six cards are drawn inside the window at ${w}x${h}`, wanted.every((id) => got.includes(`${id}:ok`)), got);
     }
     await page.cdp.send('Emulation.clearDeviceMetricsOverride', {}, page.sessionId);
     await sleep(300);
-    const play = async (card, friends) => {
-      await ev(`const u = window.__ui; if (Boolean(u.gameFriends) !== ${friends}) u.act('mg-friends'); u.setCursor(u.items().findIndex((i) => i.card === '${card}')); u.select(); return 1;`);
+    /* A panel asks how to play first (ui.js gameDoor, the owner,
+     * 2026-10-31): bots is its first card, Make a game its friends' card. */
+    const door = async (card) => {
+      await ev(`const u = window.__ui; u.setCursor(u.items().findIndex((i) => i.card === '${card}')); u.select(); return 1;`);
+      return until("return Boolean(document.querySelector('.df-door'))", 30000);
     };
+    const play = async (card, friends) => {
+      await door(card);
+      await sleep(500);
+      await ev(friends
+        ? "[...document.querySelectorAll('.df-door .df-chip')].find((b) => b.textContent === 'Make a game').click(); return 1;"
+        : "document.querySelector('.df-door .df-doorcard').click(); return 1;");
+    };
+    /* The door is asked over the page: nothing behind it changes, and its
+     * Back leaves the pilot where they were. */
+    check('a panel asks how to play, over the page', await door('mg-drift') && await ev("return window.__ui.screen === 'title' && window.__ui.gatePageNow() === 'games';"));
+    await sleep(500);
+    await ev("[...document.querySelectorAll('.df-page .qp-btn')].find((b) => b.textContent === 'Back').click(); return 1;");
+    check('and its Back is the page, on that panel', await until(onPage('mg-drift'), 5000));
     for (const [card, friends, open, escs] of [
       ['mg-dogfight', false, "Boolean(window.__ui.fightPick && window.__ui.fightPick.game === 'dogfight')", 1],
       ['mg-ribbon', false, "Boolean(window.__ui.fightPick && window.__ui.fightPick.game === 'ribbon')", 1],
@@ -336,9 +352,10 @@ async function sceneMenu() {
       ['mg-moto', false, "Boolean(document.querySelector('.qp-page'))", 1],
       ['mg-dogfight', true, "Boolean(window.__ui.hostPick && window.__ui.hostPick.game === 'dogfight')", 1],
       ['mg-ribbon', true, "Boolean(window.__ui.hostPick && window.__ui.hostPick.game === 'ribbon')", 1],
-      /* Quad Ball with friends is its door, on the friends card, and Back
-       * (the door's own button, as the owner pressed it) is the page. */
-      ['mg-ball', true, "Boolean(document.querySelector('.df-door'))", 0],
+      /* Quad Ball with friends: the door was answered on the page, so
+       * Make a game is Set the match at once, not the door again. */
+      ['mg-ball', true, "Boolean(document.querySelector('.df-page') && !document.querySelector('.df-door'))", 1],
+      ['mg-goats', true, "Boolean(document.querySelector('.df-page') && !document.querySelector('.df-door'))", 1],
     ]) {
       const name = `${card.slice(3)}${friends ? ' with friends' : ''}`;
       await play(card, friends);
@@ -355,6 +372,9 @@ async function sceneMenu() {
     }
     await play('mg-goats', false);
     check('goat herding alone opens Set the herd', await until("return Boolean(document.querySelector('.df-page'))", 30000));
+    /* The map cards the game is flown through are not drawn behind its
+     * pages: a pilot who chose Mini games saw Freestyle maps (2026-10-31). */
+    check('with the map cards hidden behind it', await ev("const pk = document.querySelector('.screen-courses.is-gamepick .room-picker'); return Boolean(pk) && getComputedStyle(pk).visibility === 'hidden';"));
     await sleep(450);
     await page.tap('Enter');
     await until("return Boolean(document.querySelector('.qp-page:not(.df-page)'))", 30000);
@@ -365,9 +385,9 @@ async function sceneMenu() {
     await ev("window.__ui.act('pause'); window.__ui.show('paused'); window.__ui.act('title'); return 1;");
     check('and quit to title is back on the page, on goat herding', await until(onPage('mg-goats'), 5000));
     /* The owner's own path, 2026-10-30: a mini game, quit to title, Quad
-     * Ball with friends, and the Back beside Make a game. */
-    await play('mg-ball', true);
-    check('after a flight, ball with friends opens its door', await until("return Boolean(document.querySelector('.df-door'))", 30000));
+     * Ball, and the door's Back. */
+    check('after a flight, Quad Ball opens its door', await door('mg-ball'));
+    check('with its quick match', await ev("return document.querySelectorAll('.df-door .df-doorcard').length === 3;"));
     await sleep(500);
     await ev("[...document.querySelectorAll('.df-page .qp-btn')].find((b) => b.textContent === 'Back').click(); return 1;");
     check('and its Back button is back on the page, not the map cards', await until(onPage('mg-ball'), 5000));

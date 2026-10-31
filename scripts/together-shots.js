@@ -4635,6 +4635,18 @@ async function sceneQuickBall() {
     const rows = async (pg) => pg.evaluate(`(() => { const g = ${G}; return g && g.state ? JSON.stringify(g.state.rows) : '[]'; })()`);
     const playing = await b.until(`(() => { const g = ${G}; return Boolean(g && g.state && g.state.rows.some((r) => r.id === ${you})); })()`, 30000).then(() => true, () => false);
     check('and they play now, dealt a side', playing, await rows(b));
+    /* The round began on the board before either page built its game, so
+     * a page clock that started at 0 put its start below zero, and the
+     * match sat frozen on both pages: the clock on 3:00, the ball held in
+     * the air (2026-10-31, the owner: "quad ball has many bugs, in multi
+     * player"). */
+    const runs = (pg) => pg.until(`(() => { const g = ${G}; return Boolean(g && g.running && g.leftMs() > 0); })()`, 20000).then(() => true, () => false);
+    check('the match runs on the joiner\'s page, not frozen', await runs(b), await b.evaluate(`JSON.stringify((() => { const g = ${G}; return g && { started: g.startedMs, clock: g.clockMs, phase: g.state.phase }; })())`));
+    check('and on the host\'s', await runs(a));
+    /* Each pilot starts at their own end: mint's place is pink's pad
+     * mirrored, so a joiner dealt mint is not put on top of the host. */
+    const end = await b.until(`(() => { const g = ${G}; const t = g.team[0]; return Math.abs(g.x[0]) > 10 && (t === 1 ? g.x[0] > 0 : g.x[0] < 0); })()`, 20000).then(() => true, () => false);
+    check('the joiner is seated at their own side\'s end', end, await b.evaluate(`JSON.stringify((() => { const g = ${G}; return { team: g.team[0], x: g.x[0] }; })())`));
     const sides = JSON.parse(await rows(a));
     const count = [0, 1].map((t) => sides.filter((r) => r.team === t).length).join();
     check('two a side on the host\'s page', count === '2,2', JSON.stringify(sides));

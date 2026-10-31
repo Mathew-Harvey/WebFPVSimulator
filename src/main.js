@@ -1567,6 +1567,8 @@ export async function boot({ loading, bootStart, mapId }) {
   let startY = 0;
   let startYaw = 0;
   let startPitch = 0;
+  /* The Quad Ball team whose end the craft is seated at (ballSeat). */
+  let ballSeatTeam = 0;
   /* The cosine and sine of the yaw the plant's frame was last seated at,
    * which seatWorldFrame writes: see bodyUpDotWorld in src/game/collide.js. */
   const frameTurn = { s: 0, c: 1 };
@@ -1608,6 +1610,7 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   function adoptSpawn() {
+    ballSeatTeam = 0;
     startX = view.spawn.x;
     startZ = view.spawn.z;
     startYaw = view.spawn.yaw;
@@ -3072,6 +3075,33 @@ export async function boot({ loading, bootStart, mapId }) {
     }
   }
 
+  /*
+   * A QUAD BALL ROOM SEATS EACH PILOT AT THEIR OWN END. The arena's one
+   * pad is pink's, in front of the west goal, so every pilot used to start
+   * there: a friend dealt mint began on top of the host, at the wrong end,
+   * facing the wrong goal. Mint's place is the pad's mirror across the
+   * halfway line, facing the other way. Only a craft on the ground is moved,
+   * at the moment the board deals it a side (or deals it the other one):
+   * one already in the air flies back for the kickoff as everybody does
+   * after a goal, and is seated the next time it lands.
+   */
+  function ballSeat(g, ME) {
+    const t = g.inFight[ME] && g.team[ME] === 1 ? 1 : 0;
+    if (t === ballSeatTeam || !landed || !view || !view.ballGame) {
+      return;
+    }
+    adoptSpawn();
+    if (t === 1) {
+      const x = -view.spawn.x;
+      const z = view.spawn.z;
+      resetCraft({ x, z, yaw: view.spawn.yaw + Math.PI, surface: groundAt(x, z) });
+    } else {
+      resetCraft();
+    }
+    ballSeatTeam = t;
+    fightTeleported = true;
+  }
+
   /* One step loop feed with the craft at state `st`. */
   function fightStep(clock, st, flying) {
     poseFromState(st, fightPos);
@@ -3145,6 +3175,9 @@ export async function boot({ loading, bootStart, mapId }) {
       adoptSpawn();
       resetCraft();
       fightTeleported = true;
+    }
+    if (fightKind === 'ball' && g.room && mode === 'flight') {
+      ballSeat(g, ME);
     }
     if (g.over && !fightSaved && !g.room) {
       fightSaved = true;
@@ -4544,6 +4577,7 @@ export async function boot({ loading, bootStart, mapId }) {
     roomInfo: (info) => ui.setRoomInfo(info),
     pickWorld: (way, opts) => ui.pickRoomWorld(way, opts),
     pickDone: () => ui.endMovePick(),
+    gameBack: () => ui.leaveMapGamePick(),
     /* The look editor closed: the front screen's pilot panel shows it. */
     pilotChanged: () => ui.paintGatePilot(),
     forget: (id) => {

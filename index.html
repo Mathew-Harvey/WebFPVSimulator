@@ -2637,40 +2637,25 @@
       .gate-card-mp-find { grid-area: find; }
       .gate-card-mp-code { grid-area: code; }
       .gate-card-mp-pilot { grid-area: pilot; }
-      /* The mini games page: the switch across the top, then the six games
-         in two rows of three. Every card needs a name here: one without
-         lands in an implicit row, and Quad Ball and Ridgeline MX were
-         there for a day, squashed to a line nobody could see (2026-10-30,
-         scripts/minigames-check.js reads the boxes, not the list). */
+      /* The mini games page: the six games in two rows of three. Every
+         card needs a name here: one without lands in an implicit row, and
+         Quad Ball and Ridgeline MX were there for a day, squashed to a line
+         nobody could see (2026-10-30, scripts/minigames-check.js reads the
+         boxes, not the list). How to play, alone or with friends, is asked
+         when a panel is chosen (src/ui/ui.js gameDoor), not by a switch. */
       .gate-page-games .gate-grid {
         grid-template-columns: repeat(12, minmax(0, 1fr));
-        grid-template-rows: auto repeat(2, minmax(0, 1fr));
+        grid-template-rows: repeat(2, minmax(0, 1fr));
         grid-template-areas:
-          "sw sw sw sw sw sw sw sw sw sw sw sw"
           "dog dog dog dog rib rib rib rib goat goat goat goat"
           "drift drift drift drift ball ball ball ball moto moto moto moto";
       }
-      .gate-card-mg-switch { grid-area: sw; }
       .gate-card-mg-dogfight { grid-area: dog; }
       .gate-card-mg-ribbon { grid-area: rib; }
       .gate-card-mg-goats { grid-area: goat; }
       .gate-card-mg-drift { grid-area: drift; }
       .gate-card-mg-ball { grid-area: ball; }
       .gate-card-mg-moto { grid-area: moto; }
-      .gate-card.gate-card-mg-switch {
-        align-items: center; gap: 0;
-        padding: 0; background: var(--gc-ink); box-shadow: 5px 5px 0 var(--gc-ink);
-      }
-      .mg-side {
-        flex: none;
-        padding: 9px 16px;
-        border-right: 3px solid var(--gc-ink);
-        background: var(--gc-paper); color: var(--gc-ink);
-        font-size: 13px; font-weight: 900; letter-spacing: 0.12em; text-transform: uppercase;
-      }
-      .mg-side.is-on { background: var(--amber); }
-      .mg-line { flex: 1 1 auto; min-width: 0; padding: 0 14px; color: var(--cream); font-size: 13px; font-weight: 700; }
-      .gate-card-mg-switch.on { box-shadow: 0 0 0 4px var(--amber), 7px 7px 0 4px var(--gc-ink); }
       .gate-card-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
       .gate-chip {
         padding: 3px 6px;
@@ -2952,6 +2937,13 @@
         pointer-events: auto;
       }
       .host-band[hidden] { display: none; }
+      /* A one map mini game played through the cards (src/ui/ui.js
+         mapGamePick): the cards are not drawn behind its pages, only while
+         one is open, so nothing can leave the screen empty. */
+      html:has(.name-dialog:not([hidden])) .screen-courses.is-gamepick > *,
+      html:has(#tg.has-modal) .screen-courses.is-gamepick > *,
+      html:has(.name-dialog:not([hidden])):has(.screen-courses.is-gamepick) .frame-top,
+      html:has(#tg.has-modal):has(.screen-courses.is-gamepick) .frame-top { visibility: hidden; }
       .host-band > * { transform: skewX(4deg); }
       .host-band-words {
         flex: 1 1 auto; min-width: 0;
@@ -4926,9 +4918,8 @@
         }
         .gate-page-cover .gate-grid { grid-template-columns: minmax(0, 1fr); }
         .gate-card { grid-area: auto; box-shadow: 5px 5px 0 var(--gc-ink); }
-        .gate-card-career, .gate-card-mg-switch { grid-column: 1 / -1; }
-        .gate-page-games .gate-grid { grid-template-rows: auto; }
-        .gate-card-chips, .mg-line { display: none; }
+        .gate-card-career { grid-column: 1 / -1; }
+        .gate-card-chips { display: none; }
         .gate-card.on { box-shadow: 0 0 0 3px var(--sakura), 7px 7px 0 3px var(--gc-ink); }
         .gate-cards { --gc-bleed: 12px; }
         .gate-card-nm { left: calc(var(--gc-bleed) + 8px); right: calc(var(--gc-bleed) + 8px); bottom: 6px; }
@@ -5035,12 +5026,7 @@
         .gate-page-cover .gate-card-name { font-size: clamp(22px, 7vh, 32px); }
         .gp-solo-sfx, .gp-bub-a, .gp-bub-b, .gp-career-bub, .gp-free-sfx, .gp-build-bub, .gp-pilot-bub, .gp-medal, .gp-watch, .gp-pencil, .gp-dog-sfx { display: none; }
         .gate-card-mark { width: 38px; height: 38px; right: calc(var(--gc-bleed) + 6px); top: 5px; }
-        /* The mini games' switch is the row's first, narrow column, its two
-           sides stacked. */
-        .gate-page-games .gate-grid { grid-template-columns: auto; }
-        .gate-card.gate-card-mg-switch { flex-direction: column; justify-content: center; align-items: stretch; }
-        .mg-side { border-right: 0; border-bottom: 3px solid var(--gc-ink); padding: 8px 10px; font-size: 11px; text-align: center; }
-        .gate-card-chips, .mg-line { display: none; }
+        .gate-card-chips { display: none; }
       }
 
       /* The map screen. One card per world, each playing a short flight

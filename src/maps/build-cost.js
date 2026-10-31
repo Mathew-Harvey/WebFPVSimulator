@@ -79,6 +79,9 @@ export const MAP_BUILD_MS = {
    * Bardwell's figure here, as this container ran slower than the day that
    * was measured. */
   sunny: 2240,
+  /* Hamakaze Works (src/maps/factory/), the same pipeline as Sunnyfield.
+   * An estimate at Sunnyfield's figure until it is measured. */
+  factory: 2240,
   /* Drift Matsuri (src/maps/drift/): a plot of trees and a festival round a
    * drift course. An estimate until it is measured. */
   drift: 2600,
@@ -99,6 +102,9 @@ export const MAP_BUILD_MS = {
    * capsules, its streets and four trucks. An estimate until it is
    * measured. */
   dome: 2400,
+  /* Shiokaze Point (src/maps/shiokaze/): the island, five hotel blocks and
+   * the streets behind them. An estimate until it is measured. */
+  shiokaze: 2400,
   /* Kodama Onsen (src/maps/cedar/): three thousand cedars, an inn and a
    * shrine. An estimate until it is measured. */
   cedar: 3000,
@@ -111,6 +117,9 @@ export const MAP_BUILD_MS = {
   /* Kirigaoka Sanatorium (src/maps/sana/): Sunnyfield's pipeline and
    * frame on a smaller site. An estimate until it is measured. */
   sana: 2000,
+  /* Tanada RX (src/maps/rally/): a circuit, a hillside of terraces, a
+   * paddock and six cars. An estimate until it is measured. */
+  rally: 2800,
   /* Hayate Circuit (src/maps/hayate/): a circuit, its pits, stands and
    * park, and a few hundred trees. An estimate until it is measured. */
   hayate: 3000,

@@ -497,7 +497,7 @@ const AXIS_X = new THREE.Vector3(1, 0, 0);
  * alone. The entry is written out because it has moved with the directory:
  * it was three before looks.js came and four before egg.js, and with no
  * entry then the bar sat at 75 percent until the import resolved. */
-const MAP_MODULE_COUNT = { field: 1, city: 72, custom: 1, built: 5, house: 3, heads: 4, bardwell: 4, warehouse: 3, goats: 9, sunny: 12, factory: 9, drift: 3, towers: 11, alps: 6 };
+const MAP_MODULE_COUNT = { field: 1, city: 72, custom: 1, built: 5, house: 3, heads: 4, bardwell: 4, warehouse: 3, goats: 9, sunny: 12, factory: 9, drift: 3, towers: 11, alps: 6, office: 4, kaza: 10, sana: 6 };
 /* Where a map's modules live, so the loading bar can count them. Data, not a
  * ternary: the ternary read "field or else city", so a third map counted its
  * modules under the city's prefix and the bar sat at zero.
@@ -521,6 +521,9 @@ const MAP_MODULE_PREFIX = {
   drift: '/src/maps/drift/',
   alps: '/src/maps/alps/',
   cedar: '/src/maps/cedar/',
+  office: '/src/maps/office/',
+  kaza: '/src/maps/kaza/',
+  sana: '/src/maps/sana/',
 };
 
 /*
@@ -6801,7 +6804,7 @@ export async function boot({ loading, bootStart, mapId }) {
    * word went out before this one. So has the goat map since 2026-10-28,
    * the same way. */
   const MARK_MAP_WORDS = {
-    starter: 'yard', injected: 'board', canvas: 'own', house: 'house', heads: 'heads', bardwell: 'bardwell', warehouse: 'warehouse', goats: 'goats', sunny: 'sunny', factory: 'factory',
+    starter: 'yard', injected: 'board', canvas: 'own', house: 'house', heads: 'heads', bardwell: 'bardwell', warehouse: 'warehouse', goats: 'goats', sunny: 'sunny', factory: 'factory', office: 'office', kaza: 'kaza', sana: 'sana',
   };
   function markMapWord(mark) {
     return String(mark.key).startsWith('city#') ? 'city' : (MARK_MAP_WORDS[view.source] || null);
@@ -9239,6 +9242,30 @@ export async function boot({ loading, bootStart, mapId }) {
     if (view.id === 'alps') {
       notice = {
         text: 'The board keeps no runs for Raicho Ridge, so its runs stay here.',
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
+    /* Nor for Hoshino Shoji: OFFICE_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'office') {
+      notice = {
+        text: 'The board keeps no runs for Hoshino Shoji, so its runs stay here.',
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
+    /* Nor for Kazahana Plain: KAZA_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'kaza') {
+      notice = {
+        text: 'The board keeps no runs for Kazahana Plain, so its runs stay here.',
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
+    /* Nor for Kirigaoka Sanatorium: SANA_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'sana') {
+      notice = {
+        text: 'The board keeps no runs for Kirigaoka Sanatorium, so its runs stay here.',
         untilMs: performance.now() + 4200,
       };
       return;

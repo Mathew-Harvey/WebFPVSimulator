@@ -113,6 +113,7 @@ const WORLDS = {
   ball: { name: 'Quad Ball', thumb: 'ball' },
   towers: { name: 'Kumoi Towers', thumb: 'towers' },
   cedar: { name: 'Kodama Onsen', thumb: 'cedar' },
+  office: { name: 'Hoshino Shoji', thumb: 'office' },
   built: { name: 'Hibari Yard', thumb: 'yard' },
 };
 

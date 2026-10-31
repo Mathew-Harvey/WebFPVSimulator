@@ -105,4 +105,13 @@ export const MAP_BUILD_MS = {
   /* Kodama Onsen (src/maps/cedar/): three thousand cedars, an inn and a
    * shrine. An estimate until it is measured. */
   cedar: 3000,
+  /* Hoshino Shoji (src/maps/office/), the warehouse's pipeline with three
+   * floors of furniture. An estimate until it is measured. */
+  office: 2400,
+  /* Kazahana Plain (src/maps/kaza/): Sunnyfield's pipeline over a plot
+   * four times its size. An estimate until it is measured. */
+  kaza: 2800,
+  /* Kirigaoka Sanatorium (src/maps/sana/): Sunnyfield's pipeline and
+   * frame on a smaller site. An estimate until it is measured. */
+  sana: 2000,
 };

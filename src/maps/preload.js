@@ -661,5 +661,6 @@ export const MAP_PRELOAD = {
     'maps/dome/draw.js',
     'maps/dome/art.js',
     'maps/dome/trucks.js',
+    'maps/sunny/palette.js',
   ],
 };

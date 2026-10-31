@@ -225,12 +225,13 @@ async function browser() {
     const stand = await ev('const q = window.__ground(); return { y: q.y, surf: q.surf, rest: q.rest };');
     check('the spawn stands on the dirt, 6 cm up', Math.abs(stand.surf - FLOOR.dirt) < 0.01, JSON.stringify(stand));
     await shot('first-person');
-    report.stats = await ev('const m = window.__map(); const s = m.stats ? m.stats() : null; return s ? JSON.parse(JSON.stringify(s)) : null;');
-    const before = await ev('const m = window.__map(); const t = m.scene.getObjectByName("trucks"); return t.children.filter((c) => c.name.startsWith("truck:") && c.visible).map((c) => [c.matrix.elements[12], c.matrix.elements[14]]);');
-    await sleep(3000);
-    const after = await ev('const m = window.__map(); const t = m.scene.getObjectByName("trucks"); return t.children.filter((c) => c.name.startsWith("truck:") && c.visible).map((c) => [c.matrix.elements[12], c.matrix.elements[14]]);');
-    const moved = before.length && after.length && after.some((p, i) => before[i] && Math.hypot(p[0] - before[i][0], p[1] - before[i][1]) > 2);
-    check('the trucks are out and moving', Boolean(moved), `${after.length} drawn`);
+    report.stats = await ev('return JSON.parse(JSON.stringify(window.__map()));');
+    const at = 'return (window.__map().trucks || {}).at || [];';
+    const before = await ev(at);
+    await sleep(4000);
+    const after = await ev(at);
+    const moved = after.filter((p, i) => p && before[i] && Math.hypot(p[0] - before[i][0], p[1] - before[i][1]) > 1).length;
+    check('the trucks are out and moving', moved >= 3, `${moved} of ${after.length} moved: ${JSON.stringify(after)}`);
     report.views = {};
     for (const [name, eye, at] of VIEWS) {
       await ev(`window.__setCam(${eye.join(',')}, ${at.join(',')}); return 1;`);

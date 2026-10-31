@@ -66,33 +66,34 @@ function rows() {
   }
   /* THE STREETS. A row of shops and flats along the north and the south
    * edges, facing the dome across the plaza; offices on the east. */
-  const STYLES = ['shop', 'flats', 'shop', 'shop', 'flats', 'office'];
-  let v = 1;
+  const STYLES = ['shop', 'flats', 'shop', 'shop', 'office', 'shop'];
+  /* Three variants, so the street shares its paint: a variant is a choice
+   * of wall and trim, and every new colour is a draw call a quarter. */
+  let v = 0;
   for (const [y, yaw] of [[22, -Q], [FIELD_D - 22, Q]]) {
-    for (let x = 18; x < FIELD_W - 16; x += 0) {
+    for (let x = 120; x < FIELD_W - 126; x += 0) {
       const style = STYLES[v % STYLES.length];
       const w = style === 'shop' ? 8 + Math.floor(hash(v, 1) * 3) : (style === 'flats' ? 16 : 18);
-      const floors = style === 'shop' ? 2 + Math.floor(hash(v, 2) * 3) : (style === 'flats' ? 4 + Math.floor(hash(v, 3) * 3) : 6 + Math.floor(hash(v, 4) * 4));
+      const floors = style === 'shop' ? 2 + Math.floor(hash(v, 2) * 2) : (style === 'flats' ? 4 + Math.floor(hash(v, 3) * 2) : 5 + Math.floor(hash(v, 4) * 3));
       const depth = style === 'shop' ? 11 : (style === 'flats' ? 10 : 14);
       out.push({
-        type: 'building', style, x: x + w / 2, y, yaw, dims: { width: w, depth, floors, passage: 0, variant: v },
+        type: 'building', style, x: x + w / 2, y, yaw, dims: { width: w, depth, floors, passage: 0, variant: 1 + (v % 3) },
       });
       v += 1;
       x += w + 0.6;
     }
   }
   /* Offices up the east edge, behind the pits. */
-  for (let y = 70; y < FIELD_D - 60; y += 22) {
+  for (let y = 130; y < FIELD_D - 120; y += 46) {
     out.push({
       type: 'building', style: 'office', x: FIELD_W - 14, y, yaw: Math.PI, dims: {
-        width: 18, depth: 14, floors: 5 + Math.floor(hash(y, 5) * 6), passage: 0, variant: v,
+        width: 18, depth: 14, floors: 5 + Math.floor(hash(y, 5) * 6), passage: 0, variant: 1 + (y % 3),
       },
     });
-    v += 1;
   }
   /* The poles along both streets, the lamps across the plaza. */
   for (const y of [38, FIELD_D - 38]) {
-    for (let x = 14; x < FIELD_W - 10; x += 26) {
+    for (let x = 30; x < FIELD_W - 20; x += 60) {
       out.push({
         type: 'utilityPole', x, y, yaw: 0, dims: { height: 10 },
       });
@@ -116,14 +117,14 @@ function rows() {
   }
   /* THE TREES: sakura round the plaza, pines in the corners. */
   for (const y of [HALL.y0 - 18, HALL.y1 + 18]) {
-    for (let x = 30; x < FIELD_W - 30; x += 11) {
+    for (let x = 30; x < FIELD_W - 30; x += 16) {
       if (x > HALL.x0 - 4 && x < HALL.x1 + 4 && Math.abs(y - FIELD_D / 2) < 100) {
         if (GATES.x.some((g) => Math.abs(toPlan(g, 0)[0] - x) < 10)) {
           continue;
         }
       }
       out.push({
-        type: 'tree', style: 'sakura', x: x + (hash(x, 7) - 0.5) * 2, y, yaw: hash(x, 8) * 6.28, dims: { size: 0.9 + hash(x, 9) * 0.3, variant: 1 + Math.floor(hash(x, 10) * 9) },
+        type: 'tree', style: 'sakura', x: x + (hash(x, 7) - 0.5) * 2, y, yaw: hash(x, 8) * 6.28, dims: { size: 0.9 + hash(x, 9) * 0.3, variant: 1 + Math.floor(hash(x, 10) * 3) },
       });
     }
   }
@@ -134,21 +135,23 @@ function rows() {
       continue;
     }
     out.push({
-      type: 'tree', style: 'pine', x, y, yaw: hash(i, 13) * 6.28, dims: { size: 0.9 + hash(i, 14) * 0.4, variant: 1 + (i % 9) },
+      type: 'tree', style: 'pine', x, y, yaw: hash(i, 13) * 6.28, dims: { size: 0.9 + hash(i, 14) * 0.4, variant: 1 + (i % 3) },
     });
   }
-  /* THE CAR PARK, west of the dome: rows of cars nose in. */
-  const CARS = ['sedan', 'hatch', 'wagon', 'minivan', 'kei', 'sedan', 'van'];
+  /* THE CAR PARK, west of the dome: two rows of cars nose in, a third of
+   * the bays empty. A parked car is a few thousand triangles of wheels and
+   * glass, so the car park is the town's cost and it is kept small. */
+  const CARS = ['sedan', 'hatch', 'kei', 'sedan'];
   let c = 0;
-  for (let row = 0; row < 4; row += 1) {
-    const x = 34 + row * 16;
-    for (let y = 110; y < 222; y += 3.2) {
-      if (hash(c, 21) < 0.28) {
+  for (let row = 0; row < 2; row += 1) {
+    const x = 60 + row * 6;
+    for (let y = 132; y < 200; y += 3.2) {
+      if (hash(c, 21) < 0.4) {
         c += 1;
         continue;
       }
       out.push({
-        type: 'car', style: CARS[c % CARS.length], x: x + (row % 2) * 5.5, y, yaw: row % 2 ? Math.PI : 0, dims: { variant: 1 + (c % 9) },
+        type: 'car', style: CARS[c % CARS.length], x: x + (row % 2) * 5.5, y, yaw: row % 2 ? Math.PI : 0, dims: { variant: 1 + (c % 4) },
       });
       c += 1;
     }
@@ -158,7 +161,7 @@ function rows() {
   for (let i = 0; i < 4; i += 1) {
     const [x, y] = toPlan(OUTER.x + 22, -36 + i * 24);
     out.push({
-      type: 'car', style: 'boxtruck', x, y, yaw: Q, dims: { variant: 2 + i * 2 },
+      type: 'car', style: 'boxtruck', x, y, yaw: Q, dims: { variant: 2 },
     });
     out.push({
       type: 'containers', style: '40ft', x: x + 14, y, yaw: Q, dims: { stack: 1 + (i % 2), variant: 1 + i },

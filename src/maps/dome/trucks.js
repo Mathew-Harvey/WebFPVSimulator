@@ -740,6 +740,8 @@ export function buildTrucks(look, dome, rider) {
       return {
         trucks: trucks.length,
         parked: parked.length,
+        /* Where each is drawn, for scripts/dome-check.js. */
+        at: trucks.map((t) => (t.on ? [Math.round(t.x * 10) / 10, Math.round(t.z * 10) / 10] : null)),
         draws: 2 * (trucks.length + parked.length) + wheelSets.length + 1,
         bodyTriangles: Math.round(tris / bodies.length),
         wheelTriangles: Math.round(wheel),

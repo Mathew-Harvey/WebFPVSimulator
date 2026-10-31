@@ -32,24 +32,44 @@ import { buildMap as buildBuilt } from '../built/index.js';
 import { uploadTraffic } from '../built/traffic.js';
 import { warmPrograms } from '../../render/warm.js';
 import { qualityFor } from '../../render/quality.js';
-import { domeLayout, OUTER, KONEX } from './stadium.js';
+import {
+  domeLayout, OUTER, WINDOWS, KONEX,
+} from './stadium.js';
 import { domeDocument } from './yard.js';
 import { domeTraffic, makeRider } from './course.js';
 import { drawDome } from './draw.js';
 import { buildTrucks } from './trucks.js';
+import { mergePalette } from '../sunny/palette.js';
 
 /*
- * THE CHUNKS: the hall is one ('extra', where its own drawing goes), and
- * the town round it is four, a quarter each. A document's assets are
- * otherwise filed in a 48 m grid, which round a hall this size is sixty
- * cells, each a batch a colour: four quarters keep the streets to a few
- * dozen draw calls.
+ * THE CHUNKS: the hall is one ('extra', where its own drawing goes), the
+ * plaza round it another, and the town beyond two, north and south. A
+ * document's assets are otherwise filed in a 48 m grid, which round a
+ * hall this size is sixty cells, each a batch a colour: two halves keep
+ * the streets to a few dozen draw calls.
  */
 function chunkOf(x, z) {
   if (Math.abs(x) <= OUTER.x + 8 && Math.abs(z) <= OUTER.z + 8) {
     return 'extra';
   }
-  return `dm${x < 0 ? 'w' : 'e'}${z < 0 ? 'n' : 's'}`;
+  if (Math.abs(x) <= OUTER.x + 45 && Math.abs(z) <= OUTER.z + 45) {
+    return 'dmnear';
+  }
+  return z < 0 ? 'dmn' : 'dms';
+}
+
+/*
+ * THE TOWN IS SWITCHED OFF FROM INSIDE. Under the window band the hall's
+ * walls hide every street, so with the camera in the hall and below the
+ * windows the two halves of the town draw nothing, in the colour pass
+ * or the shadow's: they are most of the map's triangles, and none of
+ * them is on screen. The plaza ring round the dome (its trees, lamps,
+ * vending machines and the pits) stays, so what a gate frames is still
+ * there. Set every frame after the pipeline's own distance cull.
+ */
+const INSIDE_BELOW = WINDOWS.y0 - 2;
+function townOff(eye) {
+  return Math.abs(eye.x) < OUTER.x - 0.5 && Math.abs(eye.z) < OUTER.z - 0.5 && eye.y < INSIDE_BELOW;
 }
 
 export async function buildMap(shell, onProgress, options) {
@@ -108,8 +128,27 @@ export async function buildMap(shell, onProgress, options) {
   map.stats = () => {
     const s = baseStats ? baseStats() : {};
     return {
-      ...s, dome: drawn ? { triangles: drawn.triangles, textures: drawn.textures } : null, trucks: trucks.stats(),
+      ...s, palette, dome: drawn ? { triangles: drawn.triangles, textures: drawn.textures } : null, trucks: trucks.stats(),
     };
+  };
+  /* One batch a look in each chunk rather than one a colour, Sunnyfield's
+   * way (../sunny/palette.js): the town's buildings, cars and trees are a
+   * hundred colours a chunk, each a draw call, and the hall's named
+   * materials a dozen more. */
+  const props = map.scene.getObjectByName('props');
+  const palette = props ? mergePalette(props) : { from: 0, to: 0 };
+  const town = props ? props.children.filter((g) => /^props:dm[ns]$/.test(g.name)) : [];
+  let off = null;
+  const focus = map.updateShadowFocus;
+  map.updateShadowFocus = (target) => {
+    focus(target);
+    const now = townOff(shell.camera.position);
+    if (now !== off) {
+      off = now;
+      for (const g of town) {
+        g.visible = !now;
+      }
+    }
   };
   await warmPrograms(shell.renderer, map.scene, shell.camera, map.post.rtScene);
   return map;

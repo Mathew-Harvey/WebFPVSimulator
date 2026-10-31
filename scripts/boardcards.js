@@ -376,6 +376,9 @@ const WORLDS = [
   /* Kirigaoka Sanatorium, added 31 October 2026, from the avenue's side
    * so the wings, the tower and the terrace stair are in it. */
   { id: 'sana', file: 'sana.jpg', name: 'Kirigaoka Sanatorium', shot: { tp: 0.45, tr: 0.9, ta: -1.57 } },
+  /* Tanada RX, added 31 October 2026, from the south over the jump so
+   * the stand and the terraces are in it. */
+  { id: 'rally', file: 'rally.jpg', name: 'Tanada RX', shot: { tp: 0.5, tr: 0.7, ta: -1.57 } },
 ];
 
 async function drawWorlds(opts) {

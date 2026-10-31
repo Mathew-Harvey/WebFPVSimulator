@@ -107,6 +107,7 @@ const MAP_ROOTS = {
   office: 'src/maps/office/index.js',
   kaza: 'src/maps/kaza/index.js',
   sana: 'src/maps/sana/index.js',
+  rally: 'src/maps/rally/index.js',
 };
 
 /* three@0.160.0's add-ons, and what each imports besides 'three'. Read off

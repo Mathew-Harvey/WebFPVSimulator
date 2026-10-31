@@ -102,6 +102,7 @@ const MAP_ROOTS = {
   dome: 'src/maps/dome/index.js',
   cedar: 'src/maps/cedar/index.js',
   office: 'src/maps/office/index.js',
+  kaza: 'src/maps/kaza/index.js',
   sana: 'src/maps/sana/index.js',
 };
 

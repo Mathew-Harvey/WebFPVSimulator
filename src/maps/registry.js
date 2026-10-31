@@ -255,6 +255,23 @@ export const MAPS = [
     buildMs: MAP_BUILD_MS.moto,
     load: () => import('./moto/index.js'),
   },
+  /*
+   * EKIMAE DRIFT, on the owner's ask of 31 October 2026: a city map with
+   * drift cars to chase, in the manga look of the town. A street drift
+   * event round the station district of a harbour town, under an elevated
+   * expressway and a brick railway viaduct, with three tandem pairs on the
+   * course and Drift Matsuri's filming game (src/maps/ekimae/,
+   * src/game/film.js). Built by the built map's pipeline and flown on the
+   * five inch at life size; off the board like the houses.
+   */
+  {
+    id: 'ekimae',
+    name: 'Ekimae Drift',
+    mode: 'freestyle',
+    note: 'A street drift event round a station district: under the expressway, under the tracks twice, round the taxi rotary and the petrol station. Chase the tandems, or fly the arcade, the car park and the platforms.',
+    buildMs: MAP_BUILD_MS.ekimae,
+    load: () => import('./ekimae/index.js'),
+  },
 ];
 
 /* The house's document id (src/maps/house/yard.js), here so the stamps can
@@ -282,6 +299,9 @@ export const DRIFT_DOC_ID = 'trk-d81f7a75';
 export const BALL_DOC_ID = 'trk-ba11b0a1';
 /* Ridgeline MX's (src/maps/moto/yard.js), the same way. */
 export const MOTO_DOC_ID = 'trk-3c07e5a1';
+
+/* Ekimae Drift's (src/maps/ekimae/yard.js), the same way. */
+export const EKIMAE_DOC_ID = 'trk-e4a1d21f';
 
 export function mapById(id) {
   return MAPS.find((m) => m.id === id) ?? MAPS[0];

@@ -101,6 +101,7 @@ const MAP_ROOTS = {
   towers: 'src/maps/towers/index.js',
   dome: 'src/maps/dome/index.js',
   cedar: 'src/maps/cedar/index.js',
+  office: 'src/maps/office/index.js',
   rally: 'src/maps/rally/index.js',
 };
 

@@ -89,4 +89,7 @@ export const MAP_BUILD_MS = {
   /* Ridgeline MX (src/maps/moto/): a plot of trees, a track of mounds and
    * berms and ten bikes. An estimate until it is measured. */
   moto: 2400,
+  /* Hinode Park (src/maps/park/): Sunnyfield's pipeline on a smaller plot
+   * with fewer parts. An estimate until it is measured. */
+  park: 1900,
 };

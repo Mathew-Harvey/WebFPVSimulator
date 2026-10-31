@@ -255,6 +255,22 @@ export const MAPS = [
     buildMs: MAP_BUILD_MS.moto,
     load: () => import('./moto/index.js'),
   },
+  /*
+   * HINODE PARK, on the owner's ask of 31 October 2026, a city park "like
+   * the town", in its manga look: a Japanese ward park with a ball ground,
+   * a pond and its drum bridge, a playground and the octopus mountain, and
+   * the town's lanes and houses round it (src/maps/park/). Built by the
+   * built map's pipeline and flown on the five inch at life size; off the
+   * board like the houses.
+   */
+  {
+    id: 'park',
+    name: 'Hinode Park',
+    mode: 'freestyle',
+    note: 'A city park at golden hour: the ball ground and its backstop, the dugouts, the pond and its drum bridge, the octopus mountain in the playground, a shrine in the corner and the lanes round it.',
+    buildMs: MAP_BUILD_MS.park,
+    load: () => import('./park/index.js'),
+  },
 ];
 
 /* The house's document id (src/maps/house/yard.js), here so the stamps can
@@ -282,6 +298,8 @@ export const DRIFT_DOC_ID = 'trk-d81f7a75';
 export const BALL_DOC_ID = 'trk-ba11b0a1';
 /* Ridgeline MX's (src/maps/moto/yard.js), the same way. */
 export const MOTO_DOC_ID = 'trk-3c07e5a1';
+/* Hinode Park's (src/maps/park/yard.js), the same way. */
+export const PARK_DOC_ID = 'trk-b0e7a1c5';
 
 export function mapById(id) {
   return MAPS.find((m) => m.id === id) ?? MAPS[0];

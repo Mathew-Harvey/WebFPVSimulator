@@ -80,6 +80,7 @@
     "check:factory": "node scripts/factory-check.js",
     "check:towers": "node scripts/towers-check.js",
     "check:cedar": "node scripts/cedar-check.js",
+    "check:touge": "node scripts/touge-check.js",
     "check:kaza": "node scripts/kaza-check.js",
     "check:sana": "node scripts/sana-check.js",
     "check:airfield": "node scripts/airfield-check.js",

@@ -373,6 +373,9 @@ const WORLDS = [
   /* Kodama Onsen, added 31 October 2026, picked by eye: the inn from the
    * car park side, the shrine's approach and the forest behind it. */
   { id: 'cedar', file: 'cedar.jpg', name: 'Kodama Onsen', shot: { tp: 0.55, tr: 0.75, ta: -1.9 } },
+  /* Momiji Pass, added 31 October 2026: the shot is the map's own cardLens
+   * (src/maps/touge/index.js), over the valley with the red bridge in front. */
+  { id: 'touge', file: 'touge.jpg', name: 'Momiji Pass' },
   /* Hoshino Shoji, added 31 October 2026. Indoors like Thomas More's Shop,
    * so it names its own lens too (CARD_LENS in src/maps/office/office.js). */
   { id: 'office', file: 'office.jpg', name: 'Hoshino Shoji' },

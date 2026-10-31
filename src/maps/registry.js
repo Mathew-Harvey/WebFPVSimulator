@@ -256,8 +256,8 @@ export const MAPS = [
     load: () => import('./moto/index.js'),
   },
   /*
-   * HYOURA ISLAND, on the owner's ask of 31 October 2026 (the Uncrashed
-   * inspired maps, section 10, "we want the maps to feel like manga comic
+   * HYOURA ISLAND, on the owner's ask of 31 October 2026 (the new
+   * maps, section 10, "we want the maps to feel like manga comic
    * like the town"): an island of our own after the drift ice coast of
    * Shiretoko, with its cliffs and waterfalls, its bergs and sea ice, a
    * fishing hamlet and a lighthouse on the cape (src/maps/arctic/). Built

@@ -92,4 +92,14 @@ export const MAP_BUILD_MS = {
   /* Hyoura Island (src/maps/arctic/): an island of cliffs, sea ice and a
    * fishing hamlet. An estimate until it is measured. */
   arctic: 2600,
+  /* Kumoi Towers (src/maps/towers/): Sunnyfield's pipeline on a bigger
+   * plot, measured headless when it was built. */
+  towers: 3000,
+  /* Bakuon Dome (src/maps/dome/): a hall of a few thousand boxes and
+   * capsules, its streets and four trucks. An estimate until it is
+   * measured. */
+  dome: 2400,
+  /* Kodama Onsen (src/maps/cedar/): three thousand cedars, an inn and a
+   * shrine. An estimate until it is measured. */
+  cedar: 3000,
 };

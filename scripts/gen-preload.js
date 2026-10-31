@@ -98,6 +98,9 @@ const MAP_ROOTS = {
   ball: 'src/maps/ball/index.js',
   moto: 'src/maps/moto/index.js',
   arctic: 'src/maps/arctic/index.js',
+  towers: 'src/maps/towers/index.js',
+  dome: 'src/maps/dome/index.js',
+  cedar: 'src/maps/cedar/index.js',
 };
 
 /* three@0.160.0's add-ons, and what each imports besides 'three'. Read off

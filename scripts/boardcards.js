@@ -353,6 +353,13 @@ const WORLDS = [
   /* Hyoura Island, added 31 October 2026: the hamlet and its harbour from
    * the hill to its west, its boats and the co-op. */
   { id: 'arctic', file: 'arctic.jpg', name: 'Hyoura Island', shot: { tp: 0.45, tr: 0.6, ta: -0.8 } },
+  /* Kumoi Towers, added 31 October 2026: the plaza with the twin crowns
+   * over it, from the plaza's south side, picked by eye from six shots. */
+  { id: 'towers', file: 'towers.jpg', name: 'Kumoi Towers', shot: { tp: 0.25, tr: 0.6, ta: 0 } },
+  { id: 'dome', file: 'dome.jpg', name: 'Bakuon Dome' },
+  /* Kodama Onsen, added 31 October 2026, picked by eye: the inn from the
+   * car park side, the shrine's approach and the forest behind it. */
+  { id: 'cedar', file: 'cedar.jpg', name: 'Kodama Onsen', shot: { tp: 0.55, tr: 0.75, ta: -1.9 } },
 ];
 
 async function drawWorlds(opts) {

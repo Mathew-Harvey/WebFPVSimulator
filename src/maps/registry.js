@@ -137,8 +137,8 @@ export const MAPS = [
    * JOSHUA BARDWELL'S HOUSE, on the owner's ask of 21 October 2026: the
    * house and yard of Joshua Bardwell, outside only, at life size and
    * flown on the five inch, "no need to blow it up to make it feel like a
-   * whoop map". Rebuilt the same day from the layout of the Uncrashed
-   * Workshop map of it the owner sent, when the first build from stills
+   * whoop map". Rebuilt the same day from the layout of a
+   * community workshop map of it the owner sent, when the first build from stills
    * was wrong. Built by the same pipeline (src/maps/bardwell/) and, like
    * the houses, off the board.
    */
@@ -256,20 +256,52 @@ export const MAPS = [
     load: () => import('./moto/index.js'),
   },
   /*
-   * HINODE PARK, on the owner's ask of 31 October 2026, a city park "like
-   * the town", in its manga look: a Japanese ward park with a ball ground,
-   * a pond and its drum bridge, a playground and the octopus mountain, and
-   * the town's lanes and houses round it (src/maps/park/). Built by the
+   * RAICHO RIDGE, on the owner's ask of 31 October 2026 (the map doc's
+   * section 1, "Mountain Open", built on the town's manga look): a Japanese
+   * Alps ridge of our own with a mountain hut on the col, a ropeway down
+   * the south face, a lake and its dam in the valley (src/maps/alps/).
+   * Built by the built map's pipeline on its own ground and flown on the
+   * five inch at life size; off the board like the houses.
+   */
+  {
+    id: 'alps',
+    name: 'Raicho Ridge',
+    mode: 'freestyle',
+    note: 'A high ridge in the Japanese Alps. Dive the south face from the col, slalom the ropeway towers, thread the mountain hut, and drop to the lake to gap the dam spillway.',
+    buildMs: MAP_BUILD_MS.alps,
+    load: () => import('./alps/index.js'),
+  },
+  /*
+   * KUMOI TOWERS, on the owner's ask of 31 October 2026 (a tower city to
+   * dive, built by Opus, "the maps to feel like manga comic like the
+   * town"): a tower district after Nishi-Shinjuku, its old drinking lanes
+   * under the viaduct and a tower going up, in the town's cel kit and ink
+   * with the towers' window grids painted (src/maps/towers/). Built by the
    * built map's pipeline and flown on the five inch at life size; off the
    * board like the houses.
    */
   {
-    id: 'park',
-    name: 'Hinode Park',
+    id: 'towers',
+    name: 'Kumoi Towers',
     mode: 'freestyle',
-    note: 'A city park at golden hour: the ball ground and its backstop, the dugouts, the pond and its drum bridge, the octopus mountain in the playground, a shrine in the corner and the lanes round it.',
-    buildMs: MAP_BUILD_MS.park,
-    load: () => import('./park/index.js'),
+    note: 'A tower city to dive. Twin crowns from the very top, a sky garden with a hole in it, a narrow slot between two towers, a steel frame going up under two cranes, the expressway, the viaduct, and the old lanes under it all.',
+    buildMs: MAP_BUILD_MS.towers,
+    load: () => import('./towers/index.js'),
+  },
+  /*
+   * BAKUON DOME, on the owner's ask of 31 October 2026 (a stadium map
+   * with monster trucks, "the maps to feel like manga comic like the
+   * town"): a dirt floored dome with four trucks running jumps under a
+   * trussed roof (src/maps/dome/). Built by the built map's pipeline and
+   * flown on the five inch at life size; off the board like the houses.
+   */
+  {
+    id: 'dome',
+    name: 'Bakuon Dome',
+    mode: 'freestyle',
+    note: 'A dirt floored dome with four monster trucks jumping cars and buses under its roof. Chase them over the ramps, thread the roof trusses and strafe the stands.',
+    buildMs: MAP_BUILD_MS.dome,
+    load: () => import('./dome/index.js'),
   },
   /*
    * KODAMA ONSEN, on the owner's ask of 31 October 2026 (a cedar forest
@@ -286,6 +318,22 @@ export const MAPS = [
     note: 'An abandoned hot spring inn in a cedar forest, flown on a five inch: rows of cedars to slalom, the inn and its bathhouse, the storehouse, a brick chimney, a line of torii and a tunnel of them, the stream and its bridges, and the shrine up the steps.',
     buildMs: MAP_BUILD_MS.cedar,
     load: () => import('./cedar/index.js'),
+  },
+  /*
+   * HINODE PARK, on the owner's ask of 31 October 2026, a city park "like
+   * the town", in its manga look: a Japanese ward park with a ball ground,
+   * a pond and its drum bridge, a playground and the octopus mountain, and
+   * the town's lanes and houses round it (src/maps/park/). Built by the
+   * built map's pipeline and flown on the five inch at life size; off the
+   * board like the houses.
+   */
+  {
+    id: 'park',
+    name: 'Hinode Park',
+    mode: 'freestyle',
+    note: 'A city park at golden hour: the ball ground and its backstop, the dugouts, the pond and its drum bridge, the octopus mountain in the playground, a shrine in the corner and the lanes round it.',
+    buildMs: MAP_BUILD_MS.park,
+    load: () => import('./park/index.js'),
   },
 ];
 
@@ -314,12 +362,19 @@ export const DRIFT_DOC_ID = 'trk-d81f7a75';
 export const BALL_DOC_ID = 'trk-ba11b0a1';
 /* Ridgeline MX's (src/maps/moto/yard.js), the same way. */
 export const MOTO_DOC_ID = 'trk-3c07e5a1';
-/* Hinode Park's (src/maps/park/yard.js), the same way. */
-export const PARK_DOC_ID = 'trk-b0e7a1c5';
+/* Kumoi Towers' (src/maps/towers/yard.js), the same way. */
+export const TOWERS_DOC_ID = 'trk-70e15c10';
+/* Bakuon Dome's (src/maps/dome/yard.js), the same way. */
+export const DOME_DOC_ID = 'trk-b4d0e0e1';
 
 /* Kodama Onsen's (src/maps/cedar/yard.js), the same way. */
 export const CEDAR_DOC_ID = 'trk-ced4a0e5';
 
+/* Raicho Ridge's (src/maps/alps/yard.js), the same way. */
+export const ALPS_DOC_ID = 'trk-a195a1e5';
+
 export function mapById(id) {
   return MAPS.find((m) => m.id === id) ?? MAPS[0];
 }
+/* Hinode Park's (src/maps/park/yard.js), the same way. */
+export const PARK_DOC_ID = 'trk-b0e7a1c5';

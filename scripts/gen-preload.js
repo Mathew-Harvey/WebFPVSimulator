@@ -98,6 +98,9 @@ const MAP_ROOTS = {
   ball: 'src/maps/ball/index.js',
   moto: 'src/maps/moto/index.js',
   park: 'src/maps/park/index.js',
+  alps: 'src/maps/alps/index.js',
+  towers: 'src/maps/towers/index.js',
+  dome: 'src/maps/dome/index.js',
   cedar: 'src/maps/cedar/index.js',
 };
 

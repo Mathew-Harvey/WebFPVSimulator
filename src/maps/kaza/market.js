@@ -101,6 +101,10 @@ function stallGroup(T, fx, y, s, goods, r) {
     T.deco('kzWood', cx0 - 0.05, sy + 0.06, STALL.counter - 0.06, cx1 + 0.05, sy + STALL.w - 0.06, STALL.counter);
     /* The name board over the opening, on the lane face. */
     T.sign(goods[k], fx + s * -0.03, sy + STALL.w / 2, STALL.eave - 0.22, 2.4, 0.42, s < 0 ? 'e' : 'w');
+    /* Behind the counter is the stallholder's room, too small to fly:
+     * solid from the counter to the back wall, so a pilot meets the stall
+     * and never a slot narrower than the gap rule. */
+    T.hidden(s < 0 ? lo + 0.12 : lo + 0.55, sy + 0.06, 0, s < 0 ? hi - 0.55 : hi - 0.12, sy + STALL.w - 0.06, STALL.eave, 'wall', 'stall inside');
     /* What is sold, set out on the counter and the shelves behind it. */
     T.dress(() => {
       const ware = r.pick(['kzRed', 'kzYellow', 'kzCream', 'kzOrange', 'kzGreen', 'kzBlue', 'kzPink']);
@@ -158,7 +162,9 @@ function tunnel(T) {
     for (const sx of [-1, 1]) {
       T.post('kzWhite', cx + sx * Tn.half, y, 0, Tn.spring, 0.06, { name: 'arch post' });
     }
-    T.torus('kzWhite', cx, y, Tn.spring, Tn.half, 0.05, 0, 1, 5, 24, null);
+    T.torus('kzWhite', cx, y, Tn.spring, Tn.half, 0.05, 0, 1, 5, 24);
+    /* Half a ring: the arc over the top. */
+    T.tori[T.tori.length - 1].half = true;
     /* The hoop's solid, six capsules on its half circle. */
     let prev = null;
     for (let k = 0; k <= 6; k += 1) {
@@ -441,7 +447,7 @@ export function market(T) {
   }
   /* Strings from the fir's top out to the plaza's corners: the lit tent
    * of light every Japanese illumination puts over its tree. */
-  for (const [cx, cy] of [[500, 316], [592, 316], [500, 404], [592, 404], [545, 306], [545, 412]]) {
+  for (const [cx, cy] of [[500, 316], [592, 316], [500, 404], [592, 404], [533, 308], [545, 412]]) {
     T.post('kzIron', cx, cy, 0, 4.4, 0.06, { name: 'light post' });
     T.take(cx, cy, 0.5);
     string(T, (cx + cy) % 2 ? 'kzBulbIce' : 'kzBulbGold', [TREE.px, TREE.py, TREE.h - 1.2], [cx, cy, 4.3], 1.5, 0.55);

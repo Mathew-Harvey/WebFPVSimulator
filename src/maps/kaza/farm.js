@@ -43,7 +43,7 @@ export const SOUTH_ROAD = { y0: 24, y1: 34 };
  * the north line, the gap a pilot finds. */
 export const BREAKS = [
   { py: 650, miss: 268 },
-  { py: 1080, miss: 412 },
+  { py: 1080, miss: 413 },
   { py: 1486, miss: 538 },
 ];
 const BREAK_STEP = 5;
@@ -477,6 +477,8 @@ function tractor(T, px, py, colour) {
     T.box('kzIron', px + x0, py + y0, 1.7, px + x0 + 0.08, py + y0 + 0.08, 2.9, { solid: false });
   }
   T.box(colour, px - 0.25, py - 0.75, 2.9, px + 1.15, py + 0.75, 3.0, { name: 'tractor cab' });
+  /* The cab is glazed all round, so it is solid to its roof. */
+  T.hidden(px - 0.2, py - 0.7, 1.6, px + 1.1, py + 0.7, 2.9, 'wall', 'tractor cab');
   T.deco('kzGlass', px - 0.18, py - 0.66, 1.75, px - 0.12, py + 0.66, 2.85);
   for (const s of [-1, 1]) {
     T.cyl('kzTyre', [px + 0.5, py + s * 0.75, 0.82], [px + 0.5, py + s * 1.25, 0.82], 0.82, 14);

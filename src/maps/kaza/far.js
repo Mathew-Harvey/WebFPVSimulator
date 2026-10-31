@@ -65,9 +65,7 @@ export function archHalf(h) {
 
 /*
  * THE TURBINES: plan point, and the element the builder would hold for
- * each. They face south, down the plain to the start, and are parked with
- * one blade straight down on the middle one, so its tower and its lowest
- * blade are a gap.
+ * each. They face south, down the plain to the start, parked.
  */
 export const TURBINES = [
   { px: 168, py: 1690, el: { id: 'kaza-turbine-1', type: 'turbine', dims: { height: 66, blade: 34, spin: 0.12 } } },
@@ -76,22 +74,6 @@ export const TURBINES = [
 ];
 /* They face south: the element's +x is the plan's -py. */
 export const TURBINE_YAW = -Math.PI / 2;
-
-/*
- * The middle turbine's blade gap: the air between its tower and the blade
- * hanging straight down in front of it, as a window across the rotor's
- * plane. In the plan, the rotor stands `xb` south of the tower's axis.
- */
-export function bladeGap() {
-  const t = TURBINES[1];
-  const s = turbineShape(t.el);
-  const near = s.rb;
-  const far = s.xb - s.rootR;
-  const low = Math.min(...s.blades.map((b) => b.b[1]));
-  return {
-    px: t.px, py: t.py - (near + far) / 2, w: far - near - 0.8, h0: low + 2, h1: s.H - s.rn - 2.5,
-  };
-}
 
 /* The viaduct: piers, deck, stepped spandrels, and the shape ./index.js
  * draws. */

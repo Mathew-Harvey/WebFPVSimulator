@@ -26,7 +26,7 @@ import { Town, worldAt, wx, wz, W, D, chunkOf } from './frame.js';
 import { festival, PADS, BOARDS, BOARD, balloonGates, topBasket, YAGURA } from './festival.js';
 import { market, TUNNEL, LANE, ROWS, STALL, groupY, STAGE, CAROUSEL } from './market.js';
 import { farm, BARN, SILOS, VINYL, TORII, BREAKS, ROAD } from './farm.js';
-import { far, VIADUCT, archX, archHalf, TURBINES, TURBINE_YAW, bladeGap } from './far.js';
+import { far, VIADUCT, archX, archHalf, TURBINES, TURBINE_YAW } from './far.js';
 import { partsOf } from '../../props/catalog.js';
 import { PARTNERS, MAP_ONLY_PARTNERS, PATRON_MAP_BRANDS, shownOn } from '../../partners/roster.js';
 import { signAspect } from '../../art/partnermark.js';
@@ -141,7 +141,6 @@ export const SPAWN = { px: PADS.px, py: PADS.py, h: 0.03, yaw: Math.PI / 2 };
 const M = 0.3;
 export function kazaGaps() {
   const g = balloonGates();
-  const blade = bladeGap();
   const T = TUNNEL;
   /* The stall gaps: the gap after the fourth group on the west row and
    * after the eighth on the east. */
@@ -156,17 +155,16 @@ export function kazaGaps() {
     { name: 'LIGHT TUNNEL', px: LANE.cx, py: (T.y0 + T.y1) / 2, deg: 90, w: 3.0, h0: 0.4, h1: 3.3, points: 250 },
     { ...stallGap(3, (LANE.x0 + LANE.x0 - STALL.d) / 2), name: 'STALL GAP', points: 500 },
     { ...stallGap(7, (LANE.x1 + LANE.x1 + STALL.d) / 2), name: 'BACK OF THE STALLS', points: 500 },
-    { name: 'STAGE', px: (STAGE.x0 + STAGE.x1) / 2 + 0.5, py: STAGE.y0 + 0.4, deg: 90, w: STAGE.x1 - STAGE.x0 - 1.4, h0: STAGE.deck + M, h1: STAGE.roof - 1.2 - M, points: 250 },
+    { name: 'STAGE', px: (STAGE.x0 + STAGE.x1) / 2 + 0.5, py: STAGE.y0 + 0.4, deg: 90, w: STAGE.x1 - STAGE.x0 - 2.2, h0: STAGE.deck + M, h1: STAGE.roof - 1.2 - M, points: 250 },
     { name: 'CAROUSEL', px: CAROUSEL.px, py: CAROUSEL.py - 4.1, deg: 90, w: 2.0, h0: 0.45 + 1.0, h1: CAROUSEL.roof - M, points: 500 },
     { name: 'YAGURA', px: YAGURA.px, py: YAGURA.py, deg: 90, w: 2 * yh - 2 * M - 0.4, h0: 0.8, h1: YAGURA.deck - M, points: 250 },
     { name: 'BARN RUN', px: (BARN.x0 + BARN.x1) / 2, py: BARN.y0 + 0.4, deg: 90, w: BARN.door - 2 * M, h0: M, h1: BARN.door - M, points: 500 },
     { name: 'SILO SPLIT', px: (SILOS.px[0] + SILOS.px[1]) / 2, py: SILOS.py, deg: 90, w: SILOS.px[1] - SILOS.px[0] - 2 * SILOS.r - 2 * M, h0: M, h1: SILOS.h - M, points: 1000 },
-    { name: 'VINYL HOUSE', px: VINYL.px[1], py: VINYL.y0 + 0.3, deg: 90, w: 3.6, h0: M, h1: VINYL.wall + VINYL.r - 1.0, points: 250 },
+    { name: 'VINYL HOUSE', px: VINYL.px[1], py: VINYL.y0 + 0.3, deg: 90, w: 3.4, h0: M, h1: VINYL.wall + VINYL.r - 1.6, points: 250 },
     { name: 'TORII', px: TORII.px, py: TORII.py, deg: 90, w: 2 * TORII.half - 0.34 - 2 * M, h0: M, h1: TORII.h - 0.95 - M, points: 250 },
     ...BREAKS.map((b, i) => ({ name: ['FIRST WINDBREAK', 'MIDDLE WINDBREAK', 'LAST WINDBREAK'][i], px: b.miss, py: b.py + 2, deg: 90, w: 2.4, h0: 1.5, h1: 9, points: 500 })),
     { name: 'OLD LINE', ...arch(VIADUCT.road), w: VIADUCT.span - 2 * M - 1.0, h0: M, h1: VIADUCT.spring + 1.5, points: 250 },
     { name: 'HIGH ARCH', ...arch(14), w: 4.0, h0: VIADUCT.spring + 0.5, h1: VIADUCT.spring + archHalf(VIADUCT.spring) * 0.6, points: 500 },
-    { name: 'BLADE GAP', px: blade.px, py: blade.py, deg: 0, w: blade.w, h0: blade.h0, h1: blade.h1, points: 1000 },
   ];
 }
 

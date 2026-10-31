@@ -89,4 +89,7 @@ export const MAP_BUILD_MS = {
   /* Ridgeline MX (src/maps/moto/): a plot of trees, a track of mounds and
    * berms and ten bikes. An estimate until it is measured. */
   moto: 2400,
+  /* Kazahana Plain (src/maps/kaza/): Sunnyfield's pipeline over a plot
+   * four times its size. An estimate until it is measured. */
+  kaza: 2800,
 };

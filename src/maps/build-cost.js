@@ -92,4 +92,7 @@ export const MAP_BUILD_MS = {
   /* Hinode Park (src/maps/park/): Sunnyfield's pipeline on a smaller plot
    * with fewer parts. An estimate until it is measured. */
   park: 1900,
+  /* Kodama Onsen (src/maps/cedar/): three thousand cedars, an inn and a
+   * shrine. An estimate until it is measured. */
+  cedar: 3000,
 };

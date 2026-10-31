@@ -352,6 +352,9 @@ const WORLDS = [
   { id: 'moto', file: 'moto.jpg', name: 'Ridgeline MX' },
   /* Hinode Park, added 31 October 2026. */
   { id: 'park', file: 'park.jpg', name: 'Hinode Park' },
+  /* Kodama Onsen, added 31 October 2026, picked by eye: the inn from the
+   * car park side, the shrine's approach and the forest behind it. */
+  { id: 'cedar', file: 'cedar.jpg', name: 'Kodama Onsen', shot: { tp: 0.55, tr: 0.75, ta: -1.9 } },
 ];
 
 async function drawWorlds(opts) {

@@ -111,6 +111,7 @@ const WORLDS = {
   drift: { name: 'Drift Matsuri', thumb: 'drift' },
   ball: { name: 'Quad Ball', thumb: 'ball' },
   park: { name: 'Hinode Park', thumb: 'park' },
+  cedar: { name: 'Kodama Onsen', thumb: 'cedar' },
   built: { name: 'Hibari Yard', thumb: 'yard' },
 };
 

@@ -93,7 +93,29 @@ export const MAP_BUILD_MS = {
    * two hundred and thirty pines and the coast's buildings. An estimate
    * until it is measured. */
   dunes: 2600,
+  /* Raicho Ridge (src/maps/alps/): its own ground, a forest, the hut, the
+   * ropeway and the dam. An estimate until it is measured. */
+  alps: 3600,
+  /* Kumoi Towers (src/maps/towers/): Sunnyfield's pipeline on a bigger
+   * plot, measured headless when it was built. */
+  towers: 3000,
+  /* Bakuon Dome (src/maps/dome/): a hall of a few thousand boxes and
+   * capsules, its streets and four trucks. An estimate until it is
+   * measured. */
+  dome: 2400,
+  /* Shiokaze Point (src/maps/shiokaze/): the island, five hotel blocks and
+   * the streets behind them. An estimate until it is measured. */
+  shiokaze: 2400,
   /* Kodama Onsen (src/maps/cedar/): three thousand cedars, an inn and a
    * shrine. An estimate until it is measured. */
   cedar: 3000,
+  /* Hoshino Shoji (src/maps/office/), the warehouse's pipeline with three
+   * floors of furniture. An estimate until it is measured. */
+  office: 2400,
+  /* Kazahana Plain (src/maps/kaza/): Sunnyfield's pipeline over a plot
+   * four times its size. An estimate until it is measured. */
+  kaza: 2800,
+  /* Kirigaoka Sanatorium (src/maps/sana/): Sunnyfield's pipeline and
+   * frame on a smaller site. An estimate until it is measured. */
+  sana: 2000,
 };

@@ -119,7 +119,7 @@ export const MATERIALS = {
   headsPatio: { c: 0xb86a50, tint: 0x6a4a66 },
   headsMaple: { c: 0x7c2a40, tint: 0x4a2a50 },
   headsPurple: { c: 0x4c3240, tint: 0x342840 },
-  /* Joshua Bardwell's house (src/maps/bardwell/), outside only, from the
+  /* Joshua Bardwell's house (src/maps/bardwell/), outside only, from a
    * community workshop map of it and its screenshots: the cream brick and
    * its mortar, the orange shingle roof and its courses, the dark split
    * rails, the gravel and the dirt, the woodshed's weathered planks and its
@@ -249,6 +249,22 @@ export const MATERIALS = {
   dnFloat: { c: 0x72b89a, tint: 0x3f6a6a },
   dnBuoy: { c: 0xf06a24, tint: 0x80482e },
   dnPineBark: { c: 0x6a4f42, tint: 0x45354c },
+  /* Bakuon Dome (src/maps/dome/): the hall's dirt and the ramps' darker
+   * dirt, the concourse's paving, the cream concrete of the bowl and its
+   * fascia, the outer walls' panel white, the roof's steel, the catwalk's
+   * grating and the big screen's case. Everything finer (seats, people,
+   * cars, flags) is one vertex coloured batch of its own (./draw.js). */
+  dmDirt: { c: 0xb07a4c, tint: 0x6a4a5e },
+  dmDirtDark: { c: 0x8a5d3c, tint: 0x553f52 },
+  dmWalk: { c: 0xc9c2b8, tint: 0x7d7596, noReceive: true },
+  dmBarrier: { c: 0xf1ead8, tint: 0x8a83a8 },
+  dmStand: { c: 0xd9d2c4, tint: 0x7d7596 },
+  dmFascia: { c: 0x2b3554, tint: 0x232840 },
+  dmColumn: { c: 0xe6dfd0, tint: 0x8a83a8, noReceive: true },
+  dmWall: { c: 0xeee8dc, tint: 0x7d7596 },
+  dmSteel: { c: 0xe9eef2, tint: 0x6f6d8a },
+  dmGrate: { c: 0x6c7381, tint: 0x4d4a6c },
+  dmScreenBox: { c: 0x26242e, tint: 0x1f1d28 },
 };
 
 /*

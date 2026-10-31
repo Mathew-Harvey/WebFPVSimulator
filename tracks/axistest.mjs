@@ -1,7 +1,7 @@
 /*
  * axistest.mjs: which local axis of a prefab points through the hole.
  *
- * A gate mesh and a Velocidrone checkpoint volume are authored in different
+ * A gate mesh and a .trk checkpoint volume are authored in different
  * poses: the gate stands up already, the checkpoint is made lying flat and
  * stood up with a quarter turn about X, sometimes with a roll on top. Reading
  * a yaw out of the quaternion and calling it a heading therefore works for

@@ -168,6 +168,32 @@ function archBerg(I) {
   }
   const s = ARCH.span;
   iceTier(I, r, { x0: s.x0, x1: s.x1, z0: s.z0, z1: s.z1 }, s.y0, s.y1, 'arSnow', 'arch span');
+  /* The arch's curve, under the span from leg to leg, so the opening is
+   * an arch the sea wore and not a doorway; solid as steps just inside
+   * the curve, as the roofs' are (./hamlet.js gableX). */
+  const a0 = ARCH.legA.x1;
+  const a1 = ARCH.legB.x0;
+  const w = a1 - a0;
+  const curve = [[0, -7], [0.06, -4.8], [0.14, -3.1], [0.25, -1.7], [0.375, -0.9], [0.5, -0.6]];
+  const prof = [[a0, s.y0 + 0.2]];
+  for (const [t, dy] of curve) {
+    prof.push([a0 + w * t, s.y0 + dy]);
+  }
+  for (const [t, dy] of curve.slice(0, -1).reverse()) {
+    prof.push([a1 - w * t, s.y0 + dy]);
+  }
+  prof.push([a1, s.y0 + 0.2]);
+  I.prism('arIce', 'z', prof, s.z0 + 1, s.z1 - 1);
+  for (const [t0, t1, dy] of [[0, 0.1, -5.5], [0.1, 0.25, -3.4], [0.25, 0.75, -1.6], [0.75, 0.9, -3.4], [0.9, 1, -5.5]]) {
+    I.box('arIce', a0 + w * t0, s.y0 + dy, s.z0 + 1, a0 + w * t1, s.y0 + 0.1, s.z1 - 1, { draw: false, kind: 'rock', name: 'arch' });
+  }
+  /* The wave cut at the legs' feet, and the snow's cornice over the span,
+   * a hand past its edge. */
+  for (const leg of [ARCH.legA, ARCH.legB]) {
+    const [pts] = polyOf(r, leg.x0 + 0.4, leg.z0 + 0.4, leg.x1 - 0.4, leg.z1 - 0.4);
+    I.poly('arIceDeep', 'arIceDeep', pts, -0.5, 1.4, true);
+  }
+  I.deco('arSnow', s.x0 + 2, s.y1 - 0.2, s.z0 - 0.5, s.x1 - 2, s.y1 + 0.7, s.z1 + 0.5);
   /* The span's underside, hung with icicles: fine. */
   I.dress(() => {
     for (let k = 0; k < 14; k += 1) {

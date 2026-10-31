@@ -190,7 +190,7 @@ export const SPAWN = { x: 48, z: 93, y: QUAY_TOP, deg: 0 };
 export function arcticGaps() {
   const tg = groundAt(TORII.x, TORII.z);
   return [
-    { name: 'ICEBERG ARCH', x: (ARCH.legA.x1 + ARCH.legB.x0) / 2, z: (ARCH.span.z0 + ARCH.span.z1) / 2, along: 'z', w: ARCH.legB.x0 - ARCH.legA.x1 - 3, h0: 1.5, h1: ARCH.span.y0 - 1, points: 1000 },
+    { name: 'ICEBERG ARCH', x: (ARCH.legA.x1 + ARCH.legB.x0) / 2, z: (ARCH.span.z0 + ARCH.span.z1) / 2, along: 'z', w: ARCH.legB.x0 - ARCH.legA.x1 - 6, h0: 1.5, h1: ARCH.span.y0 - 4, points: 1000 },
     { name: 'TWIN BERGS', x: (TWINS.a.x1 + TWINS.b.x0) / 2, z: 137, along: 'z', w: TWINS.b.x0 - TWINS.a.x1 - 1.6, h0: 1.5, h1: 18, points: 500 },
     { name: 'SEA ARCH', x: (SEA_ARCH.x0 + SEA_ARCH.x1) / 2, z: (SEA_ARCH.hole0 + SEA_ARCH.hole1) / 2, along: 'x', w: SEA_ARCH.hole1 - SEA_ARCH.hole0 - 3, h0: 1.5, h1: SEA_ARCH.holeH - 1.5, points: 1000 },
     { name: 'THE NEEDLE', x: (NEEDLE.x0 + NEEDLE.x1) / 2, z: (NEEDLE.z1 - 207) / 2, along: 'x', w: -207 - NEEDLE.z1 - 1.6, h0: 2, h1: 50, points: 500 },

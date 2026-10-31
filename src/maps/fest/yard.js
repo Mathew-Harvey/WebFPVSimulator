@@ -67,7 +67,7 @@ function builderGates() {
   return out;
 }
 
-/* The trees: cherries along the foot of the levee, willows by the river,
+/* The trees: cherries along the foot of the levee and along the river,
  * pines round the ball field, a few in the lane behind the levee. */
 function trees() {
   const out = [];
@@ -85,7 +85,9 @@ function trees() {
     if (x > RAIL.x0 - 6 && x < RAIL.x1 + 6) {
       continue;
     }
-    out.push({ style: 'street', x: x + hash(i, 3) * 4, y: 28.6, size: 0.95 + hash(i, 4) * 0.3 });
+    /* A cherry row along the river path, as a river town plants one, with
+     * a pine every fourth: the grove style reads as a palm from the air. */
+    out.push({ style: i % 4 === 3 ? 'pine' : 'sakura', x: x + hash(i, 3) * 4, y: 28.6, size: 0.8 + hash(i, 4) * 0.3 });
   }
   for (let y = 60, i = 0; y < 178; y += 13, i += 1) {
     out.push({ style: 'pine', x: 3 + hash(i, 5) * 2, y, size: 0.9 + hash(i, 6) * 0.35 });
@@ -94,15 +96,20 @@ function trees() {
 }
 
 /* The houses over the levee: a lane of two and three storey houses and
- * shops facing it, as a river town's back streets do. */
+ * shops facing it, as a river town's back streets do. Three variants and
+ * no more, and shops only by the stairs: each shop paints signboards of
+ * its own, and fifteen of them were half the map's texture memory for a
+ * row seen across the levee. */
 function houses() {
   const out = [];
   const xs = [8, 24, 41, 58, 76, 95, 136, 152, 170, 188, 206, 224, 242, 292, 308];
   xs.forEach((x, i) => {
-    const flats = i % 3 === 1;
+    /* Shops only by the stairs up from the gateway, where a pilot over the
+     * crown sees them close. */
+    const flats = !(x > 130 && x < 180);
     out.push({
       type: 'building', style: flats ? 'flats' : 'shop', x, y: 230.5, yaw: -90 * DEG,
-      dims: { width: flats ? 15 : 13, depth: 9, floors: flats ? 3 : 2, passage: 0, variant: 1 + (i % 7) },
+      dims: { width: flats ? 15 : 13, depth: 9, floors: flats ? 2 + (i % 2) : 2, passage: 0, variant: 1 + (i % 3) },
     });
   });
   return out;

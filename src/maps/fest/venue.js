@@ -493,6 +493,11 @@ function sluice(V) {
   /* The gauge on the west pier, and a bare bulb over the mouth. */
   V.sign('gauge', S.x0 - 1.03, y0 + 1.3, 2.4, 'w', 0.3, 2.2, 0.02, { fine: true });
   V.op({ t: 'ball', m: 'lampGlow', c: [(S.x0 + S.x1) / 2, y0 - 0.25, 3.3], r: 0.12, fine: true });
+  /* The culvert's floor: a concrete channel the whole way through the
+   * levee, a thread of water down its middle, and the same apron out on
+   * the field side, where the grass would otherwise run in under it. */
+  V.paint('concreteMid', S.x0, y0 - 2.4, S.x1, LEVEE.crown1 + LEVEE.back + 0.5, 0.04);
+  V.paint('fsWater', S.x0 + 0.9, y0 - 2.4, S.x1 - 0.9, LEVEE.crown1 + LEVEE.back + 0.5, 0.05);
   /* The gap: through the culvert, under the crown road. */
   V.gap('THE SLUICE', (S.x0 + S.x1) / 2, 203, 90, S.x1 - S.x0 - 2 * MARGIN, MARGIN, S.top - 2 * MARGIN, 1000);
 }

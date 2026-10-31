@@ -268,7 +268,7 @@ export const MAPS = [
     id: 'airfield',
     name: 'Kazami Airfield',
     mode: 'freestyle',
-    note: 'A grass strip in a mountain valley: fly the arched hangar front to back and through its rafters, the paddies, the cedars, the channel under the red bridge, and a race of fourteen gates round it all.',
+    note: 'A grass strip in a mountain valley: fly the arched hangar front to back and through its rafters, the paddies, the cedars, the vinyl houses, the channel under the red bridge, and fourteen gates to fly round it all.',
     buildMs: MAP_BUILD_MS.airfield,
     load: () => import('./airfield/index.js'),
   },

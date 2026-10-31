@@ -55,6 +55,8 @@ export const MATERIALS = {
   afStoneDark: { c: 0x958e8c, tint: 0x5a5478 },
   afEarth: { c: 0xb0906c, tint: 0x6a5468 },
   afRock: { c: 0xa49aa4, tint: 0x5c5680 },
+  afMoss: { c: 0x6f9465, tint: 0x41536c },
+  afForestFloor: { c: 0x7b9a62, tint: 0x46576a },
   afHasa: { c: 0xd8b260, tint: 0x84705e },
   afHasaPole: { c: 0x86684f, tint: 0x4f3e58 },
   /* the woods: two cedar greens, the trunks, autumn maples in two tones */
@@ -108,7 +110,7 @@ export const MATERIALS = {
   afCabbage: { c: 0xa9cf7e, tint: 0x5a7a86 },
   afNegi: { c: 0x74b062, tint: 0x4c6e7e },
   afStraw: { c: 0xdcc07a, tint: 0x857462 },
-  afSwath: { f: 0xb7c27e, noCast: true },
+  afSwath: { f: 0xa9be7e, noCast: true },
   afBaleWrap: { c: 0xf3f1ea, tint: 0x8a83a8 },
   afBalePink: { c: 0xf0c2c8, tint: 0x8c6c8c },
   afKura: { c: 0xf5f1e8, tint: 0x8a83a8 },

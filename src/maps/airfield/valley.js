@@ -173,6 +173,18 @@ export function smoothTop(px, py) {
       best = h;
     }
   }
+  /* The valley's two ends: past the plot the floor climbs to a pass at
+   * the head of the valley (west) and to a lower saddle where the stream
+   * leaves it (east), so the valley is closed and the floor never runs
+   * flat out to the sky. */
+  const west = -30 - px;
+  const east = px - (W + 30);
+  if (west > 0) {
+    best = Math.max(best, west * 0.62 + 0.0012 * west * west);
+  }
+  if (east > 0) {
+    best = Math.max(best, east * 0.4 + 0.0009 * east * east);
+  }
   return best;
 }
 
@@ -221,10 +233,12 @@ function terraces(T, dry) {
       const step = t.paddy ? STEP : STEP_FOREST;
       /* Where the bench ends behind: the next wall's foot, or the plot. */
       const backPy = (px) => (k + 1 < P.length ? wallPy(side, k + 1, px) : edgePy);
-      const wallMat = t.paddy ? 'afStone' : (k % 3 === 2 ? 'afRock' : 'afStoneDark');
+      /* Paddy walls are dry stone (ishigaki); up in the woods a bench's face
+       * is a bank grown over with moss and fern, the odd one bare rock. */
+      const wallMat = t.paddy ? 'afStone' : (k % 4 === 3 ? 'afRock' : 'afMoss');
       /* The paddies' plots along this bench, each its own crop. */
       let cut = 0;
-      let crop = t.paddy ? r.pick(CROPS) : 'afBench';
+      let crop = t.paddy ? r.pick(CROPS) : 'afForestFloor';
       for (let px = 0; px < W - 1e-6; px += step) {
         const pa = px;
         const pb = Math.min(W, px + step);

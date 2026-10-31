@@ -101,6 +101,7 @@ const MAP_ROOTS = {
   moto: 'src/maps/moto/index.js',
   alps: 'src/maps/alps/index.js',
   towers: 'src/maps/towers/index.js',
+  dock: 'src/maps/dock/index.js',
   dome: 'src/maps/dome/index.js',
   shiokaze: 'src/maps/shiokaze/index.js',
   cedar: 'src/maps/cedar/index.js',

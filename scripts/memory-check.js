@@ -206,6 +206,9 @@ BORROWS.goats = {
 };
 /* And Sunnyfield (src/maps/sunny/index.js). */
 BORROWS.sunny = BORROWS.house;
+/* And Kamome Wharf (src/maps/dock/index.js), which folds its batches with
+ * Sunnyfield's palette merge. */
+BORROWS.dock = { ...BORROWS.house, sunny: ['palette.js'] };
 /* And Hamakaze Works (src/maps/factory/index.js), which also merges its
  * batches with Sunnyfield's palette. */
 BORROWS.factory = { ...BORROWS.house, sunny: ['palette.js'] };

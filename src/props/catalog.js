@@ -41,6 +41,7 @@ import * as COURSE from './course.js';
 import * as WINDMILL from './windmill.js';
 import * as HOMES from './homes.js';
 import * as SUNNY from './sunny.js';
+import * as DOCK from './dock.js';
 import * as FACTORY from './factory.js';
 import * as ALPINE from './alpine.js';
 import * as TOWERS from './towers.js';
@@ -152,7 +153,7 @@ export const FURNITURE = {
  * a mistake, and it throws here rather than one silently winning.
  */
 const FAMILIES = {
-  buildings: BUILDINGS, industrial: INDUSTRIAL, street: STREET, skate: SKATE, course: COURSE, windmill: WINDMILL, homes: HOMES, sunny: SUNNY, factory: FACTORY, cedar: CEDAR, towers: TOWERS, alpine: ALPINE, office: OFFICE, kaza: KAZA,
+  buildings: BUILDINGS, industrial: INDUSTRIAL, street: STREET, skate: SKATE, course: COURSE, windmill: WINDMILL, homes: HOMES, sunny: SUNNY, factory: FACTORY, cedar: CEDAR, dock: DOCK, towers: TOWERS, alpine: ALPINE, office: OFFICE, kaza: KAZA,
   sanatorium: SANATORIUM,
   shiokaze: SHIOKAZE, rally: RALLY,
   airfield: AIRFIELD, hotaru: HOTARU,

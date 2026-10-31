@@ -1002,6 +1002,7 @@ function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
     || mapId === 'towers' || mapId === 'alps' || mapId === 'office' || mapId === 'kaza' || mapId === 'sana'
     || mapId === 'shiokaze' || mapId === 'factory' || mapId === 'rally' || mapId === 'fmx'
     || mapId === 'airfield'
+    || mapId === 'dock'
     || mapId === 'hotaru';
   const where = mapId === 'house' ? "Nick's house"
     : mapId === 'heads' ? "Heads' house"
@@ -1010,6 +1011,7 @@ function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
           : mapId === 'office' ? 'Hoshino Shoji'
           : mapId === 'goats' ? "Heads' street"
           : mapId === 'sunny' ? 'Sunnyfield'
+          : mapId === 'dock' ? 'Kamome Wharf'
           : mapId === 'factory' ? 'Hamakaze Works'
           : mapId === 'shiokaze' ? 'Shiokaze Point'
             : mapId === 'drift' ? 'Drift Matsuri' : mapId === 'ball' ? 'Quad Ball' : mapId === 'moto' ? 'Ridgeline MX' : mapId === 'dome' ? 'Bakuon Dome' : mapId === 'cedar' ? 'Kodama Onsen' : mapId === 'airfield' ? 'Kazami Airfield' : mapId === 'towers' ? 'Kumoi Towers' : mapId === 'alps' ? 'Raicho Ridge' : mapId === 'kaza' ? 'Kazahana Plain' : mapId === 'sana' ? 'Kirigaoka Sanatorium' : mapId === 'rally' ? 'Tanada RX' : mapId === 'fmx' ? 'Shiroyama FMX' : mapId === 'hotaru' ? 'Hotaru Valley' : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
@@ -1090,6 +1092,10 @@ const BALL_OFF_BOARD = 'The board keeps no runs for Quad Ball, so a run flown th
   + ' Fly the town for a run that can go up.';
 
 const MOTO_OFF_BOARD = 'The board keeps no runs for Ridgeline MX, so a run flown there stays here.';
+
+/* Kamome Wharf, the same way. */
+const DOCK_OFF_BOARD = 'The board keeps no runs for Kamome Wharf, so a run flown there stays here.'
+  + ' Fly the town for a run that can go up.';
 /* Raicho Ridge, the same way. */
 const ALPS_OFF_BOARD = 'The board keeps no runs for Raicho Ridge, so a run flown there stays here.'
   + ' Fly the town for a run that can go up.';
@@ -11467,6 +11473,7 @@ export class Ui {
           || this.settings.map === 'shiokaze' || this.settings.map === 'factory'
           || this.settings.map === 'rally'
           || this.settings.map === 'fmx' || this.settings.map === 'airfield'
+          || this.settings.map === 'dock'
           || this.settings.map === 'hotaru';
         return [
           { label: 'Fly again', action: 'restart', primary: true },
@@ -11499,6 +11506,7 @@ export class Ui {
                     : this.settings.map === 'office' ? OFFICE_OFF_BOARD
                       : this.settings.map === 'goats' ? GOATS_OFF_BOARD
                         : this.settings.map === 'sunny' ? SUNNY_OFF_BOARD
+                        : this.settings.map === 'dock' ? DOCK_OFF_BOARD
                         : this.settings.map === 'factory' ? FACTORY_OFF_BOARD
                         : this.settings.map === 'shiokaze' ? SHIOKAZE_OFF_BOARD
                           : this.settings.map === 'drift' ? DRIFT_OFF_BOARD

@@ -439,6 +439,22 @@ export const MAPS = [
     load: () => import('./fmx/index.js'),
   },
   /*
+   * KAZAMI AIRFIELD, on the owner's ask of 31 October 2026 (one of a set
+   * of new maps, each built from real places and our own design): a grass strip in a Japanese mountain
+   * valley with an arched hangar flown through, terraced paddies, cedar
+   * slopes and a race of fourteen gates (src/maps/airfield/). Built by the
+   * built map's pipeline in the town's light and flown on the five inch at
+   * life size; off the board like the houses.
+   */
+  {
+    id: 'airfield',
+    name: 'Kazami Airfield',
+    mode: 'freestyle',
+    note: 'A grass strip in a mountain valley: fly the arched hangar front to back and through its rafters, the paddies, the cedars, the vinyl houses, the channel under the red bridge, and fourteen gates to fly round it all.',
+    buildMs: MAP_BUILD_MS.airfield,
+    load: () => import('./airfield/index.js'),
+  },
+  /*
    * HOTARU VALLEY, on the owner's ask of 31 October 2026 (the Meadow map of
    * the owner's list of new maps, "we want the maps to feel like manga comic
    * like the town"): a countryside of Japan of our own, after Shirakawa-go,
@@ -490,6 +506,8 @@ export const DOME_DOC_ID = 'trk-b4d0e0e1';
 export const SHIOKAZE_DOC_ID = 'trk-5e1a0ca2';
 /* Shiroyama FMX's (src/maps/fmx/yard.js), the same way. */
 export const FMX_DOC_ID = 'trk-f3a10c55';
+/* Kazami Airfield's (src/maps/airfield/yard.js), the same way. */
+export const AIRFIELD_DOC_ID = 'trk-a1f1e1d0';
 
 /* Hamakaze Works' (src/maps/factory/yard.js), the same way. */
 export const FACTORY_DOC_ID = 'trk-fac70e31';

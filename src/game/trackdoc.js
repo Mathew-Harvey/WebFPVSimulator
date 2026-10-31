@@ -324,7 +324,7 @@ const FLOATING_DIVE_Z = 0.3;
 const EMPTY_SILL = 0.05;
 
 /*
- * Imported JSON that still carries a Velocidrone mesh origin: a dive hoop
+ * Imported JSON that still carries a .trk mesh origin: a dive hoop
  * whose elevation is on position.z with an empty sill, or a flag whose
  * origin is halfway up the pole. Convert writes these planted; this is the
  * same fold so an old published course still flies. A dive with no
@@ -385,7 +385,7 @@ function buildCourse(raw) {
   /*
    * NOTHING BUILT STANDS IN THE AIR (src/trackbuilder/seat.js). Four flags
    * 20 m up and a gate 15 m up on FAI Turkiye 2024 hung in the sky with
-   * nothing under them, because the Velocidrone map they came from has a
+   * nothing under them, because the source map they came from has a
    * rooftop and the field has not, and a pilot could clear them neither where
    * they hung nor where they should have stood. AFTER the dive hoops above,
    * which read a height off position.z that this would otherwise take away.

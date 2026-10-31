@@ -358,6 +358,9 @@ const WORLDS = [
   { id: 'moto', file: 'moto.jpg', name: 'Ridgeline MX' },
   /* Ekimae Drift, added 31 October 2026, from its default orbit. */
   { id: 'ekimae', file: 'ekimae.jpg', name: 'Ekimae Drift' },
+  /* Hyoura Island, added 31 October 2026: the hamlet and its harbour from
+   * the hill to its west, its boats and the co-op. */
+  { id: 'arctic', file: 'arctic.jpg', name: 'Hyoura Island', shot: { tp: 0.45, tr: 0.6, ta: -0.8 } },
   /* Kazesuna Dunes, added 31 October 2026. */
   { id: 'dunes', file: 'dunes.jpg', name: 'Kazesuna Dunes' },
   /* Kamome Wharf, added 31 October 2026. */
@@ -396,6 +399,9 @@ const WORLDS = [
    * never blank: from over the race, the stage, the stalls and the railway
    * across the river in it. */
   { id: 'fest', file: 'fest.jpg', name: 'Tonbo Fest', shot: { tp: 0.45, tr: 0.6, ta: 0.8 } },
+  /* Tsukimi Danchi, added 31 October 2026, from the south east and high
+   * enough that the block, the yard and the viaduct are all in it. */
+  { id: 'haikyo', file: 'haikyo.jpg', name: 'Tsukimi Danchi', shot: { tp: 0.68, tr: 1.5, ta: -1.9 } },
 ];
 
 async function drawWorlds(opts) {

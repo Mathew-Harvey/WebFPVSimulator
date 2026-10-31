@@ -100,6 +100,7 @@ const MAP_ROOTS = {
   ball: 'src/maps/ball/index.js',
   moto: 'src/maps/moto/index.js',
   ekimae: 'src/maps/ekimae/index.js',
+  arctic: 'src/maps/arctic/index.js',
   dunes: 'src/maps/dunes/index.js',
   alps: 'src/maps/alps/index.js',
   towers: 'src/maps/towers/index.js',
@@ -115,6 +116,7 @@ const MAP_ROOTS = {
   fmx: 'src/maps/fmx/index.js',
   hotaru: 'src/maps/hotaru/index.js',
   fest: 'src/maps/fest/index.js',
+  haikyo: 'src/maps/haikyo/index.js',
 };
 
 /* three@0.160.0's add-ons, and what each imports besides 'three'. Read off

@@ -112,6 +112,7 @@ const WORLDS = {
   airfield: { name: 'Kazami Airfield', thumb: 'airfield' },
   drift: { name: 'Drift Matsuri', thumb: 'drift' },
   ball: { name: 'Quad Ball', thumb: 'ball' },
+  arctic: { name: 'Hyoura Island', thumb: 'arctic' },
   towers: { name: 'Kumoi Towers', thumb: 'towers' },
   shiokaze: { name: 'Shiokaze Point', thumb: 'shiokaze' },
   cedar: { name: 'Kodama Onsen', thumb: 'cedar' },
@@ -121,6 +122,7 @@ const WORLDS = {
   office: { name: 'Hoshino Shoji', thumb: 'office' },
   hotaru: { name: 'Hotaru Valley', thumb: 'hotaru' },
   fest: { name: 'Tonbo Fest', thumb: 'fest' },
+  haikyo: { name: 'Tsukimi Danchi', thumb: 'haikyo' },
   built: { name: 'Hibari Yard', thumb: 'yard' },
 };
 

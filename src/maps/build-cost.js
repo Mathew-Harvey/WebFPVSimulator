@@ -86,6 +86,10 @@ export const MAP_BUILD_MS = {
    * drift course. An estimate until it is measured. */
   drift: 2600,
 
+  /* Tsukimi Danchi (src/maps/haikyo/): an abandoned estate and the four
+   * streets round it, the same pipeline. An estimate from Sunnyfield until
+   * it is measured. */
+  haikyo: 2400,
   /* Quad Ball (src/maps/ball/): a plain arena, a few dozen boxes. An
    * estimate until it is measured. */
   ball: 900,
@@ -95,6 +99,9 @@ export const MAP_BUILD_MS = {
   /* Ekimae Drift (src/maps/ekimae/): a city of the town's buildings round
    * a street course. An estimate until it is measured. */
   ekimae: 3600,
+  /* Hyoura Island (src/maps/arctic/): an island of cliffs, sea ice and a
+   * fishing hamlet. An estimate until it is measured. */
+  arctic: 2600,
   /* Kazesuna Dunes (src/maps/dunes/): a kilometre of sand on a 4 m grid,
    * two hundred and thirty pines and the coast's buildings. An estimate
    * until it is measured. */

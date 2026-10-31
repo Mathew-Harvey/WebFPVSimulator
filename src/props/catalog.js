@@ -41,6 +41,7 @@ import * as COURSE from './course.js';
 import * as WINDMILL from './windmill.js';
 import * as HOMES from './homes.js';
 import * as SUNNY from './sunny.js';
+import * as ARCTIC from './arctic.js';
 import * as DOCK from './dock.js';
 import * as FACTORY from './factory.js';
 import * as ALPINE from './alpine.js';
@@ -55,6 +56,7 @@ import * as RALLY from './rally.js';
 import * as AIRFIELD from './airfield.js';
 import * as HOTARU from './hotaru.js';
 import * as FEST from './fest.js';
+import * as HAIKYO from './haikyo.js';
 import { buildingLayout, buildingDraw, bandoLayout, bandoDraw } from './buildings.js';
 import {
   craneLayout, craneDraw, waterLayout, waterDraw, mastLayout, mastDraw, chimneyLayout, chimneyDraw,
@@ -160,6 +162,9 @@ const FAMILIES = {
   shiokaze: SHIOKAZE, rally: RALLY,
   airfield: AIRFIELD, hotaru: HOTARU,
   fest: FEST, touge: TOUGE,
+  arctic: ARCTIC,
+  fest: FEST,
+  haikyo: HAIKYO,
 };
 export const FAMILY_MATERIALS = {};
 export const FAMILY_PAINTERS = {};

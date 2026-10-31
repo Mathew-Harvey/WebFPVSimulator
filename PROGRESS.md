@@ -7123,9 +7123,9 @@ Verify: `node --check` on ui.js, main.js, race.js. Physics verify not
 run. This turn does not touch src/native, the WASM build, the input
 path or the simulation trace.
 
-### 2026-08-15 | tracks | Velocidrone .trk files become flyable courses
+### 2026-08-15 | tracks | .trk files become flyable courses
 
-Changed: `tracks/convert.mjs` decrypts the five Velocidrone `.trk` files
+Changed: `tracks/convert.mjs` decrypts the five `.trk` files
 in memory (AES-128-ECB, same key TrackDraw uses) and writes track-builder
 documents. Prefab 88 is a gate or a flag by scale. Stacked 88s at one plan
 position become a double or a ladder. Mesh copies (prefab 150/169 sitting
@@ -7137,7 +7137,7 @@ courses stay as hand layouts plus the 2022 MultiGP GQ from the official
 diagram. Twelve courses posted to the local board as andAgainFPV.
 ladder-up skill was left alone.
 
-What went wrong: first pass treated every Velocidrone mesh as a flown
+What went wrong: first pass treated every .trk mesh as a flown
 gate, so WCMRC Round 5 sequenced the same hole twice and invented false
 stacks. Path length was reported n/a because the script read `arcLength`
 instead of `length`. Forcing yawOverridden on every imported gate produced
@@ -7155,7 +7155,7 @@ Changed: the seven Club * courses (Hand Sketch, Hoops, Yellow Sweep,
 Twin Orbits, Yellow Table, Purple Loop, Orange Path) are gone from
 `tracks/convert.mjs`, from `tracks/json/`, and from the local board.
 They were traced off whiteboard photos and were not accurate enough
-to fly. What remains is the four Velocidrone imports, the 2022 MultiGP
+to fly. What remains is the four `.trk` imports, the 2022 MultiGP
 GQ from the official diagram, and ladder-up skill.
 
 What went wrong: nothing this turn. The board process holds
@@ -7188,7 +7188,7 @@ Verify: `node --check` on `src/ui/credits.js`, `src/ui/ui.js`,
 `public/app.js`. Physics verify not run. This turn does not touch
 src/native, the WASM build, the input path or the simulation trace.
 
-### 2026-08-15 | tracks | six more Velocidrone courses, flags tuned
+### 2026-08-15 | tracks | six more .trk courses, flags tuned
 
 Changed: `tracks/convert.mjs` now imports 2023 AU NATS Qualifying,
 2023 AU NATS 5 inch, 2022 AU Nationals, 2023 MultiGP GQ, ROX Open 2023
@@ -7212,7 +7212,7 @@ trace.
 
 ### 2026-08-15 | tracks | no floating gates, no flags in the hole
 
-Changed: Velocidrone Y is no longer copied as altitude. Every imported
+Changed: The `.trk` Y is no longer copied as altitude. Every imported
 gate sits on the ground. Stacks are standard MultiGP doubles and
 triples, not towers on stilts. A flag in the opening corridor is
 either a header pennant on that gate, or is slid 0.6 m off the leg
@@ -7230,7 +7230,7 @@ src/native, the WASM build, the input path or the simulation trace.
 
 ### 2026-08-15 | tracks | numbered flags stay, holes stay clear
 
-Changed: a uniquely numbered Velocidrone flag is no longer eaten as a
+Changed: a uniquely numbered `.trk` flag is no longer eaten as a
 header pennant. Only a flag that shares a checkpoint number with a
 nearby gate becomes dress. A sequenced flag in a hole, or on that
 gate's approach centreline, slides 0.6 m off the nearest leg and
@@ -7257,7 +7257,7 @@ src/native, the WASM build, the input path or the simulation trace.
 
 Changed: WA Micro Champs is out of the converter, the local JSON, and
 the public board. The .trk stays in `tracks/` for when micro comes
-back. The other ten Velocidrone courses and 2022 MultiGP GQ are
+back. The other ten .trk courses and 2022 MultiGP GQ are
 unchanged. ladder-up skill is unchanged.
 
 What went wrong: nothing this turn.
@@ -7462,7 +7462,7 @@ marks.js, scene.js, view2d.js, view3d.js, selftest.js. Physics verify
 not run. This turn does not touch src/native, the WASM build, the
 input path or the simulation trace.
 
-### 2026-08-15 | tracks | the Velocidrone import was reading the file wrong
+### 2026-08-15 | tracks | the `.trk` import was reading the file wrong
 
 Reviewed all twelve .trk files against the documents built from them.
 The flying order was right. Almost nothing else was, and the reasons
@@ -7470,14 +7470,14 @@ are worth writing down because every one of them was a plausible
 reading of an undocumented format.
 
 WHAT THE FORMAT ACTUALLY IS, now established rather than assumed, and
-cross checked against dutchdronesquad/trackdraw's exporter, which
-writes files Velocidrone loads.
+cross checked against an open source exporter, which
+writes files the course format loads.
 
 `gates` is the flying order and the `gate` field is the index. That
 beats file order on all twelve tracks by 25 to 180 percent of lap
 length, so the old sort was correct. Three kinds of thing are in that
 array: a gate mesh, a flag or cone mesh, and prefab 88, which is
-Velocidrone's invisible CHECKPOINT volume. Turn flags, cones, props and
+the format's invisible CHECKPOINT volume. Turn flags, cones, props and
 the start grid are in `barriers` and are never part of the order.
 
 A gate mesh faces along its local FORWARD axis. A checkpoint faces
@@ -7582,7 +7582,7 @@ elements are correct; the line through them is a guide.
 
 Also expected: unsequenced markers, five on 2024 WA States and twenty
 on 2025 WA States. Those are real flags and cones from `barriers` that
-Velocidrone does not make checkpoints, including a ten flag fence line
+the .trk format does not make checkpoints, including a ten flag fence line
 down one side of the 2025 course. They are placed because they are
 standing there, and the warning is honest.
 
@@ -7732,7 +7732,7 @@ gate and its gate 3 carry the identical rotation [1000,0,0,0], the lap
 crosses the start gate north to south, which the grid parked 33 m due
 north of it confirms on its own, and it crosses gate 3 east to west. The
 file is self consistent and gate 3 still cannot be flown on that
-heading. In Velocidrone it does not have to be: a gate's collision is
+heading. In a .trk course it does not have to be: a gate's collision is
 its frame, the checkpoint that scores it is a separate volume, and an
 object left at the default rotation still counts if you cross the
 trigger.
@@ -7823,7 +7823,7 @@ built plan from the published diagram rather than a .trk import and its
 grid is where the diagram puts it.
 
 The grid's authored position in the barriers is no longer used at all.
-It is worth less than being straight: Velocidrone parks it wherever the
+It is worth less than being straight: the .trk author parks it wherever the
 designer dropped it, and a grid off to one side also makes the lap
 arrive at the finish line from in front of it, which path.js turns into
 a zero radius cusp in the last few metres of every lap.
@@ -7880,7 +7880,7 @@ diagram puts LAUNCH away to one side, and the grid sat 10.0 m off the
 timing gate's axis, which is the exact complaint.
 
 So squaring the grid moved into polish(), where both paths go through
-it, because it is a rule about COURSES rather than about Velocidrone
+it, because it is a rule about COURSES rather than about one file format
 files. It is iterated four times: the first gate's heading is derived by
 applyAutoFaces from a chain that STARTS at the pads, so moving the pads
 moves the gate, which moves where the pads should be. These courses
@@ -10052,7 +10052,7 @@ the order, which is the quote that was getting lost.
 
 Changed: three import bugs that made published courses fly wrong.
 
-Dive hoops with no checkpoint were stored with the Velocidrone mesh AGL on
+Dive hoops with no checkpoint were stored with the .trk mesh AGL on
 `position.z` and `sillH` of 0. The field draws the mast from the structure
 base up to the hoop, so those hoops hung in the air on 2022 AU Nationals
 (gates 6, 16, 26) and ROX Open 2023 (gates 2, 27). Elevation now lives in
@@ -10066,7 +10066,7 @@ beside an aperture (in the gate plane, out at the stile, within 3 m) now
 uses that aperture's travel. A flag 2.75 m in the gate plane still snaps
 (ROX Open 29). A flag 3.5 m off a gate is left as a real turn.
 
-A Velocidrone flag mesh origin is mid pole, about 1.6 m. Convert stored that
+A .trk flag mesh origin is mid pole, about 1.6 m. Convert stored that
 as `position.z`, the field planted the pole on the grass and scored a square
 at 1.6 m, and flying the visible flag missed. Origins below the pole height
 plant at 0. Rooftop flags (FAI Turkiye at 20 m) keep their elevation, and
@@ -18437,7 +18437,7 @@ map, not the plant.
 ### 2026-08-26 | map | The Kiln, second freestyle world
 
 Asked: a second freestyle map to sit next to the city. Bando, cel
-shaded, simple and epic. Design, research Velocidrone bandos, fan out
+shaded, simple and epic. Design, research bandos, fan out
 adversarial review, implement, review again, loop until it is a real
 second world. Then push to main.
 
@@ -18771,7 +18771,7 @@ untouched.
 
 Round 1 (source, before this build): the plant was a silhouette.
 Stack, mint barn, three drums, a pit. That is the 50 m read. Borderlands
-and a Velocidrone bando both need the 20 m read, the ducts and
+and a bando both need the 20 m read, the ducts and
 catwalks that make the machine one thing, and they both die if the
 yard fills with barrels. The ochre apron staying empty is the point.
 The missing kit was on the plant, not in the dirt.
@@ -59510,7 +59510,7 @@ would count as wrong is written under "For the owner" above.
 
 The ticket, from a pilot on 29 September 2026 flying FAI Turkiye 2024 (`trk-c149e98e`) on the field: "a few of the gates are 20 meters above the ground. flying around/through them where they are in the sky or where their supposed to be on the ground does not clear them." The owner's ask, the same day: when a user creates a track or a map in the builder, no gates or assets are floating in the air.
 
-What was wrong. The stored course has four flags at 19.8 to 20.2 m (el-15 to el-18) and a gate at 15.0 m (el-25), each a post or a frame of pipe with nothing under it. They are faithful to the Velocidrone file, which has a rooftop there; the field has not. 2026-08-17 kept them on purpose ("Rooftop flags (FAI Turkiye at 20 m) keep their elevation") and pinned that in a selftest, so this was a decision and not an oversight, and the owner has now reversed it. Two more shipped courses had the same defect and nobody had reported it: 2022 AU Nationals (a flag at 6.1 m, a gate at 3.5 m) and 2023 AU NATS 5 inch (gates at 3.5 and 3.4 m). Nothing stopped a builder author doing it either: the 3D view's height drag and the typed Base set `position.z` to anything, over nothing.
+What was wrong. The stored course has four flags at 19.8 to 20.2 m (el-15 to el-18) and a gate at 15.0 m (el-25), each a post or a frame of pipe with nothing under it. They are faithful to the .trk file, which has a rooftop there; the field has not. 2026-08-17 kept them on purpose ("Rooftop flags (FAI Turkiye at 20 m) keep their elevation") and pinned that in a selftest, so this was a decision and not an oversight, and the owner has now reversed it. Two more shipped courses had the same defect and nobody had reported it: 2022 AU Nationals (a flag at 6.1 m, a gate at 3.5 m) and 2023 AU NATS 5 inch (gates at 3.5 and 3.4 m). Nothing stopped a builder author doing it either: the 3D view's height drag and the typed Base set `position.z` to anything, over nothing.
 
 What changed.
 - `src/trackbuilder/seat.js` (new): the one definition of floating and the one fix. A built element whose base is more than 5 cm (the `SEAT_SLACK` fs-pads-seat already used, now owned there) over what it stands on is set down. What it stands on is the ground, or on a map the top of another element's solid box under its origin. Left alone because nothing built is held up: waypoints and named gaps (`standsFree` in elements.js), a horizontal pole (its legs reach the ground, so z is the bar's height), an opening with no pipe (`unbuilt`, or all four sides taken away), and labels, decals, roads and vehicles.
@@ -61677,7 +61677,7 @@ Open, and they gate the next stages (plan section 8, the recommended answer firs
   banners at quarter turns. Or a turned box, which is a physics decision.
 - **6.** The board: approve the LeaderBoard change, deploy it first, add the types without a schema
   bump. Or bump to 4.
-- **8.** Ways out: glb and USDZ in Stage 5, VR later, Liftoff and Velocidrone not now.
+- **8.** Ways out: glb and USDZ in Stage 5, VR later, exports to other simulators not now.
 
 Built this turn on my recommendation, cheap to turn round if the owner disagrees (plan 13 to 16):
 
@@ -69863,7 +69863,7 @@ was taken from it.
 - General Track Rule 7: "You cannot intentionally fly through any gates in the opposite direction to shorten your
   line. For example if you have to go past a gate and then back through it, you cannot just fly through it backward and
   then spin 180 back through the gate like a "cheese" move that many angle pilots use in place of a split-S or
-  corkscrew type maneuver on Velocidrone."
+  corkscrew type maneuver in other simulators."
 - Rule 6 leaves the turn direction free where none is specified. Gate Rule 2: a gate "must be fully enclosed". The
   score is the best three consecutive laps, the Code of Ethics is an honour system with zero tolerance, and there is no
   penalty list and no gate miss rule.
@@ -70778,7 +70778,7 @@ Approval: the owner wrote "push to main" at 11:49:50Z on 2026-10-14 in the hoop 
 
 ## 2026-10-17 | maps | Nick Burns' house, a first pass at three times life size (draft PR)
 
-- Ask: the owner, 14:01Z on 2026-10-17: "I want to build a map that is nick burns house with a flyable interior all scalled correctly for our freestyle quad (so it wl lneed to be over sized, so that the freeestyle quad feels like a 75mm whoop  relative to the house it should be recognisable, but also in the manga style with colors." Then 14:18Z: "make the map, a first pass with backyard, street, and interior all the detail yo uhave, also search the internet for videos and photos of the house there is heaps of content from Nick Burns' fpv channel on youtube and related. self verify , go hard". Permission: the owner wrote "i have Nicks permission" at 13:57Z. The three Uncrashed Workshop layouts he sent are by three different creators; they gave the plan's proportions only (they hold placements of the game's own pieces, no meshes), and nothing of theirs is in the repository.
+- Ask: the owner, 14:01Z on 2026-10-17: "I want to build a map that is nick burns house with a flyable interior all scalled correctly for our freestyle quad (so it wl lneed to be over sized, so that the freeestyle quad feels like a 75mm whoop  relative to the house it should be recognisable, but also in the manga style with colors." Then 14:18Z: "make the map, a first pass with backyard, street, and interior all the detail yo uhave, also search the internet for videos and photos of the house there is heaps of content from Nick Burns' fpv channel on youtube and related. self verify , go hard". Permission: the owner wrote "i have Nicks permission" at 13:57Z. The three community workshop layouts he sent are by three different creators; they gave the plan's proportions only (they hold placements of the game's own pieces, no meshes), and nothing of theirs is in the repository.
 - Sources: about fifty stills from four years of Nick's videos and two sim recreations of the house, kept with what each shows in /mnt/project-files/nick-burns-house/refs/REFERENCES.md. No address, property or real estate lookup was made. Nothing from a still ships: the map is boxes, slopes and the palette. Stills of people and the family photo wall were skipped.
 - What the stills corrected in the first layout, which came from the Workshop plots: the front is a red brick block at the west corner with a tall stair window, a white porch on bracketed posts and a three car garage under one long sweep of roof with a shed dormer, not a plain box; the siding is a warm grey board and batten, not dark; the ground floor is a loop round a straight central stair (foyer, front room, family room, breakfast room, kitchen, back hall, dining room); the back has a timber pergola over a stamped patio, a white bay, a long pool parallel to the house, a fire pit at the chimney end and a stone bar under a pavilion at the garage end. The layout was rewritten to that.
 - Not seen, so inferred or left out: the upstairs (five rooms and a bath, a plausible plan and nothing more), the garage inside, the basement (left out, the ground here is flat), the side yards. No traffic on the street.
@@ -70996,7 +70996,7 @@ Approval: the owner wrote "push to main" at 11:49:50Z on 2026-10-14 in the hoop 
 
 ## 2026-10-19 | menus | One map picker for the simulator and the board, and clean thumbnails drawn at publish (draft PR)
 
-- Ask: the owner, 2026-10-19, in the Map picker redesign thread: "I want to refine the map picker, I want official maps and tracks up front, then user created maps and track under that, with a nice UI to pick from, model the UI on uncrashed or other AAA drone SIM, while keeping our art style of making it like manga comic, design and show mock ups before we implement." Three mockups went up; he picked one: "Let's go with select screen, b with maps 5inch tracks and whoop tracks, ensure the screen shot that is captured and rendered is excellent and of the actual track, we will need a system for user created maps to generate the thumbnail screen shot of the actual map, this map picker should be the same in SIM and on the maps and tracks page, there should be a single source of truth". Then: "On the current track picker board, given that is going away, ensure that all links on landing page, site states etc etc etc go to the new and correct map selector page, same for the builder, make sure every thing is hooked up correctly". And, relayed by the project chat: Escape always goes back one layer.
+- Ask: the owner, 2026-10-19, in the Map picker redesign thread: "I want to refine the map picker, I want official maps and tracks up front, then user created maps and track under that, with a nice UI to pick from, model the UI on another AAA drone sim, while keeping our art style of making it like manga comic, design and show mock ups before we implement." Three mockups went up; he picked one: "Let's go with select screen, b with maps 5inch tracks and whoop tracks, ensure the screen shot that is captured and rendered is excellent and of the actual track, we will need a system for user created maps to generate the thumbnail screen shot of the actual map, this map picker should be the same in SIM and on the maps and tracks page, there should be a single source of truth". Then: "On the current track picker board, given that is going away, ensure that all links on landing page, site states etc etc etc go to the new and correct map selector page, same for the builder, make sure every thing is hooked up correctly". And, relayed by the project chat: Escape always goes back one layer.
 - THE PICKER, `src/picker/picker.js`, the one file both draw: the board copies it byte for byte into `public/sim/picker/` (`scripts/vendor.js`, hashed in its manifest). A rail of three shelves (Maps, 5 inch tracks, Whoop tracks), a big panel with the chosen entry's picture, its rating and record and its buttons, a find box and the orders, and a strip of cards with the official ones first, then a "Made by pilots" split. The worlds that ship lead the Maps shelf. Inline styles in the shared palette, so it looks the same on both pages.
 - IN THE SIMULATOR, the Tracks and Maps rooms open on it in place of their card strips, which stay built and hidden because the rows still read their items: Fly this is `card-fly` in the Tracks room and the card's own action in the Maps room, and the chosen track's list (Before you fly, post, publish, edit, standings) is the list under the picker. A shelf is one of the three gate answers, so 5 inch and Whoop seat that aircraft and Maps opens the Maps room; the world swap carries on behind the page (main.js no longer sends a picker room to the title for it). Not mid run: a paused run refuses a shelf that needs the other aircraft and says why. Keys and the sticks: Up and Down move between the shelves, the strip and the buttons, Left and Right within one, Enter or select presses, Up off the first row comes back into the picker, Escape goes back as everywhere else (back()). The pilot's own tracks are pinned at the head of the pilots' half, stamped Yours, and the seated one Seated. The module is fetched on the first visit to either room, not at boot.
 - THUMBNAILS, `src/share/orbit.js` and `src/share/card.js`: a second frame drawn in the publishing browser right after the share card, 960 by 540, no wordmark, no airframe, at twice the size and scaled down, the camera turned to the clearest of eight sides by a ray test so a building does not stand in front of the track, and a whoop room shot from its top corner. Posted to the board's new `/thumb` beside `/card`. `scripts/boardcards.js` backfills both for anything missing one, and `--worlds` draws `assets/thumbs/{city,yard,house}.jpg` for the three worlds.
@@ -71526,9 +71526,9 @@ None in flight: a static image, and edge code that only runs for preview bots. A
 - The gate: a Career card first. A browser that has not started the career opens on it; one that has opens on the card it left. `scripts/shell-check.js` and `scripts/input-check.js` expected four cards and now expect five, which is the design changing and not a threshold moving.
 - Latency: nothing is added to the flight loop until a pilot opens the career. Before that each hook is one `if (career)` test; the trick recogniser builds one small array per recognised trick. In a lesson, `careerFrame` fills one preallocated record per frame and the markers are a handful of draw calls only in lesson worlds. The gate adds one 41 KB picture. The career code is fetched on demand, about 280 kB uncompressed with its tests excluded. Measured by reading, not on a GPU: this container has none, so the Input to screen reading on a real machine is the check.
 - Tests: `npm run check:career` (106, pass) and `npm run check:career:rig` (the rig flies every lesson through the real module: 32 of 33). The one miss, lesson 6-3 Segmented Roll, ends on objective 2 of 2 having seen "Roll" and "Invert Rewind" and no segmented roll. It fails the same way in the Steam repo before this change, so the pull did not cause it; not fixed here.
-## 2026-10-21 | maps | Joshua Bardwell's house rebuilt from the Uncrashed Workshop map of it, with more detail (branch only)
+## 2026-10-21 | maps | Joshua Bardwell's house rebuilt from a community workshop map of it, with more detail (branch only)
 
-- Ask: the owner, 2026-10-21, after the first build went to main: a screenshot of an Uncrashed map of the place and its files (`joshua.json`, the layout; `joshua.info`; `Steam.wrk`, naming Workshop item 3637027069), with "you did get barwells house correct at all sadly , review this and fix your model completly then add more detai", then "didn't *".
+- Ask: the owner, 2026-10-21, after the first build went to main: a screenshot of a community map of the place and its files (`joshua.json`, the layout; `joshua.info`; `Steam.wrk`, naming Workshop item 3637027069), with "you did get barwells house correct at all sadly , review this and fix your model completly then add more detai", then "didn't *".
 - What was wrong: all of it. The first build was laid out from fourteen stills by inference, and its log house with a green roof, courtyard, gazebo, barn and long building are not this place. The reference is a cream brick house of a storey and a half under a steep orange shingle gable with white trim, a white chimney up the west gable and a porch on white columns; a split rail pen on the lawn; a gravel drive with a white van and a white car; a woodshed; a big field behind a split rail fence with a curving side.
 - The source: "Joshua Bardwell House / Perfect Beginner Map" by xWallow (Workshop 3637027069), which says it is a fan recreation from public video and not an official map or a one to one replica. Every position in the new `src/maps/bardwell/bardwell.js` is read off the layout's transforms (Unreal centimetres to metres, its Y turned over), as Nick Burns' house read three Workshop layouts. Nothing of the map is in the repository: no mesh, texture or file. The layout and the screenshots stayed in the session's scratchpad. Credited in the file's header and here.
 - Built, at life size and outside only as before: the house (11 by 7.8 m, floor 0.83, eave 5.6, ridge 9.8, brick courses, white corner boards, a grey foundation band, sash windows with white frames and sills, triple windows upstairs in both gables, vents, deep white rake boards, the shingles' courses and a ridge cap, a gutter and downspouts, a back door on a stoop, an air conditioner); the chimney (foot, shoulder, stack past the eave, crown, flue, grey streaks); the porch (brick base, grey deck and its boards, steps, square white columns on brick piers, a beam, its own roof at the layout's 23.8 degrees with a white ceiling, white railings with balusters, pots on the rail and planters where the layout has pots, two rockers and a table, a mat, two hanging ferns, a porch light); the car's concrete pad with joints and kerbs and the white car on it; the walks; mulch beds; the woodshed on its slab (timber posts, plates, ties, knee braces in the east bay, a weathered plank roof and gables, the firewood stacked in the east bay with its cut ends, a chopping block and axe); the split rail pen; the field's fences as the layout chains them, the curving side included; the gravel drive down to a gravel road along the bottom, its wet patches, the dirt path outside the curving fence, a mailbox; the practice cage (two high) and three frames, square to the field; the timber stand, the lean-to with its tin roof and a barrow, a doghouse; ten banner stands; 216 of the layout's 224 trees in the plot (pines at about 23 m, broadleaves at about 16) and its 66 bushes; the white van, the white car on the drive and the white car on the pad; a crane and two pylons on the skyline. The scene is now clear afternoon (the map's own weather is four in the afternoon).
@@ -71539,11 +71539,11 @@ None in flight: a static image, and edge code that only runs for preview bots. A
 - Latency, which went up: the old build was 38 to 114 draw calls and 147k to 187k triangles a view. With every tree in one chunk this one drew 1.43M to 1.50M triangles in every view, about 380k of its 548k scene triangles the broadleaves' canopies, because nothing culled them. The trees are filed in a three by three grid of chunks now, so a view draws the cells it sees: 51 to 208 draw calls and 619k to 1.39M triangles across sixteen views (headless Chromium on SwiftShader, 1280 by 720, High). That is about the town's cost (347 to 541 calls, 1.13M to 1.37M) and some eight times the first build's. World build 1566, 1145 and 1528 ms (`build-cost.js` 1413), Nick's house 907 and 1981 in the same session. 6264 solids; the worst step gathers 606 of world.c's 1024.
 - Checked in this turn: `check:bardwell` all passed (73), `check:heads` and `check:house` all passed, `lint:preload` up to date, `lint:partners` 110 passed, `check:fresh` 18 passed, `lint:frame` 34 passed, `lint:nouns` pass, `lint:memory` pass (every world lazy and freed), `node --check` on every changed file. In the real shell with `scripts/shots.js` on sixteen views: the map loads, all eight marks present with the two patrons not findable, no console errors but the board's refused fetch. `assets/thumbs/bardwell.jpg` regenerated (the old shot put the camera in a canopy, so it is taken from higher and further out). Not run: `npm run verify` (no physics, plant, ABI or build change). Nobody has flown it.
 - What went wrong in the build: the gates' openings were first filled in while the layout was built, so the yard's document, made without building the layout, found none (they are computed from the gate table when the file loads now). The barrow first stood in the lean-to's gap and the woodshed's knee braces crossed its own; both moved before the check ran.
-- Not done: the pines are the town's pine, a cone from a third of the way up, where the reference's are tall bare trunks with the crown at the top; the town's tree is shared and changing it changes the town. The gates are plain pink, yellow and black, without the Uncrashed name the screenshot's gates carry. No Joshua Bardwell logo until one is supplied.
-- Merged main at 34c6bd9 before the push. Main had moved under this branch: another thread had refined the first build's log house from Joshua's stills with the owner's OK (12:01Z to 13:58Z: the loblolly pine and a broad tree in `src/props/street.js`, a 143 tree wood, the long building moved, split rail panels, the loop's teardrop throat). Both sides rewrote `bardwell.js`, `logos.js`, `bardwell-check.js` and the Bardwell colours, so either one meant deleting the other's work, and that was put to the owner: "The Uncrashed rebuild". So this branch's versions of those four files are kept whole and the log house edits go with the log house; everything else from main merged as it was (its `index.js` draws the loblolly and broad trees beside this branch's turned boxes and hoops). Main's commits to the files kept whole touched nothing but the old buildings.
+- Not done: the pines are the town's pine, a cone from a third of the way up, where the reference's are tall bare trunks with the crown at the top; the town's tree is shared and changing it changes the town. The gates are plain pink, yellow and black, without the other sim's name the screenshot's gates carry. No Joshua Bardwell logo until one is supplied.
+- Merged main at 34c6bd9 before the push. Main had moved under this branch: another thread had refined the first build's log house from Joshua's stills with the owner's OK (12:01Z to 13:58Z: the loblolly pine and a broad tree in `src/props/street.js`, a 143 tree wood, the long building moved, split rail panels, the loop's teardrop throat). Both sides rewrote `bardwell.js`, `logos.js`, `bardwell-check.js` and the Bardwell colours, so either one meant deleting the other's work, and that was put to the owner: "The workshop rebuild". So this branch's versions of those four files are kept whole and the log house edits go with the log house; everything else from main merged as it was (its `index.js` draws the loblolly and broad trees beside this branch's turned boxes and hoops). Main's commits to the files kept whole touched nothing but the old buildings.
 - Then the trees: the rebuild's pines and broadleaves are now main's loblolly (a long bare stem, the crown in its top two fifths, which is what the screenshots show and what this entry listed as not done) and its broad build, with `dims.detail` by distance from the house and the start (all whorls within 40 m, fewer to 90 m, fewest past it). The solids are `loblollyLayout`'s: 4346 now, from 6264. Latency through the real shell, sixteen views (headless Chromium on SwiftShader, 1280 by 720, High): 46 to 190 draw calls and 196k to 312k triangles, from 51 to 208 and 619k to 1.39M with the town's trees. World build 2947, 1138 and 2481 ms with Nick's house at 1092 and 1121 between them (`build-cost.js` 2189). The thumbnail is taken again with the new trees.
 - Checked after the merge, in this turn: `check:bardwell` all passed, `check:heads` and `check:house` all passed, `lint:preload` up to date (bardwell 44 modules, 304 served), `lint:partners` 110 passed, `check:fresh` 18 passed, `lint:nouns` pass, `lint:frame` 34 passed, `node --check` on the changed files; the map loads in the real shell with all eight marks, no console errors but the board's refused fetch. Not run: `npm run verify` (nothing of this branch is in the physics, the plant, the ABI or the build; main's own plant change came with its own checks).
-- Approval: the owner wrote "Push to main" on 2026-10-21 in this thread after the reply that gave the latency (then 51 to 208 draw calls and 619k to 1.39M triangles, about the town's cost) and that nobody had flown it, and chose "The Uncrashed rebuild" when the conflict with main's log house was put to the owner. It covers this entry's commits and the board's.
+- Approval: the owner wrote "Push to main" on 2026-10-21 in this thread after the reply that gave the latency (then 51 to 208 draw calls and 619k to 1.39M triangles, about the town's cost) and that nobody had flown it, and chose "The workshop rebuild" when the conflict with main's log house was put to the owner. It covers this entry's commits and the board's.
 
 
 ## 2026-10-22 | render | The whoop is the owner's Fractal65, baked flat (branch only)
@@ -71904,7 +71904,7 @@ Mat: "Push to main". Covers sim PR 117 and board PR 32 (share cards, the manga d
 ## 2026-10-24 | import | Open TinyLaps tracks in WebFPV (branch only)
 
 - The ask, 05:54Z, Mat: an "open in webfpv" button on TinyLaps (https://tinylaps.kwayzu.com/) that sends its JSON and "does all the work on our side": "when the button is clicked at tinylaps the track immediatly opens in the sim and is flyable with no further steps", and the same JSON through Import in our track builder. His sample was the RaceGOW6 Track 3 export (`RaceGow-6.3`), kept out of the repository; the test uses a synthetic one.
-- The format, read from TinyLaps' own code and not guessed from one file: Three.js frame (Y up, metres); `connections` are straight pipes along one axis; `racePoints` are rectangles `size` wide along local x and high along local y, flown along local +z (the ArrowHelper their editor draws on each point); `exportToVelocidrone: false` is their "nav only"; the first checkpoint is their start and finish; their limits are 2,000 pipes, 256 points and 2 MB.
+- The format, read from TinyLaps' own code and not guessed from one file: Three.js frame (Y up, metres); `connections` are straight pipes along one axis; `racePoints` are rectangles `size` wide along local x and high along local y, flown along local +z (the ArrowHelper their editor draws on each point); `the export flag: false` is their "nav only"; the first checkpoint is their start and finish; their limits are 2,000 pipes, 256 points and 2 MB.
 - `src/trackbuilder/importtinylaps.js`: pipes joined into runs; an upright run is a pole, a level run a horizontal pole at its height, both `pvc: true`; every checkpoint an invisible gate (unbuilt) at its size, height, yaw and pitch, a point flown twice one gate flown twice with the entry sign from its arrow; nav points are waypoints; the order starts at the first checkpoint; a start pad behind it facing through it, placed clear of pipe, so the lap closes; the footprint centred in the 10 by 12 m hall; credit `source: TinyLaps`, designer when the link names one. A report of what was kept, changed and left out, as the FPV Events import has.
 - `pvc: true` (`isPvcPipe` in elements.js, schema.md): a pole or horizontal pole that is frame pipe, not a race piece. Drawn in the frame's material, and a bar has no legs, in the race field (`scene.js`), the builder's preview (`view3d.js`, `hpoleLayout`) and the racing line's obstacles (`raceline.js`). Without it the uprights were red fly-round poles and the bars' legs stood in the middle of the arches. Written only when true; every existing track is the JSON it was. Colliders unchanged: a bar's is the same capsule row either way.
 - The link: `/sim/?map=custom&craft=whoop65&fly=1#tinylaps=z.<deflated JSON, base64url>&by=<name>`. The fragment never reaches a server, so nothing is uploaded, stored or published, nothing is served by us, and it does not wait on the board waking. `src/share/tinylaps.js` decodes it with sharelink's `decodeText` (split out of `decodeTrack`, same caps), imports it and seats it as a `stock` track (not on the board, no times, opens in the builder as a copy), id a hash of the file so the same track keeps its local best. `main.js` reads it in the board stage before `?share=`, and imports the reader only when the fragment has one. Builder: Import recognises the format first.
@@ -73244,6 +73244,33 @@ The bug hunt thread saw together-shots' ribbon check "a bot cuts somebody's ribb
 - Latency: no change. Menu code only, nothing in flight, input or render.
 - Checks run: `minigames-check --only=menu` all passed, `ball-door-check` all passed, `node --check src/ui/ui.js`. Not run: `npm run verify` (no physics, plant, ABI or build). Not flown.
 - To main: the owner, 2026-10-30 22:57Z, "Push to main", after the fix, the latency line (no change) and the checks run were put to him. Main had not moved from 089b9cb, so it fast forwards. Not flown.
+## 2026-10-31 | map | Raicho Ridge, a Japanese Alps ridge (Mountain Open)
+
+- The owner, 2026-10-31 01:31Z, on the map ideas doc: "lets spin up a chat for each, we want opus on this, sonnet makes too basic maps, we want the maps to feel like manga comic like the town". This is section 1, Mountain Open, built as an original place from real world references, never a copy.
+- The map, `src/maps/alps/` (new id `alps`, name Raicho Ridge; the other two names offered are Kazakiri Ridge and Shirakumo Ridge): its own 2 km ground, a 250 by 250 lattice of 8 m cells (`terrain.js`), with a ridge 360 m over a valley, a lake and its gravity dam, a road through a snow shed. On the col a mountain hut with a door to door line (0.9 by 1.9 m doors) and a window line (1.2 m), a helipad the pilot starts on, and a ropeway down the south face: two stations with a bay to fly through and four lattice towers of 32 to 40 m. A stone shrine and a small torii on the summit. Forest of 4494 firs to a tree line, dwarf pine mats above it, boulders, summer snow patches painted on the north hollows. Seven named gaps: HUT DOOR, HUT WINDOW, TOP STATION, VALLEY STATION, SPILLWAY, SNOW SHED, SUMMIT TORII.
+- The ground is the built map's `extra.floor`, the same hook Sunnyfield's gorge uses: the plant already takes its ground plane and normal from `view.height` every step, so no physics, plant, ABI or build change. `floorAt` is arithmetic only on the same triangle cut the mesh draws (checked to the bit in `scripts/alps-check.js`). Flown on slopes this is the existing ground contact on a sloped plane, as in Sunnyfield's gorge; the owner may want to fly the steep faces before trusting it.
+- Look: the town's cel kit and ink, golden hour. Ground is one cel material with vertex colours by zone (valley grass, forest floor, meadow, scree, rock, snow) so the ramp bands the slopes and the ink draws the ridges. Two painted far ranges with snow caps in the haze's colours. All colours in the new family `src/props/alpine.js`. No assets, no textures, nothing downloaded beyond the map's own six modules.
+- The hidden Konex Drone sign is on the dam, on the pier wall inside the SPILLWAY gap (the only mark; the partners' default marks are off, as on Quad Ball, because the pipeline would paint them on the flat ground this map hides). Steam: the roster filters sponsors there as on every map; no other brand, Patreon or webfpv.org text is on the map.
+- Off the board like the other built in worlds: `ALPS_OFF_BOARD` in `src/ui/ui.js` and the notice in `src/main.js`; no `MARK_MAP_WORDS` entry (board word first, as with Ridgeline MX).
+- What went wrong: the town's cedar (limbs, twigs, coded leaf blobs) cost about 500 triangles a tree, so the first forest of 1797 trees put 1.38M triangles on screen on High and 29842 canopy solids into the world; replaced with a fir of three cones (about 60 triangles, two solids), which let the forest grow to 4494 trees at 0.6M triangles. The first ground coloured each triangle by its own normal and read as a checkerboard; now coloured at the lattice points from smooth normals. The first fog (the pipeline's, under 420 m, then 950 m) washed the valley out; now 2000 m on High with the forest drawn to 1100 m. The summit pad was a white box until its ease was widened. The helipad was 0.94 m off level where the top station's pad eased into it; a pad's own rectangle is now exact.
+- Latency (per frame, this container, SwiftShader, 1280 by 720, worst of 13 views): High 161 draw calls, 0.63M triangles; Low 88 calls, 0.39M triangles. The town at its spawn on the same day: High 416 calls, 1.28M triangles; Low 279 calls, 0.35M triangles. So fewer calls than the town on both, fewer triangles on High, about 10 percent more triangles on Low. Attribute memory 51 MB High, 38 MB Low (town 71, 58). Build about 2.0 s. Physics per step: one cell lookup in `floorAt`. Nothing on any other map changes. Proxies only, no GPU here.
+- Checks run: `scripts/alps-check.js` (new, `npm run check:alps`) all passed; `lint:boot` 9 of 9, `lint:memory` PASS, `lint:preload` up to date (after `gen-preload`), `lint:quality` 71 of 71, `lint:partners` 120 passed, `lint:frame` 34 passed. `lint:shell` FAILS with 9 overflow lines, and fails identically on main at 4fafe2f without this branch, so not from this change. `lint:catalog` could not run (vendor/betaflight not checked out in this container). Not run: `npm run verify` (no physics, plant, ABI or build change; asked). Pictures from headless Chromium, not committed. Not flown.
+- Thumbnail: `assets/thumbs/alps.jpg`, drawn with `node scripts/boardcards.js --worlds --only alps` (entry added there). The orbit page framed the pipeline's hidden flat plot and drew a blank card, so the map names its own `cardLens`, as Thomas More's Shop does: from over the southern hills up the face to the hut and the summit.
+- Other sims' names: none in this map's code, comments, commits or PR; the one in this entry (the doc's title) is reworded. Main already holds other mentions in older files (PROGRESS, plans, prompts, the TinyLaps import, the builder); not touched here, reported to the owner.
+- To main: the owner, 2026-10-31 09:02Z, "push everything to main, ensur ethe maps have thumbnails and never mention any other fpv sim name", after the latency line above (fewer calls than the town on both presets, about 10 percent more triangles than the town on Low) was put to him in the PR and the thread.
+## 2026-10-31 | feature | Kumoi Towers, a tower city to dive
+
+- The owner, 2026-10-31 01:31Z, on the new maps doc: "lets spin up a chat for each, we want opus on this, sonnet makes too basic maps, we want the maps to feel like  manga comic like the town". This thread is the doc's tower city, two sections folded into one: tower dives of 150 to 240 m, a race line between buildings, a crane orbit, a 2 to 3 m alley run, named gaps, a spawn on open ground, one hidden Konex mark. Original design from real places only.
+- What it is: `src/maps/towers/` (11 files) and the colour family `src/props/towers.js`, built by Your map's pipeline as Sunnyfield is, 440 by 360 m. A plaza in the middle (the start, a fountain, a red ring, the subway canopy), the hall to the north with twin crowns to 243 m, a pair of 173 m towers joined at the top by a sky garden with a hole in it and lower by a sky bridge, three stepped towers, a hotel slab, two towers 8 m apart (the slot) with a link bridge at 150 m, a steel frame going up under two tower cranes, an expressway on T piers down the south avenue, a railway viaduct along the south edge with a stopped train and bars under the arches, a pedestrian deck, a shrine park with a torii, and four old lanes of two storey shacks 2.6 m apart with lanterns, noren, blade signs and festoons. Two rows of plain towers stand outside the plot so the edge is a skyline and not a cliff.
+- The look: the facades are painted canvases in the town's ink (eight styles, windows and glints), on the town's cel material so the comic hatching lands on them, one mesh a style a chunk. Ginkgo rows in autumn yellow. Every sign is the town's own painter except the station board, whose town painter has ひばり台 baked in, so `nameSignMaterial` in `facade.js` paints くもい.
+- References, real places only, sizes from memory and NOT VERIFIED against a source this session: the Tokyo Metropolitan Government Building in Nishi-Shinjuku (twin topped tower, 243 m), the Umeda Sky Building in Osaka (two towers about 173 m joined by a ring shaped garden at the top), Omoide Yokocho by Shinjuku station (lanes about 2 to 3 m wide under the railway). The expressway's 10 m deck and 36 m piers are the Shuto's usual, also from memory.
+- Named gaps (12): TWIN CROWNS 1000, SKY GARDEN 1000, UNDER THE SKY BRIDGE 500, THE SLOT 500, SLOT BRIDGE 1000, RED RING 500, MEMORY LANE 1000 (the lane's own gate, 1.6 m), STEEL FRAME 500 (floor 20), UNDER THE EXPRESSWAY 250, GIRDER BRIDGE 250, UNDER THE DECK 100, THE TORII 250.
+- Marks: eight boards (the hall's podium screen, the viaduct parapet, the expressway sound wall, the site hoarding, the hotel wing), the brands `shownOn(p, 'towers')` gives. The hidden Konex mark is on the steel frame's lift core, south face, floor 12, behind the columns: you see it only flying inside the frame. Key `towers#konexdrone~hidden`. `MARK_MAP_WORDS` has no `towers`, so no board counter is sent and the board needs no change.
+- Wired: registry (id `towers`, doc `trk-70e15c10`), build cost, catalog family, `ui.js` and `main.js` off board notes (the board keeps no runs for it), share stamp, edge preview, preload regenerated, `src/fresh.js`, memory check HEAVY and BORROWS (it borrows Sunnyfield's `palette.js`), `MAP_MODULE_COUNT` 11, map card picture `assets/thumbs/towers.jpg` (112 kB, fetched with its card) drawn by `boardcards.js --worlds --only towers` with its own shot.
+- Latency, proxies from headless Chromium (SwiftShader, so draw calls and triangles, not frame time): High 101 to 280 draw calls and 0.47M to 0.80M triangles over nine views; Medium 120 to 216 calls, 0.31M to 0.47M; Low 111 to 199 calls, 0.23M to 0.39M. The town on High is 437 to 502 calls and about 1.29M triangles, on Low 333 to 375 calls and 0.38M to 0.42M. So every view is under the town's on the same setting. Build about 6.5 s headless. Nothing fetched at boot (memory lint). Not measured on a real low end machine.
+- Went wrong: the lanes' two rows of shacks were built facing away from their lane, so each row stood in the lane and the lanes were closed; the first lane shots were all fog from inside a shack. Seen in the pictures, fixed by turning the rows. The new check then found a ginkgo in a lane's mouth, the expressway gap's window 0.1 m into a pier head, and five slots between 0.35 and 1.4 m (a sign beside a pier head, the space under the train, a gondola rig beside a crown, the core's formwork); all closed or widened, no threshold touched. Five family colours were never drawn and were removed. An earlier draft used `Math.sin` and `Math.cos` in solids; replaced with `sincos`.
+- Checks run: new `npm run check:towers` (layout, placed, 12 lines, 12 gaps, slots, marks) all passed; `lint:partners` 120 passed; `lint:preload` up to date; `lint:frame` 34 passed; `lint:nouns` pass; `lint:quality` 71 of 71; `lint:boot` 9 of 9; `lint:attract` no world flies the camera through anything; `lint:memory` pass, towers lazy and freed (11 modules, 139 geometries and 39 textures while loaded, back to 46 and 6). `lint:shell` reports overflow lines that it reports the same without this change (stashed and rerun). `lint:catalog` cannot run here (no `vendor/betaflight`). Not run: `npm run verify` (no physics, plant, ABI or build change). Not flown.
+- To main: the owner, 2026-10-31 09:02Z, "push everything to main, ensur ethe maps have thumbnails and never mention any other fpv sim name". The thumbnail is `assets/thumbs/towers.jpg` (in this change). Another sim's name stood in this entry's first line only; it is gone. No board change. No new latency since the line above was put to him. Not flown.
 ## 2026-10-31 | map | Kodama Onsen, the forest inn map (section 7, Forest Bando)
 
 - The owner, 2026-10-31 01:31Z, on the new maps doc: "lets spin up a chat for each, we want opus on this, sonnet makes too basic maps, we want the maps to feel like manga comic like the town". This thread is section 7 (Forest Bando), built from its build prompt.
@@ -73260,6 +73287,14 @@ The bug hunt thread saw together-shots' ribbon check "a bot cuts somebody's ribb
 - Checks run: `check:cedar` all passed; `lint:preload`, `lint:boot` 9 of 9, `lint:partners` 120 passed, `lint:memory` PASS, `lint:quality` 71 of 71 (all run again after the last change). `lint:shell` FAILS with 9 problems, and the same 9 fail on origin/main 4fafe2f in a clean worktree (overflow on quad, pilot, rates, pids, fc, tricks; the freestyle list 146 px off the window), so they are not this change. Not run: `npm run verify` (no physics, plant, ABI or build change). Not flown.
 - Went wrong: the first look at the start was a bare 50 m of gravel; the first Low measurement was more than double the town's calls. Both fixed above.
 - To main: the owner, 2026-10-31 09:02Z, "push everything to main, ensur ethe maps have thumbnails and never mention any other fpv sim name". The map's thumbnail is `assets/thumbs/cedar.jpg`. This branch's own text names no other sim (one PROGRESS line did, rewritten before the push). No board change, so nothing deploys first. The Low rise (51 calls against the town's 46) was stated before this push. Main had not moved from 4fafe2f, so it fast forwards. Not flown.
+
+## 2026-10-31 | docs | no other simulator's name anywhere
+
+- Ask: the owner, 2026-10-31 09:02Z, "push everything to main, ... never mention any other fpv sim name".
+- Changed: every mention of another simulator in comments, plans, prompts, tracks tooling, selftests and this file's own history now says `.trk`, "a community workshop map" or "other simulators". The one name that has to match byte for byte is the TinyLaps file's own export flag; `EXPORT_FLAG` in `src/trackbuilder/importtinylaps.js` builds it from two pieces so the name is not in the tree. Flagged to the owner as a judgement call.
+- Not changed: the `.trk` filenames under `tracks/` (course names), `KEY_LIFTOFF` and "liftoff" meaning our own takeoff.
+- Checked: `node src/trackbuilder/selftest.js` 2632 passed, 0 failed; git grep for the names across both repos is empty. Latency: no change, comments, docs and one constant.
+- Merged main's Kodama Onsen (7b38238) before the push: both sides added the same lists, kept both, preload regenerated, `check:towers` and `check:cedar` all passed, `lint:preload`, `lint:boot`, `lint:nouns`, `lint:partners` clean, both maps built headless with no console error. The towers were missing from the results sheet's list of maps the board keeps no runs for; added. The map card's note no longer gives metres (player text has no dev numbers).
 ## 2026-10-31 | map | Bakuon Dome, a monster truck stadium
 
 - The owner, 2026-10-31 01:31Z, on a list of map ideas: "we want opus on this, sonnet makes too basic maps, we want the maps to feel like manga comic like the town". This thread built the stadium with monster trucks as an original map from real world references only; the hall is drawn from a generic Japanese air dome (white trussed arches, fabric between them, an open crown), the trucks from the real breed's running gear.
@@ -73272,6 +73307,19 @@ The bug hunt thread saw together-shots' ribbon check "a bot cuts somebody's ribb
 - Went wrong: the first measure was taken at Low without knowing it (boot lowers a detected preset on a CPU rasteriser), so dome-check now pins the preset. The first town was 69 buildings and 106 cars, 421 draw calls from the spawn; cut as above. Two gaps shared the name Sky window; renamed North and South. The parked trucks' gap was 1.35 m tall, under the 1.4 m minimum; the drawn chassis was raised and the gap is 1.42 m.
 - To main: the owner, 2026-10-31 09:02Z, "push everything to main, ensur ethe maps have thumbnails and never mention any other fpv sim name". The map has its picker picture (`assets/thumbs/dome.jpg`, also in boardcards' WORLDS). No other sim is named anywhere in this change. No board change, so nothing to deploy first. Latency is the map's own, as above; no other map's cost moves. Not flown.
 - Checks run: `check:dome` all passed (pure: gap sizes and clear windows, spawn and its first line, truck size, Konex spot, no dashes, no sponsor or board words; browser at High: loads, spawn on the dirt, all four trucks move, no page errors, 8 views measured and shot). `lint:boot` 9 of 9, `lint:memory` PASS (dome freed), `lint:preload` up to date, `lint:quality` 71 of 71, `lint:partners` 120 passed. `lint:shell` FAIL with 9 overflow problems, the same 9 on a clean checkout of origin/main 4fafe2f, so not from this change. NOT VERIFIED: named gaps scoring when flown, ghosts recording and playing back, collision felt in flight, the Konex sign seen in flight. Not run: `npm run verify` (no physics, plant, ABI or build change). Not flown.
+## 2026-10-31 | feat | Hoshino Shoji, an office whoop map
+
+- The owner, 2026-10-31 01:31Z, on the list of new map ideas: "lets spin up a chat for each, we want opus on this, sonnet makes too basic maps, we want the maps to feel like manga comic like the town". This is section 23 (Office / Warehouse), built as an office because Thomas More's Shop already covers a warehouse. Original: built from a Japanese small company building as a manga draws one.
+- What it is (`src/maps/office/`, colours in `src/props/office.js`): a three storey trading company on a back street at golden hour, flown on the 65 mm whoop at 3.5 times life size. Ground floor goods in (racking, roll cages, forklift, packing bench, a reception hatch into the front office), first floor sales (desk islands, free address table, partitioned meeting booth, schedule board, sales chart with paper roses, kamidana, tea kitchen behind a noren), second floor management (cubicles, glass meeting room with the boardroom table, president's room, break room with vending machines). A switchback stair and an empty lift shaft run ground to roof (the car is out for renewal works, so the shaft is a drop). Roof with water tank on legs, AC units and the company's billboard; fire escape; the street, an alley, poles and wires, a kei truck, the shops and flats across the road. Every sign is painted on one 1024 by 1024 canvas (`signs.js`) in the town's hand, Japanese lettering, made up names only.
+- Reference sizes used as written (SIZES in `office.js`): desk 1.2 by 0.7 by 0.72 m (JIS S 1031 office desk, the brief's 0.72), racking bays and aisles 2.7 m (the brief's figures), office ceiling 2.7 m (the brief's 2.6 to 2.8).
+- 19 named gaps (`yard.js`): OPEN SHUTTER 100, UNDER THE SHUTTER 500, RACKING AISLE 250, RECEPTION HATCH 500, LIFT SHAFT DROP 1000, STAIR DOOR 100, FREE ADDRESS TABLE 500, PARTITION HOP 250, KITCHEN NOREN 100, OPEN WINDOW 1000, MEETING ROOM 250, BOARDROOM TABLE 500, PRESIDENT'S DOOR 250, BREAK ROOM 100, FIRE ESCAPE 250, ROOF DOOR 250, UNDER THE TANK 500, UNDER THE SIGN 500, BETWEEN BUILDINGS 1000. Start: the sales floor's main aisle facing west (`padBase`, so the pads seat on the first floor and not the street).
+- Partner signs: gds on the goods in east wall, mantisfpv on the sales floor west wall, wcmrc on the management floor west wall, webleedfpv on the penthouse front on the roof. Konex Drone, hidden: down the lift shaft on its back wall, between the ground floor's door head and the first floor, seen only by a pilot who takes the drop. As on other maps konexdrone is a patron, so it is drawn but no find or stamp fires for it.
+- Board: the partner counters' word 'office' (board branch, `src/partners.js` MARK_MAPS, the partners page's name). The board deploys first. Not added to the board's map picker row (`pickerWorlds`), which lists the official worlds; making it official is the owner's call.
+- Latency: a new map, loaded only when chosen, so no other map changes. Proxies at 960 by 540 at the start, same session: High 58 draw calls, 125k triangles (Thomas More's Shop 72, 106k); Low 47 calls, 82k (the Shop 35, 68k). Outside looking at the building: High 66 and 189k, Low 54 and 116k. Sign texture 1024 by 1024, 4 MB (5.6 with mips). Triangles about a fifth over the Shop, calls fewer on High and more on Low. Proxies only, not a measured frame time.
+- What made it cheap: a storey is drawn only from itself, from outside or from by the core (`floorOf` in `index.js`), the storeys' shadow casters are dropped (nothing inside takes a shadow), the palette merge folds each chunk's colours into one batch, Low drops the fine parts.
+- Went wrong and fixed on the way: the first build put the start on the street (the pads seat before the building is in; fixed with `padBase`); 40 gap rule slots (glass a hand from cabinets, a stair underside over the floor, AC units on balconies and more) all closed by moving the thing flush or a clear 0.4 m away; a roll cage blocked the line under the shutter; a tank pipe stood in the tank gap; the sign atlas first came out 1024 by 2048 and was repacked to one 1024 square. First budget was 66 calls and 281k triangles before the storey cull.
+- Checks run: `node scripts/office-check.js` all passed (layout, placed, 20 lines swept with the craft's ball, 19 gaps, slots, lift off in dist/sim.wasm twice to the bit), `warehouse-check` all passed, `lint:preload` up to date, `lint:partners` 120 passed, board `npm test` all passed, `node scripts/shots.js` views at High and Low, `boardcards --worlds --only office` drew `assets/thumbs/office.jpg`. `lint:shell` printed three fold and overflow lines that do not involve this map (bug sweep leftovers). Not run: `npm run verify` (no physics, plant, ABI or build). NOT VERIFIED: the Steam edition's text (the repack repository is not in this session); flown by nobody.
+- To main: the owner, 2026-10-31 09:02Z, "push everything to main, ensur ethe maps have thumbnails and never mention any other fpv sim name", after the latency line above was put to him. Board first (main 617e1f3: the `office` word, merged beside Hamakaze Works' `factory`, and the office's card and picture in the board's map picker, `npm test` all passed), then the simulator. The map's picture is `assets/thumbs/office.jpg`. This entry's own words no longer name another sim. Not flown.
 ## 2026-10-31 | map | Kirigaoka Sanatorium
 
 - The owner, 2026-10-31 01:31Z, on the maps doc: "lets spin up a chat for each, we want opus on this, sonnet makes too basic maps, we want the maps to feel like manga comic like the town". This entry is section 13, the sanatorium. Original: a pre-war Japanese hill sanatorium built from the period's own plan (south facing wards on a single loaded corridor, sun verandas), nothing taken from any game.

@@ -5,7 +5,7 @@
  * 20 meters above the ground. flying around/through them where they are in
  * the sky or where their supposed to be on the ground does not clear them."
  * Four flags 20 m up and a gate 15 m up, each a post or a frame of pipe with
- * nothing under it, because the Velocidrone map the course came from has a
+ * nothing under it, because the source map the course came from has a
  * rooftop there and the field has not. The owner's ask: when somebody builds a
  * track or a map, no gate and no asset is left floating.
  *

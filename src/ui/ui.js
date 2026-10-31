@@ -567,7 +567,7 @@ function quadPickCopy(craftId, rec, mapScale, mapId) {
     };
   }
   if (craftId === '5inch') {
-    const place = { house: 'house', heads: 'house', warehouse: 'shop' }[mapId];
+    const place = { house: 'house', heads: 'house', warehouse: 'shop', office: 'office' }[mapId];
     return {
       stamp: 'Tight!', rec: false, fit, fitLabel,
       says: place ? `A real five inch in a real ${place}. Loud, fast and tight.` : 'A real five inch in here. Loud, fast and tight.',
@@ -998,14 +998,16 @@ const scoringBoardBuilt = (where) => 'Scored run: two minutes from the first thi
  */
 function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
   const built = mapId === 'built' || mapId === 'house' || mapId === 'heads' || mapId === 'bardwell' || mapId === 'warehouse'
-    || mapId === 'goats' || mapId === 'sunny' || mapId === 'drift' || mapId === 'ball' || mapId === 'moto' || mapId === 'dome' || mapId === 'cedar' || mapId === 'sana';
+    || mapId === 'goats' || mapId === 'sunny' || mapId === 'drift' || mapId === 'ball' || mapId === 'moto' || mapId === 'dome' || mapId === 'cedar'
+    || mapId === 'towers' || mapId === 'alps' || mapId === 'office' || mapId === 'sana';
   const where = mapId === 'house' ? "Nick's house"
     : mapId === 'heads' ? "Heads' house"
       : mapId === 'bardwell' ? "Joshua's house"
         : mapId === 'warehouse' ? "Thomas's shop"
+          : mapId === 'office' ? 'Hoshino Shoji'
           : mapId === 'goats' ? "Heads' street"
           : mapId === 'sunny' ? 'Sunnyfield'
-            : mapId === 'drift' ? 'Drift Matsuri' : mapId === 'ball' ? 'Quad Ball' : mapId === 'moto' ? 'Ridgeline MX' : mapId === 'dome' ? 'Bakuon Dome' : mapId === 'cedar' ? 'Kodama Onsen' : mapId === 'sana' ? 'Kirigaoka Sanatorium' : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
+            : mapId === 'drift' ? 'Drift Matsuri' : mapId === 'ball' ? 'Quad Ball' : mapId === 'moto' ? 'Ridgeline MX' : mapId === 'dome' ? 'Bakuon Dome' : mapId === 'cedar' ? 'Kodama Onsen' : mapId === 'towers' ? 'Kumoi Towers' : mapId === 'alps' ? 'Raicho Ridge' : mapId === 'sana' ? 'Kirigaoka Sanatorium' : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
   if (mode === 'off') {
     return `${drawn ? '' : `${SCORING_UNDRAWN} `}${scoringOff(where)} ${built ? scoringMoreBuilt(where) : SCORING_MORE}`;
   }
@@ -1058,6 +1060,10 @@ const BARDWELL_OFF_BOARD = "The board keeps no runs for Joshua Bardwell's house,
 const WAREHOUSE_OFF_BOARD = "The board keeps no runs for Thomas More's Shop, so a run flown there stays here."
   + ' Fly the town for a run that can go up.';
 
+/* Hoshino Shoji, the same way. */
+const OFFICE_OFF_BOARD = 'The board keeps no runs for Hoshino Shoji, so a run flown there stays here.'
+  + ' Fly the town for a run that can go up.';
+
 /* The goat map, the same way. */
 const GOATS_OFF_BOARD = 'The board keeps no runs for 90%er goat herding, so a run flown there stays here.'
   + ' Fly the town for a run that can go up.';
@@ -1072,6 +1078,10 @@ const BALL_OFF_BOARD = 'The board keeps no runs for Quad Ball, so a run flown th
   + ' Fly the town for a run that can go up.';
 
 const MOTO_OFF_BOARD = 'The board keeps no runs for Ridgeline MX, so a run flown there stays here.';
+/* Raicho Ridge, the same way. */
+const ALPS_OFF_BOARD = 'The board keeps no runs for Raicho Ridge, so a run flown there stays here.'
+  + ' Fly the town for a run that can go up.';
+const TOWERS_OFF_BOARD = 'The board keeps no runs for Kumoi Towers, so a run flown there stays here.';
 /* Bakuon Dome, the same way. */
 const DOME_OFF_BOARD = 'The board keeps no runs for Bakuon Dome, so a run flown there stays here.'
   + ' Fly the town for a run that can go up.';
@@ -11434,7 +11444,8 @@ export class Ui {
         const built = this.settings.map === 'built' || this.settings.map === 'house' || this.settings.map === 'heads'
           || this.settings.map === 'bardwell' || this.settings.map === 'warehouse' || this.settings.map === 'goats'
           || this.settings.map === 'sunny' || this.settings.map === 'drift' || this.settings.map === 'ball' || this.settings.map === 'moto'
-          || this.settings.map === 'dome' || this.settings.map === 'cedar' || this.settings.map === 'sana';
+          || this.settings.map === 'dome' || this.settings.map === 'cedar' || this.settings.map === 'towers' || this.settings.map === 'alps'
+          || this.settings.map === 'office' || this.settings.map === 'sana';
         return [
           { label: 'Fly again', action: 'restart', primary: true },
           this.runPosted
@@ -11463,11 +11474,14 @@ export class Ui {
                 : this.settings.map === 'heads' ? HEADS_OFF_BOARD
                   : this.settings.map === 'bardwell' ? BARDWELL_OFF_BOARD
                     : this.settings.map === 'warehouse' ? WAREHOUSE_OFF_BOARD
+                    : this.settings.map === 'office' ? OFFICE_OFF_BOARD
                       : this.settings.map === 'goats' ? GOATS_OFF_BOARD
                         : this.settings.map === 'sunny' ? SUNNY_OFF_BOARD
                           : this.settings.map === 'drift' ? DRIFT_OFF_BOARD
                             : this.settings.map === 'ball' ? BALL_OFF_BOARD
                           : this.settings.map === 'moto' ? MOTO_OFF_BOARD
+                          : this.settings.map === 'alps' ? ALPS_OFF_BOARD
+                          : this.settings.map === 'towers' ? TOWERS_OFF_BOARD
                           : this.settings.map === 'dome' ? DOME_OFF_BOARD
                           : this.settings.map === 'cedar' ? CEDAR_OFF_BOARD
                           : this.settings.map === 'sana' ? SANA_OFF_BOARD

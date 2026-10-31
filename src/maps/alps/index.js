@@ -422,6 +422,11 @@ export async function buildMap(shell, onProgress, options) {
   scene.add(lake);
   const ranges = buildRanges(scene.fog.color.getHex());
   scene.add(ranges);
+  /* The map card's picture (src/share/orbit.js): the pipeline would frame
+   * its own flat plot, which this map hides, so the card is taken from
+   * over the southern hills, looking up the face to the hut on the col and
+   * the summit, with the ropeway and the valley station under them. */
+  map.cardLens = { eye: [300, 350, 520], at: [-140, 250, -250] };
   map.attract = { path: attractPath(), speed: 10, lookAhead: 30, aimDrop: 6 };
   /* The ground's pieces switched off past the fog's end, every frame after
    * the pipeline's own cull, and the ranges kept round the camera. */

@@ -350,6 +350,9 @@ const WORLDS = [
    * server for a file that was not there (found 30 October 2026). */
   { id: 'ball', file: 'ball.jpg', name: 'Quad Ball' },
   { id: 'moto', file: 'moto.jpg', name: 'Ridgeline MX' },
+  /* Raicho Ridge, added 31 October 2026, from high over the valley so the
+   * ridge, the ropeway and the lake are all in it. */
+  { id: 'alps', file: 'alps.jpg', name: 'Raicho Ridge' },
 ];
 
 async function drawWorlds(opts) {

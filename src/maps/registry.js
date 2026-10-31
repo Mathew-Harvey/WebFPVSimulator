@@ -522,6 +522,21 @@ export const MAPS = [
     buildMs: MAP_BUILD_MS.touge,
     load: () => import('./touge/index.js'),
   },
+  /*
+   * TONBO FEST, on the owner's ask of 31 October 2026: a drone racing
+   * festival of our own on a river's sports ground under the levee, in the
+   * town's manga look: inflatable gates, the pits, the stage, the stalls,
+   * the railway bridge (src/maps/fest/). Built by the built map's pipeline
+   * and flown on the five inch at life size; off the board like the houses.
+   */
+  {
+    id: 'fest',
+    name: 'Tonbo Fest',
+    mode: 'freestyle',
+    note: 'A drone racing festival on the river ground under the levee. Sixteen gates in one lap, the pits, the main stage, the food stalls, the sluice gate and the railway bridge over the river.',
+    buildMs: MAP_BUILD_MS.fest,
+    load: () => import('./fest/index.js'),
+  },
 ];
 
 /* The house's document id (src/maps/house/yard.js), here so the stamps can
@@ -589,3 +604,6 @@ export const HOTARU_DOC_ID = 'trk-f1ef1ae5';
 export function mapById(id) {
   return MAPS.find((m) => m.id === id) ?? MAPS[0];
 }
+
+/* Tonbo Fest's (src/maps/fest/yard.js), the same way. */
+export const FEST_DOC_ID = 'trk-70b0f357';

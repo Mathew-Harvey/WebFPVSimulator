@@ -13,7 +13,7 @@
  * from public video and, in its own words, not a one to one replica), and
  * a screenshot of it. This is that place. Every position here was read off
  * that layout's transforms, in metres, the way Nick Burns' house read its
- * three Workshop layouts: nothing of the map itself is in the repository,
+ * three fan made layouts: nothing of the map itself is in the repository,
  * no mesh, no texture, no file, only numbers measured from it.
  *
  * What it is: a cream brick house of a storey and a half under a steep

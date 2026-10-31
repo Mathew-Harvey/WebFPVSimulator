@@ -119,6 +119,7 @@ const WORLDS = {
   dock: { name: 'Kamome Wharf', thumb: 'dock' },
   office: { name: 'Hoshino Shoji', thumb: 'office' },
   hotaru: { name: 'Hotaru Valley', thumb: 'hotaru' },
+  fest: { name: 'Tonbo Fest', thumb: 'fest' },
   built: { name: 'Hibari Yard', thumb: 'yard' },
 };
 

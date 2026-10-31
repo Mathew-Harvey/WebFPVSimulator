@@ -113,6 +113,7 @@ const MAP_ROOTS = {
   rally: 'src/maps/rally/index.js',
   fmx: 'src/maps/fmx/index.js',
   hotaru: 'src/maps/hotaru/index.js',
+  fest: 'src/maps/fest/index.js',
 };
 
 /* three@0.160.0's add-ons, and what each imports besides 'three'. Read off

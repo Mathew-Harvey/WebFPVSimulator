@@ -55,7 +55,13 @@
  *     look      lookOf(doc) from ./looks.js: its time decides the dimming,
  *               the lamps and the smoke's colours
  *     traffic   trafficOf(doc) from ./traffic.js: `vehicles` is read
- *     opts      nothing yet
+ *     opts      optional: { colour(v), ride(x, z, hx, speed, out) }. colour
+ *               paints a vehicle's body a hex of the map's own in place of
+ *               its seed's pick (Tanada RX's liveries); ride lifts and
+ *               pitches a drawn car from its pose, writing out.lift (m)
+ *               and out.pitch (rad, nose up), render only, for a map whose
+ *               ground is not flat under its cars (src/maps/rally/ride.js).
+ *               Without either, every car is drawn as before.
  *   returns a car set:
  *     group               a THREE.Group named 'cars': one Object3D a car
  *                         (named 'car:' and its element id) and the smoke;
@@ -539,7 +545,9 @@ export class Smoke {
  * The cars. See the header.
  */
 export function buildCars(THREE, look, traffic, opts = {}) {
-  void opts;
+  const colourOf = typeof opts.colour === 'function' ? opts.colour : null;
+  const ride = typeof opts.ride === 'function' ? opts.ride : null;
+  const RIDE = { lift: 0, pitch: 0 };
   const group = new THREE.Group();
   group.name = 'cars';
   const klook = kitLook(look && look.timeId);
@@ -580,7 +588,7 @@ export function buildCars(THREE, look, traffic, opts = {}) {
   const wheelSets = new Map();
   for (const v of vehicles) {
     const style = MODEL[v.style] ? v.style : 'kei';
-    const colour = CAR[carColourOf(v.seed)] ?? CAR.white;
+    const colour = (colourOf && colourOf(v)) ?? CAR[carColourOf(v.seed)] ?? CAR.white;
     const livery = carLivery(style, v.variant);
     const root = new THREE.Object3D();
     root.name = `car:${v.element}`;
@@ -750,6 +758,11 @@ export function buildCars(THREE, look, traffic, opts = {}) {
       /* The model's nose is +x: a turn about y by t takes it to (cos t,
        * -sin t) on the ground. Render only, so atan2 is fine. */
       root.rotation.y = Math.atan2(-hz, hx);
+      if (ride) {
+        ride(x, z, hx, p.speed * b + q.speed * a, RIDE);
+        root.position.y = y + RIDE.lift;
+        root.rotation.z = RIDE.pitch;
+      }
       /* Rolled as far as it drove, the lap's worth taken off first so the
        * angle keeps its precision on a long run. */
       const dist = p.distance * b + q.distance * a;

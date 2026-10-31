@@ -95,6 +95,14 @@ export const MAP_BUILD_MS = {
   /* Hyoura Island (src/maps/arctic/): an island of cliffs, sea ice and a
    * fishing hamlet. An estimate until it is measured. */
   arctic: 2600,
+  /* Kazesuna Dunes (src/maps/dunes/): a kilometre of sand on a 4 m grid,
+   * two hundred and thirty pines and the coast's buildings. An estimate
+   * until it is measured. */
+  dunes: 2600,
+  /* Kamome Wharf (src/maps/dock/): a container terminal at night, three
+   * blocks of stacks, three cranes, a ship. An estimate until it is
+   * measured. */
+  dock: 2600,
   /* Raicho Ridge (src/maps/alps/): its own ground, a forest, the hut, the
    * ropeway and the dam. An estimate until it is measured. */
   alps: 3600,
@@ -120,4 +128,20 @@ export const MAP_BUILD_MS = {
   /* Kirigaoka Sanatorium (src/maps/sana/): Sunnyfield's pipeline and
    * frame on a smaller site. An estimate until it is measured. */
   sana: 2000,
+  /* Tanada RX (src/maps/rally/): a circuit, a hillside of terraces, a
+   * paddock and six cars. An estimate until it is measured. */
+  rally: 2800,
+  /* Shiroyama FMX (src/maps/fmx/), the same pipeline: 2.8 s on Low and
+   * 3.6 s on High, headless, measured 31 October 2026. */
+  fmx: 3200,
+  /* Kazami Airfield (src/maps/airfield/): a valley of terraces and cedars,
+   * the hangar and the field. An estimate until it is measured. */
+  airfield: 2600,
+  /* Hotaru Valley (src/maps/hotaru/): the land grid, two thousand trees
+   * and a village, a castle and a harbour. An estimate until it is
+   * measured. */
+  hotaru: 2800,
+  /* Tonbo Fest (src/maps/fest/): the levee, the railway and the festival
+   * on a river ground. An estimate until it is measured. */
+  fest: 2600,
 };

@@ -137,8 +137,8 @@ export const MAPS = [
    * JOSHUA BARDWELL'S HOUSE, on the owner's ask of 21 October 2026: the
    * house and yard of Joshua Bardwell, outside only, at life size and
    * flown on the five inch, "no need to blow it up to make it feel like a
-   * whoop map". Rebuilt the same day from the layout of the Uncrashed
-   * Workshop map of it the owner sent, when the first build from stills
+   * whoop map". Rebuilt the same day from a layout of it the owner
+   * sent, when the first build from stills
    * was wrong. Built by the same pipeline (src/maps/bardwell/) and, like
    * the houses, off the board.
    */
@@ -273,6 +273,103 @@ export const MAPS = [
     load: () => import('./ekimae/index.js'),
   },
   /*
+   * KAMOME WHARF, on the owner's ask of 31 October 2026 (the dock of his
+   * list of new maps, "we want the maps to feel like manga comic like the
+   * town"): a container terminal of our own on a Kobe style
+   * waterfront at night, built from real terminals' sizes and nothing of
+   * anybody's game (src/maps/dock/). Built by the built map's pipeline and
+   * flown on the five inch at life size; off the board like the houses.
+   */
+  {
+    id: 'dock',
+    name: 'Kamome Wharf',
+    mode: 'freestyle',
+    note: 'A container terminal at night: canyons of stacked boxes, three ship to shore cranes over a moored ship, the brick warehouse, the gate and the port tower. Drift cars run the apron.',
+    buildMs: MAP_BUILD_MS.dock,
+    load: () => import('./dock/index.js'),
+  },
+  /*
+   * HAMAKAZE WORKS, on the owner's ask of 31 October 2026 ("we want the
+   * maps to feel like manga comic like the town"): a steel and chemical
+   * works on a canal basin, of the kind that lines the Keihin coast, life
+   * size and flown on the five inch, in the town's cel kit and ink
+   * (src/maps/factory/). Built by the built map's pipeline and, like the
+   * houses, off the board.
+   */
+  {
+    id: 'factory',
+    name: 'Hamakaze Works',
+    mode: 'freestyle',
+    note: 'Hamakaze Works, flown on a five inch: the steel shop and its crane, the pipe racks and the pipe bridge, the belt gallery, the gas spheres, the tank farm, the control house, the red and white stack and the gantry on the quay.',
+    buildMs: MAP_BUILD_MS.factory,
+    load: () => import('./factory/index.js'),
+  },
+  /*
+   * SHIOKAZE POINT, on the owner's ask of 31 October 2026 ("we want the
+   * maps to feel like manga comic like the town"): a map of our own,
+   * a resort on a rock island gone to ruin, five hotel blocks of
+   * seven storeys over the sea with balconies to strafe and stair cores to
+   * dive, a cliff line, sea stacks and an arch, and a park race of ten
+   * gates (src/maps/shiokaze/). Built by the built map's pipeline and flown
+   * on the five inch at life size; off the board like the houses.
+   */
+  {
+    id: 'shiokaze',
+    name: 'Shiokaze Point',
+    mode: 'freestyle',
+    note: 'A seaside resort on a rock island, closed for years. Strafe the hotel balconies, dive the stair cores, thread the sea stacks and the arch, and race the ten gates in the park.',
+    buildMs: MAP_BUILD_MS.shiokaze,
+    load: () => import('./shiokaze/index.js'),
+  },
+  /*
+   * RAICHO RIDGE, on the owner's ask of 31 October 2026 (the map doc's
+   * section 1, "Mountain Open", built on the town's manga look): a Japanese
+   * Alps ridge of our own with a mountain hut on the col, a ropeway down
+   * the south face, a lake and its dam in the valley (src/maps/alps/).
+   * Built by the built map's pipeline on its own ground and flown on the
+   * five inch at life size; off the board like the houses.
+   */
+  {
+    id: 'alps',
+    name: 'Raicho Ridge',
+    mode: 'freestyle',
+    note: 'A high ridge in the Japanese Alps. Dive the south face from the col, slalom the ropeway towers, thread the mountain hut, and drop to the lake to gap the dam spillway.',
+    buildMs: MAP_BUILD_MS.alps,
+    load: () => import('./alps/index.js'),
+  },
+  /*
+   * KUMOI TOWERS, on the owner's ask of 31 October 2026 (a tower city to
+   * dive, built by Opus, "the maps to feel like manga comic like the
+   * town"): a tower district after Nishi-Shinjuku, its old drinking lanes
+   * under the viaduct and a tower going up, in the town's cel kit and ink
+   * with the towers' window grids painted (src/maps/towers/). Built by the
+   * built map's pipeline and flown on the five inch at life size; off the
+   * board like the houses.
+   */
+  {
+    id: 'towers',
+    name: 'Kumoi Towers',
+    mode: 'freestyle',
+    note: 'A tower city to dive. Twin crowns from the very top, a sky garden with a hole in it, a narrow slot between two towers, a steel frame going up under two cranes, the expressway, the viaduct, and the old lanes under it all.',
+    buildMs: MAP_BUILD_MS.towers,
+    load: () => import('./towers/index.js'),
+  },
+  /*
+   * BAKUON DOME, on the owner's ask of 31 October 2026 (a stadium map
+   * with monster trucks, "the maps to feel like manga comic like the
+   * town"): a dirt floored dome with four trucks running jumps under a
+   * trussed roof (src/maps/dome/). Built by the built map's pipeline and
+   * flown on the five inch at life size; off the board like the houses.
+   */
+  {
+    id: 'dome',
+    name: 'Bakuon Dome',
+    mode: 'freestyle',
+    note: 'A dirt floored dome with four monster trucks jumping cars and buses under its roof. Chase them over the ramps, thread the roof trusses and strafe the stands.',
+    buildMs: MAP_BUILD_MS.dome,
+    load: () => import('./dome/index.js'),
+  },
+  /*
    * KODAMA ONSEN, on the owner's ask of 31 October 2026 (a cedar forest
    * with an abandoned area, in the town's manga look): an abandoned hot
    * spring inn in a Japanese cedar plantation, with a shrine up the hill
@@ -287,6 +384,108 @@ export const MAPS = [
     note: 'An abandoned hot spring inn in a cedar forest, flown on a five inch: rows of cedars to slalom, the inn and its bathhouse, the storehouse, a brick chimney, a line of torii and a tunnel of them, the stream and its bridges, and the shrine up the steps.',
     buildMs: MAP_BUILD_MS.cedar,
     load: () => import('./cedar/index.js'),
+  },
+  /*
+   * HOSHINO SHOJI, on the owner's ask of 31 October 2026 for a map from each
+   * section of the list of new map ideas, built as a Japanese office: a
+   * small trading company's three storey building, goods in on the ground
+   * floor, the sales floor and the management floor over it, the roof and
+   * the street (src/maps/office/). Flown on a whoop at 3.5 times life size,
+   * as Thomas More's Shop is.
+   */
+  {
+    id: 'office',
+    name: 'Hoshino Shoji',
+    mode: 'freestyle',
+    note: 'A trading company after hours, flown on a whoop: the racking downstairs, the desk islands and the meeting booth on the sales floor, the boardroom and the president\'s room upstairs, an empty lift shaft from the top floor to the ground, and the roof.',
+    buildMs: MAP_BUILD_MS.office,
+    craft: 'whoop65',
+    mapScale: 3.5,
+    load: () => import('./office/index.js'),
+  },
+  /*
+   * KAZAHANA PLAIN, on the owner's ask of 31 October 2026 (a map in the
+   * town's manga look, after the open long range grassland kind of place):
+   * a flat Hokkaido plain at the end of autumn, a balloon meet with a chase
+   * line of tethered balloons climbing to sixty metres, a winter
+   * illumination market, a dairy farm between larch windbreaks, and an old
+   * arch viaduct and three wind turbines a mile north (src/maps/kaza/).
+   * Built by the built map's pipeline, life size on the five inch; off the
+   * board like the houses.
+   */
+  {
+    id: 'kaza',
+    name: 'Kazahana Plain',
+    mode: 'freestyle',
+    note: 'A Hokkaido plain at the first snow, flown on a five inch: climb the balloon meet through four gates of air, thread the winter market\'s lit tunnel and stall gaps, run the red barn and the silos, and cruise the birch avenue a mile north to the old arch viaduct and the wind turbines.',
+    buildMs: MAP_BUILD_MS.kaza,
+    load: () => import('./kaza/index.js'),
+  },
+  /*
+   * KIRIGAOKA SANATORIUM, on the owner's ask of 31 October 2026: a pre-war
+   * hill sanatorium left to the weather, a haikyo in the town's manga look,
+   * life size and flown on the five inch: the long corridor, the wards
+   * window to window, the roof holes, the clock tower, the chapel, and a
+   * park race of ten gates through the grounds (src/maps/sana/). Built by
+   * the built map's pipeline and, like the houses, off the board.
+   */
+  {
+    id: 'sana',
+    name: 'Kirigaoka Sanatorium',
+    mode: 'freestyle',
+    note: 'An abandoned sanatorium on a hill. Fly the long corridor, cross the wards window to window, dive the roof holes, thread the clock tower, and race ten gates through the overgrown grounds.',
+    buildMs: MAP_BUILD_MS.sana,
+    load: () => import('./sana/index.js'),
+  },
+  /*
+   * TANADA RX, section 19 of the owner's map list of 31 October 2026: a
+   * rallycross circuit of tarmac and gravel with a jump and a joker, under
+   * a hillside of rice terraces, with a pack of rallycross cars racing it
+   * (src/maps/rally/). Built by the built map's pipeline in the town's
+   * look, flown on the five inch at life size; off the board like Ridgeline
+   * MX.
+   */
+  {
+    id: 'rally',
+    name: 'Tanada RX',
+    mode: 'freestyle',
+    note: 'A rallycross circuit of tarmac and gravel under a hillside of rice terraces. Six cars race it, sideways through the hairpins and long over the jump. Chase them over it, thread the grandstand roof, and find the gaps.',
+    buildMs: MAP_BUILD_MS.rally,
+    load: () => import('./rally/index.js'),
+  },
+  /*
+   * SHIROYAMA FMX, on the owner's ask of 31 October 2026 (the stadium
+   * FMX map, "we want the maps to feel like manga comic like the town"):
+   * a freestyle motocross show in a castle park, two kickers into dirt
+   * landings, a yagura between them, scaffold stands and the keep across
+   * the moat, with four riders throwing tricks off the kickers and the
+   * camera game of Ridgeline MX (src/maps/fmx/). Built by the built map's
+   * pipeline and flown on the five inch at life size; off the board like
+   * the houses.
+   */
+  {
+    id: 'fmx',
+    name: 'Shiroyama FMX',
+    mode: 'freestyle',
+    note: 'A freestyle motocross show in a castle park. Riders flip and whip off two kickers over a festival drum tower, with grandstands down both sides and the castle keep across the moat. Follow them off the ramps and film the tricks.',
+    buildMs: MAP_BUILD_MS.fmx,
+    load: () => import('./fmx/index.js'),
+  },
+  /*
+   * KAZAMI AIRFIELD, on the owner's ask of 31 October 2026 (one of a set
+   * of new maps, each built from real places and our own design): a grass strip in a Japanese mountain
+   * valley with an arched hangar flown through, terraced paddies, cedar
+   * slopes and a race of fourteen gates (src/maps/airfield/). Built by the
+   * built map's pipeline in the town's light and flown on the five inch at
+   * life size; off the board like the houses.
+   */
+  {
+    id: 'airfield',
+    name: 'Kazami Airfield',
+    mode: 'freestyle',
+    note: 'A grass strip in a mountain valley: fly the arched hangar front to back and through its rafters, the paddies, the cedars, the vinyl houses, the channel under the red bridge, and fourteen gates to fly round it all.',
+    buildMs: MAP_BUILD_MS.airfield,
+    load: () => import('./airfield/index.js'),
   },
 ];
 
@@ -315,11 +514,38 @@ export const DRIFT_DOC_ID = 'trk-d81f7a75';
 export const BALL_DOC_ID = 'trk-ba11b0a1';
 /* Ridgeline MX's (src/maps/moto/yard.js), the same way. */
 export const MOTO_DOC_ID = 'trk-3c07e5a1';
+/* Kumoi Towers' (src/maps/towers/yard.js), the same way. */
+export const TOWERS_DOC_ID = 'trk-70e15c10';
+/* Bakuon Dome's (src/maps/dome/yard.js), the same way. */
+export const DOME_DOC_ID = 'trk-b4d0e0e1';
+/* Shiokaze Point's (src/maps/shiokaze/yard.js), the same way. */
+export const SHIOKAZE_DOC_ID = 'trk-5e1a0ca2';
+/* Shiroyama FMX's (src/maps/fmx/yard.js), the same way. */
+export const FMX_DOC_ID = 'trk-f3a10c55';
+/* Kazami Airfield's (src/maps/airfield/yard.js), the same way. */
+export const AIRFIELD_DOC_ID = 'trk-a1f1e1d0';
 
 /* Ekimae Drift's (src/maps/ekimae/yard.js), the same way. */
 export const EKIMAE_DOC_ID = 'trk-e4a1d21f';
+/* Kamome Wharf's (src/maps/dock/doc.js), the same way. */
+export const DOCK_DOC_ID = 'trk-d0c4a3e7';
+
+/* Hamakaze Works' (src/maps/factory/yard.js), the same way. */
+export const FACTORY_DOC_ID = 'trk-fac70e31';
 /* Kodama Onsen's (src/maps/cedar/yard.js), the same way. */
 export const CEDAR_DOC_ID = 'trk-ced4a0e5';
+/* Kazahana Plain's (src/maps/kaza/yard.js), the same way. */
+export const KAZA_DOC_ID = 'trk-ca2a4a7a';
+/* Kirigaoka Sanatorium's (src/maps/sana/yard.js), the same way. */
+export const SANA_DOC_ID = 'trk-5a7a0b10';
+
+/* Raicho Ridge's (src/maps/alps/yard.js), the same way. */
+export const ALPS_DOC_ID = 'trk-a195a1e5';
+/* Hoshino Shoji's (src/maps/office/yard.js), the same way. */
+export const OFFICE_DOC_ID = 'trk-0f1ce5a1';
+
+/* Tanada RX's (src/maps/rally/yard.js), the same way. */
+export const RALLY_DOC_ID = 'trk-7a11c0b5';
 
 export function mapById(id) {
   return MAPS.find((m) => m.id === id) ?? MAPS[0];

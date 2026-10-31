@@ -79,6 +79,9 @@ export const MAP_BUILD_MS = {
    * Bardwell's figure here, as this container ran slower than the day that
    * was measured. */
   sunny: 2240,
+  /* Hamakaze Works (src/maps/factory/), the same pipeline as Sunnyfield.
+   * An estimate at Sunnyfield's figure until it is measured. */
+  factory: 2240,
   /* Drift Matsuri (src/maps/drift/): a plot of trees and a festival round a
    * drift course. An estimate until it is measured. */
   drift: 2600,
@@ -92,7 +95,42 @@ export const MAP_BUILD_MS = {
   /* Ekimae Drift (src/maps/ekimae/): a city of the town's buildings round
    * a street course. An estimate until it is measured. */
   ekimae: 3600,
+  /* Kamome Wharf (src/maps/dock/): a container terminal at night, three
+   * blocks of stacks, three cranes, a ship. An estimate until it is
+   * measured. */
+  dock: 2600,
+  /* Raicho Ridge (src/maps/alps/): its own ground, a forest, the hut, the
+   * ropeway and the dam. An estimate until it is measured. */
+  alps: 3600,
+  /* Kumoi Towers (src/maps/towers/): Sunnyfield's pipeline on a bigger
+   * plot, measured headless when it was built. */
+  towers: 3000,
+  /* Bakuon Dome (src/maps/dome/): a hall of a few thousand boxes and
+   * capsules, its streets and four trucks. An estimate until it is
+   * measured. */
+  dome: 2400,
+  /* Shiokaze Point (src/maps/shiokaze/): the island, five hotel blocks and
+   * the streets behind them. An estimate until it is measured. */
+  shiokaze: 2400,
   /* Kodama Onsen (src/maps/cedar/): three thousand cedars, an inn and a
    * shrine. An estimate until it is measured. */
   cedar: 3000,
+  /* Hoshino Shoji (src/maps/office/), the warehouse's pipeline with three
+   * floors of furniture. An estimate until it is measured. */
+  office: 2400,
+  /* Kazahana Plain (src/maps/kaza/): Sunnyfield's pipeline over a plot
+   * four times its size. An estimate until it is measured. */
+  kaza: 2800,
+  /* Kirigaoka Sanatorium (src/maps/sana/): Sunnyfield's pipeline and
+   * frame on a smaller site. An estimate until it is measured. */
+  sana: 2000,
+  /* Tanada RX (src/maps/rally/): a circuit, a hillside of terraces, a
+   * paddock and six cars. An estimate until it is measured. */
+  rally: 2800,
+  /* Shiroyama FMX (src/maps/fmx/), the same pipeline: 2.8 s on Low and
+   * 3.6 s on High, headless, measured 31 October 2026. */
+  fmx: 3200,
+  /* Kazami Airfield (src/maps/airfield/): a valley of terraces and cedars,
+   * the hangar and the field. An estimate until it is measured. */
+  airfield: 2600,
 };

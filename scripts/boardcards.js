@@ -357,6 +357,9 @@ const WORLDS = [
    * over it, from the plaza's south side, picked by eye from six shots. */
   { id: 'towers', file: 'towers.jpg', name: 'Kumoi Towers', shot: { tp: 0.25, tr: 0.6, ta: 0 } },
   { id: 'dome', file: 'dome.jpg', name: 'Bakuon Dome' },
+  /* Shiokaze Point, added 31 October 2026, from the sea: the hotels, the
+   * wedded rocks and the stacks. */
+  { id: 'shiokaze', file: 'shiokaze.jpg', name: 'Shiokaze Point', shot: { tp: 0.3, tr: 1.1, ta: -1.57 } },
   /* Kodama Onsen, added 31 October 2026, picked by eye: the inn from the
    * car park side, the shrine's approach and the forest behind it. */
   { id: 'cedar', file: 'cedar.jpg', name: 'Kodama Onsen', shot: { tp: 0.55, tr: 0.75, ta: -1.9 } },
@@ -364,6 +367,9 @@ const WORLDS = [
    * so it names its own lens too (CARD_LENS in src/maps/office/office.js). */
   { id: 'office', file: 'office.jpg', name: 'Hoshino Shoji' },
   { id: 'kaza', file: 'kaza.jpg', name: 'Kazahana Plain' },
+  /* Kirigaoka Sanatorium, added 31 October 2026, from the avenue's side
+   * so the wings, the tower and the terrace stair are in it. */
+  { id: 'sana', file: 'sana.jpg', name: 'Kirigaoka Sanatorium', shot: { tp: 0.45, tr: 0.9, ta: -1.57 } },
   /* Tonbo Fest, added 31 October 2026 with its picture, so its card is
    * never blank: from over the race, the stage, the stalls and the railway
    * across the river in it. */

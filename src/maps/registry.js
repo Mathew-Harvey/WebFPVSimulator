@@ -421,6 +421,24 @@ export const MAPS = [
     load: () => import('./rally/index.js'),
   },
   /*
+   * SHIROYAMA FMX, on the owner's ask of 31 October 2026 (the stadium
+   * FMX map, "we want the maps to feel like manga comic like the town"):
+   * a freestyle motocross show in a castle park, two kickers into dirt
+   * landings, a yagura between them, scaffold stands and the keep across
+   * the moat, with four riders throwing tricks off the kickers and the
+   * camera game of Ridgeline MX (src/maps/fmx/). Built by the built map's
+   * pipeline and flown on the five inch at life size; off the board like
+   * the houses.
+   */
+  {
+    id: 'fmx',
+    name: 'Shiroyama FMX',
+    mode: 'freestyle',
+    note: 'A freestyle motocross show in a castle park. Riders flip and whip off two kickers over a festival drum tower, with grandstands down both sides and the castle keep across the moat. Follow them off the ramps and film the tricks.',
+    buildMs: MAP_BUILD_MS.fmx,
+    load: () => import('./fmx/index.js'),
+  },
+  /*
    * HOTARU VALLEY, on the owner's ask of 31 October 2026 (the Meadow map of
    * the owner's list of new maps, "we want the maps to feel like manga comic
    * like the town"): a countryside of Japan of our own, after Shirakawa-go,
@@ -470,6 +488,8 @@ export const TOWERS_DOC_ID = 'trk-70e15c10';
 export const DOME_DOC_ID = 'trk-b4d0e0e1';
 /* Shiokaze Point's (src/maps/shiokaze/yard.js), the same way. */
 export const SHIOKAZE_DOC_ID = 'trk-5e1a0ca2';
+/* Shiroyama FMX's (src/maps/fmx/yard.js), the same way. */
+export const FMX_DOC_ID = 'trk-f3a10c55';
 
 /* Hamakaze Works' (src/maps/factory/yard.js), the same way. */
 export const FACTORY_DOC_ID = 'trk-fac70e31';

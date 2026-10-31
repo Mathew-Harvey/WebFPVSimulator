@@ -157,6 +157,22 @@ function shops(T, r) {
 
 /* THE PUBLIC BATH: a tall gabled hall, its chimney behind, and the
  * gable's ornament over the door; the town's chimney (src/props). */
+/* The bath's chimney: brick gone to the sea's grey, tapered, with an iron
+ * band every four metres and the soot at its lip; the solid a pole up its
+ * middle at the narrower radius. Drawn here rather than as the
+ * catalogue's chimney, whose lettering is pictures of its own and so
+ * draws of its own. */
+function chimney(T, px, py, h, height, r0, r1) {
+  T.cyl('skStone', [px, py, h], [px, py, h + height], r0, 10, r1);
+  T.post('skStone', px, py, h, h + height, r1, { draw: false, kind: 'pole', name: 'bath chimney' });
+  for (let z = 4; z < height - 1; z += 4) {
+    const k = r0 + ((r1 - r0) * z) / height + 0.05;
+    T.cyl('skIron', [px, py, h + z], [px, py, h + z + 0.25], k, 10, k);
+  }
+  T.cyl('skIron', [px, py, h + height - 1.2], [px, py, h + height], r1 + 0.04, 10, r1 + 0.04);
+  T.cyl('skRust', [px, py, h + height - 3.4], [px, py, h + height - 3.2], r1 + 0.28, 10, r1 + 0.28);
+}
+
 function bath(T, r) {
   const B = BATH;
   house(T, B.x0, B.y0, B.x1, B.y1, B.h, { name: 'bath house', sign: 'sento', wall: 'skCream', roof: 'skRoofSlate', trim: 'skWood' }, r);
@@ -166,7 +182,7 @@ function bath(T, r) {
   for (const px of [mx - 3.6, mx + 3.6]) {
     T.post('skWood', px, B.y0 - 2.0, TOP, TOP + 4.6, 0.14, { kind: 'pole', name: 'bath porch post' });
   }
-  T.asset({ type: 'chimney', dims: { height: 22, radius: 1.1 } }, 1, B.chimney[0], B.chimney[1], TOP, 0);
+  chimney(T, B.chimney[0], B.chimney[1], TOP, 22, 1.1, 0.75);
   T.paint('skNoren', mx - 1.6, B.y0 - 0.04, TOP + 1.4, mx + 1.6, B.y0 - 0.01, TOP + 2.7);
 }
 
@@ -340,13 +356,38 @@ function shrine(T, r) {
 /* THE POLES AND THE WIRES along the lane, the town's own concrete poles,
  * and a line of them down the forecourt's east side to the quays. */
 const POLE_H = 10;
+
+/* One concrete pole, the town's kind, drawn in the island's colours rather
+ * than as the catalogue's, whose plates are pictures and so draws of their
+ * own: the post tapered, two crossarms the wires hang from, their
+ * insulators, the step bolts, and a transformer on one in three. */
+function pole(T, px, py, h, H, r) {
+  T.cyl('skGrey', [px, py, h], [px, py, h + H], 0.17, 8, 0.12);
+  T.post('skGrey', px, py, h, h + H, 0.13, { draw: false, kind: 'pole', name: 'utility pole' });
+  for (const [z, w] of [[H - 0.6, 0.75], [H - 1.6, 0.45]]) {
+    T.box('skIron', px - 0.05, py - w, h + z - 0.06, px + 0.05, py + w, h + z + 0.06, { kind: 'pole', name: 'crossarm' });
+    for (const dy of z === H - 0.6 ? [-0.5, 0.5] : [0]) {
+      T.cyl('skPlaster', [px, py + dy, h + z + 0.06], [px, py + dy, h + z + 0.22], 0.05, 5, 0.04, true);
+    }
+  }
+  if (r.chance(0.34)) {
+    T.cyl('skSteel', [px + 0.42, py, h + H - 3.6], [px + 0.42, py, h + H - 2.6], 0.3, 8);
+    T.box('skIron', px + 0.1, py - 0.06, h + H - 3.0, px + 0.18, py + 0.06, h + H - 2.9, { solid: false });
+  }
+  T.dress(() => {
+    for (let z = 2.2; z < H - 2.2; z += 0.45) {
+      const s = z % 0.9 < 0.45 ? 1 : -1;
+      T.cyl('skIron', [px, py, h + z], [px, py + s * 0.28, h + z], 0.015, 3);
+    }
+  });
+}
 function poles(T, r) {
   const at = [];
   for (let x = 116; x < 370; x += 28) {
     at.push([x + r.range(-2, 2), POLE_Y]);
   }
   for (const [px, py] of at) {
-    T.asset({ type: 'utilityPole', dims: { height: POLE_H } }, 1, px, py, TOP, 0);
+    pole(T, px, py, TOP, POLE_H, r);
   }
   /* Three wires and the drop to each building. */
   for (let i = 0; i + 1 < at.length; i += 1) {
@@ -366,11 +407,50 @@ function poles(T, r) {
   T.wire('skIron', [hx, hy, TOP + POLE_H - 1.6], [hx + 3.2, hy - 4, TOP + 0.4], 0.8, 0.02);
 }
 
+/*
+ * A ROW OF DRINKS MACHINES, drawn in the island's own colours rather than
+ * placed as the catalogue's asset: the asset brings a dozen batches of its
+ * own pictures to every chunk it stands in, about as many draws as the rest
+ * of a chunk, and at the island's distances its faces are a few pixels.
+ * Each machine is a body of its colour, a lit panel of cans, a dark slot,
+ * and a strip of buttons; `face` is the way it faces, `cols` one colour a
+ * machine. (px, py) is the middle of the row's face.
+ */
+export function vending(T, px, py, base, face, cols, r) {
+  const n = cols.length;
+  const W = 1.0;
+  const Dp = 0.8;
+  const H = 1.85;
+  const out = { s: [0, -1], n: [0, 1], e: [1, 0], w: [-1, 0] }[face];
+  const along = [-out[1], out[0]];
+  const span = n * W;
+  cols.forEach((m, i) => {
+    const u0 = -span / 2 + i * W + 0.02;
+    const u1 = u0 + W - 0.04;
+    const rect = (ua, ub, d0, d1) => {
+      const xs = [px + along[0] * ua - out[0] * d0, px + along[0] * ub - out[0] * d1];
+      const ys = [py + along[1] * ua - out[1] * d0, py + along[1] * ub - out[1] * d1];
+      return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+    };
+    const [x0, y0, x1, y1] = rect(u0, u1, 0, Dp);
+    T.box(m, x0, y0, base, x1, y1, base + H, { kind: 'wall', name: 'vending machine' });
+    const [a0, b0, a1, b1] = rect(u0 + 0.08, u1 - 0.08, -0.02, 0);
+    T.paint('skLamp', a0, b0, base + 0.95, a1, b1, base + 1.72);
+    T.paint('skVoid', a0, b0, base + 0.15, a1, b1, base + 0.42);
+    const [c0, d0, c1, d1] = rect(u0 + 0.12, u1 - 0.12, -0.03, -0.01);
+    for (let k = 0; k < 3; k += 1) {
+      const h = base + 1.1 + k * 0.2;
+      T.paint(r.chance(0.5) ? 'skCan' : 'skCanBlue', c0, d0, h, c1, d1, h + 0.1, true);
+    }
+    T.paint('skIron', c0, d0, base + 0.74, c1, d1, base + 0.82, true);
+  });
+}
+
 /* The town's drinks machines: two by the lane, one dead by the forecourt. */
 function machines(T, r) {
-  T.asset({ type: 'vending', dims: { count: 2, variant: 3 } }, 1, 236, 208.6, TOP, (3 * Math.PI) / 2);
-  T.asset({ type: 'vending', dims: { count: 1, variant: 7 } }, 1, 116, 208.6, TOP, (3 * Math.PI) / 2);
-  T.asset({ type: 'vending', dims: { count: 3, variant: 11 } }, 1, 362, 166.5, TOP, Math.PI);
+  vending(T, 236, 208.6, TOP, 's', ['skMint', 'skPlaster'], r);
+  vending(T, 116, 208.6, TOP, 's', ['skBlue'], r);
+  vending(T, 362, 166.5, TOP, 'w', ['skPlaster', 'skVermilion', 'skMint'], r);
   /* The empties round them, nobody to sweep them up. */
   T.dress(() => {
     for (const [cx, cy] of [[236, 207.2], [116, 207.2], [360.8, 166.5]]) {

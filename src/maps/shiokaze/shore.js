@@ -29,6 +29,7 @@
 
 import { rng } from './frame.js';
 import { SHELF, TUNNEL, WEDDED, KNOB_TOP } from './terrain.js';
+import { vending } from './street.js';
 
 /* The promenade along the sea wall under the hotels. */
 export const PROM = { x0: 107, x1: 371, y0: 135, y1: 151, rail: 135.4 };
@@ -323,7 +324,7 @@ function road(T, r) {
   T.post('skSteel', 395.5, 242, SHELF, SHELF + 2.6, 0.04, { kind: 'pole', name: 'bus stop' });
   T.disc('skBlue', 395.5, 242, 0.32, SHELF + 2.3, SHELF + 2.34, 12);
   T.sign('busStop', 395.5, 241.95, SHELF + 2.3, 0.6, 0.6, 's', 0.03);
-  T.asset({ type: 'vending', dims: { count: 2, variant: 5 } }, 1, 406.4, 238, SHELF, Math.PI);
+  vending(T, 406.4, 238, SHELF, 'w', ['skBlue', 'skPlaster'], r);
   void r;
 }
 

@@ -133,6 +133,19 @@ export function rng(seed) {
  * on every preset and at every range, so a pilot never meets a wall that is
  * not drawn.
  */
+/* Triangles as a list of three points each, whether they came that way or
+ * as one flat run of points, three to a triangle. */
+function grouped(tris) {
+  if (!tris.length || typeof tris[0][0] !== 'number') {
+    return tris;
+  }
+  const out = [];
+  for (let i = 0; i + 2 < tris.length; i += 3) {
+    out.push([tris[i], tris[i + 1], tris[i + 2]]);
+  }
+  return out;
+}
+
 export class Town {
   constructor() {
     this.P = new Parts();
@@ -307,7 +320,7 @@ export class Town {
    * counter clockwise seen from outside (from above for a top), drawn flat
    * shaded and never solid. */
   mesh(m, tris, fine = false) {
-    this.meshes.push({ m, tris, fine: fine || this.dressing, near: this.dressing && !this.widening });
+    this.meshes.push({ m, tris: grouped(tris), fine: fine || this.dressing, near: this.dressing && !this.widening });
   }
 
   /* A terrace's top, triangles as `mesh` takes them, drawn as the ground
@@ -315,7 +328,7 @@ export class Town {
    * comic pass's ground look, so the grass and the quays take its turf
    * and stones. Never solid. `c` is a colour, 0xRRGGBB. */
   ground(c, tris) {
-    this.grounds.push({ c, tris });
+    this.grounds.push({ c, tris: grouped(tris) });
   }
 
   /* A box drawn turned: centred on plan (px, py), its long side along the

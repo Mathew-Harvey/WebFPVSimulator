@@ -335,6 +335,24 @@ export const MAPS = [
     buildMs: MAP_BUILD_MS.cedar,
     load: () => import('./cedar/index.js'),
   },
+  /*
+   * HOSHINO SHOJI, on the owner's ask of 31 October 2026 for a map from each
+   * section of the list of new map ideas, built as a Japanese office: a
+   * small trading company's three storey building, goods in on the ground
+   * floor, the sales floor and the management floor over it, the roof and
+   * the street (src/maps/office/). Flown on a whoop at 3.5 times life size,
+   * as Thomas More's Shop is.
+   */
+  {
+    id: 'office',
+    name: 'Hoshino Shoji',
+    mode: 'freestyle',
+    note: 'A trading company after hours, flown on a whoop: the racking downstairs, the desk islands and the meeting booth on the sales floor, the boardroom and the president\'s room upstairs, an empty lift shaft from the top floor to the ground, and the roof.',
+    buildMs: MAP_BUILD_MS.office,
+    craft: 'whoop65',
+    mapScale: 3.5,
+    load: () => import('./office/index.js'),
+  },
 ];
 
 /* The house's document id (src/maps/house/yard.js), here so the stamps can
@@ -375,6 +393,8 @@ export const CEDAR_DOC_ID = 'trk-ced4a0e5';
 
 /* Raicho Ridge's (src/maps/alps/yard.js), the same way. */
 export const ALPS_DOC_ID = 'trk-a195a1e5';
+/* Hoshino Shoji's (src/maps/office/yard.js), the same way. */
+export const OFFICE_DOC_ID = 'trk-0f1ce5a1';
 
 export function mapById(id) {
   return MAPS.find((m) => m.id === id) ?? MAPS[0];

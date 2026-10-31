@@ -567,7 +567,7 @@ function quadPickCopy(craftId, rec, mapScale, mapId) {
     };
   }
   if (craftId === '5inch') {
-    const place = { house: 'house', heads: 'house', warehouse: 'shop' }[mapId];
+    const place = { house: 'house', heads: 'house', warehouse: 'shop', office: 'office' }[mapId];
     return {
       stamp: 'Tight!', rec: false, fit, fitLabel,
       says: place ? `A real five inch in a real ${place}. Loud, fast and tight.` : 'A real five inch in here. Loud, fast and tight.',
@@ -999,12 +999,13 @@ const scoringBoardBuilt = (where) => 'Scored run: two minutes from the first thi
 function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
   const built = mapId === 'built' || mapId === 'house' || mapId === 'heads' || mapId === 'bardwell' || mapId === 'warehouse'
     || mapId === 'goats' || mapId === 'sunny' || mapId === 'drift' || mapId === 'ball' || mapId === 'moto' || mapId === 'dome' || mapId === 'cedar'
-    || mapId === 'towers' || mapId === 'alps'
+    || mapId === 'towers' || mapId === 'alps' || mapId === 'office'
     || mapId === 'dock';
   const where = mapId === 'house' ? "Nick's house"
     : mapId === 'heads' ? "Heads' house"
       : mapId === 'bardwell' ? "Joshua's house"
         : mapId === 'warehouse' ? "Thomas's shop"
+          : mapId === 'office' ? 'Hoshino Shoji'
           : mapId === 'goats' ? "Heads' street"
           : mapId === 'sunny' ? 'Sunnyfield'
           : mapId === 'dock' ? 'Kamome Wharf'
@@ -1059,6 +1060,10 @@ const BARDWELL_OFF_BOARD = "The board keeps no runs for Joshua Bardwell's house,
 
 /* Thomas More's Shop, the same way. */
 const WAREHOUSE_OFF_BOARD = "The board keeps no runs for Thomas More's Shop, so a run flown there stays here."
+  + ' Fly the town for a run that can go up.';
+
+/* Hoshino Shoji, the same way. */
+const OFFICE_OFF_BOARD = 'The board keeps no runs for Hoshino Shoji, so a run flown there stays here.'
   + ' Fly the town for a run that can go up.';
 
 /* The goat map, the same way. */
@@ -11443,6 +11448,7 @@ export class Ui {
           || this.settings.map === 'bardwell' || this.settings.map === 'warehouse' || this.settings.map === 'goats'
           || this.settings.map === 'sunny' || this.settings.map === 'drift' || this.settings.map === 'ball' || this.settings.map === 'moto'
           || this.settings.map === 'dome' || this.settings.map === 'cedar' || this.settings.map === 'towers' || this.settings.map === 'alps'
+          || this.settings.map === 'office'
           || this.settings.map === 'dock';
         return [
           { label: 'Fly again', action: 'restart', primary: true },
@@ -11472,6 +11478,7 @@ export class Ui {
                 : this.settings.map === 'heads' ? HEADS_OFF_BOARD
                   : this.settings.map === 'bardwell' ? BARDWELL_OFF_BOARD
                     : this.settings.map === 'warehouse' ? WAREHOUSE_OFF_BOARD
+                    : this.settings.map === 'office' ? OFFICE_OFF_BOARD
                       : this.settings.map === 'goats' ? GOATS_OFF_BOARD
                         : this.settings.map === 'sunny' ? SUNNY_OFF_BOARD
                         : this.settings.map === 'dock' ? DOCK_OFF_BOARD

@@ -134,46 +134,68 @@ export function stackField(T, f) {
   mergedSolids(T, f, H, nR, nS);
 }
 
-/* The solids: each row's runs of one height, then runs the same in the
- * rows beside, one box each. */
+/*
+ * The solids, tier by tier: in each row, each run of slots standing at
+ * least that tier high is one box from the end of the first to the end of
+ * the last, so the half metre between two boxes side by side is solid as
+ * far up as both stand. A slit that narrow is a slot a quad fits and no
+ * pilot could fly (scripts/dock-check.js, the slot rule), and it is dark
+ * between two walls from every side. A run the same in the rows beside is
+ * the same box.
+ */
 function mergedSolids(T, f, H, nR, nS) {
-  let open = new Map();
+  const open = new Map();
+  const base = f.base ?? 0;
   const flush = (keep) => {
     for (const [key, o] of open) {
       if (!keep.has(key)) {
-        const xa = f.slots[o.s0].x0;
-        const xb = f.slots[o.s1].x1;
-        const base = f.base ?? 0;
-        T.box('concrete', xa, f.rows[o.r0].y0, base, xb, f.rows[o.r1].y1, base + o.h * BH, { draw: false, name: 'stack' });
+        T.box('concrete', f.slots[o.s0].x0, f.rows[o.r0].y0, base + (o.t - 1) * BH, f.slots[o.s1].x1, f.rows[o.r1].y1, base + o.top * BH, { draw: false, name: 'stack' });
         open.delete(key);
       }
     }
   };
   for (let r = 0; r < nR; r += 1) {
     const here = new Set();
-    let s = 0;
-    while (s < nS) {
-      const h = H(r, s);
-      let e = s;
-      while (e + 1 < nS && H(r, e + 1) === h) {
-        e += 1;
-      }
-      if (h > 0) {
-        const key = `${s}:${e}:${h}`;
-        here.add(key);
-        const o = open.get(key);
-        if (o) {
-          o.r1 = r;
-        } else {
-          open.set(key, { s0: s, s1: e, h, r0: r, r1: r });
+    /* Each run's tiers from the bottom up, merged while the run stays the
+     * same width, so a run of three the same height is one box. */
+    const runs = [];
+    let top = 0;
+    for (let s = 0; s < nS; s += 1) {
+      top = Math.max(top, H(r, s));
+    }
+    for (let t = 1; t <= top; t += 1) {
+      let s = 0;
+      while (s < nS) {
+        if (H(r, s) < t) {
+          s += 1;
+          continue;
         }
+        let e = s;
+        while (e + 1 < nS && H(r, e + 1) >= t) {
+          e += 1;
+        }
+        const same = runs.find((q) => q.s0 === s && q.s1 === e && q.top === t - 1);
+        if (same) {
+          same.top = t;
+        } else {
+          runs.push({ s0: s, s1: e, t, top: t });
+        }
+        s = e + 1;
       }
-      s = e + 1;
+    }
+    for (const q of runs) {
+      const key = `${q.s0}:${q.s1}:${q.t}:${q.top}`;
+      here.add(key);
+      const o = open.get(key);
+      if (o && o.r1 === r - 1) {
+        o.r1 = r;
+      } else {
+        open.set(key, { ...q, r0: r, r1: r });
+      }
     }
     flush(here);
   }
   flush(new Set());
-  open = null;
 }
 
 /* A band's slots along a block: pairs of bays are one 40 ft box or two

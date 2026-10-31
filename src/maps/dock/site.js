@@ -84,8 +84,8 @@ export const YARD_Y1 = DOUBLES[2].y1;
 export const GANTRY = { half: 4.0, legOut: 2.2, top: 22, girder: 2.0, leg: 1.0 };
 export const GANTRIES = [
   { db: 0, x: 62 }, { db: 0, x: 292 },
-  { db: 1, x: 182 }, { db: 1, x: 300 },
-  { db: 2, x: 52 }, { db: 2, x: 168 },
+  { db: 1, x: 182 }, { db: 1, x: 230 },
+  { db: 2, x: 52 }, { db: 2, x: 150 },
 ];
 
 /* The reefer rack and the empties, east of the blocks. The rack is a steel
@@ -144,7 +144,7 @@ export const SHIP = {
   bays: 15, bayX0: 101, bayPitch: 13.0, rows: 12,
   house: { x0: 76, x1: 94, y0: 260, y1: 284, top: 32, wing: 28.0 },
   funnel: { x0: 67, x1: 73, y0: 267, y1: 277, top: 38 },
-  fo: { x0: 297, h: 11.0 },
+  fo: { x0: 295.7, h: 11.0 },
 };
 /* The black rubber fenders on the quay's face. */
 export const FENDER = { out: 0.9, w: 1.4, h0: -3.0, h1: -0.2, every: 14 };

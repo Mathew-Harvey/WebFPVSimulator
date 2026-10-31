@@ -272,7 +272,7 @@ function crane(T, c) {
   }));
   /* The cable reel, drawn round and solid as the box inside it. */
   const rx = cx + lx;
-  const ry = RAIL_L - 2.6;
+  const ry = RAIL_L - 4.2;
   T.cyl('dkCraneDeep', [rx, ry - 0.45, 2.6], [rx, ry + 0.45, 2.6], 1.9, 16);
   T.hidden(rx - 1.3, ry - 0.45, 1.3, rx + 1.3, ry + 0.45, 3.9, 'wall', `${name} cable reel`);
   T.box('dkCraneDeep', rx - 0.5, ry - 0.5, 0, rx + 0.5, ry + 0.5, 1.3, { name: `${name} reel stand` });
@@ -321,11 +321,11 @@ export function quay(T) {
     T.flute('containerOrange', 150.2, 236.0 + BOX.w, 150 + BOX.l20 - 0.2, 236.0 + BOX.w, 0.18, BOX.h - 0.14, 'n', 7);
   });
   T.sign('safety', 150 + BOX.l20 / 2, 236.0, 1.4, 4.4, 1.3, 's', 0.05);
-  for (const [x, y] of [[248, 237], [252, 237], [256, 237]]) {
+  for (const [x, y] of [[246.4, 237], [251, 237], [255.6, 237]]) {
     T.box('grating', x - 1.5, y - 1.0, 0, x + 1.5, y + 1.0, 1.8, { name: 'lashing cage' });
   }
   T.dress(() => {
-    for (const [x, y] of [[248, 237], [252, 237], [256, 237]]) {
+    for (const [x, y] of [[246.4, 237], [251, 237], [255.6, 237]]) {
       for (let k = 0; k < 5; k += 1) {
         T.cyl('dkRust', [x - 1.3 + k * 0.6, y - 0.6, 1.85], [x - 1.3 + k * 0.6, y + 0.6, 1.85], 0.06, 4);
       }

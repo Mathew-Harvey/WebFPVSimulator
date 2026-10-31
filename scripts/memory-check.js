@@ -206,6 +206,9 @@ BORROWS.goats = {
 };
 /* And Sunnyfield (src/maps/sunny/index.js). */
 BORROWS.sunny = BORROWS.house;
+/* And Kamome Wharf (src/maps/dock/index.js), which folds its batches with
+ * Sunnyfield's palette merge. */
+BORROWS.dock = { ...BORROWS.house, sunny: ['palette.js'] };
 
 /* The URLs under another world that this one is not allowed to have. */
 function bleedOf(urls, id, other) {

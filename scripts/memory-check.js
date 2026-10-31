@@ -74,7 +74,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
  * map the only thing either can fetch is its own three files, and what the
  * default run asks of it is the release. Their borrowing is proved on its
  * own, first in a page of its own: --map=house, --map=heads. */
-const HEAVY = ['built', 'city', 'house', 'heads', 'bardwell', 'warehouse', 'goats', 'sunny', 'towers', 'kaza', 'shiokaze', 'dunes'];
+const HEAVY = ['built', 'city', 'house', 'heads', 'bardwell', 'warehouse', 'goats', 'sunny', 'towers', 'kaza', 'shiokaze', 'factory', 'dunes'];
 
 /*
  * WHAT BOOT MAY TAKE FROM THE PROPS LIBRARY, AND WHY IT IS NOT NOTHING.
@@ -208,6 +208,9 @@ BORROWS.goats = {
 BORROWS.sunny = BORROWS.house;
 /* And Kazesuna Dunes (src/maps/dunes/index.js). */
 BORROWS.dunes = BORROWS.house;
+/* And Hamakaze Works (src/maps/factory/index.js), which also merges its
+ * batches with Sunnyfield's palette. */
+BORROWS.factory = { ...BORROWS.house, sunny: ['palette.js'] };
 /* And Kumoi Towers (src/maps/towers/index.js), which folds its batches
  * with Sunnyfield's palette merge. */
 BORROWS.towers = { ...BORROWS.house, sunny: ['palette.js'] };

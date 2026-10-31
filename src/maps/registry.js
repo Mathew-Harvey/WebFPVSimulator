@@ -274,6 +274,22 @@ export const MAPS = [
     load: () => import('./dunes/index.js'),
   },
   /*
+   * HAMAKAZE WORKS, on the owner's ask of 31 October 2026 ("we want the
+   * maps to feel like manga comic like the town"): a steel and chemical
+   * works on a canal basin, of the kind that lines the Keihin coast, life
+   * size and flown on the five inch, in the town's cel kit and ink
+   * (src/maps/factory/). Built by the built map's pipeline and, like the
+   * houses, off the board.
+   */
+  {
+    id: 'factory',
+    name: 'Hamakaze Works',
+    mode: 'freestyle',
+    note: 'Hamakaze Works, flown on a five inch: the steel shop and its crane, the pipe racks and the pipe bridge, the belt gallery, the gas spheres, the tank farm, the control house, the red and white stack and the gantry on the quay.',
+    buildMs: MAP_BUILD_MS.factory,
+    load: () => import('./factory/index.js'),
+  },
+  /*
    * SHIOKAZE POINT, on the owner's ask of 31 October 2026 ("we want the
    * maps to feel like manga comic like the town"): a map of our own,
    * a resort on a rock island gone to ruin, five hotel blocks of
@@ -406,6 +422,22 @@ export const MAPS = [
     buildMs: MAP_BUILD_MS.sana,
     load: () => import('./sana/index.js'),
   },
+  /*
+   * TANADA RX, section 19 of the owner's map list of 31 October 2026: a
+   * rallycross circuit of tarmac and gravel with a jump and a joker, under
+   * a hillside of rice terraces, with a pack of rallycross cars racing it
+   * (src/maps/rally/). Built by the built map's pipeline in the town's
+   * look, flown on the five inch at life size; off the board like Ridgeline
+   * MX.
+   */
+  {
+    id: 'rally',
+    name: 'Tanada RX',
+    mode: 'freestyle',
+    note: 'A rallycross circuit of tarmac and gravel under a hillside of rice terraces. Six cars race it, sideways through the hairpins and long over the jump. Chase them over it, thread the grandstand roof, and find the gaps.',
+    buildMs: MAP_BUILD_MS.rally,
+    load: () => import('./rally/index.js'),
+  },
 ];
 
 /* The house's document id (src/maps/house/yard.js), here so the stamps can
@@ -442,6 +474,8 @@ export const DOME_DOC_ID = 'trk-b4d0e0e1';
 /* Shiokaze Point's (src/maps/shiokaze/yard.js), the same way. */
 export const SHIOKAZE_DOC_ID = 'trk-5e1a0ca2';
 
+/* Hamakaze Works' (src/maps/factory/yard.js), the same way. */
+export const FACTORY_DOC_ID = 'trk-fac70e31';
 /* Kodama Onsen's (src/maps/cedar/yard.js), the same way. */
 export const CEDAR_DOC_ID = 'trk-ced4a0e5';
 /* Kazahana Plain's (src/maps/kaza/yard.js), the same way. */
@@ -453,6 +487,9 @@ export const SANA_DOC_ID = 'trk-5a7a0b10';
 export const ALPS_DOC_ID = 'trk-a195a1e5';
 /* Hoshino Shoji's (src/maps/office/yard.js), the same way. */
 export const OFFICE_DOC_ID = 'trk-0f1ce5a1';
+
+/* Tanada RX's (src/maps/rally/yard.js), the same way. */
+export const RALLY_DOC_ID = 'trk-7a11c0b5';
 
 export function mapById(id) {
   return MAPS.find((m) => m.id === id) ?? MAPS[0];

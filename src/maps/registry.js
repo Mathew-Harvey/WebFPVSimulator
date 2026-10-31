@@ -255,6 +255,23 @@ export const MAPS = [
     buildMs: MAP_BUILD_MS.moto,
     load: () => import('./moto/index.js'),
   },
+  /*
+   * TSUKIMI DANCHI, on the owner's ask of 31 October 2026 (a city bando,
+   * "we want the maps to feel like manga comic like the town"): an
+   * abandoned 1970s housing estate in the middle of the town's kind of
+   * city, its five storey block holed floor by floor, its annex, its water
+   * tank, its boiler house, and the viaduct and the streets round it
+   * (src/maps/haikyo/). Built by the built map's pipeline and flown on the
+   * five inch at life size; off the board like the houses.
+   */
+  {
+    id: 'haikyo',
+    name: 'Tsukimi Danchi',
+    mode: 'freestyle',
+    note: 'An abandoned housing estate in the middle of the city: a five storey block with its floors falling in, open stair towers, a bridge to the old shopping annex, a water tank on legs, a boiler house and a railway viaduct. Twelve orange plates mark a race through it.',
+    buildMs: MAP_BUILD_MS.haikyo,
+    load: () => import('./haikyo/index.js'),
+  },
 ];
 
 /* The house's document id (src/maps/house/yard.js), here so the stamps can
@@ -282,6 +299,9 @@ export const DRIFT_DOC_ID = 'trk-d81f7a75';
 export const BALL_DOC_ID = 'trk-ba11b0a1';
 /* Ridgeline MX's (src/maps/moto/yard.js), the same way. */
 export const MOTO_DOC_ID = 'trk-3c07e5a1';
+
+/* Tsukimi Danchi's (src/maps/haikyo/yard.js), the same way. */
+export const HAIKYO_DOC_ID = 'trk-4a1c7d0e';
 
 export function mapById(id) {
   return MAPS.find((m) => m.id === id) ?? MAPS[0];

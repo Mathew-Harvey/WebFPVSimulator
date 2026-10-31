@@ -136,6 +136,8 @@ function rollWalls() {
   out[`${COLLAPSE[0] - 1},4`].party = 'holed';
   /* The bridge's end: the flat it lands in has lost its south wall. */
   out['11,1'].south = 'gone';
+  /* The party wall the hidden sign is painted on, inside the drop. */
+  out['1,2'].party = 'intact';
   return out;
 }
 export const WALLS = rollWalls();

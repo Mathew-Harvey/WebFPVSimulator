@@ -137,8 +137,8 @@ function transporter(T, x, y0, team, k) {
   /* The tailgate lift, down, and a tyre rack beside it. */
   T.deco('metalDark', x - 1.2, y0 - 1.6, 0, x + 1.2, y0, 0.12, true);
   if (k % 2 === 0) {
-    T.op({ t: 'tyreRack', x: x + 2.4, y: y0 + 3, n: 4 });
-    T.solid(x + 1.9, y0 + 1.5, 0, x + 2.9, y0 + 4.5, 1.6, 'tyre rack');
+    T.op({ t: 'tyreRack', x: x + 2.1, y: y0 + 3, n: 4 });
+    T.solid(x + 1.3, y0 + 1.5, 0, x + 2.9, y0 + 4.5, 1.6, 'tyre rack');
   }
 }
 
@@ -232,12 +232,12 @@ function garages(T) {
     for (const yy of [y0 + 13, y0 + 15]) {
       T.op({ t: 'tyreStack', x: x + 1.1, y: yy, n: 4 });
     }
-    T.solid(x + 0.5, y0 + 12.3, 0, x + 1.7, y0 + 15.7, 1.3, 'tyre sets');
+    T.solid(x + 0.15, y0 + 12.3, 0, x + 1.7, y0 + 15.7, 1.3, 'tyre sets');
     /* Tool chests on the right. */
-    T.box(team.m, x + bay - 1.4, y0 + 12, 0, x + bay - 0.4, y0 + 15.5, 1.0, { name: 'tool chest' });
-    T.deco('metal', x + bay - 1.42, y0 + 12, 1.0, x + bay - 0.38, y0 + 15.5, 1.05, true);
+    T.box(team.m, x + bay - 1.15, y0 + 12, 0, x + bay - 0.15, y0 + 15.5, 1.0, { name: 'tool chest' });
+    T.deco('metal', x + bay - 1.17, y0 + 12, 1.0, x + bay - 0.15, y0 + 15.5, 1.05, true);
     for (let i = 0; i < 4; i += 1) {
-      T.deco('white', x + bay - 1.42, y0 + 12.1, 0.2 + i * 0.2, x + bay - 1.41, y0 + 15.4, 0.23 + i * 0.2, true);
+      T.deco('white', x + bay - 1.17, y0 + 12.1, 0.2 + i * 0.2, x + bay - 1.16, y0 + 15.4, 0.23 + i * 0.2, true);
     }
     /* The data gantry over the car: a beam on the partitions, screens. */
     T.deco('metalDark', x + 0.3, y0 + 3.6, 3.6, x + bay - 0.3, y0 + 3.9, 3.8, true);

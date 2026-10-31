@@ -255,6 +255,24 @@ export const MAPS = [
     buildMs: MAP_BUILD_MS.moto,
     load: () => import('./moto/index.js'),
   },
+  /*
+   * HAYATE CIRCUIT, on the owner's ask of 31 October 2026 (section 14 of
+   * the map ideas, "Racetrack"): an international road circuit of our own
+   * in the Japanese hills in autumn, built from how the real ones are laid
+   * out, with GT cars lapping it, a pit building to fly through, a covered
+   * grandstand, bridges over the track, a sky wheel in the infield and a
+   * volcano on the horizon (src/maps/hayate/). Built by the built map's
+   * pipeline and flown on the five inch at life size; off the board like
+   * the houses.
+   */
+  {
+    id: 'hayate',
+    name: 'Hayate Circuit',
+    mode: 'freestyle',
+    note: 'A race circuit in the hills in autumn. GT cars lap it flat out: chase them down the straight, thread the pit garages, the grandstand roof and the tunnels under it, the bridges, the giant tyre and the sky wheel.',
+    buildMs: MAP_BUILD_MS.hayate,
+    load: () => import('./hayate/index.js'),
+  },
 ];
 
 /* The house's document id (src/maps/house/yard.js), here so the stamps can
@@ -282,6 +300,8 @@ export const DRIFT_DOC_ID = 'trk-d81f7a75';
 export const BALL_DOC_ID = 'trk-ba11b0a1';
 /* Ridgeline MX's (src/maps/moto/yard.js), the same way. */
 export const MOTO_DOC_ID = 'trk-3c07e5a1';
+/* Hayate Circuit's (src/maps/hayate/yard.js), the same way. */
+export const HAYATE_DOC_ID = 'trk-4a7a7e01';
 
 export function mapById(id) {
   return MAPS.find((m) => m.id === id) ?? MAPS[0];

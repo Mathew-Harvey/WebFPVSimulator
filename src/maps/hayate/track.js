@@ -90,7 +90,7 @@ function outsideDepth() {
 /* The main straight and the pit straight, where walls stand instead of
  * armco: the arc of s the straight takes, inside the two end bends. */
 function onStraight(x, y) {
-  return y > 60 && y < 82 && x > STRAIGHT.x0 - 6 && x < STRAIGHT.x1 + 4;
+  return y > 56 && y < 84 && x > STRAIGHT.x0 - 6 && x < STRAIGHT.x1 + 4;
 }
 
 const SEG = 4;

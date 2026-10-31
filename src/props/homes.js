@@ -209,6 +209,59 @@ export const MATERIALS = {
   mxBlue: { c: 0x2f6fd0, tint: 0x2e4a7a },
   mxGreen: { c: 0x2f9a4c, tint: 0x2e5a4a },
   mxRed: { c: 0xd8333d, tint: 0x6e2f52 },
+  /* Hayate Circuit (src/maps/hayate/): the armco's galvanised steel, the
+   * traps' gravel, the kerbs' red, the pen's black for lettering edges,
+   * the pit lane's and the garages' floors, the pit wall's and the pit
+   * building's paint, the tower's glass band, the bronze of the trophies,
+   * the paddock tents, the stands' roofs and their undersides, the cedar
+   * timber and roof tile of the old stand and the shrine, the grass of
+   * the spectator bank, the bridges' and the gantry's paint, the sky
+   * wheel's white and its legs, the shrine's white, its copper roof and
+   * its torii, and the stone of the lanterns and the pond's edge. Every
+   * other colour it draws is one of the town's or the families' above. */
+  hyArmco: { c: 0xc9ccd2, tint: 0x6e6c8c },
+  hyGravel: { c: 0xd8c9a4, tint: 0x8a7c8a },
+  hyGravelDark: { c: 0xbfae88, tint: 0x75687e },
+  hyKerbRed: { c: 0xd8333d, tint: 0x6e2f52 },
+  hyInk: { c: 0x1d1b26, tint: 0x15141c, noCast: true },
+  hyPitLane: { c: 0x6a6c74, tint: 0x45445e },
+  hyGreen: { c: 0x3f8c5a, tint: 0x2e5258 },
+  hyPitWall: { c: 0xeeeae2, tint: 0x938aa4 },
+  hyPitIn: { c: 0x2f6fd0, tint: 0x2e4a7a },
+  hyGarageFloor: { c: 0x8d9096, tint: 0x5a5872 },
+  hyPitRoof: { c: 0x5d6a82, tint: 0x3a3e5e },
+  hyTower: { c: 0xf2efe8, tint: 0x9a96b2 },
+  hyTowerBand: { c: 0x3a5f8c, tint: 0x283c5e },
+  hyBronze: { c: 0xd2a23a, tint: 0x806040 },
+  hyTent: { c: 0x2e4382, tint: 0x2a2e5a },
+  hyRoof: { c: 0xdfe3e8, tint: 0x8a8aa6 },
+  hyRoofUnder: { c: 0x7a7e8c, tint: 0x4a4a64 },
+  hyTimber: { c: 0x8a5a3a, tint: 0x4f3a4a },
+  hyRoofTile: { c: 0x4a5060, tint: 0x30324a },
+  hyGrassBank: { c: 0x86ab6a, tint: 0x55706a },
+  hyGrassBank2: { c: 0x76a060, tint: 0x4c6a64 },
+  hyBridge: { c: 0xe9e4d8, tint: 0x938aa4 },
+  hyBridgeRed: { c: 0xd8483a, tint: 0x6e3352 },
+  hyArch: { c: 0x2f6fd0, tint: 0x2e4a7a },
+  hyGantry: { c: 0x2b2830, tint: 0x221f2c },
+  hyWheel: { c: 0xf4f2ee, tint: 0x9a96b2 },
+  hyWheelLeg: { c: 0xe8a33a, tint: 0x80583e },
+  hyDeck: { c: 0xb8a07c, tint: 0x6e5c6a },
+  hyPink: { c: 0xf2a6bd, tint: 0x9a6a8a },
+  hyStone: { c: 0xa9a49a, tint: 0x6a6680 },
+  hyShrineWhite: { c: 0xf3ede0, tint: 0x9a90a8 },
+  hyCopper: { c: 0x5fa892, tint: 0x3a6070 },
+  hyToriiRed: { c: 0xe4472c, tint: 0x7a3a5a },
+  /* The maples' leaves, three autumn reds and an orange, which ./index.js
+   * of Hayate puts on the broadleaf trees in place of their green. */
+  hyMaple0: { c: 0xd8452c, tint: 0x7a2e48, noReceive: true, foliage: true },
+  hyMaple1: { c: 0xe8742a, tint: 0x80442e, noReceive: true, foliage: true },
+  hyMaple2: { c: 0xc22c3a, tint: 0x6a2648, noReceive: true, foliage: true },
+  hyMaple3: { c: 0xe9a23a, tint: 0x80583e, noReceive: true, foliage: true },
+  hyWater: { c: 0x5a8fb0, tint: 0x3a5a7e, noCast: true },
+  hyCarp: { c: 0xf0721e, tint: 0x80482e, noCast: true },
+  hyFuji: { c: 0x7088a8, tint: 0x5a6a90, noCast: true },
+  hyFujiSnow: { c: 0xf6f4f0, tint: 0xb8b8d0, noCast: true },
 };
 
 /*

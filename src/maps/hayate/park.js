@@ -94,9 +94,9 @@ function ferrisWheel(T) {
   }
   /* The boarding deck under the lowest cabin, and its booth. */
   T.box('hyDeck', x - 7, y - 6, 0, x + 7, y + 6, 0.9, { name: 'wheel deck' });
-  T.box('white', x + 7.5, y - 2, 0, x + 10.5, y + 2, 2.6, { name: 'wheel booth' });
-  T.deco('hyPink', x + 7.4, y - 2.1, 2.6, x + 10.6, y + 2.1, 2.9);
-  T.sign('skyWheel', x + 9, y - 2.02, 2.0, 0, -1, 2.8, 0.7);
+  T.box('white', x + 7, y - 2, 0, x + 10, y + 2, 2.6, { name: 'wheel booth' });
+  T.deco('hyPink', x + 6.9, y - 2.1, 2.6, x + 10.1, y + 2.1, 2.9);
+  T.sign('skyWheel', x + 8.5, y - 2.02, 2.0, 0, -1, 2.8, 0.7);
   T.sign('skyWheelBig', x, y - 6.02, 0.45, 0, -1, 9, 0.8);
 }
 

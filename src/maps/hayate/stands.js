@@ -145,13 +145,13 @@ function mainStand(T) {
   const cuts = [...M.tunnels.map((t) => [t - M.tunnelW / 2, t + M.tunnelW / 2, M.tunnelH]), [M.gap0, M.gap1, M.wall]].sort((a, b) => a[0] - b[0]);
   let from = M.x0 - 0.4;
   for (const [c0, c1, ch] of cuts) {
-    T.box('white', from, M.back, 0, c0, backRow - 0.4, M.wall, { name: 'stand back wall' });
+    T.box('white', from, M.back, 0, c0, backRow, M.wall, { name: 'stand back wall' });
     if (ch < M.wall) {
-      T.box('white', c0, M.back, ch, c1, backRow - 0.4, M.wall, { name: 'stand back wall' });
+      T.box('white', c0, M.back, ch, c1, backRow, M.wall, { name: 'stand back wall' });
     }
     from = c1;
   }
-  T.box('white', from, M.back, 0, M.x1 + 0.4, backRow - 0.4, M.wall, { name: 'stand back wall' });
+  T.box('white', from, M.back, 0, M.x1 + 0.4, backRow, M.wall, { name: 'stand back wall' });
   /* Its windows, the concourse's, and the gates at the tunnels' backs. */
   for (let x = M.x0 + 3; x < M.x1 - 3; x += 6) {
     if (M.tunnels.some((t) => Math.abs(t - x - 1.5) < 4)) {
@@ -184,6 +184,10 @@ function mainStand(T) {
     T.solid(x - 2, M.back - 9, 0, x + 2, M.back - 6, 2.6, 'stall');
   }
   for (let x = M.x0 + 20; x < M.x1 - 10; x += 24) {
+    /* None in front of a tunnel's back or the canyon's. */
+    if (M.tunnels.some((t) => Math.abs(x - t) < M.tunnelW) || (x > M.gap0 - 2 && x < M.gap1 + 2)) {
+      continue;
+    }
     T.op({ t: 'vending', x, y: M.back - 3.6, yaw: Math.PI / 2, k: x });
     T.solid(x - 0.6, M.back - 4.2, 0, x + 0.6, M.back - 3.0, 1.9, 'vending machine');
   }

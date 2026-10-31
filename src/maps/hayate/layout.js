@@ -142,7 +142,7 @@ export function hayateGaps() {
       name: 'GARAGE RUN', px: PIT.x0 + PIT.bay + 5, py: PIT.y1 - 0.2, deg: 90, w: 4.4, h0: 0.3, h1: 3.9, points: 500,
     },
     {
-      name: 'TOWER ALLEY', px: (TOWER.x1 + PIT.x0 - 0.3) / 2, py: 102, deg: 90, w: PIT.x0 - 0.3 - TOWER.x1 - 0.6, h0: 0.3, h1: PIT.top - 0.7, points: 250,
+      name: 'TOWER ALLEY', px: (TOWER.x1 + PIT.x0 - 0.6) / 2, py: 102, deg: 90, w: PIT.x0 - 0.6 - TOWER.x1 - 0.8, h0: 0.3, h1: PIT.roof - 0.4, points: 250,
     },
     {
       name: 'ROOF GAP', px: 306, py: M.back + 2, deg: 90, w: 14, h0: M.wall + 0.3, h1: M.roof0 - 0.3, points: 1000,

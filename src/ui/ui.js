@@ -1000,6 +1000,7 @@ function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
   const built = mapId === 'built' || mapId === 'house' || mapId === 'heads' || mapId === 'bardwell' || mapId === 'warehouse'
     || mapId === 'goats' || mapId === 'sunny' || mapId === 'drift' || mapId === 'ball' || mapId === 'moto' || mapId === 'dome' || mapId === 'cedar'
     || mapId === 'towers' || mapId === 'alps' || mapId === 'office' || mapId === 'kaza' || mapId === 'sana'
+    || mapId === 'shiokaze' || mapId === 'factory'
     || mapId === 'haikyo';
   const where = mapId === 'house' ? "Nick's house"
     : mapId === 'heads' ? "Heads' house"
@@ -1008,6 +1009,8 @@ function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
           : mapId === 'office' ? 'Hoshino Shoji'
           : mapId === 'goats' ? "Heads' street"
           : mapId === 'sunny' ? 'Sunnyfield'
+          : mapId === 'factory' ? 'Hamakaze Works'
+          : mapId === 'shiokaze' ? 'Shiokaze Point'
             : mapId === 'drift' ? 'Drift Matsuri' : mapId === 'ball' ? 'Quad Ball' : mapId === 'moto' ? 'Ridgeline MX' : mapId === 'dome' ? 'Bakuon Dome' : mapId === 'cedar' ? 'Kodama Onsen' : mapId === 'towers' ? 'Kumoi Towers' : mapId === 'alps' ? 'Raicho Ridge' : mapId === 'kaza' ? 'Kazahana Plain' : mapId === 'sana' ? 'Kirigaoka Sanatorium' : mapId === 'haikyo' ? 'Tsukimi Danchi' : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
   if (mode === 'off') {
     return `${drawn ? '' : `${SCORING_UNDRAWN} `}${scoringOff(where)} ${built ? scoringMoreBuilt(where) : SCORING_MORE}`;
@@ -1071,6 +1074,13 @@ const GOATS_OFF_BOARD = 'The board keeps no runs for 90%er goat herding, so a ru
 
 /* Sunnyfield, the same way. */
 const SUNNY_OFF_BOARD = 'The board keeps no runs for Sunnyfield, so a run flown there stays here.'
+  + ' Fly the town for a run that can go up.';
+
+/* Hamakaze Works, the same way. */
+const FACTORY_OFF_BOARD = 'The board keeps no runs for Hamakaze Works, so a run flown there stays here.'
+  + ' Fly the town for a run that can go up.';
+/* Shiokaze Point, the same way. */
+const SHIOKAZE_OFF_BOARD = 'The board keeps no runs for Shiokaze Point, so a run flown there stays here.'
   + ' Fly the town for a run that can go up.';
 
 /* Drift Matsuri, the same way. */
@@ -5423,7 +5433,7 @@ const WAYS = [
      * pilot asks for them. See DEFAULTS.freestyleScoring. The maps are
      * named so the card says there is more than the town, and the board's
      * are counted in so a pilot knows the shelf keeps growing. */
-    blurb: "Every freestyle map: the town, the houses of Nick Burns, Heads and Joshua Bardwell, Thomas More's Shop, Sunnyfield, Hibari Yard, and every map pilots have built and published to the board. No clock, no gates, and trick names are a switch inside.",
+    blurb: "Every freestyle map: the town, the houses of Nick Burns, Heads and Joshua Bardwell, Thomas More's Shop, Sunnyfield, Shiokaze Point, Hibari Yard, and every map pilots have built and published to the board. No clock, no gates, and trick names are a switch inside.",
   },
 ].map((w) => ({ ...w, action: `way-${w.id}` }));
 
@@ -11451,6 +11461,7 @@ export class Ui {
           || this.settings.map === 'sunny' || this.settings.map === 'drift' || this.settings.map === 'ball' || this.settings.map === 'moto'
           || this.settings.map === 'dome' || this.settings.map === 'cedar' || this.settings.map === 'towers' || this.settings.map === 'alps'
           || this.settings.map === 'office' || this.settings.map === 'kaza' || this.settings.map === 'sana'
+          || this.settings.map === 'shiokaze' || this.settings.map === 'factory'
           || this.settings.map === 'haikyo';
         return [
           { label: 'Fly again', action: 'restart', primary: true },
@@ -11483,6 +11494,8 @@ export class Ui {
                     : this.settings.map === 'office' ? OFFICE_OFF_BOARD
                       : this.settings.map === 'goats' ? GOATS_OFF_BOARD
                         : this.settings.map === 'sunny' ? SUNNY_OFF_BOARD
+                        : this.settings.map === 'factory' ? FACTORY_OFF_BOARD
+                        : this.settings.map === 'shiokaze' ? SHIOKAZE_OFF_BOARD
                           : this.settings.map === 'drift' ? DRIFT_OFF_BOARD
                             : this.settings.map === 'ball' ? BALL_OFF_BOARD
                           : this.settings.map === 'moto' ? MOTO_OFF_BOARD

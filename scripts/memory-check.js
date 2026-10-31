@@ -74,7 +74,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
  * map the only thing either can fetch is its own three files, and what the
  * default run asks of it is the release. Their borrowing is proved on its
  * own, first in a page of its own: --map=house, --map=heads. */
-const HEAVY = ['built', 'city', 'house', 'heads', 'bardwell', 'warehouse', 'goats', 'sunny', 'towers', 'kaza', 'haikyo'];
+const HEAVY = ['built', 'city', 'house', 'heads', 'bardwell', 'warehouse', 'goats', 'sunny', 'towers', 'kaza', 'shiokaze', 'factory', 'haikyo'];
 
 /*
  * WHAT BOOT MAY TAKE FROM THE PROPS LIBRARY, AND WHY IT IS NOT NOTHING.
@@ -206,12 +206,18 @@ BORROWS.goats = {
 };
 /* And Sunnyfield (src/maps/sunny/index.js). */
 BORROWS.sunny = BORROWS.house;
+/* And Hamakaze Works (src/maps/factory/index.js), which also merges its
+ * batches with Sunnyfield's palette. */
+BORROWS.factory = { ...BORROWS.house, sunny: ['palette.js'] };
 /* And Kumoi Towers (src/maps/towers/index.js), which folds its batches
  * with Sunnyfield's palette merge. */
 BORROWS.towers = { ...BORROWS.house, sunny: ['palette.js'] };
 /* And Kazahana Plain (src/maps/kaza/index.js), which takes Sunnyfield's
  * palette merge and nothing else of it. */
 BORROWS.kaza = { ...BORROWS.house, sunny: ['palette.js'] };
+/* And Shiokaze Point (src/maps/shiokaze/index.js), which merges its colours
+ * with Sunnyfield's palette merge. */
+BORROWS.shiokaze = { ...BORROWS.house, sunny: ['palette.js'] };
 /* And Tsukimi Danchi (src/maps/haikyo/index.js), which folds its batches
  * with Sunnyfield's palette. */
 BORROWS.haikyo = { ...BORROWS.house, sunny: ['palette.js'] };

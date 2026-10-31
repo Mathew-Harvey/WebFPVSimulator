@@ -46,9 +46,9 @@ import { qualityFor } from '../../render/quality.js';
 import { paintMaterial } from '../../art/stf.js';
 import { signAspect } from '../../art/partnermark.js';
 import { PARTNERS, MAP_ONLY_PARTNERS, PATRON_MAP_BRANDS, shownOn } from '../../partners/roster.js';
-import { W, D, wx, wz, worldAt, chunkOf, hash2 } from './frame.js';
+import { W, D, wx, wz, worldAt, chunkOf, hash2, setChunkCuts } from './frame.js';
 import {
-  centre, heightAt, nearest, HALF, BENCH, SUMMIT, GORGE, REST, TUNNEL,
+  centre, heightAt, nearest, roadPoint, HALF, BENCH, SUMMIT, GORGE, REST, TUNNEL,
 } from './route.js';
 import {
   ground, worldFloor, inGorge, lipsAt, GORGE_X0, FINE,
@@ -90,7 +90,7 @@ function groundMaterial(px, py, h, ny) {
 
 /* Ground triangles, filed by chunk and colour, each list a flat array of
  * world positions. */
-function addGrid(bins, g, skip, chunkFor) {
+function addGrid(bins, g, skip, chunkFor, pick) {
   const n = g.nx;
   const P = (i, j) => [g.x0 + i * g.step, g.y0 + j * g.step, g.h[j * n + i]];
   const put = (a, b, c) => {
@@ -111,7 +111,7 @@ function addGrid(bins, g, skip, chunkFor) {
     const nh = ux * vy - uy * vx;
     const len = Math.sqrt(nx * nx + nyp * nyp + nh * nh) || 1;
     const up = Math.abs(nh / len);
-    const m = groundMaterial(cx, cy, (a[2] + b[2] + c[2]) / 3, up);
+    const m = pick(groundMaterial(cx, cy, (a[2] + b[2] + c[2]) / 3, up));
     const ch = chunkFor(wx(cx), wz(cy));
     const key = `${ch}|${m}`;
     let list = bins.get(key);
@@ -139,12 +139,18 @@ function addGrid(bins, g, skip, chunkFor) {
   }
 }
 
-function drawMountain(kit) {
+/* On Low the ground keeps five colours rather than seven: the shoulder
+ * takes the grass's and bare rock the cutting's, two draw calls fewer in
+ * every chunk. */
+const LOW_GROUND = { tgVerge: 'tgGrass', tgRock: 'tgCut' };
+
+function drawMountain(kit, low) {
   const { fine, far } = ground();
   const bins = new Map();
-  addGrid(bins, fine, (x, y) => inGorge(x, y), chunkOf);
+  const pick = low ? (m) => LOW_GROUND[m] ?? m : (m) => m;
+  addGrid(bins, fine, (x, y) => inGorge(x, y), chunkOf, pick);
   const inside = (x, y) => x > FINE.x0 + 8 && x < FINE.x1 - 8 && y > FINE.y0 + 8 && y < FINE.y1 - 8;
-  addGrid(bins, far, inside, () => 'tgFar');
+  addGrid(bins, far, inside, () => 'tgFar', pick);
   for (const b of bins.values()) {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(b.pos, 3));
@@ -396,7 +402,10 @@ function drawRound(kit, B, low) {
 
 /* The trees: a cedar is a trunk under three cones, a maple a trunk under
  * four red clumps, a ginkgo a gold column of three. */
-function drawTrees(kit, trees) {
+/* On Low and Medium every tree takes one tone of its kind: each tone is a
+ * draw call in every chunk it stands in, and the widest views from the air
+ * were a sixth over the town's calls on Low with three of each. */
+function drawTrees(kit, trees, tones = 3, low = false) {
   const cone = new THREE.ConeGeometry(1, 1, 7, 1);
   cone.translate(0, 0.5, 0);
   const m4 = new THREE.Matrix4();
@@ -416,7 +425,7 @@ function drawTrees(kit, trees) {
         q.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, t.k * 0.7 + k);
         s.set(r, h, r);
         m4.compose(v, q, s);
-        kit.add(`tgCedar${(t.tone + k) % 3}`, cone, m4.clone());
+        kit.add(`tgCedar${tones > 1 ? (t.tone + k) % 3 : 0}`, cone, m4.clone());
       });
       continue;
     }
@@ -436,9 +445,12 @@ function drawTrees(kit, trees) {
       const a = t.k * 1.7 + k * 3.14;
       const ox = Math.cos(a) * r * 0.34;
       const oz = Math.sin(a) * r * 0.34;
-      kit.leaf(`tgMaple${(t.tone + k) % 3}`, [x + ox, cy, z + oz], r * 0.72, r * 0.48, [0, a, 0]);
+      kit.leaf(`tgMaple${tones > 1 ? (t.tone + k) % 3 : 0}`, [x + ox, cy, z + oz], r * 0.72, r * 0.48, [0, a, 0]);
     }
-    kit.leaf(`tgMaple${(t.tone + 2) % 3}`, [x, cy + r * 0.45, z], r * 0.6, r * 0.46, [0, t.k, 0]);
+    /* The crown's top clump is High's and Medium's; Low's maples are two. */
+    if (!low) {
+      kit.leaf(`tgMaple${tones > 1 ? (t.tone + 2) % 3 : 1}`, [x, cy + r * 0.45, z], r * 0.6, r * 0.46, [0, t.k, 0]);
+    }
   }
 }
 
@@ -474,23 +486,56 @@ function markSpots() {
 }
 
 /* ------------------------------------------------------------------ */
+/* The title screen's flight and the picker's picture                  */
+/* ------------------------------------------------------------------ */
+
+/*
+ * THE ATTRACT FLIGHT follows the road round, twelve metres over it, and
+ * three metres over it through the tunnel and for thirty metres either side
+ * of the mouths, eased between the two. The built map's own orbit is a
+ * circle at a few metres over the plot's zero, which on a mountain is
+ * inside the mountain.
+ */
+function roadLoop() {
+  const line = centre();
+  const out = [];
+  const LOW = 3;
+  const HIGH = 12;
+  const EASE = 30;
+  for (let s = 0; s < line.length; s += 8) {
+    const p = roadPoint(s);
+    const off = p.x < TUNNEL.x0 ? TUNNEL.x0 - p.x : (p.x > TUNNEL.x1 ? p.x - TUNNEL.x1 : 0);
+    const near = Math.abs(p.y - TUNNEL.y) < 2 && off < EASE * 2;
+    const t = near ? Math.max(0, Math.min(1, (off - EASE) / EASE)) : 1;
+    const [x, y, z] = worldAt(p.x, p.y, p.h + LOW + (HIGH - LOW) * t * t * (3 - 2 * t));
+    out.push({ x, y, z });
+  }
+  return out;
+}
+
+/* The picker's and the board's picture: from over the valley, the red
+ * bridge in front, the gorge either way and the hairpins climbing behind. */
+const CARD_LENS = { eye: [125, 40, 185], at: [55, 2, 75] };
 
 export async function buildMap(shell, onProgress, options) {
-  const low = qualityFor(options && options.quality).id === 'low';
+  const qid = qualityFor(options && options.quality).id;
+  const low = qid === 'low';
+  const high = qid !== 'low' && qid !== 'medium';
+  setChunkCuts(low ? 4 : 5);
   const B = places();
   const parts = low ? B.P.list.filter((p) => !(p.fine && !p.solid)) : B.P.list;
   const extra = {
     el: { id: 'touge', type: 'touge' },
     parts,
     draw: (kit) => {
-      drawMountain(kit);
+      drawMountain(kit, low);
       drawGorge(kit);
       drawRoad(kit, low);
       drawRails(kit, B.rails);
       drawTurned(kit, B.turned, low);
       drawPrisms(kit, B.prisms, low);
       drawRound(kit, B, low);
-      drawTrees(kit, B.trees);
+      drawTrees(kit, B.trees, high ? 3 : 1, low);
     },
     floor: worldFloor,
     chunkOf: (x, z) => chunkOf(x, z),
@@ -501,6 +546,8 @@ export async function buildMap(shell, onProgress, options) {
   });
   map.id = 'touge';
   map.source = 'touge';
+  map.attract = { path: roadLoop(), speed: 12, lookAhead: 24, aimDrop: 3 };
+  map.cardLens = CARD_LENS;
   /* The built map's level ground, the kerb and verge round its edge and
    * its road mesh: the mountain and the road above stand in for all of
    * them. */

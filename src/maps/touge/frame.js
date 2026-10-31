@@ -54,8 +54,16 @@ export function worldAt(x, y, h = 0) {
  * the far ground outside it. Three by three was fewer draw calls, but a
  * chunk 153 m across is in view from nearly anywhere, and from inside the
  * tunnel the whole map was being drawn behind its walls. */
-const CUTS = 5;
-const CUT = W / CUTS;
+let CUTS = 5;
+let CUT = W / CUTS;
+
+/* Low files the plot in three by three: a chunk is a draw call per colour
+ * in it, and on Low, whose fog is shorter, the calls cost more than the
+ * cull saves. Set before the map is drawn (./index.js). */
+export function setChunkCuts(n) {
+  CUTS = n;
+  CUT = W / CUTS;
+}
 export function chunkOf(x, z) {
   const a = x + W / 2;
   const b = D / 2 - z;

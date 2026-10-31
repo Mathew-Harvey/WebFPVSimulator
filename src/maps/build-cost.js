@@ -92,4 +92,11 @@ export const MAP_BUILD_MS = {
   /* Momiji Pass (src/maps/touge/): a mountain of ground, a forest and a
    * loop of road. An estimate until it is measured. */
   touge: 3000,
+  /* Bakuon Dome (src/maps/dome/): a hall of a few thousand boxes and
+   * capsules, its streets and four trucks. An estimate until it is
+   * measured. */
+  dome: 2400,
+  /* Kodama Onsen (src/maps/cedar/): three thousand cedars, an inn and a
+   * shrine. An estimate until it is measured. */
+  cedar: 3000,
 };

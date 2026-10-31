@@ -272,6 +272,37 @@ export const MAPS = [
     buildMs: MAP_BUILD_MS.touge,
     load: () => import('./touge/index.js'),
   },
+  /*
+   * BAKUON DOME, on the owner's ask of 31 October 2026 (a stadium map
+   * with monster trucks, "the maps to feel like manga comic like the
+   * town"): a dirt floored dome with four trucks running jumps under a
+   * trussed roof (src/maps/dome/). Built by the built map's pipeline and
+   * flown on the five inch at life size; off the board like the houses.
+   */
+  {
+    id: 'dome',
+    name: 'Bakuon Dome',
+    mode: 'freestyle',
+    note: 'A dirt floored dome with four monster trucks jumping cars and buses under its roof. Chase them over the ramps, thread the roof trusses and strafe the stands.',
+    buildMs: MAP_BUILD_MS.dome,
+    load: () => import('./dome/index.js'),
+  },
+  /*
+   * KODAMA ONSEN, on the owner's ask of 31 October 2026 (a cedar forest
+   * with an abandoned area, in the town's manga look): an abandoned hot
+   * spring inn in a Japanese cedar plantation, with a shrine up the hill
+   * behind it, our own place built from the real kind of place
+   * (src/maps/cedar/). Life size and flown on the five inch, built by the
+   * built map's pipeline and, like the houses, off the board.
+   */
+  {
+    id: 'cedar',
+    name: 'Kodama Onsen',
+    mode: 'freestyle',
+    note: 'An abandoned hot spring inn in a cedar forest, flown on a five inch: rows of cedars to slalom, the inn and its bathhouse, the storehouse, a brick chimney, a line of torii and a tunnel of them, the stream and its bridges, and the shrine up the steps.',
+    buildMs: MAP_BUILD_MS.cedar,
+    load: () => import('./cedar/index.js'),
+  },
 ];
 
 /* The house's document id (src/maps/house/yard.js), here so the stamps can
@@ -301,6 +332,11 @@ export const BALL_DOC_ID = 'trk-ba11b0a1';
 export const MOTO_DOC_ID = 'trk-3c07e5a1';
 /* Momiji Pass's (src/maps/touge/yard.js), the same way. */
 export const TOUGE_DOC_ID = 'trk-70a9e5a1';
+/* Bakuon Dome's (src/maps/dome/yard.js), the same way. */
+export const DOME_DOC_ID = 'trk-b4d0e0e1';
+
+/* Kodama Onsen's (src/maps/cedar/yard.js), the same way. */
+export const CEDAR_DOC_ID = 'trk-ced4a0e5';
 
 export function mapById(id) {
   return MAPS.find((m) => m.id === id) ?? MAPS[0];

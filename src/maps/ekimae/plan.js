@@ -784,7 +784,7 @@ function carPark(T) {
    * in a solid box the size of its body, which is not drawn. */
   const r = rng(77);
   const kinds = ['kei', 'hatch', 'sedan', 'wagon', 'minivan', 'keivan'];
-  const colours = ['white', 'silver', 'red', 'blue', 'black', 'cream', 'green'];
+  const colours = ['white', 'pearl', 'silver', 'wine', 'navy', 'charcoal', 'cream', 'mint'];
   for (let d = 0; d <= decks; d += 1) {
     const h = d * floor;
     for (let by = y0 + 4.3; by < y1 - 4; by += 2.6) {
@@ -795,7 +795,8 @@ function carPark(T) {
         if (d === decks && by > y1 - 10) {
           continue;
         }
-        if (!r.chance(d === decks ? 0.35 : 0.6)) {
+        /* A few a deck: each is about three thousand triangles. */
+        if (!r.chance(d === decks ? 0.15 : 0.22)) {
           continue;
         }
         const kind = r.pick(kinds);

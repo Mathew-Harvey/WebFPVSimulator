@@ -97,12 +97,12 @@ function sizeOf(r, style, depthMax, tall) {
     return { width: r.int(6, 10), depth: Math.min(depthMax, r.int(9, 12)), floors: r.int(2, 4) };
   }
   if (style === 'office') {
-    return { width: r.int(12, 18), depth: Math.min(depthMax, r.int(11, 16)), floors: r.int(tall ? 6 : 4, tall ? 10 : 7) };
+    return { width: r.int(12, 16), depth: Math.min(depthMax, r.int(11, 14)), floors: r.int(tall ? 5 : 4, tall ? 8 : 6) };
   }
   if (style === 'warehouse') {
     return { width: r.int(18, 30), depth: Math.min(depthMax, r.int(14, 22)), floors: r.int(1, 2) };
   }
-  return { width: r.int(12, 18), depth: Math.min(depthMax, r.int(8, 10)), floors: r.int(3, tall ? 8 : 6) };
+  return { width: r.int(12, 18), depth: Math.min(depthMax, r.int(8, 10)), floors: r.int(3, tall ? 6 : 5) };
 }
 
 /*
@@ -147,7 +147,6 @@ const FRONTS = [
   /* north of the north street, and a second row behind it */
   { face: 's', at: 238.5, a: 2, b: 314, depth: 13, mix: 'shops' },
   { face: 's', at: 238.5, a: 332, b: 398, depth: 14, mix: 'tall', tall: true },
-  { face: 'n', at: 298, a: 2, b: 398, depth: 18, mix: 'tall', tall: true },
   /* south of the expressway, along the south carriageway */
   { face: 'n', at: 26.5, a: 2, b: 398, depth: 20, mix: 'harbour' },
 ];
@@ -177,13 +176,13 @@ function footprints(layout) {
     let lo;
     let hi;
     if (p.t === 'box') {
-      if (p.lo[1] > 12) {
+      if (p.lo[1] > 3) {
         continue;
       }
       lo = p.lo;
       hi = p.hi;
     } else {
-      if (Math.min(p.a[1], p.b[1]) > 12) {
+      if (Math.min(p.a[1], p.b[1]) > 3) {
         continue;
       }
       lo = [Math.min(p.a[0], p.b[0]) - p.r, 0, Math.min(p.a[2], p.b[2]) - p.r];

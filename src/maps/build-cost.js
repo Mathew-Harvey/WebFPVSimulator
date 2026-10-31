@@ -92,6 +92,10 @@ export const MAP_BUILD_MS = {
   /* Ridgeline MX (src/maps/moto/): a plot of trees, a track of mounds and
    * berms and ten bikes. An estimate until it is measured. */
   moto: 2400,
+  /* Kazesuna Dunes (src/maps/dunes/): a kilometre of sand on a 4 m grid,
+   * two hundred and thirty pines and the coast's buildings. An estimate
+   * until it is measured. */
+  dunes: 2600,
   /* Kamome Wharf (src/maps/dock/): a container terminal at night, three
    * blocks of stacks, three cranes, a ship. An estimate until it is
    * measured. */
@@ -112,6 +116,9 @@ export const MAP_BUILD_MS = {
   /* Kodama Onsen (src/maps/cedar/): three thousand cedars, an inn and a
    * shrine. An estimate until it is measured. */
   cedar: 3000,
+  /* Momiji Pass (src/maps/touge/): a mountain of ground, a forest and a
+   * loop of road. An estimate until it is measured. */
+  touge: 3000,
   /* Hoshino Shoji (src/maps/office/), the warehouse's pipeline with three
    * floors of furniture. An estimate until it is measured. */
   office: 2400,
@@ -134,4 +141,7 @@ export const MAP_BUILD_MS = {
    * and a village, a castle and a harbour. An estimate until it is
    * measured. */
   hotaru: 2800,
+  /* Tonbo Fest (src/maps/fest/): the levee, the railway and the festival
+   * on a river ground. An estimate until it is measured. */
+  fest: 2600,
 };

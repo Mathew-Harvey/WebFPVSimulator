@@ -497,7 +497,7 @@ const AXIS_X = new THREE.Vector3(1, 0, 0);
  * alone. The entry is written out because it has moved with the directory:
  * it was three before looks.js came and four before egg.js, and with no
  * entry then the bar sat at 75 percent until the import resolved. */
-const MAP_MODULE_COUNT = { field: 1, city: 72, custom: 1, built: 5, house: 3, heads: 4, bardwell: 4, warehouse: 3, goats: 9, sunny: 12, factory: 9, drift: 3, towers: 11, alps: 6, office: 4, kaza: 10, sana: 6, shiokaze: 10, fmx: 8, airfield: 9 };
+const MAP_MODULE_COUNT = { field: 1, city: 72, custom: 1, built: 5, house: 3, heads: 4, bardwell: 4, warehouse: 3, goats: 9, sunny: 12, factory: 9, drift: 3, towers: 11, alps: 6, office: 4, kaza: 10, sana: 6, shiokaze: 10, fmx: 8, airfield: 9, dunes: 5 };
 /* Kamome Wharf (src/maps/dock/): its ten. */
 MAP_MODULE_COUNT.dock = 10;
 /* Where a map's modules live, so the loading bar can count them. Data, not a
@@ -521,10 +521,12 @@ const MAP_MODULE_PREFIX = {
   sunny: '/src/maps/sunny/',
   factory: '/src/maps/factory/',
   drift: '/src/maps/drift/',
+  dunes: '/src/maps/dunes/',
   dock: '/src/maps/dock/',
   alps: '/src/maps/alps/',
   shiokaze: '/src/maps/shiokaze/',
   cedar: '/src/maps/cedar/',
+  touge: '/src/maps/touge/',
   office: '/src/maps/office/',
   kaza: '/src/maps/kaza/',
   sana: '/src/maps/sana/',
@@ -6811,6 +6813,8 @@ export async function boot({ loading, bootStart, mapId }) {
    * the same way. */
   const MARK_MAP_WORDS = {
     starter: 'yard', injected: 'board', canvas: 'own', house: 'house', heads: 'heads', bardwell: 'bardwell', warehouse: 'warehouse', goats: 'goats', sunny: 'sunny', factory: 'factory', office: 'office', kaza: 'kaza', sana: 'sana', shiokaze: 'shiokaze',
+    airfield: 'airfield',
+    dunes: 'dunes',
     airfield: 'airfield', hotaru: 'hotaru',
   };
   function markMapWord(mark) {
@@ -9229,6 +9233,14 @@ export async function boot({ loading, bootStart, mapId }) {
       };
       return;
     }
+    /* Nor for Tonbo Fest: FEST_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'fest') {
+      notice = {
+        text: 'The board keeps no runs for Tonbo Fest, so its runs stay here.',
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
     /* Nor for Thomas More's Shop: WAREHOUSE_OFF_BOARD in src/ui/ui.js. */
     if (view.id === 'warehouse') {
       notice = {
@@ -9241,6 +9253,14 @@ export async function boot({ loading, bootStart, mapId }) {
     if (view.id === 'goats') {
       notice = {
         text: 'The board keeps no runs for 90%er goat herding, so its runs stay here.',
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
+    /* Nor for Kazesuna Dunes: DUNES_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'dunes') {
+      notice = {
+        text: 'The board keeps no runs for Kazesuna Dunes, so its runs stay here.',
         untilMs: performance.now() + 4200,
       };
       return;
@@ -9313,6 +9333,14 @@ export async function boot({ loading, bootStart, mapId }) {
     if (view.id === 'cedar') {
       notice = {
         text: 'The board keeps no runs for Kodama Onsen, so its runs stay here.',
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
+    /* Nor for Momiji Pass: TOUGE_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'touge') {
+      notice = {
+        text: 'The board keeps no runs for Momiji Pass, so its runs stay here.',
         untilMs: performance.now() + 4200,
       };
       return;

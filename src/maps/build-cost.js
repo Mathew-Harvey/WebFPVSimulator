@@ -102,6 +102,9 @@ export const MAP_BUILD_MS = {
    * capsules, its streets and four trucks. An estimate until it is
    * measured. */
   dome: 2400,
+  /* Shiokaze Point (src/maps/shiokaze/): the island, five hotel blocks and
+   * the streets behind them. An estimate until it is measured. */
+  shiokaze: 2400,
   /* Kodama Onsen (src/maps/cedar/): three thousand cedars, an inn and a
    * shrine. An estimate until it is measured. */
   cedar: 3000,

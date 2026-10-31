@@ -34,6 +34,7 @@
     "check:moto": "node scripts/moto-check.js",
     "check:alps": "node scripts/alps-check.js",
     "check:dome": "node scripts/dome-check.js",
+    "check:shiokaze": "node scripts/shiokaze-check.js",
     "check:wall": "node scripts/wall-check.js",
     "check:plant": "node scripts/plant-golden.js",
     "check:plant:selftest": "node scripts/plant-golden.js --selftest",

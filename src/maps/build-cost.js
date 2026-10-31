@@ -93,4 +93,7 @@ export const MAP_BUILD_MS = {
    * two hundred and thirty pines and the coast's buildings. An estimate
    * until it is measured. */
   dunes: 2600,
+  /* Kodama Onsen (src/maps/cedar/): three thousand cedars, an inn and a
+   * shrine. An estimate until it is measured. */
+  cedar: 3000,
 };

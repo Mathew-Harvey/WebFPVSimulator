@@ -189,9 +189,7 @@ function tunnel(T) {
     }
   }
   /* Lit runners along the tunnel's floor, either side. */
-  T.dress(() => T.wide(() => {
-    T.paint('kzStone', cx - Tn.half - 0.3, Tn.y0, 0.006, cx + Tn.half + 0.3, Tn.y1, 0.014);
-  }));
+  T.paint('kzStone', cx - Tn.half - 0.3, Tn.y0, 0.006, cx + Tn.half + 0.3, Tn.y1, 0.014);
   for (const sx of [-1, 1]) {
     string(T, 'kzBulbIce', [cx + sx * (Tn.half - 0.2), Tn.y0 + 0.5, 0.05], [cx + sx * (Tn.half - 0.2), Tn.y1 - 0.5, 0.05], 0, 0.6);
   }
@@ -367,15 +365,83 @@ function kitchenCar(T, px, py, colour, sign) {
   T.take(px, py, 3);
 }
 
+/* The snow castle on the plaza, the kind a winter festival's volunteers
+ * pack from trucked snow: two blocks, a gate through the middle wide
+ * enough to fly, round towers at the corners with red caps. */
+export const CASTLE = { px: 515, py: 386, half: 7, d: 3, wall: 4.2, gate: 1.1, gateH: 2.8 };
+
+/* The plaza: the paving ringed round the tree, the snow banked at its
+ * edges with ice lanterns along them, the snow castle and a snow owl. */
+function plaza(T) {
+  const C = CASTLE;
+  for (const [m, rr, h] of [['kzSnow', 9.5, 0.03], ['kzConcrete', 8.2, 0.035], ['kzStone', 6.4, 0.04], ['kzGravel', 4.6, 0.045]]) {
+    T.disc(m, TREE.px, TREE.py, rr, 0.014, h, 32);
+  }
+  /* The banks: the snow the plough pushed off the paving. */
+  for (const [ya, yb] of [[302, 300.6], [416, 417.4]]) {
+    T.prism('kzSnow', 'x', [[ya, 0], [(ya + yb) / 2, 0.55], [yb, 0]], 488, 612);
+  }
+  T.prism('kzSnow', 'y', [[612, 0], [612.7, 0.5], [613.4, 0]], 302, 416);
+  T.dress(() => T.wide(() => {
+    for (let x = 490; x < 612; x += 3) {
+      T.bead('kzBulbIce', x, 301.3, 0.62, 0.11);
+      T.bead('kzBulbIce', x, 416.7, 0.62, 0.11);
+    }
+    for (let y = 305; y < 416; y += 3) {
+      T.bead('kzBulbIce', 612.7, y, 0.58, 0.11);
+    }
+  }));
+  /* The castle: two blocks either side of the gate, the lintel over it,
+   * battlements (drawn only, so they make no slot), and four towers. */
+  const y0 = C.py - C.d;
+  const y1 = C.py + C.d;
+  T.box('kzSnow', C.px - C.half, y0, 0, C.px - C.gate, y1, C.wall, { name: 'snow castle' });
+  T.box('kzSnow', C.px + C.gate, y0, 0, C.px + C.half, y1, C.wall, { name: 'snow castle' });
+  T.box('kzSnow', C.px - C.gate, y0, C.gateH, C.px + C.gate, y1, C.wall, { name: 'snow castle' });
+  T.dress(() => {
+    for (let x = C.px - C.half + 0.3; x < C.px + C.half - 0.5; x += 1.2) {
+      for (const y of [y0, y1 - 0.5]) {
+        T.box('kzSnow', x, y, C.wall, x + 0.6, y + 0.5, C.wall + 0.55, { solid: false });
+      }
+    }
+    T.box('kzVermilion', C.px - 0.9, y0 - 0.06, C.gateH + 0.3, C.px + 0.9, y0, C.gateH + 1.0, { solid: false });
+  });
+  for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    const x = C.px + sx * C.half;
+    const y = C.py + sy * C.d;
+    T.post('kzSnow', x, y, 0, 5.2, 1.3, { name: 'snow tower' });
+    T.cone('kzVermilion', x, y, 6.2, 1.6, 2.4, 10);
+  }
+  T.take(C.px, C.py, C.half + 2);
+  /* The snow owl, Hokkaido's own, on a plinth, its eyes lit. */
+  const ox = 576;
+  const oy = 384;
+  T.box('kzSnow', ox - 2, oy - 2, 0, ox + 2, oy + 2, 0.8, { name: 'plinth' });
+  T.post('kzSnow', ox, oy, 2.1, 3.0, 1.35, { name: 'snow owl' });
+  T.ball('kzSnow', ox, oy, 4.7, 1.05);
+  T.cone('kzSnow', ox - 0.6, oy, 5.5, 0.32, 0.8, 8);
+  T.cone('kzSnow', ox + 0.6, oy, 5.5, 0.32, 0.8, 8);
+  T.hidden(ox - 0.9, oy - 0.9, 3.9, ox + 0.9, oy + 0.9, 5.6, 'wall', 'snow owl');
+  T.bead('kzBulbGold', ox - 0.38, oy - 0.95, 4.85, 0.16);
+  T.bead('kzBulbGold', ox + 0.38, oy - 0.95, 4.85, 0.16);
+  T.cone('kzOrange', ox, oy - 1.0, 4.4, 0.12, 0.35, 6);
+  T.take(ox, oy, 3);
+}
+
 export function market(T) {
   const r = rng(5207);
   const { x0, x1, y0, y1 } = MARKET;
-  /* The market's ground: packed snow and gravel, and the lane's paving. */
-  T.dress(() => T.wide(() => {
-    T.paint('kzSnow', x0, y0, 0.004, x1, y1, 0.009);
-    T.paint('kzStone', LANE.x0, ROWS.y0 - 4, 0.009, LANE.x1, 300, 0.014);
-    T.paint('kzStone', 488, 302, 0.009, 612, 416, 0.014);
-  }));
+  /* The market's ground: packed snow and gravel, and the lane's paving.
+   * Drawn on every preset, Low too: three boxes, and without them the
+   * stalls stand on summer grass. */
+  T.paint('kzSnow', x0, y0, 0.004, x1, y1, 0.009);
+  T.paint('kzStone', LANE.x0, ROWS.y0 - 4, 0.009, LANE.x1, 300, 0.014);
+  /* The plaza stays snow, swept into paths: the lane on north to the
+   * kitchen cars and one across from the stage to the carousel. */
+  T.paint('kzStone', LANE.x0, 300, 0.009, LANE.x1, 416, 0.014);
+  T.paint('kzStone', 496, TREE.py - 3, 0.009, 590, TREE.py + 3, 0.014);
+  T.paint('kzStone', 498, 400, 0.009, 594, 416, 0.014);
+  plaza(T);
   gate(T);
   tunnel(T);
   /* The two rows, each group's three stalls, and the strings across the

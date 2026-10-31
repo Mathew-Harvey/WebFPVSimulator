@@ -24,7 +24,7 @@
 
 import { Town, worldAt, wx, wz, W, D, chunkOf } from './frame.js';
 import { festival, PADS, BOARDS, BOARD, balloonGates, topBasket, YAGURA } from './festival.js';
-import { market, TUNNEL, LANE, ROWS, STALL, groupY, STAGE, CAROUSEL } from './market.js';
+import { market, TUNNEL, LANE, ROWS, STALL, groupY, STAGE, CAROUSEL, CASTLE } from './market.js';
 import { farm, BARN, SILOS, VINYL, TORII, BREAKS, ROAD } from './farm.js';
 import { far, VIADUCT, archX, archHalf, TURBINES, TURBINE_YAW } from './far.js';
 import { partsOf } from '../../props/catalog.js';
@@ -157,6 +157,7 @@ export function kazaGaps() {
     { ...stallGap(7, (LANE.x1 + LANE.x1 + STALL.d) / 2), name: 'BACK OF THE STALLS', points: 500 },
     { name: 'STAGE', px: (STAGE.x0 + STAGE.x1) / 2 + 0.5, py: STAGE.y0 + 0.4, deg: 90, w: STAGE.x1 - STAGE.x0 - 2.2, h0: STAGE.deck + M, h1: STAGE.roof - 1.2 - M, points: 250 },
     { name: 'CAROUSEL', px: CAROUSEL.px, py: CAROUSEL.py - 4.1, deg: 90, w: 2.0, h0: 0.45 + 1.0, h1: CAROUSEL.roof - M, points: 500 },
+    { name: 'SNOW CASTLE', px: CASTLE.px, py: CASTLE.py - CASTLE.d, deg: 90, w: 2 * CASTLE.gate - 2 * M, h0: M, h1: CASTLE.gateH - M, points: 500 },
     { name: 'YAGURA', px: YAGURA.px, py: YAGURA.py, deg: 90, w: 2 * yh - 2 * M - 0.4, h0: 0.8, h1: YAGURA.deck - M, points: 250 },
     { name: 'BARN RUN', px: (BARN.x0 + BARN.x1) / 2, py: BARN.y0 + 0.4, deg: 90, w: BARN.door - 2 * M, h0: M, h1: BARN.door - M, points: 500 },
     { name: 'SILO SPLIT', px: (SILOS.px[0] + SILOS.px[1]) / 2, py: SILOS.py, deg: 90, w: SILOS.px[1] - SILOS.px[0] - 2 * SILOS.r - 2 * M, h0: M, h1: SILOS.h - M, points: 1000 },

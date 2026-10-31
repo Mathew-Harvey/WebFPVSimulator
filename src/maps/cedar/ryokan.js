@@ -66,7 +66,7 @@ export const BATH = { x0: 90, x1: 110, y0: 120, y1: 132, top: 5.0, lantern: { y0
 /* The outdoor bath behind its fence. */
 export const ROTEN = { x0: 112, x1: 132, y0: 116, y1: 136, px: 122, py: 126, r: 5.4 };
 /* The storehouse, and its two open shutters. */
-export const KURA = { x0: 60, x1: 66, y0: 95, y1: 103, top: 6.2, win: { x0: 62.25, x1: 63.75, h0: 3.7, h1: 5.1 } };
+export const KURA = { x0: 60, x1: 66, y0: 95, y1: 103, top: 6.2, win: { x0: 62.15, x1: 63.85, h0: 3.6, h1: 5.25 } };
 /* The boiler house; the chimney is the document's (./yard.js). */
 export const BOILER = { x0: 76, x1: 86, y0: 124, y1: 132, top: 3.8 };
 export const CHIMNEY = { px: 81, py: 138.6, height: 21, radius: 2.4, door: 2.6 };
@@ -74,7 +74,10 @@ export const CHIMNEY = { px: 81, py: 138.6, height: 21, radius: 2.4, door: 2.6 }
 export const SHELTER = { x0: 93.2, x1: 95.6, y0: 17, y1: 22.5 };
 /* The road up, the car park, and the pipe. */
 export const ROAD = { x0: 85.5, x1: 90.5, y1: 38 };
-export const CARPARK = { x0: 48, x1: 121, y0: 36, y1: 88 };
+/* The car park is an L: gravel from island to y1 across the whole width,
+ * and from y0 to island east of east, the road's mouth and the start. The
+ * corner between them stays cedar. */
+export const CARPARK = { x0: 48, x1: 121, y0: 36, y1: 88, island: 62, east: 84 };
 export const PIPE = { x: 88, y0: 128, y1: 166, x1: 152, h: 1.5, r: 0.16 };
 
 const DOOR_H = 2.6;
@@ -693,18 +696,27 @@ function roadAndCarpark(T) {
   T.post('cdVermilionFade', 92.4, 36.6, 0, 2.9, 0.045, { name: 'mirror pole' });
   T.cyl('cdVermilionFade', [92.2, 36.45, 3.2], [92.0, 36.32, 3.2], 0.42, 14);
   T.cyl('cdGlass', [92.0, 36.32, 3.2], [91.96, 36.3, 3.2], 0.37, 14, null, true);
-  /* The car park's gravel, its old bays, and the moss coming through. */
-  T.paint('cdGravel', C.x0, C.y0, 0, C.x1, C.y1, 0.02);
+  /* The car park's gravel, an L round the stand of cedars left in its
+   * south west corner, its old bays, and the moss coming through. */
+  T.paint('cdGravel', C.x0, C.island, 0, C.x1, C.y1, 0.02);
+  T.paint('cdGravel', C.east, C.y0, 0, C.x1, C.island, 0.02);
+  /* The island's kerb, low concrete, so the stand reads as kept. */
+  T.box('cdConcrete', C.x0 + 1, C.island - 0.9, 0, C.east - 1, C.island - 0.6, 0.18, { name: 'kerb' });
+  T.box('cdConcrete', C.east - 1.3, C.y0 + 1, 0, C.east - 1, C.island - 0.6, 0.18, { name: 'kerb' });
+  /* Wheel stops along the bays, a row of short concrete bars. */
+  for (let px = 56.3; px <= 92; px += 2.6) {
+    T.box('cdConcrete', px + 0.45, 82.0, 0, px + 1.85, 82.25, 0.12, { name: 'wheel stop', fine: true });
+  }
   for (let px = 56; px <= 92; px += 2.6) {
     T.paint('cdLine', px, 76.5, 0.02, px + 0.1, 81.5, 0.026, true);
   }
   for (let i = 0; i < 26; i += 1) {
     const x = R.range(C.x0 + 1, C.x1 - 4);
-    const y = R.range(C.y0 + 1, C.y1 - 3);
+    const y = R.range(C.island + 1, C.y1 - 3);
     T.paint(i % 3 === 0 ? 'cdMossDeep' : 'cdMoss', x, y, 0.02, x + R.range(0.8, 3.4), y + R.range(0.6, 2.4), 0.03, true);
   }
   /* The path from the car park's west side to the approach. */
-  T.paint('cdPaving', 28.5, 40.5, 0, C.x0, 44.5, 0.025);
+  T.paint('cdPaving', 28.5, 40.5, 0, C.east, 44.5, 0.025);
   /* The sign at the car park's mouth: two posts, a board, the hot spring
    * mark and a column of strokes. */
   T.post('cdTimberDark', 95.6, 40.4, 0, 3.4, 0.07, { name: 'sign post' });
@@ -748,18 +760,31 @@ function pipe(T) {
 /* The whole                                                             */
 /* -------------------------------------------------------------------- */
 
+/* The steam off the open bath, a few round puffs over the water, the way
+ * a manga panel letters heat: drawn only, never in the way. */
+function steam(T) {
+  const R = ROTEN;
+  const puffs = [[-1.6, 0.8, 1.3, 1.0], [1.2, -0.6, 1.6, 1.2], [0.2, 1.9, 2.4, 0.8], [-0.6, -1.8, 2.1, 0.9], [2.4, 1.5, 2.8, 0.6]];
+  for (const [dx, dy, h, r] of puffs) {
+    T.ball('cdSteam', R.px + dx, R.py + dy, h, r, true);
+  }
+}
+
 export function buildInn(T) {
   mainBuilding(T);
   watari(T);
   bathhouse(T);
   roten(T);
+  steam(T);
   kura(T);
   boiler(T);
   shelter(T);
   roadAndCarpark(T);
   pipe(T);
   /* What the forest keeps out of. */
-  T.clearing(CARPARK.x0, CARPARK.y0, CARPARK.x1, CARPARK.y1, 1);
+  T.clearing(CARPARK.x0, CARPARK.island, CARPARK.x1, CARPARK.y1, 1);
+  T.clearing(CARPARK.east, CARPARK.y0, CARPARK.x1, CARPARK.island, 1);
+  T.clearing(28.5, 40.5, CARPARK.east, 44.5, 1.2);
   T.clearing(ROAD.x0, 0, ROAD.x1, ROAD.y1, 1.5);
   T.clearing(MAIN.x0 - 2, 86, MAIN.x1 + 3, MAIN.y1 + 2, 1);
   T.clearing(BATH.x0 - 2, MAIN.y1, ROTEN.x1, ROTEN.y1, 1.5);

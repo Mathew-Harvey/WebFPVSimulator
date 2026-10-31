@@ -288,7 +288,14 @@ function shrine(T) {
   T.box('cdShrineWood', Hd.x0, Hd.y0, base, Hd.x1, Hd.y1, Hd.floor, { name: 'haiden floor' });
   T.box('cdStone', Hd.x0 + 5, Hd.y0 - 1.6, base, Hd.x1 - 5, Hd.y0, base + 0.45, { name: 'haiden step' });
   T.box('cdStone', Hd.x0 + 5.6, Hd.y0 - 0.8, base + 0.45, Hd.x1 - 5.6, Hd.y0, Hd.floor, { name: 'haiden step' });
-  for (let px = Hd.x0 + 0.2; px <= Hd.x1; px += 2.6) {
+  /* The posts in bays of 2.6 m either side of the middle, so the middle
+   * bay, front and back, is the way through and has no post in it. */
+  const mid0 = (Hd.x0 + Hd.x1) / 2;
+  const posts = [Hd.x0 + 0.2, Hd.x1 - 0.2];
+  for (let d = 1.3; d < (Hd.x1 - Hd.x0) / 2 - 1; d += 2.6) {
+    posts.push(mid0 - d, mid0 + d);
+  }
+  for (const px of posts) {
     for (const py of [Hd.y0 + 0.2, Hd.y1 - 0.2]) {
       T.post('cdShrineWood', px, py, Hd.floor, Hd.eave, 0.15, { name: 'haiden post' });
     }
@@ -425,9 +432,32 @@ function forestry(T) {
   T.cap('cdSignRed', [F.ex0 + 6, F.ey1 + 0.4, 1.0], [F.ex0 + 8.5, F.ey1 + 3.6, 1.0], 0.05, { draw: false, name: 'gate bar', kind: 'pole' });
 }
 
+/* The forest floor where a pilot flies low: needle litter drifted along
+ * the approach's edges, and ferns on both banks of the stream, away from
+ * the bridges. Drawn only, and left off on Low. */
+function understorey(T) {
+  const R = rng(0xf3e7);
+  for (let i = 0; i < 22; i += 1) {
+    const side = i % 2 ? 1 : -1;
+    const x = SANDO.px + side * R.range(1.9, 4.5);
+    const y = R.range(SANDO.y0 + 2, STREAM.y0 - 3);
+    T.paint('cdLitter', x - R.range(0.4, 1.2), y, 0.02, x + R.range(0.4, 1.2), y + R.range(1, 3.5), 0.03, true);
+  }
+  const bridges = [[RED_BRIDGE.x0 - 2, RED_BRIDGE.x1 + 2], [FOREST_BRIDGE.x0 - 2, FOREST_BRIDGE.x1 + 2]];
+  for (let i = 0; i < 46; i += 1) {
+    const x = R.range(2, W - 2);
+    if (bridges.some(([a, b]) => x > a && x < b)) {
+      continue;
+    }
+    const y = i % 2 ? STREAM.y0 - R.range(0.7, 1.1) : STREAM.y1 + R.range(0.7, 1.1);
+    T.cone('cdFern', x, y, 0, R.range(0.45, 0.8), R.range(0.4, 0.7), 6, true);
+  }
+}
+
 export function buildShrine(T) {
   approach(T);
   stream(T);
+  understorey(T);
   terrace(T);
   shrine(T);
   forestry(T);

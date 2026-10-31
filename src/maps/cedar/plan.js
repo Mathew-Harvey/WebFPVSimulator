@@ -58,6 +58,9 @@ export const VENDING = { px: 124.2, py: 89.6 };
 export const CARS = [
   { style: 'minibus', px: 64, py: 70, deg: 0, variant: 3 },
   { style: 'kei', px: 104, py: 79, deg: 90, variant: 5 },
+  { style: 'keivan', px: 70.5, py: 79, deg: 90, variant: 2 },
+  { style: 'wagon', px: 80.9, py: 79, deg: 90, variant: 4 },
+  { style: 'sedan', px: 112, py: 72, deg: 180, variant: 1 },
 ];
 
 /*

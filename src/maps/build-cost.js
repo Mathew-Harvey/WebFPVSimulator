@@ -105,6 +105,9 @@ export const MAP_BUILD_MS = {
   /* Hoshino Shoji (src/maps/office/), the warehouse's pipeline with three
    * floors of furniture. An estimate until it is measured. */
   office: 2400,
+  /* Kazahana Plain (src/maps/kaza/): Sunnyfield's pipeline over a plot
+   * four times its size. An estimate until it is measured. */
+  kaza: 2800,
   /* Shiroyama FMX (src/maps/fmx/), the same pipeline: 2.8 s on Low and
    * 3.6 s on High, headless, measured 31 October 2026. */
   fmx: 3200,

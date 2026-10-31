@@ -363,6 +363,7 @@ const WORLDS = [
   /* Hoshino Shoji, added 31 October 2026. Indoors like Thomas More's Shop,
    * so it names its own lens too (CARD_LENS in src/maps/office/office.js). */
   { id: 'office', file: 'office.jpg', name: 'Hoshino Shoji' },
+  { id: 'kaza', file: 'kaza.jpg', name: 'Kazahana Plain' },
   /* Shiroyama FMX, added 31 October 2026 with its picture, from the
    * south east so the kickers, the yagura and the castle are in it. */
   { id: 'fmx', file: 'fmx.jpg', name: 'Shiroyama FMX', shot: { tp: 0.5, tr: 0.75, ta: -0.6 } },

@@ -345,6 +345,9 @@ const WORLDS = [
   /* Sunnyfield, added 28 October 2026, picked by eye from four sides: the
    * one with the hill's letters, the town hall and the gorge in it. */
   { id: 'sunny', file: 'sunny.jpg', name: 'Sunnyfield', shot: { tp: 0.62, tr: 0.9, ta: -2.4 } },
+  /* Hamakaze Works, added 31 October 2026, picked by eye: from over the
+   * quay, the gantry, the steel shop and the stack in it. */
+  { id: 'factory', file: 'factory.jpg', name: 'Hamakaze Works', shot: { tp: 0.55, tr: 0.85, ta: 2.3 } },
   /* Quad Ball's stadium and Ridgeline MX, added 29 October 2026 with no
    * picture, so their map cards were blank and every picker asked the
    * server for a file that was not there (found 30 October 2026). */
@@ -372,6 +375,12 @@ const WORLDS = [
   /* Kirigaoka Sanatorium, added 31 October 2026, from the avenue's side
    * so the wings, the tower and the terrace stair are in it. */
   { id: 'sana', file: 'sana.jpg', name: 'Kirigaoka Sanatorium', shot: { tp: 0.45, tr: 0.9, ta: -1.57 } },
+  /* Tanada RX, added 31 October 2026, from the south over the jump so
+   * the stand and the terraces are in it. */
+  { id: 'rally', file: 'rally.jpg', name: 'Tanada RX', shot: { tp: 0.5, tr: 0.7, ta: -1.57 } },
+  /* Shiroyama FMX, added 31 October 2026 with its picture, from the
+   * south east so the kickers, the yagura and the castle are in it. */
+  { id: 'fmx', file: 'fmx.jpg', name: 'Shiroyama FMX', shot: { tp: 0.5, tr: 0.75, ta: -0.6 } },
 ];
 
 async function drawWorlds(opts) {

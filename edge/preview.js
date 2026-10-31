@@ -111,6 +111,7 @@ const WORLDS = {
   factory: { name: 'Hamakaze Works', thumb: 'factory' },
   drift: { name: 'Drift Matsuri', thumb: 'drift' },
   ball: { name: 'Quad Ball', thumb: 'ball' },
+  cedar: { name: 'Kodama Onsen', thumb: 'cedar' },
   built: { name: 'Hibari Yard', thumb: 'yard' },
 };
 

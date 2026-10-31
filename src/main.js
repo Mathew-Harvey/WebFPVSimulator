@@ -519,6 +519,7 @@ const MAP_MODULE_PREFIX = {
   sunny: '/src/maps/sunny/',
   factory: '/src/maps/factory/',
   drift: '/src/maps/drift/',
+  cedar: '/src/maps/cedar/',
 };
 
 /*
@@ -9237,6 +9238,14 @@ export async function boot({ loading, bootStart, mapId }) {
     if (view.id === 'sunny') {
       notice = {
         text: 'The board keeps no runs for Sunnyfield, so its runs stay here.',
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
+    /* Nor for Kodama Onsen: CEDAR_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'cedar') {
+      notice = {
+        text: 'The board keeps no runs for Kodama Onsen, so its runs stay here.',
         untilMs: performance.now() + 4200,
       };
       return;

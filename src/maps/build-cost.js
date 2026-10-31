@@ -89,4 +89,7 @@ export const MAP_BUILD_MS = {
   /* Ridgeline MX (src/maps/moto/): a plot of trees, a track of mounds and
    * berms and ten bikes. An estimate until it is measured. */
   moto: 2400,
+  /* Hyoura Island (src/maps/arctic/): an island of cliffs, sea ice and a
+   * fishing hamlet. An estimate until it is measured. */
+  arctic: 2600,
 };

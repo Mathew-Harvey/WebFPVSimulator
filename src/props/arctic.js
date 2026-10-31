@@ -42,7 +42,7 @@ const COLD = 0x7f84b8;
 export const MATERIALS = {
   /* the land: snow on the level, rock where it is too steep to hold, the
    * basalt of the sea cliffs, and the grey shingle at the water */
-  arSnow: { c: 0xf6f3f7, tint: COLD },
+  arSnow: { c: 0xf6f3f7, tint: 0x9ca2cf },
   arSnowDirty: { c: 0xe2dde4, tint: 0x77739e },
   arRock: { c: 0x6c7086, tint: 0x3f3d5e },
   arBasalt: { c: 0x535a70, tint: 0x33344f },

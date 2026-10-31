@@ -70,7 +70,8 @@ export const BRANDS = [...PARTNERS, ...MAP_ONLY_PARTNERS, ...PATRON_MAP_BRANDS].
 /* Each brand's sign on its board's face, as the pipeline's markSpots take
  * them, and the one hidden Konex Drone sign at the back of the grotto. */
 export function arcticMarkSpots(allowed = () => true) {
-  const spots = BRANDS.filter((b) => allowed(b.slug)).slice(0, BOARDS.length).map((brand, i) => {
+  /* Konex Drone is the hidden one, and has no board. */
+  const spots = BRANDS.filter((b) => b.slug !== 'konexdrone' && allowed(b.slug)).slice(0, BOARDS.length).map((brand, i) => {
     const b = BOARDS[i];
     const out = { '-x': [-1, 0, 0], '+x': [1, 0, 0], '-z': [0, 0, -1], '+z': [0, 0, 1] }[b.face];
     const ht = BOARD.t / 2;
@@ -86,6 +87,27 @@ export function arcticMarkSpots(allowed = () => true) {
     spots.push({ slug: konex.slug, key: 'arctic#konexdrone~hidden', p: [...p], n: [...n], up: [0, 1, 0], w, chunk: chunkOf(p[0], p[2]) });
   }
   return spots;
+}
+
+/*
+ * The harbour's own notice, painted on every board no brand is shown on:
+ * the boards from `from` on, as the signs list takes them (./signs.js). In
+ * the Steam edition, which shows no partner, that is every board.
+ */
+export function boardNotices(from) {
+  return BOARDS.slice(from).map((b) => {
+    const out = { '-x': [-1, 0], '+x': [1, 0], '-z': [0, -1], '+z': [0, 1] }[b.face];
+    const ht = BOARD.t / 2;
+    return {
+      key: 'board',
+      x: b.x + out[0] * ht * 4,
+      y: BOARD.top + BOARD.lift + BOARD.h / 2,
+      z: b.z + out[1] * ht * 4,
+      w: BOARD.w - 0.6,
+      h: BOARD.h - 0.4,
+      face: b.face,
+    };
+  });
 }
 
 /* The grotto's back wall, the face of the land at its south end, looking
@@ -177,7 +199,7 @@ export function arcticGaps() {
     { name: 'UNDER THE PIER', x: (PIER.x0 + PIER.x1) / 2, z: PIER.z1 - 2, along: 'z', w: PIER.piles[1] - PIER.piles[0] - 0.8, h0: 0.5, h1: PIER.deck0 - 0.4, points: 500 },
     { name: 'NET SHED', x: (NET_SHED.x0 + NET_SHED.x1) / 2, z: (NET_SHED.z0 + NET_SHED.z1) / 2, along: 'z', w: NET_SHED.doorW - 0.6, h0: HAMLET_H + 0.3, h1: HAMLET_H + NET_SHED.doorH - 0.3, points: 250 },
     { name: 'TORII', x: TORII.x, z: TORII.z, along: 'z', w: TORII.span - 0.42 - 0.6, h0: tg + 0.4, h1: tg + TORII.nuki - 0.3, points: 250 },
-    { name: 'HARBOUR MOUTH', x: (62 + LIGHTS[0].x) / 2 - 1, z: 161, along: 'z', w: 34, h0: 0.5, h1: 12, points: 100 },
+    { name: 'HARBOUR MOUTH', x: (62 + LIGHTS[0].x) / 2 - 1, z: 161, along: 'z', w: 30, h0: 0.5, h1: 12, points: 100 },
   ];
 }
 

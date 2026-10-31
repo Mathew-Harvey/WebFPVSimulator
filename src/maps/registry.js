@@ -255,6 +255,23 @@ export const MAPS = [
     buildMs: MAP_BUILD_MS.moto,
     load: () => import('./moto/index.js'),
   },
+  /*
+   * HYOURA ISLAND, on the owner's ask of 31 October 2026 (the Uncrashed
+   * inspired maps, section 10, "we want the maps to feel like manga comic
+   * like the town"): an island of our own after the drift ice coast of
+   * Shiretoko, with its cliffs and waterfalls, its bergs and sea ice, a
+   * fishing hamlet and a lighthouse on the cape (src/maps/arctic/). Built
+   * by the built map's pipeline and flown on the five inch at life size;
+   * off the board like the houses.
+   */
+  {
+    id: 'arctic',
+    name: 'Hyoura Island',
+    mode: 'freestyle',
+    note: 'A winter island in the drift ice. Thread the iceberg arch, skim the floes, dive the cliffs beside the falls, find the grotto behind them and orbit the lighthouse on the cape.',
+    buildMs: MAP_BUILD_MS.arctic,
+    load: () => import('./arctic/index.js'),
+  },
 ];
 
 /* The house's document id (src/maps/house/yard.js), here so the stamps can
@@ -282,6 +299,9 @@ export const DRIFT_DOC_ID = 'trk-d81f7a75';
 export const BALL_DOC_ID = 'trk-ba11b0a1';
 /* Ridgeline MX's (src/maps/moto/yard.js), the same way. */
 export const MOTO_DOC_ID = 'trk-3c07e5a1';
+
+/* Hyoura Island's (src/maps/arctic/yard.js), the same way. */
+export const ARCTIC_DOC_ID = 'trk-a7c71c00';
 
 export function mapById(id) {
   return MAPS.find((m) => m.id === id) ?? MAPS[0];

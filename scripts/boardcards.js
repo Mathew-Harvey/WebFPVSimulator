@@ -364,6 +364,9 @@ const WORLDS = [
    * so it names its own lens too (CARD_LENS in src/maps/office/office.js). */
   { id: 'office', file: 'office.jpg', name: 'Hoshino Shoji' },
   { id: 'kaza', file: 'kaza.jpg', name: 'Kazahana Plain' },
+  /* Kirigaoka Sanatorium, added 31 October 2026, from the avenue's side
+   * so the wings, the tower and the terrace stair are in it. */
+  { id: 'sana', file: 'sana.jpg', name: 'Kirigaoka Sanatorium', shot: { tp: 0.45, tr: 0.9, ta: -1.57 } },
   /* Shiroyama FMX, added 31 October 2026 with its picture, from the
    * south east so the kickers, the yagura and the castle are in it. */
   { id: 'fmx', file: 'fmx.jpg', name: 'Shiroyama FMX', shot: { tp: 0.5, tr: 0.75, ta: -0.6 } },

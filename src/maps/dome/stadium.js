@@ -689,15 +689,15 @@ export function domeGaps() {
   /* Under each parked truck, between its axles, side to side. */
   PARKED.forEach((t, i) => {
     out.push({
-      name: i ? 'Under the blue truck' : 'Under the orange truck', x: t.x, z: t.z, y: FLOOR.dirt + 0.05, yaw: Math.PI / 2, w: TRUCK.base - 2 * TRUCK.wheelR - 0.3, h: TRUCK.bodyY - 0.4, points: 500,
+      name: i ? 'Under the blue truck' : 'Under the orange truck', x: t.x, z: t.z, y: FLOOR.dirt + 0.05, yaw: Math.PI / 2, w: TRUCK.base - 2 * TRUCK.wheelR - 0.3, h: 1.42, points: 500,
     });
   });
   /* Two of the high windows, out to the sky from the top walkway. */
   out.push({
-    name: 'Sky window', x: 0 - 7, z: -(OUTER.z + OUTER.t / 2), y: WINDOWS.y0 + 0.2, yaw: Q, w: WINDOWS.half * 2 - 0.4, h: WINDOWS.y1 - WINDOWS.y0 - 0.4, points: 500,
+    name: 'North sky window', x: -7, z: -(OUTER.z + OUTER.t / 2), y: WINDOWS.y0 + 0.2, yaw: Q, w: WINDOWS.half * 2 - 0.4, h: WINDOWS.y1 - WINDOWS.y0 - 0.4, points: 500,
   });
   out.push({
-    name: 'Sky window', x: 7, z: OUTER.z + OUTER.t / 2, y: WINDOWS.y0 + 0.2, yaw: Q, w: WINDOWS.half * 2 - 0.4, h: WINDOWS.y1 - WINDOWS.y0 - 0.4, points: 500,
+    name: 'South sky window', x: 7, z: OUTER.z + OUTER.t / 2, y: WINDOWS.y0 + 0.2, yaw: Q, w: WINDOWS.half * 2 - 0.4, h: WINDOWS.y1 - WINDOWS.y0 - 0.4, points: 500,
   });
   return out;
 }

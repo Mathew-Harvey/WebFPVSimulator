@@ -159,7 +159,7 @@ function truckGeometry(lv) {
     const x = sx * AX;
     tube(COL.frame, [x, R, -TZ + 0.45], [x, R, TZ - 0.45], 0.1, 8);
     ball(COL.chrome, [x, R, 0.12], 0.3, 0.28, 0.3);
-    tube(COL.frame, [x - sx * 0.05, R + 0.1, 0.1], [sx * 0.45, 1.25, 0], 0.07, 6);
+    tube(COL.frame, [x - sx * 0.05, R + 0.1, 0.1], [sx * 0.45, 1.6, 0], 0.07, 6);
     for (const sz of [-1, 1]) {
       const z = sz * 0.72;
       for (const [dx, hue] of [[-0.22, COL.gold], [0.22, COL.gold], [0, COL.chrome]]) {
@@ -170,21 +170,22 @@ function truckGeometry(lv) {
       }
       ball(COL.gold, [x * 0.72, B + 0.3, z * 1.15], 0.1, 0.24, 0.1);
       /* The trailing links from the axle to the chassis. */
-      tube(COL.frame, [x, R - 0.1, z * 0.9], [x * 0.35, 1.05, z * 0.8], 0.05, 5);
-      tube(COL.frame, [x, R + 0.2, z * 0.7], [x * 0.35, 1.35, z * 0.4], 0.05, 5);
+      tube(COL.frame, [x, R - 0.1, z * 0.9], [x * 0.6, 1.5, z * 0.8], 0.05, 5);
+      tube(COL.frame, [x, R + 0.2, z * 0.7], [x * 0.6, 1.6, z * 0.4], 0.05, 5);
     }
   }
   /* The chassis rails and the cage round the engine. */
   for (const sz of [-1, 1]) {
-    tube(COL.frame, [-2.4, 1.3, sz * 0.55], [2.35, 1.3, sz * 0.55], 0.08, 6);
-    tube(COL.frame, [-2.2, 1.3, sz * 0.55], [-2.2, B + 0.1, sz * 0.75], 0.06, 5);
-    tube(COL.frame, [2.2, 1.3, sz * 0.55], [2.2, B + 0.1, sz * 0.75], 0.06, 5);
-    tube(COL.frame, [0, 1.3, sz * 0.55], [-0.3, B + 0.1, sz * 0.9], 0.06, 5);
+    /* High, so the parked trucks' gap under them is open to its 1.5 m. */
+    tube(COL.frame, [-2.4, 1.64, sz * 0.55], [2.35, 1.64, sz * 0.55], 0.08, 6);
+    tube(COL.frame, [-2.2, 1.64, sz * 0.55], [-2.2, B + 0.1, sz * 0.75], 0.06, 5);
+    tube(COL.frame, [2.2, 1.64, sz * 0.55], [2.2, B + 0.1, sz * 0.75], 0.06, 5);
+    tube(COL.frame, [0, 1.64, sz * 0.55], [-0.3, B + 0.1, sz * 0.9], 0.06, 5);
   }
   for (const x of [-2.2, -0.6, 0.9, 2.2]) {
-    tube(COL.frame, [x, 1.3, -0.55], [x, 1.3, 0.55], 0.06, 5);
+    tube(COL.frame, [x, 1.64, -0.55], [x, 1.64, 0.55], 0.06, 5);
   }
-  box(COL.frame, -0.5, 1.05, -0.32, 0.5, 1.45, 0.32);
+  box(COL.frame, -0.5, 1.56, -0.32, 0.5, 1.75, 0.32);
   /* The step bars along the sides, under the doors. */
   for (const sz of [-1, 1]) {
     tube(COL.chrome, [-1.2, B - 0.15, sz * 1.18], [1.0, B - 0.15, sz * 1.18], 0.06, 6);

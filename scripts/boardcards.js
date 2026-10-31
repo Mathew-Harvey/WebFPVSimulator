@@ -350,6 +350,8 @@ const WORLDS = [
    * server for a file that was not there (found 30 October 2026). */
   { id: 'ball', file: 'ball.jpg', name: 'Quad Ball' },
   { id: 'moto', file: 'moto.jpg', name: 'Ridgeline MX' },
+  /* Kamome Wharf, added 31 October 2026. */
+  { id: 'dock', file: 'dock.jpg', name: 'Kamome Wharf' },
 ];
 
 async function drawWorlds(opts) {

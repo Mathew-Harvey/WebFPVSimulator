@@ -108,6 +108,9 @@ export const MAP_BUILD_MS = {
   /* Kazahana Plain (src/maps/kaza/): Sunnyfield's pipeline over a plot
    * four times its size. An estimate until it is measured. */
   kaza: 2800,
+  /* Kirigaoka Sanatorium (src/maps/sana/): Sunnyfield's pipeline and
+   * frame on a smaller site. An estimate until it is measured. */
+  sana: 2000,
   /* Hotaru Valley (src/maps/hotaru/): the land grid, two thousand trees
    * and a village, a castle and a harbour. An estimate until it is
    * measured. */

@@ -364,6 +364,9 @@ const WORLDS = [
    * so it names its own lens too (CARD_LENS in src/maps/office/office.js). */
   { id: 'office', file: 'office.jpg', name: 'Hoshino Shoji' },
   { id: 'kaza', file: 'kaza.jpg', name: 'Kazahana Plain' },
+  /* Kirigaoka Sanatorium, added 31 October 2026, from the avenue's side
+   * so the wings, the tower and the terrace stair are in it. */
+  { id: 'sana', file: 'sana.jpg', name: 'Kirigaoka Sanatorium', shot: { tp: 0.45, tr: 0.9, ta: -1.57 } },
   { id: 'hotaru', file: 'hotaru.jpg', name: 'Hotaru Valley' },
 ];
 

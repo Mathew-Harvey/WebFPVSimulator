@@ -46,6 +46,7 @@ import * as TOWERS from './towers.js';
 import * as CEDAR from './cedar.js';
 import * as OFFICE from './office.js';
 import * as KAZA from './kaza.js';
+import * as SANATORIUM from './sanatorium.js';
 import * as HOTARU from './hotaru.js';
 import { buildingLayout, buildingDraw, bandoLayout, bandoDraw } from './buildings.js';
 import {
@@ -147,7 +148,8 @@ export const FURNITURE = {
  * a mistake, and it throws here rather than one silently winning.
  */
 const FAMILIES = {
-  buildings: BUILDINGS, industrial: INDUSTRIAL, street: STREET, skate: SKATE, course: COURSE, windmill: WINDMILL, homes: HOMES, sunny: SUNNY, cedar: CEDAR, towers: TOWERS, alpine: ALPINE, office: OFFICE, kaza: KAZA, hotaru: HOTARU,
+  buildings: BUILDINGS, industrial: INDUSTRIAL, street: STREET, skate: SKATE, course: COURSE, windmill: WINDMILL, homes: HOMES, sunny: SUNNY, cedar: CEDAR, towers: TOWERS, alpine: ALPINE, office: OFFICE, kaza: KAZA,
+  sanatorium: SANATORIUM, hotaru: HOTARU,
 };
 export const FAMILY_MATERIALS = {};
 export const FAMILY_PAINTERS = {};

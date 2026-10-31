@@ -248,6 +248,7 @@ export const MATERIALS = {
   dnDrift: { c: 0xb4a48e, tint: 0x6a6078 },
   dnFloat: { c: 0x72b89a, tint: 0x3f6a6a },
   dnBuoy: { c: 0xf06a24, tint: 0x80482e },
+  dnPineBark: { c: 0x6a4f42, tint: 0x45354c },
 };
 
 /*

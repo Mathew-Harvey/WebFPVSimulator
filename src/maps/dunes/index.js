@@ -191,9 +191,9 @@ function sandGeometry(heights, stride, cell, x0, y0, i0, j0, ni, nj, skip) {
       const b = vert(i + 1, j);
       const cc = vert(i, j + 1);
       const d = vert(i + 1, j + 1);
-      /* Plan y is the world's -z, so a plan anticlockwise triangle is
-       * clockwise seen from above in the world: written reversed. */
-      idx.push(a, d, b, a, cc, d);
+      /* Anticlockwise in the plan is anticlockwise seen from above in
+       * the world (north up, east right), which is a face turned up. */
+      idx.push(a, b, d, a, d, cc);
     }
   }
   const g = new THREE.BufferGeometry();
@@ -202,7 +202,37 @@ function sandGeometry(heights, stride, cell, x0, y0, i0, j0, ni, nj, skip) {
   g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   g.setIndex(idx);
   g.computeVertexNormals();
+  shadeSand(g);
   return g;
+}
+
+/*
+ * THE INKED SHADE OF A DUNE. The toon ramp shades the sand by its slope to
+ * the sun, but a dune's slopes are long and gentle, and on a ramp of three
+ * bands they read as one wash of yellow. A manga page draws a dune as a
+ * lit face and a shade face with a hard line between, so the shade is
+ * laid into the vertices as well: wherever a face turns from the golden
+ * hour's sun (looks.js, golden, sun.at) by more than the open ground does,
+ * it takes the shade's violet, over a step a few degrees wide. The comic
+ * layer then hatches it like any shade, for nothing.
+ */
+const SUN = new THREE.Vector3(-52, 62, 56).normalize();
+const SHADE = new THREE.Color(0xb6a4c4);
+function shadeSand(g) {
+  const n = g.attributes.normal;
+  const c = g.attributes.color;
+  const v = new THREE.Vector3();
+  const col = new THREE.Color();
+  for (let i = 0; i < n.count; i += 1) {
+    v.fromBufferAttribute(n, i);
+    const d = v.dot(SUN);
+    const t = Math.min(1, Math.max(0, (0.6 - d) / 0.05));
+    if (t > 0) {
+      col.fromBufferAttribute(c, i);
+      col.multiply(new THREE.Color(1, 1, 1).lerp(SHADE, t));
+      c.setXYZ(i, col.r, col.g, col.b);
+    }
+  }
 }
 
 function drawSand(kit, material) {
@@ -300,7 +330,7 @@ function seaMesh(material) {
   for (let j = 0; j + 1 < ys.length; j += 1) {
     for (let i = 0; i + 1 < nx; i += 1) {
       const a = j * nx + i;
-      idx.push(a, a + nx + 1, a + 1, a, a + nx, a + nx + 1);
+      idx.push(a, a + 1, a + nx + 1, a, a + nx + 1, a + nx);
     }
   }
   const g = new THREE.BufferGeometry();
@@ -334,7 +364,7 @@ function pondMesh(material) {
     uv.push(x / 40, y / 40);
   }
   for (let i = 1; i <= n; i += 1) {
-    idx.push(0, i + 1, i);
+    idx.push(0, i, i + 1);
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -566,6 +596,12 @@ export async function buildMap(shell, onProgress, options) {
   const map = await buildBuilt(shell, onProgress, {
     ...(options || {}), document: doc, extra, markSpots: dunesMarkSpots(),
   });
+  /* The air is clear on a sea wind: the haze starts well out and ends
+   * where the pipeline's own fog ends, which is what its cull is sized to,
+   * so nothing it switches off is ever seen. */
+  if (map.scene.fog) {
+    map.scene.fog.near = Math.max(map.scene.fog.near, map.scene.fog.far * 0.45);
+  }
   map.id = 'dunes';
   map.source = 'dunes';
   /* The yard's own ground and its edges are the sand's now. */

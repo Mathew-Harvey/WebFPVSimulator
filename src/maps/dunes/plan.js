@@ -1269,10 +1269,65 @@ function pines(C) {
     placed.push([x, y]);
   }
   placed.forEach(([x, y], k) => {
-    const broad = k % 5 === 0;
-    C.asset({ type: 'tree', style: broad ? 'broad' : 'loblolly', dims: { size: 0.8 + rng() * 0.45, variant: 1 + (k % 29) } }, x, y, g(x, y) - 0.1, rng() * 6.28);
+    blackPine(C, x, y, 0.8 + rng() * 0.5, 1000 + k);
   });
   return placed.length;
+}
+
+/*
+ * A BLACK PINE, the coast's own tree: a trunk that leans and kinks away
+ * from the sea wind, a few limbs out of its upper half, and the needles in
+ * flat clouds at the ends of them, the shape a Japanese garden prunes a
+ * pine to and the wind prunes the coast's. Drawn as the town's leaf clumps
+ * (K.leaf, squashed, so they ink as clumps), solid as a capsule up each
+ * limb and a squat sphere in each cloud.
+ */
+function blackPine(C, x, y, size, seed) {
+  const r = seededRandom(seed);
+  const base = g(x, y) - 0.15;
+  const H = (7.5 + r.next() * 3) * size;
+  /* The lean is away from the sea, south, with a little east or west. */
+  const lx = (r.next() - 0.5) * 0.5;
+  const ly = -(0.15 + r.next() * 0.25);
+  const tr = 0.2 * size;
+  const p0 = [x, y, base];
+  const p1 = [x + lx * H * 0.35, y + ly * H * 0.3, base + H * 0.42];
+  const p2 = [x + lx * H * 0.6 + (r.next() - 0.5) * 0.8, y + ly * H * 0.55, base + H * 0.78];
+  C.cap('dnPineBark', p0, p1, tr, { kind: 'tree', name: 'pine trunk', draw: false });
+  C.cap('dnPineBark', p1, p2, tr * 0.75, { kind: 'tree', name: 'pine trunk', draw: false });
+  const pads = [[p2[0], p2[1], p2[2] + 0.7 * size, 2.0 * size]];
+  const limbs = [];
+  const n = 2 + Math.floor(r.next() * 3);
+  const sc = { s: 0, c: 1 };
+  for (let i = 0; i < n; i += 1) {
+    sincos(r.next() * 6.283 + i * 2.1, sc);
+    const from = i % 2 ? p1 : [(p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2, (p1[2] + p2[2]) / 2];
+    const len = (2.0 + r.next() * 1.8) * size;
+    const end = [from[0] + sc.c * len, from[1] + sc.s * len, from[2] + (0.6 + r.next() * 1.4) * size];
+    limbs.push([from, end]);
+    pads.push([end[0], end[1], end[2] + 0.35 * size, (1.3 + r.next() * 0.8) * size]);
+  }
+  for (const [a, b] of limbs) {
+    C.cap('dnPineBark', a, b, tr * 0.45, { kind: 'tree', name: 'pine limb', draw: false });
+  }
+  for (const [px, py, ph, pr] of pads) {
+    C.cap('stCedar1', [px, py, ph], [px, py, ph], pr * 0.62, { kind: 'canopy', name: 'pine needles', draw: false });
+  }
+  C.draw(x, y, (K) => {
+    const W3 = (q) => w(q[0], q[1], q[2]);
+    K.cyl('dnPineBark', W3(p0), W3(p1), tr, 6, tr * 0.8);
+    K.cyl('dnPineBark', W3(p1), W3(p2), tr * 0.78, 6, tr * 0.5);
+    K.cyl('dnPineBark', W3(p0), W3([x, y, base + 0.5]), tr * 1.5, 6, tr);
+    for (const [a, b] of limbs) {
+      K.cyl('dnPineBark', W3(a), W3(b), tr * 0.42, 5, tr * 0.25);
+    }
+    pads.forEach(([px, py, ph, pr], i) => {
+      const spin = [0, (seed * 1.7 + i) % 6.28, 0];
+      /* A cloud is two clumps: a dark under layer and a lit top. */
+      K.leaf('stCedar2', W3([px, py, ph - 0.15 * pr]), pr, pr * 0.32, spin);
+      K.leaf(i % 2 ? 'stCedar0' : 'stCedar1', W3([px + 0.15, py - 0.1, ph + 0.12 * pr]), pr * 0.82, pr * 0.3, spin);
+    });
+  });
 }
 
 /* ================================================================== */

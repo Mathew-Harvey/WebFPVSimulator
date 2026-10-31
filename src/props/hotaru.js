@@ -79,6 +79,15 @@ export const MATERIALS = {
   /* the fields: earth risers, the aze, mud, straw */
   hvEarth: { c: PAL.hillEarth, tint: 0x6e6486 },
   hvAze: { c: 0xa9b884, tint: 0x5e6e7c },
+  /* the paddies: rice standing ripe, its late green, the stubble of a cut
+   * one, the shine of a flooded one with the sky in it */
+  hvRice: { c: 0xe0bf62, tint: 0x8a7266 },
+  hvRiceDeep: { c: 0xc29a48, tint: 0x6e5a62 },
+  hvRiceGreen: { c: 0xa9c56a, tint: 0x5e7276 },
+  hvStubble: { c: 0xc9b383, tint: 0x7a6a78 },
+  hvPaddyWater: { c: PAL.lakeSky, tint: 0x7d8fb0 },
+  /* turf on a bailey's top, the hill's sunlit grass */
+  hvTurf: { c: PAL.hillGrassSun, tint: 0x5e7280 },
   hvMud: { c: 0x9c8f7c, tint: 0x5e5470 },
   hvStraw: { c: 0xdcc58e, tint: 0x8a7a80 },
   hvStrawDark: { c: 0xb79d66, tint: 0x6e5e6e },

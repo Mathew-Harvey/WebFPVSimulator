@@ -41,7 +41,7 @@ import { gassho, kura, barn, farmhouse, mill, torii, hall, lantern, jizo, GASSHO
 /* The road: from the harbour west over the river, north up the valley,
  * and west along the village street to the foot of the castle hill. */
 export const ROAD = [
-  [520, 62], [306, 62], [289, 63], [262, 66], [240, 70], [232, 78], [232, 196], [226, 204], [128, 204], [116, 206],
+  [436, 62], [306, 62], [289, 63], [262, 66], [240, 70], [232, 78], [232, 196], [226, 204], [128, 204], [116, 206],
 ];
 export const ROAD_W = 5;
 /* The lane to the mill, and the road over the arch bridge to the terraces. */
@@ -483,6 +483,7 @@ export function fields(T) {
   const racks = [];
   for (const p of P) {
     bund(T, p.x0, p.y0, p.x1, p.y1, p.h);
+    paddySurface(T, p.kind, p.x0 + 0.35, p.y0 + 0.35, p.x1 - 0.35, p.y1 - 0.35, p.h, p.n);
     if (p.kind === 'cut') {
       const n = p.y1 - p.y0 > 12 ? 2 : 1;
       for (let k = 0; k < n; k += 1) {
@@ -502,6 +503,8 @@ export function fields(T) {
     T.dress(() => T.wide(() => {
       T.box('hvAze', t.x0, t.y0, t.h, t.x0 + 0.55, t.y1, t.h + 0.22, { solid: false, cast: false });
     }));
+    const r = hash2(t.b, t.k + 120);
+    paddySurface(T, r < 0.4 ? 'ripe' : r < 0.7 ? 'cut' : r < 0.85 ? 'green' : 'flood', t.x0 + 0.55, t.y0 + 0.05, t.x1, t.y1 - 0.05, t.h, t.n + 500);
   }
   /* A rack on a few of the terraces, and the stone stair up their middle. */
   for (const t of B) {
@@ -515,6 +518,41 @@ export function fields(T) {
     }
   }
   return { paddies: P, terraces: B, racks };
+}
+
+/*
+ * A PADDY'S SURFACE, drawn and never solid (rice is not a wall): ripe rice
+ * a gold block eighty centimetres high with its rows in a darker gold, a
+ * late field greener and lower, stubble a flat with its cut rows, a
+ * flooded field a sheet of the sky. The rows are drawn on High and Medium.
+ */
+function paddySurface(T, kind, x0, y0, x1, y1, h, n) {
+  const across = (y1 - y0) > (x1 - x0);
+  const rows = (m, top, step, w) => T.dress(() => T.wide(() => {
+    if (across) {
+      for (let x = x0 + step / 2; x < x1 - 0.1; x += step) {
+        T.paint(m, x, y0, top, x + w, y1, top + 0.03);
+      }
+    } else {
+      for (let y = y0 + step / 2; y < y1 - 0.1; y += step) {
+        T.paint(m, x0, y, top, x1, y + w, top + 0.03);
+      }
+    }
+  }));
+  if (kind === 'ripe') {
+    const top = h + 0.75 + hash2(n, 51) * 0.15;
+    T.box('hvRice', x0, y0, h, x1, y1, top, { solid: false, cast: false });
+    rows('hvRiceDeep', top, 1.4, 0.35);
+  } else if (kind === 'green') {
+    const top = h + 0.45;
+    T.box('hvRiceGreen', x0, y0, h, x1, y1, top, { solid: false, cast: false });
+    rows('hvAze', top, 1.4, 0.3);
+  } else if (kind === 'cut') {
+    T.paint('hvStubble', x0, y0, h, x1, y1, h + 0.06);
+    rows('hvStrawDark', h + 0.06, 0.9, 0.12);
+  } else {
+    T.paint('hvPaddyWater', x0, y0, h, x1, y1, h + 0.04);
+  }
 }
 
 /* A bund round a paddy, a low grassed ridge with a path worn along it. */

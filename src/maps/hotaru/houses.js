@@ -231,11 +231,11 @@ export function gassho(T, lot) {
     }
   }));
   if (lot.open) {
-    /* The attic's clear window at the front gable: across between where
-     * the two slabs' lower faces are 1.5 m over the floor, up from the
-     * floor to a metre under where they meet. */
+    /* The attic's clear window at the front gable: up from the floor to
+     * where the two slabs' lower faces are 3.8 m apart, across between
+     * them at that height. */
     const h0 = wall + 0.4;
-    const h1 = roof.R - roof.dv - 1.2;
+    const h1 = Math.min(roof.R - roof.dv - 1.2, roof.e - roof.dv + (w / 2 + oh - 1.9) * pitch);
     const halfAt = (h) => w / 2 + oh - (h - (roof.e - roof.dv)) / pitch;
     return { ...roof, gap: { h0, h1, half: halfAt(h1), L } };
   }

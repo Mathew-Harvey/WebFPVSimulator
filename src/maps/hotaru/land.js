@@ -137,6 +137,8 @@ export const MILL_POND = { px: 207, py: 290, r: 13 };
  * hamlet it is a beach that curls round under the headland.
  */
 export const QUAY = { x0: 306, x1: 446, py: 48, h: 0.6 };
+/* Where the hamlet's flat ends and the headland's cliff begins. */
+export const HARBOUR_EAST = 444;
 export function shoreAt(px) {
   if (px >= QUAY.x0 - 4 && px <= QUAY.x1 + 4) {
     return QUAY.py;
@@ -242,9 +244,11 @@ function hills(px, py) {
 export function shape(px, py) {
   let h = hills(px, py);
   /* The hamlet's apron behind the quay, at the quay's height. */
-  if (px > QUAY.x0 - 12 && px < QUAY.x1 + 8 && py < 84) {
-    const k = smooth((px - (QUAY.x0 - 12)) / 10) * smooth((QUAY.x1 + 8 - px) / 6) * smooth((84 - py) / 14);
-    h = Math.max(h, QUAY.h * k);
+  /* East of the hamlet the headland comes down to the sea in a cliff,
+   * and the road goes into it through a tunnel (./harbour.js). */
+  if (px > QUAY.x0 - 12 && px < HARBOUR_EAST && py < 96) {
+    const k = smooth((px - (QUAY.x0 - 12)) / 10) * smooth((HARBOUR_EAST - px) / 8) * smooth((96 - py) / 20);
+    h = QUAY.h * k + h * (1 - k);
   }
   /* Over the terraces' footprint the floor is the valley's: they are boxes. */
   if (px > TERRACES.x0 - 1 && px < TERRACES.x1 - 6 && py > TERRACES.y0 - 1 && py < TERRACES.y1 + 1) {

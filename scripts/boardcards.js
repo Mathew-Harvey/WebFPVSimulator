@@ -353,6 +353,9 @@ const WORLDS = [
   /* Shiokaze Point, added 31 October 2026, from the sea: the hotels, the
    * wedded rocks and the stacks. */
   { id: 'shiokaze', file: 'shiokaze.jpg', name: 'Shiokaze Point', shot: { tp: 0.3, tr: 1.1, ta: -1.57 } },
+  /* Kodama Onsen, added 31 October 2026, picked by eye: the inn from the
+   * car park side, the shrine's approach and the forest behind it. */
+  { id: 'cedar', file: 'cedar.jpg', name: 'Kodama Onsen', shot: { tp: 0.55, tr: 0.75, ta: -1.9 } },
 ];
 
 async function drawWorlds(opts) {

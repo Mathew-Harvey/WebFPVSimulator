@@ -518,6 +518,7 @@ const MAP_MODULE_PREFIX = {
   goats: '/src/maps/goats/',
   sunny: '/src/maps/sunny/',
   drift: '/src/maps/drift/',
+  cedar: '/src/maps/cedar/',
   office: '/src/maps/office/',
 };
 
@@ -9202,9 +9203,9 @@ export async function boot({ loading, bootStart, mapId }) {
       return;
     }
     /* Nor for Drift Matsuri: DRIFT_OFF_BOARD in src/ui/ui.js. */
-    if (view.id === 'drift' || view.id === 'moto') {
+    if (view.id === 'drift' || view.id === 'moto' || view.id === 'dome') {
       notice = {
-        text: `The board keeps no runs for ${view.id === 'moto' ? 'Ridgeline MX' : 'Drift Matsuri'}, so its runs stay here.`,
+        text: `The board keeps no runs for ${view.id === 'moto' ? 'Ridgeline MX' : (view.id === 'dome' ? 'Bakuon Dome' : 'Drift Matsuri')}, so its runs stay here.`,
         untilMs: performance.now() + 4200,
       };
       return;
@@ -9237,6 +9238,14 @@ export async function boot({ loading, bootStart, mapId }) {
     if (view.id === 'sunny') {
       notice = {
         text: 'The board keeps no runs for Sunnyfield, so its runs stay here.',
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
+    /* Nor for Kodama Onsen: CEDAR_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'cedar') {
+      notice = {
+        text: 'The board keeps no runs for Kodama Onsen, so its runs stay here.',
         untilMs: performance.now() + 4200,
       };
       return;

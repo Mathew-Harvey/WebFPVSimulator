@@ -132,9 +132,12 @@ function platform(T, r, opts = {}) {
       }));
     }
   }
-  /* The turf on top, and the dark course under its lip. */
+  /* The turf on top, and moss along the top course where the rain runs
+   * off it. */
   T.dress(() => T.wide(() => {
     T.paint('hvTurf', r.x0 + 0.5, r.y0 + 0.5, top, r.x1 - 0.5, r.y1 - 0.5, top + 0.06);
+    const o = outset(N - 1, batter);
+    T.paint('hvMoss', r.x0 - o - 0.04, r.y0 - o - 0.04, top - 0.45, r.x1 + o + 0.04, r.y1 + o + 0.04, top - 0.05);
   }));
   return foot;
 }

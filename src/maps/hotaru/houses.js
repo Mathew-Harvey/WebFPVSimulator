@@ -117,7 +117,15 @@ export function gableRoof(L, o) {
       const inn = u0 - oh + (h - (e - dv)) / s;
       if (inn - out > 0.08) {
         const a = Math.max(u0 - oh, out);
-        const b = Math.min(uc, inn);
+        let b = Math.min(uc, inn);
+        /* Under the eave, down to the wall's face, and shut at the ridge
+         * where what is left between the slabs is too narrow to fly. */
+        if (h < wall) {
+          b = Math.max(b, u0);
+        }
+        if (2 * (uc - b) < 1.6) {
+          b = uc;
+        }
         if (b - a > 0.08) {
           L.hidden(a, v0, h, b, v1, top, 'wall', 'roof');
           L.hidden(u0 + w - (b - u0), v0, h, u0 + w - (a - u0), v1, top, 'wall', 'roof');
@@ -317,11 +325,11 @@ export function barn(T, lot) {
   }
   /* The hay, stacked down the left side, and a kei truck's worth of
    * clutter on the right, all clear of the run down the middle. */
-  for (let v = 1.5; v < d - 3; v += 2.6) {
-    L.box('hvStraw', wt + 0.2, v, 0, a - 0.5, v + 2.2, 2.6 + ((v * 7) % 3) * 0.4, { kind: 'wall', name: 'hay' });
+  for (let v = wt; v < d - wt - 0.01; v += 2.6) {
+    L.box('hvStraw', wt, v, 0, a - 0.5, Math.min(v + 2.6, d - wt), 2.6 + ((v * 7) % 3) * 0.4, { kind: 'wall', name: 'hay' });
   }
-  L.box('hvWoodPale', b + 0.6, 3, 0, w - wt - 0.3, 6.5, 1.1, { kind: 'wall', name: 'crates' });
-  L.box('hvRust', b + 0.8, 9, 0, w - wt - 0.4, 13, 1.6, { kind: 'wall', name: 'tiller' });
+  L.box('hvWoodPale', b + 0.6, 3, 0, w - wt, 6.5, 1.1, { kind: 'wall', name: 'crates' });
+  L.box('hvRust', b + 0.8, 9, 0, w - wt, 13, 1.6, { kind: 'wall', name: 'tiller' });
   T.dress(() => {
     /* The doors' leaves, slid open along the gable walls outside. */
     for (const v of [-0.12, d + 0.02]) {

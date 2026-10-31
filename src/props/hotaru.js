@@ -65,7 +65,6 @@ export const MATERIALS = {
   hvTileBlue: { c: 0x5a6378, tint: 0x3e4060 },
   /* the shrine: vermilion, its black feet, the green of old copper */
   hvTorii: { c: PAL.torii, tint: 0x7a3a5a },
-  hvToriiDeep: { c: PAL.toriiDeep, tint: 0x5e2e4e },
   hvBlack: { c: PAL.black, tint: 0x22202e },
   hvCopper: { c: 0x6fa898, tint: 0x3f5a6e },
   hvRope: { c: 0xe8d9a8, tint: 0x8a7a80 },
@@ -88,7 +87,6 @@ export const MATERIALS = {
   hvPaddyWater: { c: PAL.lakeSky, tint: 0x7d8fb0 },
   /* turf on a bailey's top, the hill's sunlit grass */
   hvTurf: { c: PAL.hillGrassSun, tint: 0x5e7280 },
-  hvMud: { c: 0x9c8f7c, tint: 0x5e5470 },
   hvStraw: { c: 0xdcc58e, tint: 0x8a7a80 },
   hvStrawDark: { c: 0xb79d66, tint: 0x6e5e6e },
   /* the harbour: the boats' paint, rust and tetrapod concrete */

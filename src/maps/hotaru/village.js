@@ -69,7 +69,7 @@ export const FARMHOUSES = [
 export const MILL_LOT = { x0: 205, y0: 265, x1: 213, y1: 273, face: 's' };
 /* The shrine: the hall on the knoll's top looking west, the steps up to
  * it from the floor, a torii every two metres up them. */
-export const SHRINE = { hall: { x0: 318, y0: 242.5, x1: 325, y1: 248.5, face: 'w' }, py: 245.5, x0: 296, x1: 316, toriiAt: [299, 301, 303, 305, 307, 309, 311, 313] };
+export const SHRINE = { hall: { x0: 318, y0: 242.5, x1: 325, y1: 248.5, face: 'w' }, py: 245.5, x0: 296, x1: 316, toriiAt: [299.5, 301.5, 303.5, 305.5, 307.5, 309.5, 311.5, 313.5] };
 export const ARCH = { x0: 254, x1: 282, py: 118, w: 4.2, r: 3.7, spring: -0.5, deck: 4.1 };
 export const BUS_STOP = { px: 236.5, py: 90 };
 

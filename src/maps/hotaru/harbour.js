@@ -38,12 +38,12 @@ const Q = QUAY.h;
 /* The boat houses: eight along the quay, the fourth open front and back
  * (the boat shed a pilot flies through), the fifth the one whose bay hides
  * the little sign. */
-export const FUNAYA = { w: 7.2, d: 9.5, gap: 0.7, x0: 309, n: 8, open: 3, hide: 4, bay: 3.0, floor: 3.3, wall: 5.9 };
+export const FUNAYA = { w: 7.0, d: 9.5, gap: 1.5, x0: 309, n: 8, open: 3, hide: 4, bay: 3.0, floor: 3.3, wall: 5.9 };
 export const funayaLot = (i) => {
   const x0 = FUNAYA.x0 + i * (FUNAYA.w + FUNAYA.gap);
   return { x0, x1: x0 + FUNAYA.w, y0: QUAY.py + 0.6, y1: QUAY.py + 0.6 + FUNAYA.d, face: 's', base: Q };
 };
-export const MARKET = { x0: 376, x1: 396, y0: 49.5, y1: 58.5, h: 4.6 };
+export const MARKET = { x0: 379, x1: 399, y0: 49.5, y1: 58.5, h: 4.6 };
 export const PIER = { x0: 404, x1: 408.4, y0: 6, y1: QUAY.py, bottom: 1.7, top: 2.0, piles: 4.2 };
 export const BREAKWATER = { a: [452, -2], b: [378, -16], w: 4.2, top: 2.2 };
 export const SEA_TORII = { px: 262, py: 20, span: 9.4, clear: 8.4 };
@@ -69,16 +69,16 @@ function funaya(T, i) {
   /* The lintel over the bay, the living floor. */
   L.box('hvWoodDark', 0, 0, bay, w, d, floor + 0.3, { kind: 'wall', name: 'funaya floor' });
   /* The living storey, set back from the sea face for its balcony. */
-  L.box(tone, 0, 1.1, floor + 0.3, w, d, wall, { kind: 'wall', name: 'funaya' });
-  L.box('hvWoodPale', 0, 0, floor + 0.3, w, 1.1, floor + 0.45, { kind: 'wall', name: 'balcony' });
+  L.box(tone, 0, 1.7, floor + 0.3, w, d, wall, { kind: 'wall', name: 'funaya' });
+  L.box('hvWoodPale', 0, 0, floor + 0.3, w, 1.7, floor + 0.45, { kind: 'wall', name: 'balcony' });
   L.box('hvWoodPale', 0, 0, floor + 0.45, w, 0.12, floor + 1.25, { kind: 'wall', name: 'balcony rail' });
   gableRoof(L, {
-    u0: 0, w, v0: -0.7, v1: d + 0.4, wall, pitch: 0.62, t: 0.22, oh: 0.55, m: 'hvTile', capM: 'hvTileEdge', gableM: tone, gables: [1.1, d - 0.2],
+    u0: 0, w, v0: -0.7, v1: d + 0.4, wall, pitch: 0.62, t: 0.22, oh: 0.55, m: 'hvTile', capM: 'hvTileEdge', gableM: tone, gables: [1.7, d - 0.2],
   });
   T.dress(() => T.wide(() => {
     /* The sea face upstairs: shoji, some lit, under the gable. */
     for (let u = 0.6; u < w - 0.6; u += 1.6) {
-      L.paint(hash2(i, Math.floor(u * 10)) < 0.4 ? 'hvShojiLit' : 'hvShoji', u, 1.06, floor + 0.9, u + 1.2, 1.1, wall - 0.5);
+      L.paint(hash2(i, Math.floor(u * 10)) < 0.4 ? 'hvShojiLit' : 'hvShoji', u, 1.66, floor + 0.9, u + 1.2, 1.7, wall - 0.5);
     }
     /* The boards down the bay's walls, and a lamp over the bay. */
     for (let v = 0.5; v < d; v += 1.2) {
@@ -251,7 +251,7 @@ function market(T) {
     T.paint('hvConcrete', x0, y0, Q + 0.01, x1, y1, Q + 0.04);
   }));
   /* Stacks of fish boxes, blue and white, at the back. */
-  for (let x = x0 + 1; x < x1 - 2; x += 3.4) {
+  for (let x = x0 + 1; x < x1 - 2; x += 3.6) {
     const n = 2 + Math.floor(hash2(Math.floor(x), 77) * 3);
     T.box(hash2(Math.floor(x), 79) < 0.5 ? 'hvBoatBlue' : 'hvBoatWhite', x, y1 - 1.6, Q, x + 2.2, y1 - 0.4, Q + n * 0.4, { kind: 'wall', name: 'fish boxes' });
   }

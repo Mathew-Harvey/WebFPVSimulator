@@ -92,4 +92,7 @@ export const MAP_BUILD_MS = {
   /* Ekimae Drift (src/maps/ekimae/): a city of the town's buildings round
    * a street course. An estimate until it is measured. */
   ekimae: 3600,
+  /* Kodama Onsen (src/maps/cedar/): three thousand cedars, an inn and a
+   * shrine. An estimate until it is measured. */
+  cedar: 3000,
 };

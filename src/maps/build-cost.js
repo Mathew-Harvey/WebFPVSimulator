@@ -142,4 +142,7 @@ export const MAP_BUILD_MS = {
    * and a village, a castle and a harbour. An estimate until it is
    * measured. */
   hotaru: 2800,
+  /* Tonbo Fest (src/maps/fest/): the levee, the railway and the festival
+   * on a river ground. An estimate until it is measured. */
+  fest: 2600,
 };

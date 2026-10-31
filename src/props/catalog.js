@@ -53,6 +53,7 @@ import * as SANATORIUM from './sanatorium.js';
 import * as RALLY from './rally.js';
 import * as AIRFIELD from './airfield.js';
 import * as HOTARU from './hotaru.js';
+import * as FEST from './fest.js';
 import * as HAIKYO from './haikyo.js';
 import { buildingLayout, buildingDraw, bandoLayout, bandoDraw } from './buildings.js';
 import {
@@ -158,6 +159,7 @@ const FAMILIES = {
   sanatorium: SANATORIUM,
   shiokaze: SHIOKAZE, rally: RALLY,
   airfield: AIRFIELD, hotaru: HOTARU,
+  fest: FEST,
   haikyo: HAIKYO,
 };
 export const FAMILY_MATERIALS = {};

@@ -112,6 +112,7 @@ const MAP_ROOTS = {
   rally: 'src/maps/rally/index.js',
   fmx: 'src/maps/fmx/index.js',
   hotaru: 'src/maps/hotaru/index.js',
+  fest: 'src/maps/fest/index.js',
   haikyo: 'src/maps/haikyo/index.js',
 };
 

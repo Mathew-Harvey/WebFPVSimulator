@@ -211,8 +211,8 @@ function hay(T) {
   const sy = 154;
   [[4, 0], [3, 1], [2, 2]].forEach(([n, k]) => {
     for (let i = 0; i < n; i += 1) {
-      const x = sx + (i - (n - 1) / 2) * 1.55;
-      bale(T, x, sy, 0.75 + k * 1.3, 'afBaleWrap', true);
+      const x = sx + (i - (n - 1) / 2) * 1.26;
+      bale(T, x, sy, 0.75 + k * 1.25, 'afBaleWrap', true);
     }
   });
   /* The mown swaths the bales came off, rows of drying grass, broken

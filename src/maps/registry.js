@@ -256,9 +256,8 @@ export const MAPS = [
     load: () => import('./moto/index.js'),
   },
   /*
-   * KAZAMI AIRFIELD, on the owner's ask of 31 October 2026 (one of the
-   * maps from the list of the kinds of place other sims fly, built from
-   * real places and our own design): a grass strip in a Japanese mountain
+   * KAZAMI AIRFIELD, on the owner's ask of 31 October 2026 (one of a set
+   * of new maps, each built from real places and our own design): a grass strip in a Japanese mountain
    * valley with an arched hangar flown through, terraced paddies, cedar
    * slopes and a race of fourteen gates (src/maps/airfield/). Built by the
    * built map's pipeline in the town's light and flown on the five inch at

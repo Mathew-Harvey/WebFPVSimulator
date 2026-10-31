@@ -25,7 +25,7 @@
 import { Town, worldAt, wx, wz, W, D, chunkOf } from './frame.js';
 import { valley, CHANNEL, wallPy, PROFILE } from './valley.js';
 import { hangar, HANGAR, RAFTERS } from './hangar.js';
-import { field, raceGates, SHRINE, SHEDS, FARM_BRIDGE, MAST } from './field.js';
+import { field, raceGates, SHRINE, SHEDS, FARM_BRIDGE, MAST, TORII_OUT } from './field.js';
 import { farm, VINYL, OPEN } from './farm.js';
 
 export { W, D, worldAt, chunkOf };
@@ -84,7 +84,7 @@ export function airfieldGaps() {
     h0: g.base + M, h1: g.base + g.hh - M, points: g.points,
   }));
   const S = SHRINE;
-  const toriiY = wallPy(0, 0, S.px) + 1.6;
+  const toriiY = wallPy(0, 0, S.px) + TORII_OUT;
   const C = CHANNEL;
   return [
     ...race,

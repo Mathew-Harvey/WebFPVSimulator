@@ -202,7 +202,7 @@ export const OUTER = { x0: -300, x1: W + 300, y0: -260, y1: D + 260, step: 10 };
  * (./index.js) and its bed is the floor the plant is given there
  * (./plan.js), as Sunnyfield's gorge is.
  */
-export const CHANNEL = { y0: 103.2, y1: 107.6, x0: 6, x1: W - 6, bed: -1.9, water: -1.4, wall: 0.3 };
+export const CHANNEL = { y0: 103.2, y1: 107.6, x0: 6, x1: W - 6, bed: -2.9, water: -2.4, wall: 0.3 };
 
 /* ---------------------------------------------------------------- *
  * Building it.

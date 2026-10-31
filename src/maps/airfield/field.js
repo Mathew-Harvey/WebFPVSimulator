@@ -42,7 +42,7 @@ const SC = { s: 0, c: 0 };
 export const STRIP = { y: 178, x0: 52, x1: 428, w: 30 };
 
 /* The clubhouse and the tower cab on its roof. */
-export const CLUB = { x0: 248, x1: 268, y0: 226, y1: 238, floor: 3.2, roof: 6.4, balcony: 1.8 };
+export const CLUB = { x0: 248, x1: 268, y0: 226, y1: 238, floor: 3.2, roof: 6.4, balcony: 2.4 };
 export const CAB = { x0: 262.5, x1: 267.5, y0: 228, y1: 234, h0: 8.6, h1: 11.0 };
 
 /* The open sheds west of the hangar: eight bays, the third pair's back
@@ -50,6 +50,9 @@ export const CAB = { x0: 262.5, x1: 267.5, y0: 228, y1: 234, h0: 8.6, h1: 11.0 }
 export const SHEDS = { x0: 118, x1: 190, y0: 228, y1: 241, front: 4.6, back: 3.6, bay: 9, door: { x0: 160.5, x1: 166.5, h: 3.0 } };
 
 /* The bridges over the channel. */
+/* How far in front of the first terrace wall the shrine's torii stands:
+ * past the foot of the stair, on the floor. */
+export const TORII_OUT = 3.4;
 export const RED_BRIDGE = { px: 395, w: 1.8, crown: 1.25 };
 export const FARM_BRIDGE = { px: 150, w: 4.2, deck: 0.0, thick: 0.32 };
 
@@ -349,15 +352,15 @@ function sheds(T) {
   T.cyl('afTyre', [145.6, 233.4, 0.38], [147.0, 233.4, 0.38], 0.38, 10);
   T.post('metalDark', 146.3, 236.2, 1.4, 2.6, 0.04, { kind: 'pole', name: 'exhaust' });
   /* The glider winch: a truck with two cable drums behind its cab. */
-  T.box('afPlaneNavy', 173, 232, 0.6, 175.2, 234.4, 2.5, { kind: 'obstacle', name: 'winch truck' });
-  T.box('afPlaneNavy', 173, 234.4, 0.6, 175.2, 239.6, 1.4, { kind: 'obstacle', name: 'winch truck' });
-  T.box('afCanopy', 173.1, 231.96, 1.6, 175.1, 232.0, 2.3, { solid: false });
+  T.box('afPlaneNavy', 172.4, 232, 0.6, 174.6, 234.4, 2.5, { kind: 'obstacle', name: 'winch truck' });
+  T.box('afPlaneNavy', 172.4, 234.4, 0.6, 174.6, 239.6, 1.4, { kind: 'obstacle', name: 'winch truck' });
+  T.box('afCanopy', 172.5, 231.96, 1.6, 174.5, 232.0, 2.3, { solid: false });
   for (const y of [236, 238]) {
-    T.cyl('metal', [173.2, y, 1.9], [175.0, y, 1.9], 0.55, 14);
-    T.disc('afFrame', 173.2, y, 0.6, 1.3, 1.3, 14);
+    T.cyl('metal', [172.6, y, 1.9], [174.4, y, 1.9], 0.55, 14);
+    T.disc('afFrame', 172.6, y, 0.6, 1.3, 1.3, 14);
   }
   for (const y of [233.2, 237, 238.6]) {
-    T.cyl('afTyre', [172.9, y, 0.45], [175.3, y, 0.45], 0.45, 10);
+    T.cyl('afTyre', [172.3, y, 0.45], [174.7, y, 0.45], 0.45, 10);
   }
 }
 
@@ -508,7 +511,7 @@ function shrine(T) {
   /* Where each wall's foot is, at the stair. */
   const walls = [0, 1, 2, 3].map((k) => wallPy(0, k, S.px));
   /* The torii at the floor's edge, on the track. */
-  const ty = walls[0] + 1.6;
+  const ty = walls[0] + TORII_OUT;
   torii(T, S.px, ty, 0, 3.6, 4.2);
   /* The stair: straight up each wall, stone, solid as each step. */
   for (let k = 0; k <= S.bench; k += 1) {
@@ -605,8 +608,8 @@ export function raceGates() {
     { kind: 'hoop', name: 'THE THRESHOLD', px: 92, py: 178, deg: 0, w: 2.6, hh: 2.6, base: 1.3, points: 100 },
     { kind: 'nobori', name: 'THE STRIP', px: 170, py: 178, deg: 0, w: 3.4, hh: 3.2, base: 0, points: 100 },
     { kind: 'dive', name: 'THE HIGH GATE', px: 250, py: 160, deg: 0, w: 3.0, hh: 2.4, base: 7.5, points: 250 },
-    { kind: 'open', name: 'THE CHANNEL', px: 336, py: (C.y0 + C.y1) / 2, deg: 0, w: C.y1 - C.y0 - 0.6, hh: 1.9, base: C.water + 0.1, points: 500 },
-    { kind: 'open', name: 'UNDER THE RED BRIDGE', px: RED_BRIDGE.px, py: (C.y0 + C.y1) / 2, deg: 0, w: C.y1 - C.y0 - 0.6, hh: 1.25, base: C.water + 0.1, points: 1000 },
+    { kind: 'open', name: 'THE CHANNEL', px: 336, py: (C.y0 + C.y1) / 2, deg: 0, w: C.y1 - C.y0 - 0.6, hh: 2.7, base: C.water, points: 500 },
+    { kind: 'open', name: 'UNDER THE RED BRIDGE', px: RED_BRIDGE.px, py: (C.y0 + C.y1) / 2, deg: 0, w: C.y1 - C.y0 - 0.6, hh: 2.7, base: C.water, points: 1000 },
     { kind: 'banner', name: 'EAST WINDSOCK', px: 420, py: 214, deg: 90, w: 3.2, hh: 2.4, base: 0.4, points: 100 },
     { kind: 'open', name: 'UNDER THE BALCONY', px: CLUB.x1 + 0.5, py: CLUB.y0 - CLUB.balcony / 2 + 0.05, deg: 180, w: CLUB.balcony - 0.62, hh: CLUB.floor - 0.6, base: 0.3, points: 500 },
   ];

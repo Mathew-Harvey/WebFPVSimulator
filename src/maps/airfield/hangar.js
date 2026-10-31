@@ -382,12 +382,14 @@ export function hangar(T) {
     }
   }
   /* ---- the sliding doors, three leaves a side, parked beside the
-   * building on their outrigger rails, the stripe across each. */
+   * building on their outrigger rails, the stripe across each. Stacked
+   * leaf on leaf, as a telescoping door parks, so no slot is left
+   * between them or behind them for a quad to try. */
   for (const s of [-1, 1]) {
     const edge = s < 0 ? H.x0 : H.x1;
     for (let i = 0; i < 3; i += 1) {
-      const y0 = H.y0 - 0.55 - i * 0.28;
-      const x0 = edge - s * 2.6 + s * i * 1.1;
+      const y0 = H.y0 - 0.32 - i * 0.26;
+      const x0 = edge - s * 2.6 + s * i * 0.3;
       const xa = s < 0 ? x0 - 4.1 : x0;
       const xb = s < 0 ? x0 : x0 + 4.1;
       T.box('afDoor', xa, y0 - 0.12, 0.05, xb, y0 + 0.12, H.door.h + 0.2, { kind: 'wall', name: 'door leaf' });

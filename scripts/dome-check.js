@@ -7,6 +7,10 @@
  *                                         errors, and each named view's draw
  *                                         calls and triangles
  *   --shots=DIR                           the views' pictures, into DIR
+ *   --graphics=low|medium|high            the preset, pinned (default high):
+ *                                         headless Chromium is a CPU
+ *                                         rasteriser, and boot lowers a
+ *                                         detected preset to Low on one
  *
  * The pure half: every named gap is wider and taller than a five inch
  * needs, the spawn stands on the floor with the line ahead of it clear,
@@ -45,6 +49,8 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BROWSER = process.argv.includes('--browser');
 const shotsArg = process.argv.find((a) => a.startsWith('--shots='));
 const SHOTS = shotsArg ? shotsArg.slice(8) : '';
+const gfxArg = process.argv.find((a) => a.startsWith('--graphics='));
+const GRAPHICS = gfxArg ? gfxArg.slice(11) : 'high';
 
 let failed = 0;
 function check(name, ok, detail = '') {
@@ -186,10 +192,20 @@ const VIEWS = [
 async function browser() {
   console.log('dome: browser');
   const { answerQuadPicker, openPage } = await import('../tests/lib/page.js');
+  const { SETTINGS_KEY } = await import('../src/ui/ui.js');
+  const seed = [`try {
+    const k = ${JSON.stringify(SETTINGS_KEY)};
+    const s = JSON.parse(localStorage.getItem(k) || '{}');
+    s.graphics = ${JSON.stringify(GRAPHICS)};
+    s.graphicsAuto = false;
+    localStorage.setItem(k, JSON.stringify(s));
+  } catch (e) { /* storage refused: whatever preset boot picks */ }`];
   if (SHOTS) {
     mkdirSync(SHOTS, { recursive: true });
   }
-  const page = await openPage({ root: ROOT, width: 960, height: 540, url: '/index.html?map=dome&craft=5inch&fly=1' });
+  const page = await openPage({
+    root: ROOT, width: 960, height: 540, url: '/index.html?map=dome&craft=5inch&fly=1', seed,
+  });
   const ev = async (body) => {
     const r = await page.cdp.send('Runtime.evaluate', {
       expression: `(async()=>{${body}})()`, awaitPromise: true, returnByValue: true,
@@ -220,6 +236,8 @@ async function browser() {
   try {
     check('the shell comes up', await until('return !!window.__shellReady', 120000));
     check('the dome is ready', await until("const m = window.__map ? window.__map() : null; return Boolean(m && m.ready && m.id === 'dome');", 180000));
+    const gfx = await ev('return window.__map().graphics;');
+    check(`flown at ${GRAPHICS}`, String(gfx).toLowerCase().startsWith(GRAPHICS), String(gfx));
     await answerQuadPicker(page, 60000).catch(() => {});
     await until("return window.__ui.screen === 'flight'", 20000);
     const stand = await ev('const q = window.__ground(); return { y: q.y, surf: q.surf, rest: q.rest };');
@@ -240,6 +258,15 @@ async function browser() {
       report.views[name] = rs;
       console.log(`  info  ${name}: ${rs.calls} draw calls, ${rs.triangles} triangles`);
       await shot(name);
+    }
+    if (SHOTS) {
+      /* The picker card's picture: the page's furniture hidden, a truck
+       * over the cars, 960 by 540 for assets/thumbs/dome.jpg. */
+      await ev("window.__ui.root.style.visibility = 'hidden'; return 1;");
+      await ev('window.__setCam(-30, 9, -36, -4, 6, -8); return 1;');
+      await sleep(2500);
+      await shot('card');
+      await ev("window.__ui.root.style.visibility = ''; return 1;");
     }
     await ev('window.__setCam(); return 1;');
     const errs = page.errors.filter((e) => !/api\/|ERR_CONNECTION_REFUSED|Failed to load resource/.test(e));

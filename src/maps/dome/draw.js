@@ -771,6 +771,20 @@ function drawConcourse(L, G, signs, cells, low) {
       }
     }
   }
+  /* Strip lights on the concourse's ceiling, the underside of the upper
+   * tier, two lines down each side. */
+  for (const s of [-1, 1]) {
+    for (const zc of [COLUMNS.z - 4, COLUMNS.z + 4]) {
+      for (let x = -86; x < 86; x += 6) {
+        G.box(0xfff6e2, x, UPPER.under - 0.06, s * zc - 0.15, x + 3.2, UPPER.under - 0.01, s * zc + 0.15);
+      }
+    }
+    for (const xc of [COLUMNS.x - 4, COLUMNS.x + 4]) {
+      for (let z = -54; z < 54; z += 6) {
+        G.box(0xfff6e2, s * xc - 0.15, UPPER.under - 0.06, z, s * xc + 0.15, UPPER.under - 0.01, z + 3.2);
+      }
+    }
+  }
   /* A poster on each column, toward the stalls. */
   let p = 0;
   for (const s of [-1, 1]) {
@@ -899,6 +913,24 @@ function drawOutside(L, signs, cells) {
     });
     for (const wx of WINDOWS.x) {
       L.box(C.ink, wx - WINDOWS.half - 0.2, WINDOWS.y0 - 0.3, z, wx + WINDOWS.half + 0.2, WINDOWS.y0, z + s * 0.4);
+    }
+    /* The name again down each long side, between the gates. */
+    for (const nx of [-28, 28]) {
+      signs.wall(cells.gable, nx, 12, z + s * 0.04, 0, s, 30, 7.5);
+    }
+    /* Nobori along the plaza, a truck's banner on a pole, two by each
+     * gate. */
+    let b = 0;
+    for (const gx of GATES.x) {
+      for (const dx of [-9, 9]) {
+        const x = gx + dx;
+        const zz = z + s * 7;
+        L.tube(C.steel, [x, 0, zz], [x, 6.4, zz], 0.06, 5);
+        L.tube(C.steel, [x, 6.2, zz], [x + 1.1, 6.2, zz], 0.03, 4);
+        signs.wall(cells[`bn${b % 4}`], x + 0.55, 6.15 - 1.65, zz, 0, s, 1.1, 3.3);
+        signs.wall(cells[`bn${b % 4}`], x + 0.55, 6.15 - 1.65, zz - s * 0.01, 0, -s, 1.1, 3.3);
+        b += 1;
+      }
     }
   }
   for (const s of [-1, 1]) {

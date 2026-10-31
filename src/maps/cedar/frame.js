@@ -49,8 +49,15 @@ export function worldAt(px, py, h = 0) {
   return [wx(px), h, wz(py)];
 }
 
-/* The chunk a world point is filed under: four across and four up. */
-const CUT = 4;
+/* The chunk a world point is filed under: four across and four up on
+ * Medium and High, so the cull and the frustum leave the far side of the
+ * forest out. On Low the whole place is one chunk, set by ./index.js
+ * before it builds: a chunk is a draw call per look, and on a low end
+ * machine the calls cost more than the triangles the cull would save. */
+let CUT = 4;
+export function setChunkCut(n) {
+  CUT = n;
+}
 export function chunkOf(x, z) {
   const px = x + W / 2;
   const py = D / 2 - z;

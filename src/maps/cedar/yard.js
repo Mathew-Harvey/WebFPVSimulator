@@ -3,10 +3,9 @@
  * (../sunny/yard.js): the start pads, the named gaps, and the few things
  * the builder's own palette already draws better than a map could: the
  * boiler house's brick chimney you can fly down (the hollow chimney), the
- * concrete annex gone to ruin (the bando), the utility poles up the road
- * and their wires, the vending machines by the door, and the two vehicles
- * left in the car park. Everything else is the place itself (./plan.js),
- * which ./index.js hands the pipeline as its structure.
+ * concrete annex gone to ruin (the bando) and the vehicles left in the
+ * car park. Everything else is the place itself (./plan.js), which
+ * ./index.js hands the pipeline as its structure.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -26,7 +25,7 @@
 
 import { CEDAR_DOC_ID } from '../registry.js';
 import {
-  W, D, SPAWN, ANNEX, POLES, VENDING, CARS, CHIMNEY_EL, cedarGaps,
+  W, D, SPAWN, ANNEX, CARS, CHIMNEY_EL, cedarGaps,
 } from './plan.js';
 import { CHIMNEY } from './ryokan.js';
 
@@ -49,10 +48,6 @@ function rows() {
   out.push(['bando', ANNEX.px, ANNEX.py, 0, {
     width: ANNEX.width, depth: ANNEX.depth, floors: ANNEX.floors, ruin: ANNEX.ruin, variant: ANNEX.variant,
   }]);
-  for (const [px, py] of POLES) {
-    out.push(['utilityPole', px, py, 0, { height: 10 }]);
-  }
-  out.push(['vending', VENDING.px, VENDING.py, -90 * DEG, { count: 2, variant: 2 }]);
   for (const c of CARS) {
     out.push(['car', c.px, c.py, c.deg * DEG, { variant: c.variant }, { style: c.style }]);
   }

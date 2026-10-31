@@ -55,7 +55,12 @@ import {
   cedarLayout, cedarFloor, cedarMarkSpots, STREAM_HOLE, W, D, worldAt, chunkOf,
 } from './plan.js';
 import { cedarDocument } from './yard.js';
+import { setChunkCut } from './frame.js';
 import { mergePalette } from '../sunny/palette.js';
+
+/* Chunks across on Low (./frame.js): measured against The town at the
+ * start on 31 October 2026, see PROGRESS.md. */
+const LOW_CUT = 1;
 
 const at = (px, py) => chunkOf(px - W / 2, D / 2 - py);
 
@@ -328,6 +333,7 @@ function openGround(scene, name, rect) {
 export async function buildMap(shell, onProgress, options) {
   const qid = qualityFor(options && options.quality).id;
   const low = qid === 'low';
+  setChunkCut(low ? LOW_CUT : 4);
   const { parts, T } = cedarLayout();
   const extra = {
     el: { id: 'cedar', type: 'cedar' },

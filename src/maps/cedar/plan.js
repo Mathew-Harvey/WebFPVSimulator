@@ -68,15 +68,79 @@ export const CARS = [
  * boxes in the world frame; T is the builder, for everything ./index.js
  * draws over them, the trees included.
  */
+/*
+ * The utility poles up the road and along the car park: grey concrete,
+ * a steel crossarm, three insulators, three lines sagging to the next,
+ * and a transformer on the one by the inn. Drawn by the place in its own
+ * colours rather than as the builder's pole, whose painted plates are a
+ * draw call each: five poles were ten calls on Low.
+ */
+function poles(T) {
+  const H = 10;
+  const top = [];
+  POLES.forEach(([px, py], i) => {
+    T.clearing(px - 1, py - 1, px + 1, py + 1, 0.5);
+    T.post('cdConcrete', px, py, 0, H, 0.15, { name: 'utility pole', kind: 'pole' });
+    T.post('cdToriiBlack', px, py, 0, 1.8, 0.17, { name: 'pole guard', solid: false });
+    /* The crossarm lies across the line: along x where the line runs
+     * north, along y where it runs east. */
+    const [qx, qy] = POLES[Math.min(i + 1, POLES.length - 1)];
+    const [ox, oy] = POLES[Math.max(i - 1, 0)];
+    const alongY = Math.abs(qy - oy) >= Math.abs(qx - ox);
+    const arm = alongY ? [[px - 0.9, py - 0.06], [px + 0.9, py + 0.06]] : [[px - 0.06, py - 0.9], [px + 0.06, py + 0.9]];
+    T.box('cdTin', arm[0][0], arm[0][1], H - 0.9, arm[1][0], arm[1][1], H - 0.8, { name: 'crossarm' });
+    const ends = [-0.75, 0, 0.75].map((d) => (alongY ? [px + d, py, H - 0.62] : [px, py + d, H - 0.62]));
+    for (const e of ends) {
+      T.ball('cdPaving', e[0], e[1], e[2] - 0.1, 0.09, true);
+    }
+    top.push(ends);
+    if (i === 3) {
+      T.cyl('cdTin', [px + 0.42, py, 6.4], [px + 0.42, py, 7.6], 0.34, 10);
+      T.box('cdTin', px, py - 0.08, 6.9, px + 0.2, py + 0.08, 7.1, { name: 'transformer bracket', solid: false });
+    }
+  });
+  for (let i = 0; i + 1 < top.length; i += 1) {
+    for (let k = 0; k < 3; k += 1) {
+      T.wire('cdToriiBlack', top[i][k], top[i + 1][k], 0.45, 0.02);
+    }
+  }
+}
+
+/*
+ * The two drinks machines by the inn's door, facing the car park: a red
+ * one and a white one, a lit window of cans, the buttons, the slot. Drawn
+ * by the place for the poles' reason: the builder's machine was ten
+ * draw calls on Low.
+ */
+function vending(T) {
+  const { px, py } = VENDING;
+  [['cdSignRed', -1.02], ['cdKuraWhite', 0.02]].forEach(([body, dx]) => {
+    const x0 = px + dx;
+    const x1 = x0 + 1.0;
+    T.box(body, x0, py - 0.4, 0, x1, py + 0.4, 1.83, { name: 'vending machine' });
+    T.box('cdToriiBlack', x0, py - 0.4, 1.83, x1, py + 0.4, 1.9, { name: 'vending top', solid: false });
+    T.paint('cdShoji', x0 + 0.1, py - 0.43, 1.0, x1 - 0.1, py - 0.4, 1.7);
+    for (let r = 0; r < 3; r += 1) {
+      for (let c = 0; c < 6; c += 1) {
+        const m = ['cdNorenBlue', 'cdSignRed', 'cdBusStop', 'cdFern'][(r * 6 + c + (dx > 0 ? 2 : 0)) % 4];
+        const cx = x0 + 0.17 + c * 0.133;
+        const h = 1.08 + r * 0.21;
+        T.paint(m, cx - 0.04, py - 0.45, h, cx + 0.04, py - 0.43, h + 0.14, true);
+      }
+    }
+    T.paint('cdToriiBlack', x0 + 0.15, py - 0.44, 0.15, x1 - 0.15, py - 0.4, 0.4);
+    T.paint('cdBrass', x1 - 0.3, py - 0.44, 0.85, x1 - 0.18, py - 0.4, 0.95, true);
+  });
+}
+
 export function cedarLayout() {
   const T = new Town();
   buildInn(T);
   buildShrine(T);
   /* What the document stands on the plot, kept clear of trees as well. */
   T.clearing(ANNEX.px - ANNEX.width / 2, ANNEX.py - ANNEX.depth / 2, ANNEX.px + ANNEX.width / 2, ANNEX.py + ANNEX.depth / 2, 3);
-  for (const [px, py] of POLES) {
-    T.clearing(px - 1, py - 1, px + 1, py + 1, 0.5);
-  }
+  poles(T);
+  vending(T);
   /* The sacred cedar, one tree by hand. */
   T.trees.push(giant(T));
   plantForest(T, () => false);

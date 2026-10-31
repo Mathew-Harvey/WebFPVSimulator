@@ -24,8 +24,7 @@
  *
  * WHERE IT COMES FROM. Nothing that exists: a building of our own, laid out
  * from the way such buildings are made and furnished, at the sizes in the
- * table under SIZES below. The owner's brief named the Uncrashed Office map
- * only as the kind of place; no layout, gate or prop of it is used here.
+ * table under SIZES below.
  *
  * THE LIFT IS BEING RENEWED. Its car has been taken out, so the doors
  * stand open on every floor behind the works' barriers and the shaft is

@@ -6,7 +6,7 @@
  * WHERE IT COMES FROM. Nick's own videos, about fifty stills of the house
  * from four years of them (listed with what each shows in
  * /mnt/project-files/nick-burns-house/refs/REFERENCES.md), and three
- * Uncrashed Workshop layouts of it for the plan's proportions. The stills
+ * fan made Workshop layouts of it for the plan's proportions. The stills
  * decide what the house looks like: a warm grey board and batten house with
  * white trim and dark sashes, a red brick block at the front west corner
  * with a tall window, a white porch on bracketed posts, a three car garage

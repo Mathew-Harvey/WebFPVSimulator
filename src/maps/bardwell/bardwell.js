@@ -7,8 +7,8 @@
  * WHERE IT COMES FROM. The first build (2026-10-21, from fourteen stills of
  * Joshua's videos) was wrong, and the owner said so the same day: "you
  * didn't get bardwells house correct at all sadly, review this and fix your
- * model completely then add more detail". With that came the layout of an
- * Uncrashed Workshop map of the place, "Joshua Bardwell House / Perfect
+ * model completely then add more detail". With that came the layout of a
+ * fan made Workshop map of the place, "Joshua Bardwell House / Perfect
  * Beginner Map" (Workshop item 3637027069, by xWallow, a fan's recreation
  * from public video and, in its own words, not a one to one replica), and
  * a screenshot of it. This is that place. Every position here was read off

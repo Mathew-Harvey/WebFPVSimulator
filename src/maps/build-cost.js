@@ -89,6 +89,13 @@ export const MAP_BUILD_MS = {
   /* Ridgeline MX (src/maps/moto/): a plot of trees, a track of mounds and
    * berms and ten bikes. An estimate until it is measured. */
   moto: 2400,
+  /* Bakuon Dome (src/maps/dome/): a hall of a few thousand boxes and
+   * capsules, its streets and four trucks. An estimate until it is
+   * measured. */
+  dome: 2400,
+  /* Kodama Onsen (src/maps/cedar/): three thousand cedars, an inn and a
+   * shrine. An estimate until it is measured. */
+  cedar: 3000,
   /* Hayate Circuit (src/maps/hayate/): a circuit, its pits, stands and
    * park, and a few hundred trees. An estimate until it is measured. */
   hayate: 3000,

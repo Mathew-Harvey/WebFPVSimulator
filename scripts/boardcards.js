@@ -350,8 +350,13 @@ const WORLDS = [
    * server for a file that was not there (found 30 October 2026). */
   { id: 'ball', file: 'ball.jpg', name: 'Quad Ball' },
   { id: 'moto', file: 'moto.jpg', name: 'Ridgeline MX' },
-  /* Hayate Circuit, added 31 October 2026. */
-  { id: 'hayate', file: 'hayate.jpg', name: 'Hayate Circuit' },
+  { id: 'dome', file: 'dome.jpg', name: 'Bakuon Dome' },
+  /* Kodama Onsen, added 31 October 2026, picked by eye: the inn from the
+   * car park side, the shrine's approach and the forest behind it. */
+  { id: 'cedar', file: 'cedar.jpg', name: 'Kodama Onsen', shot: { tp: 0.55, tr: 0.75, ta: -1.9 } },
+  /* Hayate Circuit, added 31 October 2026, picked by eye from three: the
+   * sky wheel in front, the pits, the stands and the tower behind. */
+  { id: 'hayate', file: 'hayate.jpg', name: 'Hayate Circuit', shot: { tp: 0.45, tr: 0.7, ta: 1.57 } },
 ];
 
 async function drawWorlds(opts) {

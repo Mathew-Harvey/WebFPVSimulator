@@ -109,7 +109,7 @@ export const KNOB_TOP = 17;
  */
 export const WEDDED = [
   { px: 150, py: 106, r: 7.5, h: 13, taper: 0.35, seed: 31, n: 10 },
-  { px: 166.5, py: 109, r: 4.2, h: 7.5, taper: 0.3, seed: 37, n: 9 },
+  { px: 170, py: 110, r: 4.2, h: 7.5, taper: 0.3, seed: 37, n: 9 },
 ];
 export const STACKS = [
   { px: 222, py: 98, r: 5.2, h: 22, taper: 0.4, seed: 41, n: 9 },

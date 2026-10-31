@@ -31,8 +31,8 @@ import { rng } from './frame.js';
 import { TOP, HILL_TOP } from './terrain.js';
 
 /* The forecourt, the lane, and the line the poles stand on. */
-export const FORECOURT = { x0: 112, x1: 371, y0: 164, y1: 199 };
-export const LANE = { x0: 30, x1: 371, y0: 200, y1: 207 };
+export const FORECOURT = { x0: 112, x1: 371, y0: 164.6, y1: 199 };
+export const LANE = { x0: 112, x1: 371, y0: 200, y1: 207 };
 const POLE_Y = 208.2;
 
 /* The steps up the hill and their torii. */
@@ -342,7 +342,7 @@ function shrine(T, r) {
 const POLE_H = 10;
 function poles(T, r) {
   const at = [];
-  for (let x = 36; x < 370; x += 28) {
+  for (let x = 116; x < 370; x += 28) {
     at.push([x + r.range(-2, 2), POLE_Y]);
   }
   for (const [px, py] of at) {

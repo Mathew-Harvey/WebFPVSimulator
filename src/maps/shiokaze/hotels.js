@@ -57,7 +57,7 @@ import { TOP } from './terrain.js';
  * yN, the balcony's outer face yB and the corridor's yC. */
 export const HOTEL = {
   x0: 116, pitch: 51.6, len: 36, room: 6,
-  yB: 149.6, yS: 152.0, yN: 162.0, yC: 164.0,
+  yB: 149.6, yS: 152.0, yN: 162.0, yC: 164.4,
   base: TOP, fh: 3.0, floors: 7, slab: 0.25, parapet: 1.1, roofPar: 1.0,
   tower: { w: 5.4, y0: 154.0, y1: 160.0, wall: 0.25, top: 2.2 },
   link: { y0: 155.5, y1: 158.5 },
@@ -171,14 +171,16 @@ function block(T, b) {
     const lx0 = fallen(b, k, x0, cx) ? cx : x0;
     /* the sea face: the slab, the parapet, the room's screens */
     T.box('skSlab', lx0, H.yB, L - H.slab, x1, H.yS, L, { kind: 'wall', name: 'balcony' });
-    parapetRun(T, b, lx0, x1, H.yB, H.yB + 0.15, L, r, 'balcony parapet');
+    if (!isOpen(b, k)) {
+      parapetRun(T, b, lx0, x1, H.yB, H.yB + 0.15, L, r, 'balcony parapet');
+    }
     for (let u = H.room; u < H.len - 0.01; u += H.room) {
       const px = x0 + u;
       if (px < lx0 + 0.1) {
         continue;
       }
       /* The fifth floor's screens are all down, in every block: the run. */
-      if (k === 4 || r.chance(0.22)) {
+      if (k === 4 || isOpen(b, k) || r.chance(0.22)) {
         /* A screen that fell leaves its stub on the wall. */
         T.deco('skGrey', px - 0.06, H.yS - 0.35, L, px + 0.06, H.yS, L + 2.75, false);
         continue;
@@ -187,7 +189,9 @@ function block(T, b) {
     }
     /* the land face: the slab, the parapet */
     T.box('skSlab', lx0, H.yN, L - H.slab, x1, H.yC, L, { kind: 'wall', name: 'corridor' });
-    parapetRun(T, b, lx0, x1, H.yC - 0.15, H.yC, L, r, 'corridor parapet');
+    if (!isOpen(b, k)) {
+      parapetRun(T, b, lx0, x1, H.yC - 0.15, H.yC, L, r, 'corridor parapet');
+    }
   }
   /* The slab edges' rule, the slab's own colour a shade darker under the
    * lip, so each floor reads as a line across the face from the sea. */

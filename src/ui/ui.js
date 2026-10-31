@@ -1000,7 +1000,7 @@ function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
   const built = mapId === 'built' || mapId === 'house' || mapId === 'heads' || mapId === 'bardwell' || mapId === 'warehouse'
     || mapId === 'goats' || mapId === 'sunny' || mapId === 'drift' || mapId === 'ball' || mapId === 'moto' || mapId === 'dome' || mapId === 'cedar'
     || mapId === 'towers' || mapId === 'alps' || mapId === 'office' || mapId === 'kaza' || mapId === 'sana'
-    || mapId === 'shiokaze' || mapId === 'arctic';
+    || mapId === 'shiokaze' || mapId === 'factory' || mapId === 'arctic';
   const where = mapId === 'house' ? "Nick's house"
     : mapId === 'heads' ? "Heads' house"
       : mapId === 'bardwell' ? "Joshua's house"
@@ -1009,6 +1009,7 @@ function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
           : mapId === 'goats' ? "Heads' street"
           : mapId === 'sunny' ? 'Sunnyfield'
           : mapId === 'arctic' ? 'Hyoura Island'
+          : mapId === 'factory' ? 'Hamakaze Works'
           : mapId === 'shiokaze' ? 'Shiokaze Point'
             : mapId === 'drift' ? 'Drift Matsuri' : mapId === 'ball' ? 'Quad Ball' : mapId === 'moto' ? 'Ridgeline MX' : mapId === 'dome' ? 'Bakuon Dome' : mapId === 'cedar' ? 'Kodama Onsen' : mapId === 'towers' ? 'Kumoi Towers' : mapId === 'alps' ? 'Raicho Ridge' : mapId === 'kaza' ? 'Kazahana Plain' : mapId === 'sana' ? 'Kirigaoka Sanatorium' : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
   if (mode === 'off') {
@@ -1075,6 +1076,9 @@ const GOATS_OFF_BOARD = 'The board keeps no runs for 90%er goat herding, so a ru
 const SUNNY_OFF_BOARD = 'The board keeps no runs for Sunnyfield, so a run flown there stays here.'
   + ' Fly the town for a run that can go up.';
 
+/* Hamakaze Works, the same way. */
+const FACTORY_OFF_BOARD = 'The board keeps no runs for Hamakaze Works, so a run flown there stays here.'
+  + ' Fly the town for a run that can go up.';
 /* Shiokaze Point, the same way. */
 const SHIOKAZE_OFF_BOARD = 'The board keeps no runs for Shiokaze Point, so a run flown there stays here.'
   + ' Fly the town for a run that can go up.';
@@ -11458,7 +11462,7 @@ export class Ui {
           || this.settings.map === 'sunny' || this.settings.map === 'drift' || this.settings.map === 'ball' || this.settings.map === 'moto'
           || this.settings.map === 'dome' || this.settings.map === 'cedar' || this.settings.map === 'towers' || this.settings.map === 'alps'
           || this.settings.map === 'office' || this.settings.map === 'kaza' || this.settings.map === 'sana'
-          || this.settings.map === 'shiokaze'
+          || this.settings.map === 'shiokaze' || this.settings.map === 'factory'
           || this.settings.map === 'arctic';
         return [
           { label: 'Fly again', action: 'restart', primary: true },
@@ -11491,6 +11495,7 @@ export class Ui {
                     : this.settings.map === 'office' ? OFFICE_OFF_BOARD
                       : this.settings.map === 'goats' ? GOATS_OFF_BOARD
                         : this.settings.map === 'sunny' ? SUNNY_OFF_BOARD
+                        : this.settings.map === 'factory' ? FACTORY_OFF_BOARD
                         : this.settings.map === 'shiokaze' ? SHIOKAZE_OFF_BOARD
                         : this.settings.map === 'arctic' ? ARCTIC_OFF_BOARD
                           : this.settings.map === 'drift' ? DRIFT_OFF_BOARD

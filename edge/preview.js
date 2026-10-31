@@ -108,6 +108,7 @@ const WORLDS = {
   warehouse: { name: "Thomas More's Shop", thumb: 'warehouse' },
   goats: { name: '90%er goat herding', thumb: 'goats' },
   sunny: { name: 'Sunnyfield', thumb: 'sunny' },
+  factory: { name: 'Hamakaze Works', thumb: 'factory' },
   drift: { name: 'Drift Matsuri', thumb: 'drift' },
   ball: { name: 'Quad Ball', thumb: 'ball' },
   arctic: { name: 'Hyoura Island', thumb: 'arctic' },

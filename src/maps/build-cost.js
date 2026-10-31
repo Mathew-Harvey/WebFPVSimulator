@@ -93,6 +93,10 @@ export const MAP_BUILD_MS = {
    * blocks of stacks, three cranes, a ship. An estimate until it is
    * measured. */
   dock: 2600,
+  /* Bakuon Dome (src/maps/dome/): a hall of a few thousand boxes and
+   * capsules, its streets and four trucks. An estimate until it is
+   * measured. */
+  dome: 2400,
   /* Kodama Onsen (src/maps/cedar/): three thousand cedars, an inn and a
    * shrine. An estimate until it is measured. */
   cedar: 3000,

@@ -350,6 +350,10 @@ const WORLDS = [
    * server for a file that was not there (found 30 October 2026). */
   { id: 'ball', file: 'ball.jpg', name: 'Quad Ball' },
   { id: 'moto', file: 'moto.jpg', name: 'Ridgeline MX' },
+  /* Tonbo Fest, added 31 October 2026 with its picture, so its card is
+   * never blank: from over the race, the stage, the stalls and the railway
+   * across the river in it. */
+  { id: 'fest', file: 'fest.jpg', name: 'Tonbo Fest', shot: { tp: 0.45, tr: 0.6, ta: 0.8 } },
 ];
 
 async function drawWorlds(opts) {

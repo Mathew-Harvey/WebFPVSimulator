@@ -272,6 +272,7 @@
     'src/maps/drift/circuit.js',
     'src/maps/drift/index.js',
     'src/maps/drift/yard.js',
+    'src/maps/fest/index.js',
     'src/maps/fest/signs.js',
     'src/maps/fest/venue.js',
     'src/maps/fest/yard.js',

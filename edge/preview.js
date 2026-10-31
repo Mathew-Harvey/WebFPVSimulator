@@ -113,6 +113,7 @@ const WORLDS = {
   arctic: { name: 'Hyoura Island', thumb: 'arctic' },
   towers: { name: 'Kumoi Towers', thumb: 'towers' },
   cedar: { name: 'Kodama Onsen', thumb: 'cedar' },
+  office: { name: 'Hoshino Shoji', thumb: 'office' },
   built: { name: 'Hibari Yard', thumb: 'yard' },
 };
 

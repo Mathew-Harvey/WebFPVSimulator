@@ -353,6 +353,9 @@ const WORLDS = [
   /* Hyoura Island, added 31 October 2026: the hamlet and its harbour from
    * the hill to its west, its boats and the co-op. */
   { id: 'arctic', file: 'arctic.jpg', name: 'Hyoura Island', shot: { tp: 0.45, tr: 0.6, ta: -0.8 } },
+  /* Raicho Ridge, added 31 October 2026, from high over the valley so the
+   * ridge, the ropeway and the lake are all in it. */
+  { id: 'alps', file: 'alps.jpg', name: 'Raicho Ridge' },
   /* Kumoi Towers, added 31 October 2026: the plaza with the twin crowns
    * over it, from the plaza's south side, picked by eye from six shots. */
   { id: 'towers', file: 'towers.jpg', name: 'Kumoi Towers', shot: { tp: 0.25, tr: 0.6, ta: 0 } },
@@ -360,6 +363,10 @@ const WORLDS = [
   /* Kodama Onsen, added 31 October 2026, picked by eye: the inn from the
    * car park side, the shrine's approach and the forest behind it. */
   { id: 'cedar', file: 'cedar.jpg', name: 'Kodama Onsen', shot: { tp: 0.55, tr: 0.75, ta: -1.9 } },
+  /* Hoshino Shoji, added 31 October 2026. Indoors like Thomas More's Shop,
+   * so it names its own lens too (CARD_LENS in src/maps/office/office.js). */
+  { id: 'office', file: 'office.jpg', name: 'Hoshino Shoji' },
+  { id: 'kaza', file: 'kaza.jpg', name: 'Kazahana Plain' },
 ];
 
 async function drawWorlds(opts) {

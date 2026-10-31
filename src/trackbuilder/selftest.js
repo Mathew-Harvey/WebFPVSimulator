@@ -62,7 +62,7 @@ import {
   readCommunityLink, sendRound,
 } from './community.js';
 import { importFpvEvents, looksLikeFpvEvents, reportLines } from './importfpv.js';
-import { importTinyLaps, looksLikeTinyLaps } from './importtinylaps.js';
+import { importTinyLaps, looksLikeTinyLaps, EXPORT_FLAG } from './importtinylaps.js';
 import { tinyLapsFromHash, shareFromTinyLapsText, publishTinyLaps } from '../share/tinylaps.js';
 import {
   passList, tagsOf, reuseOf, lanesOf, focusFor, aroundPass, stretchOf, flyAgain, apertureAt,
@@ -6095,7 +6095,7 @@ function suiteScoring() {
   const roofSt = roofCourse.structures.find((s) => s.type === 'flag');
   /*
    * THE ASSERTION THAT WAS HERE WAS THE DEFECT. It said a flag 20 m up keeps
-   * its elevation, on the reading that the Velocidrone map it came from has a
+   * its elevation, on the reading that the source map it came from has a
    * rooftop under it. This is a TRACK, which is a field: there is no roof, so
    * the flag hung in the sky with a pole and nothing under it. FAI Turkiye
    * 2024 shipped four of them and a gate 15 m up, and a pilot reported that
@@ -6422,7 +6422,7 @@ function suiteSeat() {
   check(`no course that ships flies with anything in the air (${shipped.length} read)`,
     hanging.length === 0, hanging.join('; '));
   /* Here so the loop above cannot pass by there being nothing to set down.
-   * The stored course is faithful to the Velocidrone file, rooftop and all,
+   * The stored course is faithful to the .trk file, rooftop and all,
    * and it is what the sim folds on read. If the stored data is ever planted
    * at rest, this line is the one to drop. */
   const fai = JSON.parse(readFileSync(join(jsonDir, 'trk-c149e98e.json'), 'utf8'));
@@ -8795,9 +8795,9 @@ async function suiteImportTinyLaps() {
       pipe([3, 0, 0], [4, 1, 1]),
     ],
     racePoints: [
-      point([0, 3, 2], SAME, [1, 1], { exportToVelocidrone: false }),
+      point([0, 3, 2], SAME, [1, 1], { [EXPORT_FLAG]: false }),
       point([0, 1, 0], SAME, [2, 2]),
-      point([0, 1, 0], TURN, [2, 2], { exportToVelocidrone: true }),
+      point([0, 1, 0], TURN, [2, 2], { [EXPORT_FLAG]: true }),
     ],
     gridGuidesHidden: true,
   });

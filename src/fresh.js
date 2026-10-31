@@ -307,6 +307,7 @@
     'src/maps/rally/circuit.js',
     'src/maps/rally/frame.js',
     'src/maps/rally/hill.js',
+    'src/maps/rally/index.js',
     'src/maps/rally/paddock.js',
     'src/maps/rally/ride.js',
     'src/maps/rally/traffic.js',

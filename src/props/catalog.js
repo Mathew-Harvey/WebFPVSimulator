@@ -41,8 +41,19 @@ import * as COURSE from './course.js';
 import * as WINDMILL from './windmill.js';
 import * as HOMES from './homes.js';
 import * as SUNNY from './sunny.js';
-import * as TOUGE from './touge.js';
+import * as DOCK from './dock.js';
+import * as FACTORY from './factory.js';
+import * as ALPINE from './alpine.js';
+import * as TOWERS from './towers.js';
+import * as SHIOKAZE from './shiokaze.js';
 import * as CEDAR from './cedar.js';
+import * as TOUGE from './touge.js';
+import * as OFFICE from './office.js';
+import * as KAZA from './kaza.js';
+import * as SANATORIUM from './sanatorium.js';
+import * as RALLY from './rally.js';
+import * as AIRFIELD from './airfield.js';
+import * as HOTARU from './hotaru.js';
 import { buildingLayout, buildingDraw, bandoLayout, bandoDraw } from './buildings.js';
 import {
   craneLayout, craneDraw, waterLayout, waterDraw, mastLayout, mastDraw, chimneyLayout, chimneyDraw,
@@ -143,7 +154,10 @@ export const FURNITURE = {
  * a mistake, and it throws here rather than one silently winning.
  */
 const FAMILIES = {
-  buildings: BUILDINGS, industrial: INDUSTRIAL, street: STREET, skate: SKATE, course: COURSE, windmill: WINDMILL, homes: HOMES, sunny: SUNNY, cedar: CEDAR, touge: TOUGE,
+  buildings: BUILDINGS, industrial: INDUSTRIAL, street: STREET, skate: SKATE, course: COURSE, windmill: WINDMILL, homes: HOMES, sunny: SUNNY, factory: FACTORY, cedar: CEDAR, dock: DOCK, towers: TOWERS, alpine: ALPINE, office: OFFICE, kaza: KAZA,
+  sanatorium: SANATORIUM,
+  shiokaze: SHIOKAZE, rally: RALLY,
+  airfield: AIRFIELD, hotaru: HOTARU, touge: TOUGE,
 };
 export const FAMILY_MATERIALS = {};
 export const FAMILY_PAINTERS = {};

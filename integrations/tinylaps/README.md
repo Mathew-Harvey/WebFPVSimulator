@@ -124,7 +124,7 @@ The simulator reads the export with its own importer and builds a whoop track in
 - **Race points.** Each checkpoint is a gate with nothing built round it: the opening
   scores and lights like a gate, at its size, height and turn, flown the way its arrow
   points. A point flown more than once is one gate flown again.
-- **Nav only points** (Export to VelociDrone off) shape the racing line and do not score.
+- **Nav only points** (their export flag off) shape the racing line and do not score.
 - **Start and finish** is the first checkpoint, as in TinyLaps. A start pad is put behind
   it, facing through it, so the lap closes there.
 - The build is centred in the hall. Anything that would stand outside it is left out.

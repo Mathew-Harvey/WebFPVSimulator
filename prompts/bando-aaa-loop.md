@@ -81,7 +81,7 @@ not grade their own work.
 
 ### L. Lines (FPV)
 
-A Velocidrone bando is flown from 20 m out. Each line has to read at
+A bando is flown from 20 m out. Each line has to read at
 that distance, then stay honest when the craft is inside it. Inner
 clears are the authored numbers; do not shrink them.
 
@@ -140,7 +140,7 @@ edit the tree. Verdicts are binding.
    integrated graphics. Grades C1, C2, C4, C5, and every P item from
    numbers. REJECT on one leftover overlap, one city fetch, or one
    budget over.
-3. **FPV pilot.** 5 inch freestyle pilot who has flown Velocidrone
+3. **FPV pilot.** 5 inch freestyle pilot who has flown other simulators
    bandos. Grades C3, C4, and L1 to L10. REJECT if a line that looks
    flyable is not, or if the 20 m read is a wall of same-value boxes.
 

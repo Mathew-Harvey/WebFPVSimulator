@@ -1,5 +1,5 @@
 /*
- * normaltest.mjs: which local axis of a Velocidrone checkpoint volume is the
+ * normaltest.mjs: which local axis of a .trk checkpoint volume is the
  * direction you fly through it.
  *
  * Two independent tests, because getting this wrong turns a course into

@@ -497,7 +497,9 @@ const AXIS_X = new THREE.Vector3(1, 0, 0);
  * alone. The entry is written out because it has moved with the directory:
  * it was three before looks.js came and four before egg.js, and with no
  * entry then the bar sat at 75 percent until the import resolved. */
-const MAP_MODULE_COUNT = { field: 1, city: 72, custom: 1, built: 5, house: 3, heads: 4, bardwell: 4, warehouse: 3, goats: 9, sunny: 12, drift: 3 };
+const MAP_MODULE_COUNT = { field: 1, city: 72, custom: 1, built: 5, house: 3, heads: 4, bardwell: 4, warehouse: 3, goats: 9, sunny: 12, factory: 9, drift: 3, towers: 11, alps: 6, office: 4, kaza: 10, sana: 6, shiokaze: 10, fmx: 8, airfield: 9, dunes: 5 };
+/* Kamome Wharf (src/maps/dock/): its ten. */
+MAP_MODULE_COUNT.dock = 10;
 /* Where a map's modules live, so the loading bar can count them. Data, not a
  * ternary: the ternary read "field or else city", so a third map counted its
  * modules under the city's prefix and the bar sat at zero.
@@ -517,9 +519,19 @@ const MAP_MODULE_PREFIX = {
   warehouse: '/src/maps/warehouse/',
   goats: '/src/maps/goats/',
   sunny: '/src/maps/sunny/',
+  factory: '/src/maps/factory/',
   drift: '/src/maps/drift/',
+  dunes: '/src/maps/dunes/',
+  dock: '/src/maps/dock/',
+  alps: '/src/maps/alps/',
+  shiokaze: '/src/maps/shiokaze/',
   cedar: '/src/maps/cedar/',
   touge: '/src/maps/touge/',
+  office: '/src/maps/office/',
+  kaza: '/src/maps/kaza/',
+  sana: '/src/maps/sana/',
+  airfield: '/src/maps/airfield/',
+  hotaru: '/src/maps/hotaru/',
 };
 
 /*
@@ -6800,7 +6812,10 @@ export async function boot({ loading, bootStart, mapId }) {
    * word went out before this one. So has the goat map since 2026-10-28,
    * the same way. */
   const MARK_MAP_WORDS = {
-    starter: 'yard', injected: 'board', canvas: 'own', house: 'house', heads: 'heads', bardwell: 'bardwell', warehouse: 'warehouse', goats: 'goats', sunny: 'sunny',
+    starter: 'yard', injected: 'board', canvas: 'own', house: 'house', heads: 'heads', bardwell: 'bardwell', warehouse: 'warehouse', goats: 'goats', sunny: 'sunny', factory: 'factory', office: 'office', kaza: 'kaza', sana: 'sana', shiokaze: 'shiokaze',
+    airfield: 'airfield',
+    dunes: 'dunes',
+    airfield: 'airfield', hotaru: 'hotaru',
   };
   function markMapWord(mark) {
     return String(mark.key).startsWith('city#') ? 'city' : (MARK_MAP_WORDS[view.source] || null);
@@ -9202,10 +9217,18 @@ export async function boot({ loading, bootStart, mapId }) {
       };
       return;
     }
-    /* Nor for Drift Matsuri: DRIFT_OFF_BOARD in src/ui/ui.js. */
-    if (view.id === 'drift' || view.id === 'moto' || view.id === 'dome') {
+    /* Nor for Hamakaze Works: FACTORY_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'factory') {
       notice = {
-        text: `The board keeps no runs for ${view.id === 'moto' ? 'Ridgeline MX' : (view.id === 'dome' ? 'Bakuon Dome' : 'Drift Matsuri')}, so its runs stay here.`,
+        text: 'The board keeps no runs for Hamakaze Works, so its runs stay here.',
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
+    /* Nor for Drift Matsuri: DRIFT_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'drift' || view.id === 'moto' || view.id === 'dome' || view.id === 'towers' || view.id === 'rally' || view.id === 'fmx') {
+      notice = {
+        text: `The board keeps no runs for ${view.id === 'moto' ? 'Ridgeline MX' : (view.id === 'dome' ? 'Bakuon Dome' : (view.id === 'towers' ? 'Kumoi Towers' : (view.id === 'rally' ? 'Tanada RX' : (view.id === 'fmx' ? 'Shiroyama FMX' : 'Drift Matsuri'))))}, so its runs stay here.`,
         untilMs: performance.now() + 4200,
       };
       return;
@@ -9226,10 +9249,58 @@ export async function boot({ loading, bootStart, mapId }) {
       };
       return;
     }
-    /* Nor for Momiji Pass: TOUGE_OFF_BOARD in src/ui/ui.js. */
-    if (view.id === 'touge') {
+    /* Nor for Kazesuna Dunes: DUNES_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'dunes') {
       notice = {
-        text: 'The board keeps no runs for Momiji Pass, so its runs stay here.',
+        text: 'The board keeps no runs for Kazesuna Dunes, so its runs stay here.',
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
+    /* Nor for Kamome Wharf: DOCK_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'dock') {
+      notice = {
+        text: 'The board keeps no runs for Kamome Wharf, so its runs stay here.',
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
+    /* Nor for Raicho Ridge: ALPS_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'alps') {
+      notice = {
+        text: 'The board keeps no runs for Raicho Ridge, so its runs stay here.',
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
+    /* Nor for Hoshino Shoji: OFFICE_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'office') {
+      notice = {
+        text: 'The board keeps no runs for Hoshino Shoji, so its runs stay here.',
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
+    /* Nor for Kazahana Plain: KAZA_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'kaza') {
+      notice = {
+        text: 'The board keeps no runs for Kazahana Plain, so its runs stay here.',
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
+    /* Nor for Kirigaoka Sanatorium: SANA_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'sana') {
+      notice = {
+        text: 'The board keeps no runs for Kirigaoka Sanatorium, so its runs stay here.',
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
+    /* Nor for Hotaru Valley: HOTARU_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'hotaru') {
+      notice = {
+        text: 'The board keeps no runs for Hotaru Valley, so its runs stay here.',
         untilMs: performance.now() + 4200,
       };
       return;
@@ -9242,10 +9313,34 @@ export async function boot({ loading, bootStart, mapId }) {
       };
       return;
     }
+    /* Nor for Shiokaze Point: SHIOKAZE_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'shiokaze') {
+      notice = {
+        text: 'The board keeps no runs for Shiokaze Point, so its runs stay here.',
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
     /* Nor for Kodama Onsen: CEDAR_OFF_BOARD in src/ui/ui.js. */
     if (view.id === 'cedar') {
       notice = {
         text: 'The board keeps no runs for Kodama Onsen, so its runs stay here.',
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
+    /* Nor for Momiji Pass: TOUGE_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'touge') {
+      notice = {
+        text: 'The board keeps no runs for Momiji Pass, so its runs stay here.',
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
+    /* Nor for Kazami Airfield: AIRFIELD_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'airfield') {
+      notice = {
+        text: 'The board keeps no runs for Kazami Airfield, so its runs stay here.',
         untilMs: performance.now() + 4200,
       };
       return;

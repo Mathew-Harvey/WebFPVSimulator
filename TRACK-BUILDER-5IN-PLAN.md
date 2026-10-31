@@ -431,7 +431,7 @@ Each is the plan's answer, in force until the owner says otherwise.
 ## 9. Not in this plan
 
 A club profile with free gate sizes, hoops, tables and cubes on the 5 inch
-canvas, a build sheet for a field, glb or Velocidrone export, WebXR, and the
+canvas, a build sheet for a field, glb export, WebXR, and the
 board's own copy of any of this. Each is a different ask.
 
 ## 10. What was done, against the plan
@@ -523,6 +523,6 @@ What was measured:
 
 What is left, on purpose: the plan did not ask for a share link, a picture or a
 build sheet for a field, club gate profiles, hoops and tables on a field,
-Velocidrone export, or the board's own copy of any of this. Whoop 2D framing
+A game export, or the board's own copy of any of this. Whoop 2D framing
 above the lap bar, which is a bug there too, is left as it was so the whoop is
 byte for byte what it was.

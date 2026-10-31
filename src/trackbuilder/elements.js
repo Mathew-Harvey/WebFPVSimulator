@@ -1012,7 +1012,7 @@ export const ELEMENTS = {
      * NOT AN OBSTACLE, AND THAT IS THE WHOLE POINT.
      *
      * A waypoint says "the lap goes through here" and nothing else. It exists
-     * because imported courses need it: Velocidrone lets an author drop an
+     * because imported courses need it: the .trk format lets an author drop an
      * invisible trigger box in open air to pin the racing line where there is
      * no gate to fly through, and 55 of the stops across the tracks under
      * tracks/ are exactly that. Before this existed the import had to call

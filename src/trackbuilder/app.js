@@ -3779,7 +3779,7 @@ export class App {
      */
     setActiveTrackClass(trackClassOf(this.doc));
     upgradeStackedFigures(this.doc);
-    /* A course that arrives with something hanging in the air (a Velocidrone
+    /* A course that arrives with something hanging in the air (a .trk
      * rooftop the field has not got, a map made before this rule) is put
      * right here and told so, before faces are derived off its heights. */
     const seated = this.seat();

@@ -70,7 +70,7 @@ function groundMaterial(px, py, h, ny) {
   if (px > REST.x0 - 1 && px < REST.x1 + 1 && py > REST.y0 - 1 && py < REST.y1 + 1) {
     return 'tgGravel';
   }
-  if (d < BENCH + 0.5 && Math.abs(h - heightAt(near.s)) < 0.6) {
+  if (d < HALF + 1.6 && Math.abs(h - heightAt(near.s)) < 0.6) {
     return 'tgVerge';
   }
   if (ny < 0.74) {
@@ -82,7 +82,9 @@ function groundMaterial(px, py, h, ny) {
   if (py > 14 && py < 152 && h < 2) {
     return 'tgGrass';
   }
-  const meadow = hash2(Math.floor(px / 24), Math.floor(py / 24), 31) < 0.18;
+  /* Clearings on the valley side only: on the face a patchwork of 24 m
+   * squares read as a chequerboard between the hairpins. */
+  const meadow = py < 152 && hash2(Math.floor(px / 24), Math.floor(py / 24), 31) < 0.18;
   return meadow ? 'tgGrass' : 'tgForest';
 }
 
@@ -117,9 +119,10 @@ function addGrid(bins, g, skip, chunkFor) {
       list = { chunk: ch, m, pos: [] };
       bins.set(key, list);
     }
-    /* Wound counter clockwise from above in the world frame: the plan's
-     * y flips to the world's -z, so the plan's clockwise is kept. */
-    for (const p of nh > 0 ? [a, c, b] : [a, b, c]) {
+    /* Wound counter clockwise from above in the world frame. The plan's
+     * (x, y, h) goes to the world's (x, -z, y), which keeps handedness,
+     * so counter clockwise in the plan is counter clockwise in the world. */
+    for (const p of nh > 0 ? [a, b, c] : [a, c, b]) {
       list.pos.push(wx(p[0]), p[2], wz(p[1]));
     }
   };
@@ -427,13 +430,15 @@ function drawTrees(kit, trees) {
     }
     const cy = g + (sh.crown0 + sh.H) / 2 + 0.4;
     const r = sh.r;
-    for (let k = 0; k < 4; k += 1) {
-      const a = t.k * 1.7 + k * 1.57;
-      const ox = Math.cos(a) * r * 0.42;
-      const oz = Math.sin(a) * r * 0.42;
-      kit.leaf(`tgMaple${(t.tone + k) % 3}`, [x + ox, cy + (k % 2) * 0.6, z + oz], r * 0.6, r * 0.42, [0, a, 0]);
+    /* Two clumps low and one over them: five read no better from the air
+     * and a maple's clumps were two thirds of the map's triangles. */
+    for (let k = 0; k < 2; k += 1) {
+      const a = t.k * 1.7 + k * 3.14;
+      const ox = Math.cos(a) * r * 0.34;
+      const oz = Math.sin(a) * r * 0.34;
+      kit.leaf(`tgMaple${(t.tone + k) % 3}`, [x + ox, cy, z + oz], r * 0.72, r * 0.48, [0, a, 0]);
     }
-    kit.leaf(`tgMaple${t.tone}`, [x, cy + 1.0, z], r * 0.55, r * 0.45, [0, t.k, 0]);
+    kit.leaf(`tgMaple${(t.tone + 2) % 3}`, [x, cy + r * 0.45, z], r * 0.6, r * 0.46, [0, t.k, 0]);
   }
 }
 
@@ -496,9 +501,10 @@ export async function buildMap(shell, onProgress, options) {
   });
   map.id = 'touge';
   map.source = 'touge';
-  /* The built map's level ground and its road mesh: the mountain and the
-   * road above stand in for both. */
-  for (const name of ['plot', 'terrain', 'roads']) {
+  /* The built map's level ground, the kerb and verge round its edge and
+   * its road mesh: the mountain and the road above stand in for all of
+   * them. */
+  for (const name of ['plot', 'terrain', 'roads', 'kerb', 'verge']) {
     const o = map.scene.getObjectByName(name);
     if (o) {
       o.visible = false;

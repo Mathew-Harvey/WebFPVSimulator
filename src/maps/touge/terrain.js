@@ -24,7 +24,7 @@
  *                    round past the plot so the plot sits in a bowl
  *   the road         near the road the ground is the road: level across
  *                    from the centre to BENCH (./route.js), then eased
- *                    over seven metres into
+ *                    over ten metres into
  *   the slope        a smooth surface through the road's own heights,
  *                    an inverse distance mean of the road's samples, so the
  *                    ground between two legs of a hairpin stack climbs from
@@ -277,9 +277,11 @@ function padBlend(x, y, h) {
 
 /* THE HEIGHT of one node, as the header puts it together. */
 export function heightOf(x, y) {
-  if (inGorge(x, y)) {
-    return GORGE.floor;
-  }
+  /* A node inside the gorge stands at the rim, not on the river bed: the
+   * bed is floorAt's and the walls' (./places.js), and a node down at the
+   * bed pulled every ground triangle along the lip down into a notch,
+   * under the walls' tops, so the rim read as a fence and the floor
+   * just outside the lip sagged. */
   const m = base(x, y);
   const near = inBore(x, y) ? null : nearest(x, y, 64);
   let h = m;
@@ -288,7 +290,7 @@ export function heightOf(x, y) {
     const a = smooth(14, 58, near.d);
     const s = mean === null ? m : mean + (m - mean) * a;
     const e = heightAt(near.s);
-    const b = smooth(BENCH, BENCH + 7, near.d);
+    const b = smooth(BENCH, BENCH + 10, near.d);
     h = e + (s - e) * b;
   }
   /* Over the tunnel the ridge is at least a roof's depth over the bore. */

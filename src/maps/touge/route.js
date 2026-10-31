@@ -57,7 +57,7 @@ import { centreLine, pointAt } from '../built/road.js';
  * reaches from the centre: the shoulder, the ditch and room for the rail. */
 export const ROAD_W = 7.0;
 export const HALF = ROAD_W / 2;
-export const BENCH = HALF + 4.5;
+export const BENCH = HALF + 2;
 /* A hairpin's radius at the centre line. */
 export const BEND_R = 13;
 /* The height of the pass over the valley, at the road. */

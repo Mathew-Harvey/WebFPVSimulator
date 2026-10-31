@@ -50,17 +50,20 @@ export function worldAt(x, y, h = 0) {
   return [wx(x), h, wz(y)];
 }
 
-/* The chunk a world point is filed under: three by three over the plot, and
- * the far ground outside it. */
-const CUT = W / 3;
+/* The chunk a world point is filed under: five by five over the plot, and
+ * the far ground outside it. Three by three was fewer draw calls, but a
+ * chunk 153 m across is in view from nearly anywhere, and from inside the
+ * tunnel the whole map was being drawn behind its walls. */
+const CUTS = 5;
+const CUT = W / CUTS;
 export function chunkOf(x, z) {
   const a = x + W / 2;
   const b = D / 2 - z;
   if (a < -8 || b < -8 || a > W + 8 || b > D + 8) {
     return 'tgFar';
   }
-  const c = a < CUT ? 0 : a < 2 * CUT ? 1 : 2;
-  const r = b < CUT ? 0 : b < 2 * CUT ? 1 : 2;
+  const c = Math.min(CUTS - 1, Math.max(0, Math.floor(a / CUT)));
+  const r = Math.min(CUTS - 1, Math.max(0, Math.floor(b / CUT)));
   return `tg${c}${r}`;
 }
 

@@ -127,8 +127,9 @@ export function plantTrees(B, houses, fields, extra = []) {
           kind = 'momiji';
         }
       } else if (face) {
-        want = roadside ? 0.42 : 0.5;
-        kind = roadside || hash2(gx, gy, 5) < 0.35 ? 'momiji' : 'sugi';
+        /* Thick between the legs, so the gaps in it are the lines. */
+        want = roadside ? 0.5 : 0.88;
+        kind = (roadside && hash2(gx, gy, 4) < 0.7) || hash2(gx, gy, 5) < 0.16 ? 'momiji' : 'sugi';
       } else {
         want = block < 0.72 ? 0.95 : 0.4;
         kind = hash2(gx, gy, 6) < (block < 0.72 ? 0.05 : 0.3) ? 'momiji' : 'sugi';

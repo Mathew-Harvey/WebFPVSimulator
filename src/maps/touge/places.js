@@ -270,10 +270,23 @@ function tunnel(B) {
   B.box('tgLining', x0, y - hw - wall, e, x1, y - hw, e + h, { name: 'tunnel wall' });
   B.box('tgLining', x0, y + hw, e, x1, y + hw + wall, e + h, { name: 'tunnel wall' });
   B.box('tgLiningDark', x0, y - hw - wall, e + h, x1, y + hw + wall, e + h + roof, { name: 'tunnel roof' });
+  /* The bore's floor under the road, since the drawn mountain goes over
+   * the bore rather than through it, and a raised walkway along each
+   * wall, the inspection kerb every Japanese road tunnel has. */
+  B.paint('tgConcreteDark', x0, y - hw, e - 0.3, x1, y + hw, e + 0.01);
   for (const s of [-1, 1]) {
     const face = y + s * hw;
-    B.paint('tgTile', x0, face - s * 0.03, e, x1, face, e + 1.1);
-    B.paint('tgLiningDark', x0, face - s * 0.03, e + 1.1, x1, face, e + 1.2);
+    const kerb = face - s * 0.8;
+    B.box('tgConcrete', x0, Math.min(face, kerb), e, x1, Math.max(face, kerb), e + 0.25, { name: 'tunnel walkway' });
+    B.paint('tgTile', x0, face - s * 0.03, e + 0.25, x1, face, e + 1.35);
+    B.paint('tgLiningDark', x0, face - s * 0.03, e + 1.35, x1, face, e + 1.45);
+    /* The lining's ring joints, every 9 m as the formwork was moved. */
+    for (let x = x0 + 9; x < x1 - 1; x += 9) {
+      B.paint('tgLiningDark', x - 0.06, face - s * 0.05, e + 1.45, x + 0.06, face, e + h);
+    }
+  }
+  for (let x = x0 + 9; x < x1 - 1; x += 9) {
+    B.paint('tgLiningDark', x - 0.06, y - hw, e + h - 0.05, x + 0.06, y + hw, e + h);
   }
   /* The ridge over the roof: solid up to the drawn ground in 2 m slices,
    * each to the lowest the ground stands over it, so a quad that lands on

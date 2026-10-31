@@ -98,7 +98,7 @@ import {
   runSpecOf,
 } from './runs.js';
 import { scaleOf, say } from './scale.js';
-import { envelopeFor, GATE_OPENING_DEFAULT, PIPE_OD as CUBE_PIPE_OD, PIPE_OD, inches } from './racegow.js';
+import { envelopeFor, GATE_OPENING_DEFAULT, PIPE_OD as CUBE_PIPE_OD, PIPE_OD, inches, ROOM_WIDTH, ROOM_DEPTH } from './racegow.js';
 import {
   RAD, DEG, wrapAngle, gateSupportFeet, apertureFrame, GATE_POST_R_SCALE, leftOf,
 } from './geometry.js';
@@ -127,6 +127,7 @@ import { startBlockDims, startBlockHeight, startBlockLaneOffset } from '../art/s
 import { padsLayout } from '../props/course.js';
 import { placeDocument, seatDocument, supportsFor, topUnder, groundUnder, indexTops, SUPPORT_TIE, OPEN_CLEAR } from '../maps/built/place.js';
 import { SEAT_SLACK, hasRaised, needsSeat, seatFloating, seatedNote, standingOn, standsOnGround } from './seat.js';
+import { keepInRoom, inRoomNote, roomWalls, wallReach } from './walls.js';
 import { addSolids, placeSolids, tiltParts, tiltMeasure } from '../props/solids.js';
 import {
   ROOM_TYPES, ROOM_COLOURS, ROOM_SIZE_MIN, ROOM_SIZE_MAX, isRoomType, clampRoomSize, roomBoxes, roomFootprint,
@@ -6527,6 +6528,127 @@ function suiteSeat() {
   check('an element an author or an import named is called by its type and its name',
     /^Flag "15" was 20\.1 m up with nothing under it/.test(numberedNote), numberedNote);
   check('and nothing moved says nothing', seatedNote([], nameOf, () => null) === '');
+}
+
+/*
+ * bug-dcc2264f, "The 8th door is outside the room, the map is wrong": a whoop
+ * track on the board with a double stack 2.3 m past the east wall and a hex
+ * gate 0.8 m past it. The track here is not the pilot's document, it is that
+ * fault in a room of its own: the two pieces at the ticket's positions and
+ * headings, a lap of gates inside, and a banner hung on the south wall the
+ * way the ticket's was. walls.js says what is brought in and why.
+ */
+function suiteWalls() {
+  console.log('\nnothing in a room stands outside its walls');
+  const room = createTrack(undefined, 'micro');
+  check('a new room is the size of the walls the game builds',
+    room.field.width === 10 && room.field.depth === 12
+    && JSON.stringify(roomWalls(room)) === JSON.stringify({ x0: 0, x1: 10, y0: 0, y1: 12 }),
+    JSON.stringify(roomWalls(room)));
+  const lap = [[7.5, 5.5, Math.PI], [4.5, 8.4, Math.PI], [3.25, 4.75, -Math.PI / 2], [8.28, 3.94, Math.PI / 2]]
+    .map(([x, y, yaw]) => place(room, 'gate', x, y, { yaw }));
+  const stack = place(room, 'doubleStack', 12.3444, 3.5052, { yaw: 0 });
+  const hex = place(room, 'hexGate', 10.8204, 7.6708, { yaw: Math.PI / 2 });
+  const last = place(room, 'gate', 8.03, 9.12, { yaw: Math.PI });
+  const banner = place(room, 'banner', 3.8862, 0.0762);
+  const logo = place(room, 'groundLogo', 3, -2);
+  const label = place(room, 'label', 11, 6);
+  for (const el of [...lap, stack, hex, last]) {
+    addToSequence(room, el.id, 0);
+  }
+  addToSequence(room, stack.id, 1);
+  const stored = toPlain(room);
+  const before = JSON.stringify(stored);
+
+  /* ---- the game: the ticket's own symptom, read where the pilot read it ---- */
+  const W = ROOM_WIDTH * MICRO_SCALE;
+  const D = ROOM_DEPTH * MICRO_SCALE;
+  const course = courseFromDocument(stored);
+  const out = course.stations.filter((s) => Math.abs(s.x) > W / 2 || Math.abs(s.z) > D / 2);
+  check('the game flies every station of the ticket\'s room inside its walls',
+    course.stations.length === 8 && out.length === 0,
+    `${course.stations.length} stations, outside: ${out.map((s) => `${s.elementId}@${s.x.toFixed(2)}`).join(' ')}`);
+  const proud = course.structures.filter((s) => !['groundLogo', 'label'].includes(s.type)
+    && (Math.abs(s.x) > W / 2 || Math.abs(s.z) > D / 2));
+  check('and every structure, the banner on the wall included',
+    proud.length === 0, proud.map((s) => `${s.type}@${s.x.toFixed(2)},${s.z.toFixed(2)}`).join(' '));
+  const swing = Math.max(...course.samples.map((p) => Math.abs(p.x) - W / 2), ...course.samples.map((p) => Math.abs(p.z) - D / 2));
+  check('and the line the builder derives round them stays off the plaster',
+    swing < 0, `${swing.toFixed(2)} m past a wall`);
+  check('and reading it leaves what is stored exactly as it was', JSON.stringify(stored) === before);
+
+  /* ---- the fold, piece by piece ---- */
+  const doc = normalize(stored).doc;
+  const byId = (id) => elementById(doc, id);
+  const moved = keepInRoom(doc);
+  const turn = doc.settings.minCurveRadius;
+  check('the double stack and the hex gate are brought in, and nothing else is',
+    moved.map((m) => m.id).sort().join() === [stack.id, hex.id].sort().join(),
+    moved.map((m) => `${m.type} ${m.from.x},${m.from.y} to ${m.to.x},${m.to.y}`).join('; '));
+  const s2 = byId(stack.id);
+  const h2 = byId(hex.id);
+  check('each comes in its reach and the line\'s turn from the wall it was past, on that axis only',
+    Math.abs(s2.position.x - (10 - wallReach(s2) - turn)) < 1e-6 && s2.position.y === 3.5052
+    && Math.abs(h2.position.x - (10 - wallReach(h2) - turn)) < 1e-6 && h2.position.y === 7.6708,
+    `${s2.position.x},${s2.position.y} ${h2.position.x},${h2.position.y}`);
+  check('a gate\'s reach is its half span in its pipe, 382 mm for a 28 in opening',
+    Math.abs(wallReach(s2) - (0.7112 / 2 + PIPE_OD)) < 1e-9, String(wallReach(s2)));
+  check('the banner hung against the wall is where it was hung',
+    byId(banner.id).position.x === 3.8862 && byId(banner.id).position.y === 0.0762);
+  check('paint past the wall and the plan\'s ink are left alone',
+    byId(logo.id).position.y === -2 && byId(label.id).position.x === 11);
+  check('the gates that were inside have not moved',
+    lap.every((g) => byId(g.id).position.x === g.position.x && byId(g.id).position.y === g.position.y));
+  check('bringing it in twice moves nothing the second time', keepInRoom(doc).length === 0);
+
+  const corner = createTrack(undefined, 'micro');
+  const pole = place(corner, 'pole', -1, 14);
+  const cone = place(corner, 'cone', 5, -0.5);
+  const fold = keepInRoom(corner);
+  check('a pole past a corner comes in on both axes, a cone past one wall on that one',
+    fold.length === 2 && pole.position.x > 0 && pole.position.y < 12 && cone.position.x === 5 && cone.position.y > 0,
+    JSON.stringify(fold.map((m) => m.to)));
+
+  /* The walls are the game's, about the middle of the field: a room whose
+   * field an author typed bigger still has 10 by 12 m of walls in the game. */
+  const wide = createTrack(undefined, 'micro');
+  wide.field.width = 20;
+  wide.field.depth = 20;
+  const far = place(wide, 'gate', 2, 10);
+  check('a field typed wider than the room keeps the game\'s walls, 5 to 15 by 4 to 16',
+    JSON.stringify(roomWalls(wide)) === JSON.stringify({ x0: 5, x1: 15, y0: 4, y1: 16 }));
+  check('and a gate inside the field but past those walls comes in', keepInRoom(wide).length === 1 && far.position.x > 5,
+    String(far.position.x));
+
+  /* ---- what is not a room ---- */
+  const field = createTrack();
+  const offField = place(field, 'gate', -4, 20);
+  check('a five inch track keeps a gate off its field, where there is more grass',
+    keepInRoom(field).length === 0 && offField.position.x === -4);
+  const map = createTrack(undefined, 'full', 'freestyle');
+  const offMap = place(map, 'gate', -30, -30);
+  check('and a map is its own world', keepInRoom(map).length === 0 && offMap.position.x === -30);
+
+  /* ---- every course that ships ---- */
+  const here = dirname(fileURLToPath(import.meta.url));
+  const jsonDir = join(here, '..', '..', 'tracks', 'json');
+  const shipped = PRESETS.map((p) => [`preset ${p.id}`, p]);
+  for (const f of readdirSync(jsonDir).filter((n) => n.endsWith('.json'))) {
+    shipped.push([f, JSON.parse(readFileSync(join(jsonDir, f), 'utf8'))]);
+  }
+  const shifted = shipped.filter(([, raw]) => keepInRoom(normalize(raw).doc).length > 0).map(([name]) => name);
+  check(`no course that ships has a piece past a wall, so none is moved (${shipped.length} read)`,
+    shifted.length === 0, shifted.join(', '));
+
+  /* ---- what the builder says ---- */
+  const nameOf = labeller(doc);
+  const one = inRoomNote([moved.find((m) => m.id === hex.id)], nameOf, byId);
+  check('one piece brought in is named and said to have been past the walls',
+    /^Hex gate stood outside the room's walls, where nobody can fly to it, so it now stands inside them\.$/.test(one), one);
+  const both = inRoomNote(moved, nameOf, byId);
+  check('two are counted and named', /^2 things stood outside the room's walls/.test(both)
+    && /Double stack/.test(both) && /Hex gate/.test(both), both);
+  check('and nothing moved says nothing', inRoomNote([], nameOf, () => null) === '');
 }
 
 function inClubBox(solids, x, y, z) {
@@ -14428,6 +14550,7 @@ async function main() {
   suiteStartBlock();
   suiteDiveSupports();
   suiteSeat();
+  suiteWalls();
   suiteMapRoom();
   suiteClubhouseShell();
   suiteWhoopRepairs();

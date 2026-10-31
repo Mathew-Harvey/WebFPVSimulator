@@ -317,6 +317,66 @@ kase('select', async () => {
 });
 
 /*
+ * NOTHING IN A ROOM STANDS OUTSIDE ITS WALLS (src/trackbuilder/walls.js).
+ * bug-dcc2264f: a whoop track reached the board with a double stack and a
+ * hex gate past the east wall, which the game builds solid, because the
+ * builder warned and let it be. The self test holds the fold and the game's
+ * door; this holds the builder's, which only a page has: a document that
+ * arrives with pieces past a wall, and a gate dragged through one.
+ */
+kase('walls', async () => {
+  const page = await openBuilder();
+  try {
+    await trapToasts(page);
+    const loaded = await ajson(page, `
+      const M = await import('/src/trackbuilder/model.js');
+      const S = await import('/src/trackbuilder/sequence.js');
+      const d = M.createTrack('Past the wall', 'micro');
+      const mk = (type, x, y, yaw) => { const e = M.createElement(d, type, { x, y, z: 0 }, yaw); d.elements.push(e); return e; };
+      const pieces = [mk('gate', 7.5, 5.5, Math.PI), mk('doubleStack', 12.3444, 3.5052, 0), mk('hexGate', 10.8204, 7.6708, Math.PI / 2), mk('gate', 4, 9, Math.PI)];
+      for (const e of pieces) S.addToSequence(d, e.id, 0);
+      window.trackBuilder.loadDocument(d, '');
+      return window.trackBuilder.doc.elements.map((e) => ({ type: e.type, x: e.position.x, y: e.position.y }));
+    `);
+    const said = await toasts(page);
+    check('a room that arrives with two pieces past the east wall has them inside it',
+      loaded.length === 4 && loaded.every((e) => e.x > 0 && e.x < 10 && e.y > 0 && e.y < 12)
+      && loaded[0].x === 7.5 && loaded[3].x === 4, JSON.stringify(loaded.map((e) => [e.type, +e.x.toFixed(3), e.y])));
+    check('and the author is told which', said.some((m) => /2 things stood outside the room's walls/.test(m)
+      && /Double stack/.test(m) && /Hex gate/.test(m)), said.join(' | '));
+
+    await page.evaluate("window.trackBuilder.setMode('2d'), 1");
+    await page.sleep(600);
+    const g = await json(page, `(() => {
+      const app = window.trackBuilder;
+      const el = app.doc.elements[0];
+      return { id: el.id, x: el.position.x, y: el.position.y, past: app.history.past.length };
+    })()`);
+    const from = await screenOf(page, 'view2d', g.x, g.y);
+    const to = await screenOf(page, 'view2d', 11.2, g.y);
+    await drag(page, from, to, { steps: 12 });
+    await page.sleep(300);
+    const after = await json(page, `(() => {
+      const app = window.trackBuilder;
+      const el = app.doc.elements.find((e) => e.id === '${g.id}');
+      return { x: el.position.x, y: el.position.y, past: app.history.past.length };
+    })()`);
+    const now = await toasts(page);
+    check('a gate dragged a metre past the east wall stands inside it when it is let go',
+      after.x > g.x && after.x < 10 && Math.abs(after.y - g.y) < 0.05, `x ${g.x} dragged to 11.2, now ${after.x}`);
+    check('and the author is told so', now.some((m) => /^Gate 1 stood outside the room's walls/.test(m)), now.join(' | '));
+    check('and it is one step, which Undo takes back', after.past === g.past + 1, `${g.past} steps before, ${after.past} after`);
+    await page.evaluate('window.trackBuilder.undo(), 1');
+    await page.sleep(200);
+    const undone = await json(page, `(() => { const el = window.trackBuilder.doc.elements.find((e) => e.id === '${g.id}'); return { x: el.position.x, y: el.position.y }; })()`);
+    check('to where it stood before the drag', undone.x === g.x && undone.y === g.y, JSON.stringify(undone));
+    check('the page reported no error of its own', ownErrors(page).length === 0, ownErrors(page).join(' | '));
+  } finally {
+    await page.close();
+  }
+});
+
+/*
  * FIT AND EVERY LOAD FRAME THE TRACK. On 2026-09-29 both views framed the
  * whole 10 by 12 m hall, so a track a metre or two across opened as a small
  * cluster in an empty rectangle.

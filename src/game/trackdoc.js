@@ -62,6 +62,7 @@ import {
 } from '../trackbuilder/model.js';
 import { mirrorPolygon } from '../props/aperture.js';
 import { seatFloating } from '../trackbuilder/seat.js';
+import { keepInRoom } from '../trackbuilder/walls.js';
 import { buildPath } from '../trackbuilder/path.js';
 import { apertureFrame } from '../trackbuilder/geometry.js';
 import { wrapBetween, figureCueOf, upgradeStackedFigures } from '../trackbuilder/figures.js';
@@ -397,6 +398,14 @@ function buildCourse(raw) {
   if (docModeOf(doc) !== 'freestyle') {
     seatFloating(doc);
   }
+  /*
+   * NOTHING IN A ROOM STANDS OUTSIDE ITS WALLS (src/trackbuilder/walls.js).
+   * bug-dcc2264f: a whoop track on the board with three of its gates past
+   * the east wall, which scene.js builds solid and the same size whatever
+   * the document says, so the lap could not be flown. Silent, for the same
+   * reason as the seat above, and a field or a map is left alone.
+   */
+  keepInRoom(doc);
   const field = doc.field;
   /*
    * The track class travels with the course into the game, because almost

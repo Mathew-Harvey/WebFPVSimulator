@@ -72,6 +72,7 @@ import { collectWarnings, freestyleReport, labeller, sortWarnings } from './warn
 /* Nothing built stands in the air: see seat.js. A map is seated with what is
  * under it, which needs the map placed, so that half is place.js's. */
 import { SEAT_SLACK, hasRaised, needsSeat, seatFloating, seatedNote, standingOn } from './seat.js';
+import { inRoomNote, keepInRoom } from './walls.js';
 import { seatDocument } from '../maps/built/place.js';
 import { vehicleStart } from '../maps/built/traffic.js';
 import { History } from './history.js';
@@ -1425,15 +1426,22 @@ export class App {
    * document that arrives goes through: settle(), restore() and
    * loadDocument() all come here, so a drag, a typed Base, a deleted roof, an
    * import and a board link cannot leave one hanging.
+   *
+   * And on a room's track, nothing stands past a wall (./walls.js), for the
+   * same doors and the same reason: a drag past the wall, a pasted row and a
+   * track off the board with a gate in the car park (bug-dcc2264f) all come
+   * back inside, and the author is told which.
    */
   seat() {
+    const elementOf = (id) => elementById(this.doc, id);
+    const walled = inRoomNote(keepInRoom(this.doc), labeller(this.doc), elementOf);
     if (!hasRaised(this.doc)) {
-      return '';
+      return walled;
     }
     const moved = docModeOf(this.doc) === 'freestyle'
       ? seatDocument(this.doc).moved
       : seatFloating(this.doc);
-    return seatedNote(moved, labeller(this.doc), (id) => elementById(this.doc, id));
+    return [walled, seatedNote(moved, labeller(this.doc), elementOf)].filter(Boolean).join(' ');
   }
 
   /* What stands on the pieces `ids` on a map, and is carried when they are moved: seat.js reads the placed map the

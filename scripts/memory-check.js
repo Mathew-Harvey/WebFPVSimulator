@@ -74,7 +74,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
  * map the only thing either can fetch is its own three files, and what the
  * default run asks of it is the release. Their borrowing is proved on its
  * own, first in a page of its own: --map=house, --map=heads. */
-const HEAVY = ['built', 'city', 'house', 'heads', 'bardwell', 'warehouse', 'goats', 'sunny'];
+const HEAVY = ['built', 'city', 'house', 'heads', 'bardwell', 'warehouse', 'goats', 'sunny', 'factory'];
 
 /*
  * WHAT BOOT MAY TAKE FROM THE PROPS LIBRARY, AND WHY IT IS NOT NOTHING.

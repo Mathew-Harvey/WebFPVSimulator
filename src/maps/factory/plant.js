@@ -159,8 +159,13 @@ function mainRack(T) {
   }
   pipesAlongX(T, TIER1_PIPES, R.tier1, R.x0 - 0.6, R.x1 + 0.6);
   pipesAlongX(T, TIER2_PIPES, R.tier2, R.x0 - 0.6, R.x1 + 0.6);
-  /* The cable tray on the top tier's middle. */
-  T.box('fkSteelDark', R.x0, 115.6, R.tier2, R.x1, 116.6, R.tier2 + 0.15, { name: 'cable tray' });
+  /* The cable tray on the top tier's middle: its two side rails and the
+   * black cables laid between them, which is what a pilot under it sees. A
+   * plain plate read from below as one long pale wedge. */
+  T.box('fkBelt', R.x0, 115.66, R.tier2, R.x1, 116.54, R.tier2 + 0.1, { name: 'cable tray' });
+  for (const y of [115.6, 116.54]) {
+    T.box('fkSteelDark', R.x0, y, R.tier2, R.x1, y + 0.06, R.tier2 + 0.15, { name: 'cable tray rail' });
+  }
   /* The pipe bridge's truss sides over the road, diagonals between the
    * tiers in the planes of the column lines. */
   const B = BRIDGE;

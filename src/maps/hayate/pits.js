@@ -46,7 +46,7 @@ export const TOWER = { x0: 176, x1: 192, y0: 96, y1: 112, h: 28.4 };
 export const PADDOCK = { x0: 196, x1: 452, y0: 114, y1: 174 };
 /* Where the start pads stand, plan and world height: the pit roof over
  * the start line, looking south over the straight to the main stand. */
-export const PAD = { x: 330, y: 104, h: PIT.top };
+export const PAD = { x: 330, y: 96, h: PIT.top };
 
 /* Each team's colour, by bay, for the fascia, the car and the truck. */
 export const TEAMS = [
@@ -186,7 +186,9 @@ function building(T) {
   }
   /* The roof, over the balcony too, and its parapet. */
   T.box('hyPitRoof', x0 - 0.6, balcony, roof, x1 + 0.6, y1 + 0.3, top, { name: 'pit roof' });
-  T.box('white', x0 - 0.6, balcony, top, x1 + 0.6, balcony + 0.3, parapet, { name: 'parapet' });
+  /* Low along the front, a lip and not a wall, so the pilot on the pads
+   * sees the straight over it. */
+  T.box('white', x0 - 0.6, balcony, top, x1 + 0.6, balcony + 0.3, top + 0.35, { name: 'parapet' });
   T.box('white', x0 - 0.6, y1, top, x1 + 0.6, y1 + 0.3, parapet, { name: 'parapet' });
   T.box('white', x0 - 0.6, balcony + 0.3, top, x0 - 0.3, y1, parapet, { name: 'parapet' });
   T.box('white', x1 + 0.3, balcony + 0.3, top, x1 + 0.6, y1, parapet, { name: 'parapet' });
@@ -206,7 +208,7 @@ function building(T) {
   }
   /* The circuit's name along the parapet, read from the main stand. */
   for (const xc of [262, 398]) {
-    T.sign('hayateLong', xc, balcony - 0.02, parapet - 0.5, 0, -1, 24, 0.85);
+    T.sign('hayateLong', xc, balcony - 0.02, (roof + top + 0.35) / 2, 0, -1, 24, 0.8);
   }
 }
 

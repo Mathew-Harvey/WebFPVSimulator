@@ -31,7 +31,10 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { hayateLayout, hayateGaps, SPAWN } from '../src/maps/hayate/layout.js';
-import { hayateDocument, hayateMaples, RACE_GROUPS } from '../src/maps/hayate/yard.js';
+import {
+  hayateDocument, hayateMaples, hayatePlainTrees, RACE_GROUPS,
+} from '../src/maps/hayate/yard.js';
+import { Parts } from '../src/props/parts.js';
 import { w } from '../src/maps/hayate/frame.js';
 import { SIGN_KEYS } from '../src/maps/hayate/signs.js';
 import { PIT, TOWER } from '../src/maps/hayate/pits.js';
@@ -208,7 +211,15 @@ function mapleParts() {
       }
     }
   }
-  return out;
+  /* And the plain trees', as ./index.js plainParts makes them. */
+  const P = new Parts();
+  for (const t of hayatePlainTrees()) {
+    const p = w(t.x, t.y, 0);
+    const s = t.size;
+    P.post('stCedarWood', p[0], p[2], 0, 2 * s, 0.2 * s, { draw: false, kind: 'tree', name: 'trunk' });
+    P.cap('stCedar1', [p[0], (t.style === 'pine' ? 2.6 : 3.4) * s, p[2]], [p[0], (t.style === 'pine' ? 6.4 : 4.2) * s, p[2]], (t.style === 'pine' ? 1.3 : 1.7) * s, { draw: false, kind: 'canopy', name: 'canopy' });
+  }
+  return out.concat(P.list);
 }
 
 async function placedBlock(L) {

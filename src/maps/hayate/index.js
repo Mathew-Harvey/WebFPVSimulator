@@ -68,7 +68,10 @@ import {
   W, D, w, chunkOf, courseLine, lapped,
 } from './frame.js';
 import { hayateLayout } from './layout.js';
-import { hayateDocument, hayateMaples, RACE_LATERAL } from './yard.js';
+import {
+  hayateDocument, hayateMaples, hayatePlainTrees, RACE_LATERAL,
+} from './yard.js';
+import { Parts } from '../../props/parts.js';
 import { paintSigns, signMesh } from './signs.js';
 import { PIT } from './pits.js';
 import { mergePalette } from '../sunny/palette.js';
@@ -143,7 +146,6 @@ function prism(kit, p) {
     kit.begin(0, 0, 0, 0, p.at);
     kit.extrude(p.m, p.profile.map(([a, h]) => [a - W / 2, h]), D / 2 - p.e1, D / 2 - p.e0);
   }
-}
 }
 
 const CABIN = ['mxRed', 'craneYellow', 'mxBlue', 'mxGreen', 'white', 'mxOrange', 'hyPink', 'containerTeal'];
@@ -508,6 +510,59 @@ function mapleParts(maples) {
 }
 
 /*
+ * THE PLAIN TREES (./yard.js FAR): a cedar is a trunk and three stacked
+ * cones in the builder's cedar greens, a maple a trunk and three leaf
+ * clumps in the maples' colours, each inked as the builder's are. Solid as
+ * a trunk and a capsule through the canopy, as the builder's trees are.
+ */
+function plainTree(kit, t, low) {
+  const p = w(t.x, t.y, 0);
+  const s = t.size;
+  const full = t.near && !low;
+  const k = Math.floor((t.x * 7 + t.y * 3) % 4);
+  kit.begin(p[0], 0, p[2], (k * Math.PI) / 7, chunkOf(p[0], p[2]));
+  if (t.style === 'pine') {
+    kit.cyl('stCedarWood', [0, 0, 0], [0, 2.2 * s, 0], 0.26 * s, 5, 0.2 * s);
+    kit.cone('stCedar1', [0, 1.4 * s, 0], 2.3 * s, 4.4 * s, full ? 9 : 7);
+    kit.cone('stCedar0', [0, 3.7 * s, 0], 1.85 * s, 3.8 * s, full ? 9 : 7);
+    kit.cone('stCedar2', [0, 5.9 * s, 0], 1.3 * s, 3.2 * s, 7);
+    if (full) {
+      kit.cone('stCedar0', [0, 7.9 * s, 0], 0.75 * s, 2.2 * s, 6);
+    }
+    return;
+  }
+  kit.cyl('stGroveWood', [0, 0, 0], [0, 3.0 * s, 0], 0.22 * s, 5, 0.15 * s);
+  if (full) {
+    kit.cyl('stGroveWood', [0, 2.2 * s, 0], [1.1 * s, 3.4 * s, 0.3 * s], 0.1 * s, 4);
+    kit.cyl('stGroveWood', [0, 2.4 * s, 0], [-0.9 * s, 3.5 * s, -0.5 * s], 0.09 * s, 4);
+  }
+  kit.leaf(`hyMaple${k}`, [0, 4.0 * s, 0], 2.2 * s, 1.7 * s, [0, k, 0]);
+  if (!low) {
+    kit.leaf(`hyMaple${(k + 1) % 4}`, [1.4 * s, 3.4 * s, 0.4 * s], 1.5 * s, 1.2 * s, [0, k + 1, 0]);
+    kit.leaf(`hyMaple${(k + 2) % 4}`, [-1.2 * s, 3.3 * s, -0.6 * s], 1.4 * s, 1.1 * s, [0, k + 2, 0]);
+  }
+  if (full) {
+    kit.leaf(`hyMaple${(k + 3) % 4}`, [0.2 * s, 5.1 * s, -0.3 * s], 1.3 * s, 1.0 * s, [0, k + 3, 0]);
+    kit.leaf(`hyMaple${k}`, [-0.3 * s, 3.2 * s, 1.3 * s], 1.2 * s, 1.0 * s, [0, k + 4, 0]);
+  }
+}
+
+function plainParts(trees) {
+  const P = new Parts();
+  for (const t of trees) {
+    const p = w(t.x, t.y, 0);
+    const s = t.size;
+    P.post('stCedarWood', p[0], p[2], 0, 2 * s, 0.2 * s, { draw: false, kind: 'tree', name: 'trunk' });
+    if (t.style === 'pine') {
+      P.cap('stCedar1', [p[0], 2.6 * s, p[2]], [p[0], 6.4 * s, p[2]], 1.3 * s, { draw: false, kind: 'canopy', name: 'canopy' });
+    } else {
+      P.cap('stGrove1', [p[0], 3.4 * s, p[2]], [p[0], 4.2 * s, p[2]], 1.7 * s, { draw: false, kind: 'canopy', name: 'canopy' });
+    }
+  }
+  return P.list;
+}
+
+/*
  * THE VOLCANO on the northern horizon, the snow on its top cut ragged, in
  * the backdrop's group so it fades with the ridge rings as the camera
  * climbs (fadeBackdrop in ../built/index.js), unlit and out of the fog as
@@ -576,7 +631,8 @@ export async function buildMap(shell, onProgress, options) {
   const L = hayateLayout();
   const line = courseLine();
   const maples = hayateMaples();
-  const parts = [...L.parts, ...mapleParts(maples)];
+  const plain = hayatePlainTrees();
+  const parts = [...L.parts, ...mapleParts(maples), ...plainParts(plain)];
   const extra = {
     el: { id: 'hayate', type: 'hayate' },
     parts: low ? parts.filter((p) => !(p.fine && !p.solid)) : parts,
@@ -589,6 +645,9 @@ export async function buildMap(shell, onProgress, options) {
         const p = w(el.position.x, el.position.y, 0);
         kit.begin(p[0], 0, p[2], 0, chunkOf(p[0], p[2]));
         mk.element(el);
+      }
+      for (const t of plain) {
+        plainTree(kit, t, low);
       }
     },
     chunkOf: (x, z) => chunkOf(x, z),
@@ -616,7 +675,22 @@ export async function buildMap(shell, onProgress, options) {
   const palette = props ? mergePalette(props) : { from: 0, to: 0 };
   const stats = map.stats;
   const mountain = volcano(map.scene);
-  map.stats = () => ({ ...(stats ? stats() : {}), palette, volcano: mountain });
+  /* What the map holds, once: triangles by the top level group, for the
+   * PR's latency line and the harness (window.__map()). */
+  const held = {};
+  map.scene.traverse((o) => {
+    if (o.isMesh && o.geometry) {
+      const g = o.geometry;
+      const n = (g.index ? g.index.count : g.attributes.position.count) / 3 * (o.isInstancedMesh ? o.count : 1);
+      let top = o;
+      while (top.parent && top.parent !== map.scene) {
+        top = top.parent;
+      }
+      const key = top.name || top.type;
+      held[key] = (held[key] || 0) + Math.round(n);
+    }
+  });
+  map.stats = () => ({ ...(stats ? stats() : {}), palette, volcano: mountain, held });
   /* The signs, one mesh on one picture. */
   const atlas = paintSigns(L.signs);
   const tex = new THREE.CanvasTexture(atlas.canvas);

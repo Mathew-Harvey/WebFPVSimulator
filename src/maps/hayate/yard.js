@@ -56,7 +56,50 @@ const KEEP_OUT = [
   { x0: 136, x1: 164, y0: 226, y1: 258 },
 ];
 
+/* How many trees: the forest round the edges, then the infield's. The
+ * owner's word on the town's trees, 2026-10-21, holds here: "we need much
+ * more trees", dense enough that the gaps between them are lines. */
+const FOREST = 520;
+const INFIELD = 260;
+
+/*
+ * THE FAR TREES ARE DRAWN PLAIN. A builder's tree is a couple of thousand
+ * triangles with its shadow, and eight hundred of them is two million: so
+ * a tree further than FAR from the course and from every named gap is a
+ * plain one of the circuit's own (./index.js plainTree), a trunk and two
+ * or three shapes of canopy in the same colours and the same ink, a few
+ * dozen triangles and solid as a capsule. Close enough to fly among, every
+ * tree is the builder's.
+ */
+export const FAR = 55;
+
+/* Every tree but the sacred cedar is the circuit's own: measured on High,
+ * the builder's broadleaf is 3,450 triangles and a hundred and sixty of
+ * them were 563k, a quarter of everything the map drew. Near the course
+ * a plain tree is drawn fuller (./index.js), far off it is drawn spare. */
+const BUILDER_TREES = false;
+
+let TREES = null;
+
 function treesOf() {
+  if (TREES) {
+    return TREES;
+  }
+  TREES = placeTrees();
+  const line = courseLine();
+  const gaps = hayateLayout().gaps;
+  for (const t of TREES) {
+    let d = nearestOn(line, t.x, t.y).d;
+    for (const g of gaps) {
+      d = Math.min(d, Math.sqrt((g.px - t.x) * (g.px - t.x) + (g.py - t.y) * (g.py - t.y)));
+    }
+    t.near = d <= FAR;
+    t.plain = !t.sacred && (!BUILDER_TREES || !t.near);
+  }
+  return TREES;
+}
+
+function placeTrees() {
   const { keep } = hayateLayout();
   const line = courseLine();
   const out = [];
@@ -94,35 +137,37 @@ function treesOf() {
     return true;
   };
   /* The sacred cedar by the shrine, first, so nothing takes its place. */
-  out.push({ style: 'pine', x: SACRED_TREE.x, y: SACRED_TREE.y, size: 1.5, gap: 6 });
+  out.push({
+    style: 'pine', x: SACRED_TREE.x, y: SACRED_TREE.y, size: 1.5, gap: 6, sacred: true,
+  });
   /* The forest: cedars thick round the edges, a few maples among them. */
-  for (let i = 0; i < 4000 && out.length < 190; i += 1) {
+  for (let i = 0; i < 12000 && out.length < FOREST; i += 1) {
     const x = 6 + hash(i, 21) * (W - 12);
     const y = 6 + hash(i, 22) * (D - 12);
     const edge = Math.min(x, y, W - x, D - y);
-    if (edge > 40 && hash(i, 23) > 0.08) {
+    if (edge > 46 && hash(i, 23) > 0.12) {
       continue;
     }
     const maple = hash(i, 25) < 0.18;
     if (clear(x, y, 3)) {
       out.push({
-        style: maple ? 'street' : 'pine', x, y, size: maple ? 0.95 + hash(i, 24) * 0.3 : 0.85 + hash(i, 24) * 0.45, gap: maple ? 7 : 5.5,
+        style: maple ? 'street' : 'pine', x, y, size: maple ? 0.95 + hash(i, 24) * 0.3 : 0.85 + hash(i, 24) * 0.45, gap: maple ? 6 : 4.2,
       });
     }
   }
   /* The infield: maples, round the pond and the shrine thickest. */
-  for (let i = 0; i < 4000 && out.length < 290; i += 1) {
+  for (let i = 0; i < 12000 && out.length < FOREST + INFIELD; i += 1) {
     const x = 110 + hash(i, 31) * 450;
     const y = 180 + hash(i, 32) * 170;
     const nearPond = Math.abs(x - POND.x) < 50 && Math.abs(y - POND.y) < 34;
     const nearShrine = Math.abs(x - 150) < 40 && Math.abs(y - 252) < 50;
-    if (!nearPond && !nearShrine && hash(i, 33) > 0.35) {
+    if (!nearPond && !nearShrine && hash(i, 33) > 0.6) {
       continue;
     }
     if (clear(x, y, 3.5)) {
       const cedar = nearShrine && hash(i, 35) < 0.5;
       out.push({
-        style: cedar ? 'pine' : 'street', x, y, size: cedar ? 1 + hash(i, 34) * 0.3 : 0.9 + hash(i, 34) * 0.35, gap: 8,
+        style: cedar ? 'pine' : 'street', x, y, size: cedar ? 1 + hash(i, 34) * 0.3 : 0.9 + hash(i, 34) * 0.35, gap: 6,
       });
     }
   }
@@ -198,7 +243,7 @@ function rows() {
   }
   out.push(...parked());
   for (const t of treesOf()) {
-    if (t.style !== 'pine') {
+    if (t.style !== 'pine' || t.plain) {
       continue;
     }
     out.push({
@@ -219,7 +264,7 @@ function hayateGaps() {
  * Upright and unturned, so the solid and the drawing are one frame.
  */
 export function hayateMaples() {
-  return treesOf().filter((t) => t.style === 'street').map((t, i) => ({
+  return treesOf().filter((t) => t.style === 'street' && !t.plain).map((t, i) => ({
     id: `maple-${i + 1}`,
     type: 'tree',
     style: 'street',
@@ -229,6 +274,15 @@ export function hayateMaples() {
     pitch: 0,
     yawOverridden: false,
     dims: { size: t.size, variant: 1 + (i % 9) },
+  }));
+}
+
+/* The plain trees (see FAR): { style, x, y, size } in the plan. */
+export function hayatePlainTrees() {
+  return treesOf().filter((t) => t.plain).map(({
+    style, x, y, size, near,
+  }) => ({
+    style, x, y, size, near,
   }));
 }
 

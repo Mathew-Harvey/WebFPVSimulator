@@ -154,7 +154,7 @@ function mainStand(T) {
   T.box('white', from, M.back, 0, M.x1 + 0.4, backRow, M.wall, { name: 'stand back wall' });
   /* Its windows, the concourse's, and the gates at the tunnels' backs. */
   for (let x = M.x0 + 3; x < M.x1 - 3; x += 6) {
-    if (M.tunnels.some((t) => Math.abs(t - x - 1.5) < 4)) {
+    if (M.tunnels.some((t) => Math.abs(t - x - 1.5) < 4) || (x + 3 > M.gap0 && x < M.gap1)) {
       continue;
     }
     T.deco('glassBlue', x, M.back - 0.03, 4.0, x + 3, M.back, 6.2, true);
@@ -162,6 +162,10 @@ function mainStand(T) {
   /* The roof, cantilevered from columns behind the back wall, over the
    * seats and the canyon between the stands. */
   for (let x = M.x0; x <= M.x1; x += 16) {
+    /* None in the canyon: the roof spans it from the two either side. */
+    if (x > M.gap0 - 1 && x < M.gap1 + 1) {
+      continue;
+    }
     T.post('white', x, M.back - 1.2, 0, M.roof1, 0.45, { kind: 'wall', name: 'roof column', seg: 10 });
     /* The cantilever: a deep steel girder from the column out over the
      * seats, tapering, on top of the roof. */
@@ -445,6 +449,19 @@ export function standsAndBridges(T) {
   footbridge(T);
   tyreBridge(T);
   gantry(T);
+  canyonBoards(T);
+}
+
+/* The canyon's two walls, each hung with hoardings one above another, so
+ * the slot between the stands reads as the gap it is from the track. */
+function canyonBoards(T) {
+  const keys = ['adOkami', 'adKumo', 'adNeko'];
+  const y = (MAIN.front + MAIN.front - MAIN.rows * MAIN.depth) / 2;
+  keys.forEach((k, i) => {
+    const h = 4 + i * 4;
+    T.sign(k, MAIN.gap0 + 0.4, y, h, 1, 0, 5.9, 0.95);
+    T.sign(keys[(i + 1) % keys.length], MAIN.gap1 - 0.4, y, h, -1, 0, 5.9, 0.95);
+  });
 }
 
 /* For the checks: a point a little way off the line, beside a corner. */

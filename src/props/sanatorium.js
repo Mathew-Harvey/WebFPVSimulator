@@ -55,6 +55,8 @@ export const MATERIALS = {
   kiMoss: { c: 0x7fa36a, tint: 0x46616e, noReceive: true, foliage: true },
   kiIvy: { c: 0x4f8a5c, tint: 0x34505f, noReceive: true, foliage: true },
   kiWisteria: { c: 0xb9a3dc, tint: 0x6a5c8e, noReceive: true, foliage: true },
+  kiCedar: { c: 0x4f7f66, tint: 0x34485e, noReceive: true, foliage: true },
+  kiCedarDeep: { c: 0x3f6c5a, tint: 0x2e4058, noReceive: true, foliage: true },
   kiTurf: { c: 0x8fae80, tint: 0x55706e },
   /* the wards: tiled floors, the iron beds and their mattresses */
   kiTile: { c: 0xb9c6c0, tint: 0x5f6a80 },

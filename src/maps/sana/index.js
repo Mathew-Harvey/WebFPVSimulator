@@ -219,6 +219,32 @@ function drawSite(kit, T, low) {
   }
 }
 
+/*
+ * The cables as one set of lines: a cable a few centimetres thick is
+ * under a pixel from forty metres, and a line is always one
+ * (../sunny/index.js wireLines, the same).
+ */
+const WIRE_SEGMENTS = 10;
+function wireLines(T) {
+  const pts = [];
+  for (const w of T.wires) {
+    const a = new THREE.Vector3(...worldAt(w.a[0], w.a[1], w.a[2]));
+    const b = new THREE.Vector3(...worldAt(w.b[0], w.b[1], w.b[2]));
+    const c = a.clone().add(b).multiplyScalar(0.5);
+    c.y -= 2 * w.sag;
+    const p = new THREE.QuadraticBezierCurve3(a, c, b).getPoints(WIRE_SEGMENTS);
+    for (let i = 0; i < WIRE_SEGMENTS; i += 1) {
+      pts.push(p[i].x, p[i].y, p[i].z, p[i + 1].x, p[i + 1].y, p[i + 1].z);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+  g.computeBoundingSphere();
+  const lines = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0x2c2a33 }));
+  lines.name = 'sana wire lines';
+  return lines;
+}
+
 export async function buildMap(shell, onProgress, options) {
   const quality = qualityFor(options && options.quality).id;
   const low = quality === 'low';
@@ -272,6 +298,7 @@ export async function buildMap(shell, onProgress, options) {
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 4;
   map.scene.add(signMesh(THREE, T.signs, atlas, paintMaterial(THREE, tex)));
+  map.scene.add(wireLines(T));
   await warmPrograms(shell.renderer, map.scene, shell.camera, map.post.rtScene);
   return map;
 }

@@ -339,6 +339,14 @@ function wingOf(T, wing, r) {
           const b = bays[k];
           frame(T, 'kiFrame', 'x', { a0: b.mid - SOUTH_W / 2, a1: b.mid + SOUTH_W / 2, s: z + OPEN.south.s, e: z + OPEN.south.e }, SEC.s0, -0.06);
           frame(T, 'kiFrame', 'x', { a0: b.mid - NORTH_W / 2, a1: b.mid + NORTH_W / 2, s: z + OPEN.north.s, e: z + OPEN.north.e }, SEC.n1, 0.06);
+          /* A curtain left in some open windows, torn, hanging inside
+           * one jamb: what makes a ward window read as a ward's. */
+          if (!KEEP_OPEN.has(`${wing.id}:${st}:${k}`) && r.chance(0.3)) {
+            const side = r.chance(0.5) ? -1 : 1;
+            const cx = b.mid + side * (SOUTH_W / 2 - 0.3);
+            const drop = r.range(1.0, 2.0);
+            T.deco(r.chance(0.6) ? 'curtainCream' : 'curtainGreen', cx - 0.28, SEC.s1 + 0.04, z + OPEN.south.e - drop, cx + 0.28, SEC.s1 + 0.08, z + OPEN.south.e - 0.05, true);
+          }
           /* A damp streak under some windows, from the sill down. */
           if (r.chance(0.45)) {
             const w = r.range(0.25, 0.7);
@@ -772,8 +780,10 @@ function waterOf(T) {
   }
   T.box('concreteWorn', Wt.px - h - 0.5, Wt.py - h - 0.5, Wt.tank0 - 0.5, Wt.px + h + 0.5, Wt.py + h + 0.5, Wt.tank0, { kind: 'wall', name: 'tank floor' });
   T.cyl('tankPaint', [Wt.px, Wt.py, Wt.tank0], [Wt.px, Wt.py, Wt.tank1], Wt.r, 16);
-  T.cap('tankPaint', [Wt.px, Wt.py, Wt.tank0 + Wt.r * 0.6], [Wt.px, Wt.py, Wt.tank1 - Wt.r * 0.6], Wt.r - 0.05, { draw: false, kind: 'wall', name: 'tank' });
+  /* The tank's solid: three boxes inside its round, a cross and a square. */
   T.hidden(Wt.px - Wt.r * 0.7, Wt.py - Wt.r * 0.7, Wt.tank0, Wt.px + Wt.r * 0.7, Wt.py + Wt.r * 0.7, Wt.tank1, 'wall', 'tank');
+  T.hidden(Wt.px - Wt.r * 0.95, Wt.py - Wt.r * 0.3, Wt.tank0, Wt.px + Wt.r * 0.95, Wt.py + Wt.r * 0.3, Wt.tank1, 'wall', 'tank');
+  T.hidden(Wt.px - Wt.r * 0.3, Wt.py - Wt.r * 0.95, Wt.tank0, Wt.px + Wt.r * 0.3, Wt.py + Wt.r * 0.95, Wt.tank1, 'wall', 'tank');
   T.cone('kiCopperDark', Wt.px, Wt.py, Wt.tank1, Wt.r + 0.3, 1.6, 16);
   T.dress(() => {
     T.wide(() => {

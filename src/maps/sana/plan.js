@@ -440,36 +440,60 @@ function hiddenMarkSpots() {
 }
 
 /*
- * THE TREES. Cedar on the hill and in the woods either side (the town's
- * pine), a few street trees among them, cherries in the grounds, and
- * saplings where nothing should grow: on the sun deck and the tower's
- * roof. All are the town's own trees, drawn by the kit at a scale, their
- * canopies solid as the town's are.
+ * A CEDAR (杉), the tree of every Japanese hillside: a straight trunk and
+ * its crown in three tiers of cone, dark and narrow. Drawn by this map
+ * rather than the kit, because the town's pine is a few thousand triangles
+ * with its leaf clumps and a hillside of them was most of a million; a
+ * cedar here is about sixty, in the comic layer's foliage, so a forest of
+ * them costs less than a dozen of the town's. Solid as the town's trees
+ * are: the trunk a pole, the crown a canopy capsule inside its cones.
+ */
+function cedar(T, px, py, h, k, r) {
+  const trunk = 9.5 * k;
+  T.post('trunk', px, py, h, h + trunk * 0.45, 0.22 * k, { kind: 'tree', name: 'cedar trunk', seg: 5 });
+  T.cap('kiCedar', [px, py, h + trunk * 0.42], [px, py, h + trunk * 0.92], 1.05 * k, { draw: false, kind: 'canopy', name: 'cedar' });
+  const tone = r.chance(0.5) ? 'kiCedar' : 'kiCedarDeep';
+  T.cone(tone, px, py, h + trunk * 0.3, 1.9 * k, trunk * 0.42, 7);
+  T.cone(tone, px, py, h + trunk * 0.52, 1.5 * k, trunk * 0.36, 7);
+  T.cone(tone, px, py, h + trunk * 0.72, 1.05 * k, trunk * 0.32, 6);
+}
+
+/*
+ * THE TREES. Cedar on the hill and in the woods either side, thick enough
+ * that the gaps between them are lines, a few of the town's street trees
+ * among them, the town's cherries in the grounds, and saplings where
+ * nothing should grow: on the sun deck and the hall's roof.
  */
 function trees(T) {
   const r = rng(4417);
   const tree = (style, k, px, py, h) => T.asset({ type: 'tree', style, dims: { size: k, variant: r.int(1, 99) } }, 1, px, py, h, 0);
-  /* The hill, in rows across its slope, thinned toward the top. */
-  for (let py = 222; py < 280; py += 12) {
-    for (let px = 6; px < 396; px += r.range(11, 15)) {
-      const x = px + r.range(-2, 2);
-      const y = py + r.range(-2.5, 2.5);
-      if (y < TERRACE.y1 + 4 && x > TERRACE.x0 - 2 && x < TERRACE.x1 + 2) {
+  /* The hill, in staggered rows across its slope. */
+  let row = 0;
+  for (let py = 219; py < 282; py += 7, row += 1) {
+    for (let px = 4 + (row % 2) * 3.5; px < 398; px += r.range(6.5, 8.5)) {
+      const x = px + r.range(-1.5, 1.5);
+      const y = py + r.range(-2, 2);
+      if (y < TERRACE.y1 + 3 && x > TERRACE.x0 - 2 && x < TERRACE.x1 + 2) {
         continue;
       }
-      tree(r.chance(0.82) ? 'pine' : 'street', r.range(0.9, 1.3), x, y, Math.max(0, hillAt(x, y) - 0.4));
+      cedar(T, x, y, Math.max(0, hillAt(x, y) - 0.3), r.range(0.85, 1.25), r);
     }
   }
   /* The woods either side of the grounds, inside the wall and out. */
-  for (const [x0, x1] of [[4, 60], [340, 396]]) {
-    for (let py = 6; py < 218; py += r.range(10, 13)) {
-      for (let px = x0; px < x1; px += r.range(12, 15)) {
-        const x = px + r.range(-2, 2);
-        const y = py + r.range(-2, 2);
-        if (Math.abs(y - GATE.py) < 3) {
+  for (const [x0, x1] of [[3, 62], [338, 397]]) {
+    row = 0;
+    for (let py = 4; py < 219; py += 7.5, row += 1) {
+      for (let px = x0 + (row % 2) * 3.5; px < x1; px += r.range(7, 9.5)) {
+        const x = px + r.range(-1.5, 1.5);
+        const y = py + r.range(-1.5, 1.5);
+        if (Math.abs(y - GATE.py) < 2.5) {
           continue;
         }
-        tree(r.chance(0.65) ? 'pine' : 'street', r.range(0.85, 1.25), x, y, Math.max(0, hillAt(x, y) - 0.4));
+        if (r.chance(0.08)) {
+          tree('street', r.range(0.85, 1.1), x, y, Math.max(0, hillAt(x, y) - 0.4));
+        } else {
+          cedar(T, x, y, Math.max(0, hillAt(x, y) - 0.3), r.range(0.8, 1.2), r);
+        }
       }
     }
   }
@@ -481,15 +505,19 @@ function trees(T) {
   for (const [x, y] of [[74, 52], [86, 102], [160, 44], [168, 92], [228, 44], [246, 96], [326, 74], [330, 104], [112, 112], [288, 110], [150, 110]]) {
     tree('sakura', r.range(0.9, 1.15), x, y, 0);
   }
-  /* On the terrace, behind and between the buildings. */
-  for (const [x, y] of [[100, 200], [140, 196], [176, 205], [226, 205], [290, 205], [76, 128], [324, 130], [104, 132], [296, 128], [244, 180], [150, 178]]) {
-    tree(r.chance(0.6) ? 'pine' : 'street', r.range(0.8, 1.05), x, y, TH);
+  /* Cedars in the grounds, in clumps, and on the terrace behind and
+   * between the buildings. */
+  for (const [x, y] of [[66, 40], [70, 46], [64, 64], [334, 44], [336, 52], [272, 100], [278, 104], [126, 98], [178, 60], [222, 76], [100, 42], [110, 50]]) {
+    cedar(T, x, y, 0, r.range(0.85, 1.15), r);
+  }
+  for (const [x, y] of [[100, 200], [140, 196], [176, 205], [226, 205], [290, 205], [76, 128], [324, 130], [104, 132], [296, 128], [244, 180], [150, 178], [120, 205], [160, 208], [210, 198], [280, 186], [326, 160], [74, 196]]) {
+    cedar(T, x, y, TH, r.range(0.8, 1.05), r);
   }
   /* Saplings on the roofs. */
   const deck = TH + 3 * FL;
-  tree('pine', 0.32, 130, SEC.n0 - 1.2, deck);
-  tree('street', 0.3, 268, SEC.s0 + 1.0, deck);
-  tree('pine', 0.26, 203.2, 166.5, TH + 4 * FL);
+  cedar(T, 130, SEC.n0 - 1.2, deck, 0.3, r);
+  cedar(T, 268, SEC.s0 + 1.0, deck, 0.26, r);
+  cedar(T, 203.2, 166.5, TH + 4 * FL, 0.24, r);
 }
 
 /* The overgrowth: bushes along the terrace's foot and the buildings', the
@@ -564,7 +592,7 @@ function overgrowth(T) {
     for (let y = 2; y < FOUNTAIN.py - 8; y += r.range(3, 7)) {
       const x = r.range(ROAD.x0 + 1, ROAD.x1 - 2);
       T.paint('kiDamp', x, y, 0.03, x + r.range(0.8, 2.4), y + 0.08, 0.05);
-      T.cone('kiMoss', x + 0.5, y, 0.03, 0.2, 0.4, 4);
+      T.cone('kiMoss', x + 0.5, y, 0.03, 0.14, 0.22, 4);
     }
   });
 }
@@ -574,6 +602,55 @@ function overgrowth(T) {
 function cars(T) {
   T.asset({ type: 'car', style: 'keivan', dims: { variant: 4 } }, 1, 214, 92, 0, 0.6);
   T.asset({ type: 'car', style: 'sedan', dims: { variant: 9 } }, 1, 186, 40, 0, 1.75);
+}
+
+
+/*
+ * THE POLES ON THE TERRACE, the town's concrete pole (../../props/street.js)
+ * in two lines, along the front path and behind the wings to the boiler
+ * house, and their wires: three a span, hung from the crossarm, drawn as
+ * lines by ./index.js and never solid, as the town's are. The road's own
+ * poles are the document's (./yard.js), which the pipeline wires itself.
+ */
+const POLE_H = 9;
+const TERRACE_POLES = [
+  [[84, 141], [124, 141], [164, 141], [236, 141], [276, 141], [316, 141]],
+  [[100, 168], [140, 168], [180, 172], [220, 172], [260, 168], [300, 170]],
+];
+function poles(T) {
+  for (const line of TERRACE_POLES) {
+    for (const [px, py] of line) {
+      T.asset({ type: 'utilityPole', dims: { height: POLE_H } }, 1, px, py, TH, 0);
+    }
+    for (let i = 0; i + 1 < line.length; i += 1) {
+      const [ax, ay] = line[i];
+      const [bx, by] = line[i + 1];
+      for (const o of [-0.62, 0, 0.62]) {
+        T.wire('rope', [ax, ay + o, TH + POLE_H - 0.25], [bx, by + o, TH + POLE_H - 0.25], 0.55 + Math.abs(o) * 0.2);
+      }
+      T.wire('rope', [ax, ay, TH + POLE_H - 1.55], [bx, by, TH + POLE_H - 1.55], 0.8);
+    }
+  }
+}
+
+/* An iron railing along the terrace's edge, its posts and two rails,
+ * rusted and bent in places; drawn only. */
+function railing(T, r) {
+  T.dress(() => {
+    T.wide(() => {
+      const y = TERRACE.y0 + 0.3;
+      for (const [x0, x1] of [[TERRACE.x0 + 0.5, STAIR.x0 - 1.2], [STAIR.x1 + 1.2, TERRACE.x1 - 0.5]]) {
+        for (let x = x0; x <= x1; x += 2.4) {
+          if (r.chance(0.06)) {
+            continue;
+          }
+          T.cyl('rustDeep', [x, y, TH + 0.25], [x, y, TH + 1.25], 0.03, 4);
+        }
+        T.cyl('rustDeep', [x0, y, TH + 1.2], [x1, y, TH + 1.2], 0.03, 4);
+        T.cyl('rustDeep', [x0, y, TH + 0.7], [x1, y, TH + 0.7], 0.025, 4);
+      }
+    });
+  });
 }
 
 /*
@@ -595,6 +672,8 @@ export function sanaLayout() {
   for (const b of HOARDINGS) {
     hoarding(T, b);
   }
+  poles(T);
+  railing(T, r);
   trees(T);
   cars(T);
   overgrowth(T);
@@ -629,7 +708,7 @@ export function sanaGaps() {
   const C = CHAPEL;
   const chapelMid = (C.x0 + C.x1) / 2;
   const race = [
-    { name: '1 THE GATE', px: GATE.px, py: GATE.py, deg: 90, w: GATE.w - 2 * M, h0: M, h1: 4.0, points: 100 },
+    { name: '1 THE GATE', px: GATE.px, py: GATE.py, deg: 90, w: GATE.w - 0.3 - 2 * M, h0: M, h1: 4.0, points: 100 },
     { name: '2 WISTERIA WALK', px: (PERGOLA.x0 + PERGOLA.x1) / 2, py: (PERGOLA.y0 + PERGOLA.y1) / 2, deg: 90, w: PERGOLA.x1 - PERGOLA.x0 - 0.6 - 2 * M, h0: M, h1: PERGOLA.h - 0.3, points: 250 },
     { name: '3 SUN PAVILION', px: 254, py: (PAVILION.y0 + PAVILION.y1) / 2, deg: 180, w: PAVILION.y1 - PAVILION.y0 - 0.6 - 2 * M, h0: 0.3 + M, h1: PAVILION.h - M, points: 250 },
     { name: '4 UNDER THE BRIDGE', px: (BRIDGE.piers[0] + BRIDGE.piers[1]) / 2, py: BRIDGE.py, deg: 90, w: BRIDGE.piers[1] - BRIDGE.piers[0] - 0.8 - 2 * M, h0: 0.2 + M, h1: BRIDGE.deck - 0.25 - M, points: 500 },
@@ -651,7 +730,7 @@ export function sanaGaps() {
     { name: 'OUT OF THE DROP', px: wardAt(east, 3), py: SEC.s0, deg: 90, w: 2.2 - 2 * M, h0: TH + 0.8 + M, h1: TH + 3.0 - M, points: 1000 },
     { name: 'THE BELVEDERE', px: (TOWER.x0 + TOWER.x1) / 2, py: (TOWER.y0 + TOWER.y1) / 2, deg: 0, w: TOWER.y1 - TOWER.y0 - 2 * TOWER.pier - 2 * M, h0: TOWER.bel0 + M, h1: TOWER.bel1 - M, points: 1000 },
     { name: 'THE BELL GABLE', px: chapelMid, py: (BELFRY.y0 + BELFRY.y1) / 2, deg: 90, w: BELFRY.w - 2 * M, h0: BELFRY.s + M, h1: BELFRY.e - M, points: 1000 },
-    { name: 'CHAPEL DOOR', px: chapelMid, py: C.y0, deg: 90, w: C.doorW - 2 * M, h0: TH + M, h1: TH + C.doorH - M, points: 250 },
+    { name: 'CHAPEL DOOR', px: chapelMid, py: C.y0, deg: 90, w: C.doorW - 2 * M, h0: TH + 0.2 + M, h1: TH + C.doorH - M, points: 250 },
     { name: 'THROUGH THE CHAPEL', px: chapelMid, py: (SEC.c1 + SEC.n0) / 2, deg: 0, w: SEC.n0 - SEC.c1 - 2 * M, h0: TH + M, h1: TH + 3.0 - M, points: 500 },
     { name: 'TANK LEGS', px: WATER.px, py: WATER.py, deg: 90, w: 2 * WATER.half - 2 * WATER.legR - 2 * M, h0: WATER.brace + 0.4 + M, h1: WATER.tank0 - 0.5 - M, points: 500 },
   ];

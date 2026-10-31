@@ -115,6 +115,7 @@ const MAP_ROOTS = {
   fmx: 'src/maps/fmx/index.js',
   hotaru: 'src/maps/hotaru/index.js',
   fest: 'src/maps/fest/index.js',
+  haikyo: 'src/maps/haikyo/index.js',
   hayate: 'src/maps/hayate/index.js',
 };
 

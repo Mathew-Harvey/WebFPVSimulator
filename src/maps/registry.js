@@ -555,6 +555,23 @@ export const MAPS = [
     load: () => import('./arctic/index.js'),
   },
   /*
+   * TSUKIMI DANCHI, on the owner's ask of 31 October 2026 (a city bando,
+   * "we want the maps to feel like manga comic like the town"): an
+   * abandoned 1970s housing estate in the middle of the town's kind of
+   * city, its five storey block holed floor by floor, its annex, its water
+   * tank, its boiler house, and the viaduct and the streets round it
+   * (src/maps/haikyo/). Built by the built map's pipeline and flown on the
+   * five inch at life size; off the board like the houses.
+   */
+  {
+    id: 'haikyo',
+    name: 'Tsukimi Danchi',
+    mode: 'freestyle',
+    note: 'An abandoned housing estate in the middle of the city: a five storey block with its floors falling in, open stair towers, a bridge to the old shopping annex, a water tank on legs, a boiler house and a railway viaduct. Twelve orange plates mark a race through it.',
+    buildMs: MAP_BUILD_MS.haikyo,
+    load: () => import('./haikyo/index.js'),
+  },
+  /*
    * HAYATE CIRCUIT, on the owner's ask of 31 October 2026 (section 14 of
    * the map ideas, "Racetrack"): an international road circuit of our own
    * in the Japanese hills in autumn, built from how the real ones are laid
@@ -630,6 +647,8 @@ export const SANA_DOC_ID = 'trk-5a7a0b10';
 export const ALPS_DOC_ID = 'trk-a195a1e5';
 /* Hoshino Shoji's (src/maps/office/yard.js), the same way. */
 export const OFFICE_DOC_ID = 'trk-0f1ce5a1';
+/* Tsukimi Danchi's (src/maps/haikyo/yard.js), the same way. */
+export const HAIKYO_DOC_ID = 'trk-4a1c7d0e';
 
 /* Hyoura Island's (src/maps/arctic/yard.js), the same way. */
 export const ARCTIC_DOC_ID = 'trk-a7c71c00';

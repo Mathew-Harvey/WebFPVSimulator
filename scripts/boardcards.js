@@ -397,6 +397,9 @@ const WORLDS = [
    * never blank: from over the race, the stage, the stalls and the railway
    * across the river in it. */
   { id: 'fest', file: 'fest.jpg', name: 'Tonbo Fest', shot: { tp: 0.45, tr: 0.6, ta: 0.8 } },
+  /* Tsukimi Danchi, added 31 October 2026, from the south east and high
+   * enough that the block, the yard and the viaduct are all in it. */
+  { id: 'haikyo', file: 'haikyo.jpg', name: 'Tsukimi Danchi', shot: { tp: 0.68, tr: 1.5, ta: -1.9 } },
   /* Hayate Circuit, added 31 October 2026, picked by eye from three: the
    * sky wheel in front, the pits, the stands and the tower behind. */
   { id: 'hayate', file: 'hayate.jpg', name: 'Hayate Circuit', shot: { tp: 0.45, tr: 0.7, ta: 1.57 } },

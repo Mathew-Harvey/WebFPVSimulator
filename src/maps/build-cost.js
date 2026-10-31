@@ -86,6 +86,10 @@ export const MAP_BUILD_MS = {
    * drift course. An estimate until it is measured. */
   drift: 2600,
 
+  /* Tsukimi Danchi (src/maps/haikyo/): an abandoned estate and the four
+   * streets round it, the same pipeline. An estimate from Sunnyfield until
+   * it is measured. */
+  haikyo: 2400,
   /* Quad Ball (src/maps/ball/): a plain arena, a few dozen boxes. An
    * estimate until it is measured. */
   ball: 900,

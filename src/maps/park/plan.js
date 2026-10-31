@@ -197,22 +197,25 @@ export function trafficLoops() {
   }];
 }
 
-/* The poles along the lane's outer verge, every 28 m or so: the
- * document's utility poles, so the built map strings the wires. */
+/* The poles along the lane's outer verge, at most 38 m apart, inside the
+ * 45 m the built map strings a wire over: the document's utility poles, so
+ * the built map strings the wires. Each pole wears its own number and its
+ * own advert, so each is two draws of its own; 38 m rather than the town's
+ * closer spacing keeps the ring at twenty four poles. */
 export function polePoints() {
   const h = LANE.w / 2 + 0.45;
   const out = [];
-  const run = (a, b, fixed, alongX) => {
-    const n = Math.round((b - a) / 28);
-    for (let i = 0; i <= n; i += 1) {
+  const run = (a, b, fixed, alongX, ends) => {
+    const n = Math.ceil((b - a) / 38);
+    for (let i = ends ? 0 : 1; i <= (ends ? n : n - 1); i += 1) {
       const s = a + ((b - a) * i) / n;
       out.push(alongX ? [s, fixed] : [fixed, s]);
     }
   };
-  run(LANE.x0 - h, LANE.x1 + h, LANE.y0 - h, true);
-  run(LANE.x0 - h, LANE.x1 + h, LANE.y1 + h, true);
-  run(LANE.y0 - h + 28, LANE.y1 + h - 28, LANE.x0 - h, false);
-  run(LANE.y0 - h + 28, LANE.y1 + h - 28, LANE.x1 + h, false);
+  run(LANE.x0 - h, LANE.x1 + h, LANE.y0 - h, true, true);
+  run(LANE.x0 - h, LANE.x1 + h, LANE.y1 + h, true, true);
+  run(LANE.y0 - h, LANE.y1 + h, LANE.x0 - h, false, false);
+  run(LANE.y0 - h, LANE.y1 + h, LANE.x1 + h, false, false);
   return out;
 }
 

@@ -38,13 +38,17 @@
 
 import { rng } from './frame.js';
 
-/* The pond's discs, plan metres: three for the north lobe, two south. */
+/* The pond's discs, plan metres: three for the north lobe, two south,
+ * and two that fill the waists between them so the shore curves rather
+ * than pinching. */
 export const LOBES = [
   { px: 50, py: 150, r: 15 },
   { px: 70, py: 146, r: 17 },
   { px: 92, py: 138, r: 13 },
   { px: 92, py: 100, r: 12 },
   { px: 71, py: 96, r: 10 },
+  { px: 81, py: 99, r: 9 },
+  { px: 81, py: 143, r: 14 },
 ];
 /* The channel between them, walled in stone. */
 export const CHANNEL = { x0: 87, x1: 97, y0: 106, y1: 130 };

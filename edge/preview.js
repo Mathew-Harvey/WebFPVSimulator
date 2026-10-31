@@ -110,6 +110,7 @@ const WORLDS = {
   sunny: { name: 'Sunnyfield', thumb: 'sunny' },
   drift: { name: 'Drift Matsuri', thumb: 'drift' },
   ball: { name: 'Quad Ball', thumb: 'ball' },
+  park: { name: 'Hinode Park', thumb: 'park' },
   built: { name: 'Hibari Yard', thumb: 'yard' },
 };
 

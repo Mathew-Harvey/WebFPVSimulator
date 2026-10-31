@@ -100,6 +100,36 @@ function octopus(T) {
     T.cyl('pkOctopusDeep', [cx + sx * 0.35, cy - 1.9, hz + 1.0], [cx + sx * 1.4, cy - 1.7, hz + 1.25], 0.12, 6);
   }
   T.torus('pkOctopusDeep', cx, cy - 2.35, hz - 0.75, 0.38, 0.16, 0, -1, 8, 16);
+  /* A white hachimaki round its brow, knotted at the back: the octopus
+   * is ready for the festival. */
+  T.torus('pkSwan', cx, cy + 0.6, hz + 0.55, hr * 0.96, 0.17, 0, 0, 6, 28);
+  T.ball('pkSwan', cx, cy + 0.6 + hr * 0.95, hz + 0.6, 0.32);
+  T.cyl('pkSwan', [cx - 0.1, cy + 0.6 + hr * 1.0, hz + 0.55], [cx - 0.55, cy + 0.6 + hr * 1.2, hz - 0.2], 0.1, 5, 0.05);
+  T.cyl('pkSwan', [cx + 0.1, cy + 0.6 + hr * 1.0, hz + 0.55], [cx + 0.45, cy + 0.6 + hr * 1.25, hz - 0.1], 0.1, 5, 0.05);
+  /* Its corners rounded by a column each, so the lower tier reads as
+   * concrete poured round a mould rather than a box. */
+  for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+    T.cyl('pkOctopus', [cx + sx * (H - 0.55), cy + sy * (H - 0.55), 0], [cx + sx * (H - 0.55), cy + sy * (H - 0.55), O.tier1], 0.62, 12);
+  }
+  /* Tentacles curling out over the sand from the corners, low enough to
+   * fly over, suckers along each, near only. Plan points from the corner,
+   * outward, curling back the way an octopus's arm does. */
+  const ARM = [[0, 0, 0.36, 0.3], [1.2, 0.5, 0.28, 0.26], [2.2, 1.5, 0.22, 0.22], [2.6, 2.8, 0.17, 0.18], [2.2, 3.7, 0.13, 0.14], [1.4, 3.9, 0.1, 0.1], [1.0, 3.3, 0.08, 0.07]];
+  T.dress(() => {
+    for (const [sx, sy, swap] of [[-1, -1, false], [1, -1, true], [1, 1, false], [-1, 1, true]]) {
+      const pts = ARM.map(([u, v, h, r]) => {
+        const [a, b] = swap ? [v, u] : [u, v];
+        return [cx + sx * (H - 0.3 + a), cy + sy * (H - 0.3 + b), h, r];
+      });
+      for (let k = 0; k + 1 < pts.length; k += 1) {
+        const [ax, ay, ah, ar] = pts[k];
+        const [bx, by, bh, br] = pts[k + 1];
+        T.cyl('pkOctopus', [ax, ay, ah], [bx, by, bh], ar, 8, br);
+        T.ball('pkOctopus', bx, by, bh, br);
+        T.bead('pkSwan', (ax + bx) / 2, (ay + by) / 2, (ah + bh) / 2 + (ar + br) * 0.45, (ar + br) * 0.22);
+      }
+    }
+  });
   /* Two legs for slides, west and east, from the second tier to the
    * ground, and the steps up the back. */
   for (const s of [-1, 1]) {

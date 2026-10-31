@@ -66,7 +66,7 @@ export const DUGOUT_1B = { x0: 162.6, x1: 173.6, y0: 79.4, y1: 82.9, roof: 2.45,
 export const DUGOUT_3B = { y0: 102.6, y1: 113.6, x0: 137.1, x1: 140.6, roof: 2.45, front: 0.95, bench: 0.45 };
 
 /* The ball stop net behind the outfield, and the scoreboard. */
-export const BIG_NET = { x: 234.4, y: 174.4, h: 14 };
+export const BIG_NET = { x: 233.7, y: 173.7, h: 14 };
 export const SCOREBOARD = { x0: 212, x1: 222, py: 168, lift: 2.4, h: 3.6, t: 0.5 };
 
 /* The floodlight masts. */

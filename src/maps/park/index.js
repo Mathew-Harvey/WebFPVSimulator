@@ -243,9 +243,13 @@ function drawPark(kit, T, low) {
     kit.begin(0, 0, 0, 0, chunkOf(mid.x, mid.z));
     kit.add(w.m, new THREE.TubeGeometry(curve, WIRE_SEGMENTS, w.r, 3, false));
   }
+  /* The town's own trees, buildings, vending machines and cars, all in one
+   * chunk of their own: each brings the town's painted materials, and
+   * filed by place every chunk drew each of them again, a hundred draws
+   * on Low for a cull that hides almost nothing at a park's size. */
   for (const a of T.scaled) {
     const [x, y, z] = worldAt(a.px, a.py, a.h);
-    kit.begin(x, y, z, a.yaw, chunkOf(x, z));
+    kit.begin(x, y, z, a.yaw, 'pkTown');
     if (a.k !== 1) {
       kit.place.multiply(new THREE.Matrix4().makeScale(a.k, a.k, a.k));
     }

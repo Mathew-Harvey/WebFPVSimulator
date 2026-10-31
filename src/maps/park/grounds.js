@@ -115,6 +115,11 @@ function lane(T) {
   T.paint('pkPave', 0, y1 + h, 0.003, W, D, 0.01);
   T.paint('pkPave', 0, y0 - h, 0.0032, x0 - h, y1 + h, 0.0102);
   T.paint('pkPave', x1 + h, y0 - h, 0.0032, W, y1 + h, 0.0102);
+  /* The kerb between the lane and the pavement, a hand high. */
+  T.deco('pkKerb', x0 - h - 0.2, y0 - h - 0.2, 0, x1 + h + 0.2, y0 - h, 0.12);
+  T.deco('pkKerb', x0 - h - 0.2, y1 + h, 0, x1 + h + 0.2, y1 + h + 0.2, 0.12);
+  T.deco('pkKerb', x0 - h - 0.2, y0 - h, 0, x0 - h, y1 + h, 0.12);
+  T.deco('pkKerb', x1 + h, y0 - h, 0, x1 + h + 0.2, y1 + h, 0.12);
   /* A curve mirror on each corner, orange on its pole: the pole solid. */
   for (const [cx, cy, dx, dy] of [[x0 - h - 0.6, y0 - h - 0.6, 1, 1], [x1 + h + 0.6, y0 - h - 0.6, -1, 1], [x0 - h - 0.6, y1 + h + 0.6, 1, -1], [x1 + h + 0.6, y1 + h + 0.6, -1, -1]]) {
     T.post('pkBeak', cx, cy, 0, 3.0, 0.045, { kind: 'pole', name: 'curve mirror' });

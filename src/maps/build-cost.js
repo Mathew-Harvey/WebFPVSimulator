@@ -89,4 +89,7 @@ export const MAP_BUILD_MS = {
   /* Ridgeline MX (src/maps/moto/): a plot of trees, a track of mounds and
    * berms and ten bikes. An estimate until it is measured. */
   moto: 2400,
+  /* Tonbo Fest (src/maps/fest/): the levee, the railway and the festival
+   * on a river ground. An estimate until it is measured. */
+  fest: 2600,
 };

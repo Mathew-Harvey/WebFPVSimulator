@@ -217,6 +217,7 @@ export function stampKeyForMap(mapId) {
   }
   if (mapId === 'airfield') {
     return `built:${AIRFIELD_DOC_ID}`;
+  }
   if (mapId === 'haikyo') {
     return `built:${HAIKYO_DOC_ID}`;
   }

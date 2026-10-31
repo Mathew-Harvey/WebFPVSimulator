@@ -156,7 +156,6 @@ const FAMILIES = {
   sanatorium: SANATORIUM,
   shiokaze: SHIOKAZE, rally: RALLY,
   airfield: AIRFIELD,
-  shiokaze: SHIOKAZE,
   haikyo: HAIKYO,
 };
 export const FAMILY_MATERIALS = {};

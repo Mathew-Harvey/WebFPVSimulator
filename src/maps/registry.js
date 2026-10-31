@@ -453,6 +453,8 @@ export const MAPS = [
     note: 'A grass strip in a mountain valley: fly the arched hangar front to back and through its rafters, the paddies, the cedars, the vinyl houses, the channel under the red bridge, and fourteen gates to fly round it all.',
     buildMs: MAP_BUILD_MS.airfield,
     load: () => import('./airfield/index.js'),
+  },
+  /*
    * TSUKIMI DANCHI, on the owner's ask of 31 October 2026 (a city bando,
    * "we want the maps to feel like manga comic like the town"): an
    * abandoned 1970s housing estate in the middle of the town's kind of

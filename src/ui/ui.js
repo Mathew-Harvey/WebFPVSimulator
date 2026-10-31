@@ -1001,9 +1001,7 @@ function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
     || mapId === 'goats' || mapId === 'sunny' || mapId === 'drift' || mapId === 'ball' || mapId === 'moto' || mapId === 'dome' || mapId === 'cedar'
     || mapId === 'towers' || mapId === 'alps' || mapId === 'office' || mapId === 'kaza' || mapId === 'sana'
     || mapId === 'shiokaze' || mapId === 'factory' || mapId === 'rally' || mapId === 'fmx'
-    || mapId === 'airfield';
-    || mapId === 'shiokaze' || mapId === 'factory'
-    || mapId === 'haikyo';
+    || mapId === 'airfield' || mapId === 'haikyo';
   const where = mapId === 'house' ? "Nick's house"
     : mapId === 'heads' ? "Heads' house"
       : mapId === 'bardwell' ? "Joshua's house"

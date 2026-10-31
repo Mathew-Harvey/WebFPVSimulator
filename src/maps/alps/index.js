@@ -133,7 +133,7 @@ function paintAt(out, h, ny, nz, x, z) {
   const wood = noise(x / 90, z / 90, 61);
   mix(out, PAINT.grass, PAINT.grassSun, band(0.5, 0.62, n2));
   out.lerp(_b.setHex(PAINT.forest), band(0.45, 0.6, wood) * (1 - band(140, 200, up)));
-  const meadow = mix(_c, PAINT.meadow, PAINT.meadowDry, band(0.5, 0.62, n1));
+  const meadow = mix(_c, PAINT.meadow, PAINT.meadowDry, band(0.58, 0.72, n1));
   out.lerp(meadow, band(160, 220, up + n1 * 30));
   /* Scree on the high ground where it starts to steepen. */
   out.lerp(_b.setHex(PAINT.scree), band(0.9, 0.8, ny) * band(180, 240, up));

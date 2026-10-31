@@ -45,7 +45,7 @@
 
 import { readAutosave } from '../trackbuilder/storage.js';
 import { docModeOf } from '../trackbuilder/elements.js';
-import { HOUSE_DOC_ID, HEADS_DOC_ID, BARDWELL_DOC_ID, WAREHOUSE_DOC_ID, GOATS_DOC_ID, SUNNY_DOC_ID, DRIFT_DOC_ID, BALL_DOC_ID, MOTO_DOC_ID, DOME_DOC_ID, CEDAR_DOC_ID, TOWERS_DOC_ID, ALPS_DOC_ID, OFFICE_DOC_ID, FEST_DOC_ID } from '../maps/registry.js';
+import { HOUSE_DOC_ID, HEADS_DOC_ID, BARDWELL_DOC_ID, WAREHOUSE_DOC_ID, GOATS_DOC_ID, SUNNY_DOC_ID, DRIFT_DOC_ID, BALL_DOC_ID, MOTO_DOC_ID, DOME_DOC_ID, CEDAR_DOC_ID, TOWERS_DOC_ID, ALPS_DOC_ID, OFFICE_DOC_ID, KAZA_DOC_ID, FEST_DOC_ID } from '../maps/registry.js';
 
 export const STAMPS_KEY = 'webfpv.stf.stamps.v1';
 
@@ -196,6 +196,9 @@ export function stampKeyForMap(mapId) {
   }
   if (mapId === 'office') {
     return `built:${OFFICE_DOC_ID}`;
+  }
+  if (mapId === 'kaza') {
+    return `built:${KAZA_DOC_ID}`;
   }
   if (mapId === 'fest') {
     return `built:${FEST_DOC_ID}`;

@@ -363,6 +363,7 @@ const WORLDS = [
   /* Hoshino Shoji, added 31 October 2026. Indoors like Thomas More's Shop,
    * so it names its own lens too (CARD_LENS in src/maps/office/office.js). */
   { id: 'office', file: 'office.jpg', name: 'Hoshino Shoji' },
+  { id: 'kaza', file: 'kaza.jpg', name: 'Kazahana Plain' },
   /* Tonbo Fest, added 31 October 2026 with its picture, so its card is
    * never blank: from over the race, the stage, the stalls and the railway
    * across the river in it. */

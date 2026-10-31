@@ -74,6 +74,7 @@
     "check:sunny": "node scripts/sunny-check.js",
     "check:towers": "node scripts/towers-check.js",
     "check:cedar": "node scripts/cedar-check.js",
+    "check:kaza": "node scripts/kaza-check.js",
     "check:yard": "node scripts/yardtrack-check.js",
     "check:windmill": "node scripts/windmill-check.js",
     "check:room": "node scripts/room-check.js",

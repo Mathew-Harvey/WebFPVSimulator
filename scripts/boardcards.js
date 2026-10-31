@@ -356,6 +356,8 @@ const WORLDS = [
    * server for a file that was not there (found 30 October 2026). */
   { id: 'ball', file: 'ball.jpg', name: 'Quad Ball' },
   { id: 'moto', file: 'moto.jpg', name: 'Ridgeline MX' },
+  /* Ekimae Drift, added 31 October 2026, from its default orbit. */
+  { id: 'ekimae', file: 'ekimae.jpg', name: 'Ekimae Drift' },
   /* Hyoura Island, added 31 October 2026: the hamlet and its harbour from
    * the hill to its west, its boats and the co-op. */
   { id: 'arctic', file: 'arctic.jpg', name: 'Hyoura Island', shot: { tp: 0.45, tr: 0.6, ta: -0.8 } },

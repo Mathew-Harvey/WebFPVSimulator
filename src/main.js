@@ -528,6 +528,7 @@ const MAP_MODULE_PREFIX = {
   alps: '/src/maps/alps/',
   shiokaze: '/src/maps/shiokaze/',
   cedar: '/src/maps/cedar/',
+  ekimae: '/src/maps/ekimae/',
   touge: '/src/maps/touge/',
   office: '/src/maps/office/',
   kaza: '/src/maps/kaza/',
@@ -9235,6 +9236,14 @@ export async function boot({ loading, bootStart, mapId }) {
     if (view.id === 'drift' || view.id === 'moto' || view.id === 'dome' || view.id === 'towers' || view.id === 'rally' || view.id === 'fmx' || view.id === 'hayate') {
       notice = {
         text: `The board keeps no runs for ${view.id === 'moto' ? 'Ridgeline MX' : (view.id === 'dome' ? 'Bakuon Dome' : (view.id === 'towers' ? 'Kumoi Towers' : (view.id === 'rally' ? 'Tanada RX' : (view.id === 'fmx' ? 'Shiroyama FMX' : (view.id === 'hayate' ? 'Hayate Circuit' : 'Drift Matsuri')))))}, so its runs stay here.`,
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
+    /* Nor for Ekimae Drift: EKIMAE_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'ekimae') {
+      notice = {
+        text: 'The board keeps no runs for Ekimae Drift, so its runs stay here.',
         untilMs: performance.now() + 4200,
       };
       return;

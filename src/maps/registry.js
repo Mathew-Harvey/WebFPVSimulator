@@ -256,6 +256,23 @@ export const MAPS = [
     load: () => import('./moto/index.js'),
   },
   /*
+   * EKIMAE DRIFT, on the owner's ask of 31 October 2026: a city map with
+   * drift cars to chase, in the manga look of the town. A street drift
+   * event round the station district of a harbour town, under an elevated
+   * expressway and a brick railway viaduct, with three tandem pairs on the
+   * course and Drift Matsuri's filming game (src/maps/ekimae/,
+   * src/game/film.js). Built by the built map's pipeline and flown on the
+   * five inch at life size; off the board like the houses.
+   */
+  {
+    id: 'ekimae',
+    name: 'Ekimae Drift',
+    mode: 'freestyle',
+    note: 'A street drift event round a station district: under the expressway, under the tracks twice, round the taxi rotary and the petrol station. Chase the tandems, or fly the arcade, the car park and the platforms.',
+    buildMs: MAP_BUILD_MS.ekimae,
+    load: () => import('./ekimae/index.js'),
+  },
+  /*
    * KAZESUNA DUNES, on the owner's ask of 31 October 2026 (the Desert entry
    * of the reference list, built as a coast of Japan's own: "we want the
    * maps to feel like manga comic like the town"): a kilometre's slice of
@@ -629,6 +646,8 @@ export const FMX_DOC_ID = 'trk-f3a10c55';
 /* Kazami Airfield's (src/maps/airfield/yard.js), the same way. */
 export const AIRFIELD_DOC_ID = 'trk-a1f1e1d0';
 
+/* Ekimae Drift's (src/maps/ekimae/yard.js), the same way. */
+export const EKIMAE_DOC_ID = 'trk-e4a1d21f';
 /* Kamome Wharf's (src/maps/dock/doc.js), the same way. */
 export const DOCK_DOC_ID = 'trk-d0c4a3e7';
 

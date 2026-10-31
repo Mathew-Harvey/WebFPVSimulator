@@ -99,6 +99,7 @@ const MAP_ROOTS = {
   drift: 'src/maps/drift/index.js',
   ball: 'src/maps/ball/index.js',
   moto: 'src/maps/moto/index.js',
+  ekimae: 'src/maps/ekimae/index.js',
   arctic: 'src/maps/arctic/index.js',
   dunes: 'src/maps/dunes/index.js',
   alps: 'src/maps/alps/index.js',

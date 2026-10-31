@@ -116,6 +116,7 @@ const WORLDS = {
   towers: { name: 'Kumoi Towers', thumb: 'towers' },
   shiokaze: { name: 'Shiokaze Point', thumb: 'shiokaze' },
   cedar: { name: 'Kodama Onsen', thumb: 'cedar' },
+  ekimae: { name: 'Ekimae Drift', thumb: 'ekimae' },
   touge: { name: 'Momiji Pass', thumb: 'touge' },
   dock: { name: 'Kamome Wharf', thumb: 'dock' },
   office: { name: 'Hoshino Shoji', thumb: 'office' },

@@ -1005,6 +1005,7 @@ function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
     || mapId === 'dock'
     || mapId === 'hotaru' || mapId === 'dunes' || mapId === 'fest' || mapId === 'arctic'
     || mapId === 'haikyo'
+    || mapId === 'ekimae'
     || mapId === 'hayate';
   const where = mapId === 'house' ? "Nick's house"
     : mapId === 'heads' ? "Heads' house"
@@ -1017,7 +1018,7 @@ function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
           : mapId === 'dock' ? 'Kamome Wharf'
           : mapId === 'factory' ? 'Hamakaze Works'
           : mapId === 'shiokaze' ? 'Shiokaze Point'
-            : mapId === 'drift' ? 'Drift Matsuri' : mapId === 'ball' ? 'Quad Ball' : mapId === 'moto' ? 'Ridgeline MX' : mapId === 'dome' ? 'Bakuon Dome' : mapId === 'dunes' ? 'Kazesuna Dunes' : mapId === 'cedar' ? 'Kodama Onsen' : mapId === 'airfield' ? 'Kazami Airfield' : mapId === 'towers' ? 'Kumoi Towers' : mapId === 'alps' ? 'Raicho Ridge' : mapId === 'kaza' ? 'Kazahana Plain' : mapId === 'sana' ? 'Kirigaoka Sanatorium' : mapId === 'rally' ? 'Tanada RX' : mapId === 'fmx' ? 'Shiroyama FMX' : mapId === 'hotaru' ? 'Hotaru Valley' : mapId === 'fest' ? 'Tonbo Fest' : mapId === 'touge' ? 'Momiji Pass' : mapId === 'haikyo' ? 'Tsukimi Danchi' : mapId === 'hayate' ? 'Hayate Circuit' : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
+            : mapId === 'drift' ? 'Drift Matsuri' : mapId === 'ball' ? 'Quad Ball' : mapId === 'moto' ? 'Ridgeline MX' : mapId === 'ekimae' ? 'Ekimae Drift' : mapId === 'dome' ? 'Bakuon Dome' : mapId === 'dunes' ? 'Kazesuna Dunes' : mapId === 'cedar' ? 'Kodama Onsen' : mapId === 'airfield' ? 'Kazami Airfield' : mapId === 'towers' ? 'Kumoi Towers' : mapId === 'alps' ? 'Raicho Ridge' : mapId === 'kaza' ? 'Kazahana Plain' : mapId === 'sana' ? 'Kirigaoka Sanatorium' : mapId === 'rally' ? 'Tanada RX' : mapId === 'fmx' ? 'Shiroyama FMX' : mapId === 'hotaru' ? 'Hotaru Valley' : mapId === 'fest' ? 'Tonbo Fest' : mapId === 'touge' ? 'Momiji Pass' : mapId === 'haikyo' ? 'Tsukimi Danchi' : mapId === 'hayate' ? 'Hayate Circuit' : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
   if (mode === 'off') {
     return `${drawn ? '' : `${SCORING_UNDRAWN} `}${scoringOff(where)} ${built ? scoringMoreBuilt(where) : SCORING_MORE}`;
   }
@@ -1135,6 +1136,9 @@ const FEST_OFF_BOARD = 'The board keeps no runs for Tonbo Fest, so a run flown t
 const HAIKYO_OFF_BOARD = 'The board keeps no runs for Tsukimi Danchi, so a run flown there stays here.'
   + ' Fly the town for a run that can go up.';
 const DRIFT_OFF_BOARD = 'The board keeps no runs for Drift Matsuri, so a run flown there stays here.'
+  + ' Fly the town for a run that can go up.';
+/* Ekimae Drift, the same way. */
+const EKIMAE_OFF_BOARD = 'The board keeps no runs for Ekimae Drift, so a run flown there stays here.'
   + ' Fly the town for a run that can go up.';
 
 /*
@@ -11498,6 +11502,7 @@ export class Ui {
           || this.settings.map === 'hotaru' || this.settings.map === 'dunes' || this.settings.map === 'fest'
           || this.settings.map === 'arctic'
           || this.settings.map === 'haikyo'
+          || this.settings.map === 'ekimae'
           || this.settings.map === 'hayate';
         return [
           { label: 'Fly again', action: 'restart', primary: true },
@@ -11537,6 +11542,7 @@ export class Ui {
                           : this.settings.map === 'drift' ? DRIFT_OFF_BOARD
                             : this.settings.map === 'ball' ? BALL_OFF_BOARD
                           : this.settings.map === 'moto' ? MOTO_OFF_BOARD
+                          : this.settings.map === 'ekimae' ? EKIMAE_OFF_BOARD
                           : this.settings.map === 'dunes' ? DUNES_OFF_BOARD
                           : this.settings.map === 'alps' ? ALPS_OFF_BOARD
                           : this.settings.map === 'towers' ? TOWERS_OFF_BOARD
@@ -18094,6 +18100,7 @@ export class Ui {
       && this.settings.map !== 'drift'
       && this.settings.map !== 'ball'
       && this.settings.map !== 'moto'
+      && this.settings.map !== 'ekimae'
       && this.settings.map !== 'fmx'
       && (this.screen === 'flight' || this.screen === 'paused'),
     );

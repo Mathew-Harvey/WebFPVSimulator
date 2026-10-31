@@ -32,6 +32,7 @@
     "check:drift": "node scripts/drift-check.js",
     "check:ball": "node scripts/ball-selftest.js && node scripts/ball-check.js",
     "check:moto": "node scripts/moto-check.js",
+    "check:ekimae": "node scripts/ekimae-check.js",
     "check:arctic": "node scripts/arctic-check.js",
     "check:fest": "node scripts/fest-check.js",
     "check:alps": "node scripts/alps-check.js",

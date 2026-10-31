@@ -149,10 +149,10 @@ function turbines(T) {
     T.box('kzWhite', t.px + s.rb - 0.1, t.py - 0.6, 0.35, t.px + s.rb + 0.05, t.py + 0.6, 2.6, { solid: false });
     T.take(t.px, t.py, s.rb + 2);
   }
-  T.paint('kzGravel', 160, 1676, 500, 1680, 0.009, 0.015);
-  T.paint('kzGravel', 120, 1676, 160, 1680, 0.009, 0.015);
-  T.paint('kzGravel', 326, 1680, 334, 1700, 0.009, 0.015);
-  T.paint('kzGravel', 119.5, 1552.4, 124.5, 1676, 0.009, 0.015);
+  T.paint('kzGravel', 160, 1676, 0.009, 500, 1680, 0.015);
+  T.paint('kzGravel', 120, 1676, 0.009, 160, 1680, 0.015);
+  T.paint('kzGravel', 326, 1680, 0.009, 334, 1700, 0.015);
+  T.paint('kzGravel', 119.5, 1552.4, 0.009, 124.5, 1676, 0.015);
   /* The wind farm's small substation by the track. */
   T.box('kzConcrete', 230, 1660, 0, 246, 1672, 0.3, { name: 'pad' });
   T.box('kzSilo', 233, 1662, 0.3, 238, 1666, 2.8, { name: 'switch house' });

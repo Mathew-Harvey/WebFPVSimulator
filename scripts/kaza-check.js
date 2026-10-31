@@ -176,6 +176,15 @@ async function layoutBlock() {
   ].filter((v) => v.some((x) => !Number.isFinite(x)));
   check('every part and every drawn shape is finite', bad.length + badDrawn.length === 0,
     `${parts.length} parts, ${bad.length + badDrawn.length} with a non-finite number`);
+  /* Inside the plot and under the top balloon's crown: a box handed its
+   * numbers in the wrong order is a slab hundreds of metres across, which
+   * is how the roads first came out (a wall 640 m high over the start). */
+  const stray = T.P.list.filter((p) => {
+    const v = p.t === 'box' ? [p.lo, p.hi] : [p.a, p.b];
+    return v.some((q) => q[1] < -0.5 || q[1] > 90 || Math.abs(q[0]) > W / 2 + 1 || Math.abs(q[2]) > D / 2 + 1);
+  });
+  check('every part is inside the plot and under 90 m', stray.length === 0,
+    stray.slice(0, 4).map((p) => `${p.name || p.kind} ${p.m}`).join(', ') || `${T.P.list.length} parts`);
   const lists = [parts.filter((p) => p.draw), T.cyls, T.prisms, T.discs, T.balls, T.cones, T.tori, T.shells, T.frusta, T.wires,
     T.strings, T.vaults, T.viaducts, T.leaves];
   const colours = new Set(lists.flatMap((l) => l.map((x) => x.m)).filter(Boolean));

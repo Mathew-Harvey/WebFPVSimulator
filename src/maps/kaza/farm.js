@@ -568,7 +568,9 @@ function store(T) {
     T.hidden(cx - r * SC.c, S.y0, h0, cx + r * SC.c, S.y1, h1, 'wall', 'store');
     h0 = h1;
   }
-  T.hidden(cx - 0.5, S.y0, h0, cx + 0.5, S.y1, r - 0.05, 'wall', 'store');
+  if (h0 < r - 0.05) {
+    T.hidden(cx - 0.5, S.y0, h0, cx + 0.5, S.y1, r - 0.05, 'wall', 'store');
+  }
   T.deco('kzRust', cx - 2, S.y0 - 0.05, 0, cx + 2, S.y0, 3.6);
   T.take(cx, (S.y0 + S.y1) / 2, 0);
 }
@@ -660,18 +662,18 @@ function avenue(T) {
 /* The roads: the made road along the south with its lines, and the farm
  * road's gravel north to the old line. */
 function roads(T) {
-  T.paint('kzAsphalt', 0, SOUTH_ROAD.y0, W, SOUTH_ROAD.y1, 0.006, 0.014);
+  T.paint('kzAsphalt', 0, SOUTH_ROAD.y0, 0.006, W, SOUTH_ROAD.y1, 0.014);
   T.wide(() => {
-    T.paint('kzLine', 0, SOUTH_ROAD.y0 + 0.4, W, SOUTH_ROAD.y0 + 0.55, 0.014, 0.018);
-    T.paint('kzLine', 0, SOUTH_ROAD.y1 - 0.55, W, SOUTH_ROAD.y1 - 0.4, 0.014, 0.018);
+    T.paint('kzLine', 0, SOUTH_ROAD.y0 + 0.4, 0.014, W, SOUTH_ROAD.y0 + 0.55, 0.018);
+    T.paint('kzLine', 0, SOUTH_ROAD.y1 - 0.55, 0.014, W, SOUTH_ROAD.y1 - 0.4, 0.018);
     for (let x = 2; x < W; x += 8) {
-      T.paint('kzLineYellow', x, (SOUTH_ROAD.y0 + SOUTH_ROAD.y1) / 2 - 0.07, x + 4, (SOUTH_ROAD.y0 + SOUTH_ROAD.y1) / 2 + 0.07, 0.014, 0.018);
+      T.paint('kzLineYellow', x, (SOUTH_ROAD.y0 + SOUTH_ROAD.y1) / 2 - 0.07, 0.014, x + 4, (SOUTH_ROAD.y0 + SOUTH_ROAD.y1) / 2 + 0.07, 0.018);
     }
   });
-  T.paint('kzGravel', ROAD.x0, ROAD.y0, ROAD.x1, ROAD.y1, 0.009, 0.015);
+  T.paint('kzGravel', ROAD.x0, ROAD.y0, 0.009, ROAD.x1, ROAD.y1, 0.015);
   /* The car park by the market's gate, and the track into the meet. */
-  T.paint('kzGravel', 470, 40, 626, 112, 0.009, 0.015);
-  T.paint('kzGravel', 124.5, 112, 300, 118, 0.009, 0.015);
+  T.paint('kzGravel', 470, 40, 0.009, 626, 112, 0.015);
+  T.paint('kzGravel', 124.5, 112, 0.009, 300, 118, 0.015);
   /* Snow poles along the farm road, red and white arrows over the verge
    * that show a plough where the road is under the snow. */
   T.dress(() => T.wide(() => {

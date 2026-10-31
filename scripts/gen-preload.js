@@ -95,6 +95,7 @@ const MAP_ROOTS = {
   goats: 'src/maps/goats/index.js',
   sunny: 'src/maps/sunny/index.js',
   factory: 'src/maps/factory/index.js',
+  airfield: 'src/maps/airfield/index.js',
   drift: 'src/maps/drift/index.js',
   ball: 'src/maps/ball/index.js',
   moto: 'src/maps/moto/index.js',
@@ -106,7 +107,12 @@ const MAP_ROOTS = {
   office: 'src/maps/office/index.js',
   kaza: 'src/maps/kaza/index.js',
   sana: 'src/maps/sana/index.js',
+<<<<<<< HEAD
   haikyo: 'src/maps/haikyo/index.js',
+=======
+  rally: 'src/maps/rally/index.js',
+  fmx: 'src/maps/fmx/index.js',
+>>>>>>> origin/main
 };
 
 /* three@0.160.0's add-ons, and what each imports besides 'three'. Read off

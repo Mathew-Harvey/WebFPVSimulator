@@ -405,6 +405,54 @@ export const MAPS = [
     load: () => import('./sana/index.js'),
   },
   /*
+   * TANADA RX, section 19 of the owner's map list of 31 October 2026: a
+   * rallycross circuit of tarmac and gravel with a jump and a joker, under
+   * a hillside of rice terraces, with a pack of rallycross cars racing it
+   * (src/maps/rally/). Built by the built map's pipeline in the town's
+   * look, flown on the five inch at life size; off the board like Ridgeline
+   * MX.
+   */
+  {
+    id: 'rally',
+    name: 'Tanada RX',
+    mode: 'freestyle',
+    note: 'A rallycross circuit of tarmac and gravel under a hillside of rice terraces. Six cars race it, sideways through the hairpins and long over the jump. Chase them over it, thread the grandstand roof, and find the gaps.',
+    buildMs: MAP_BUILD_MS.rally,
+    load: () => import('./rally/index.js'),
+  },
+  /*
+   * SHIROYAMA FMX, on the owner's ask of 31 October 2026 (the stadium
+   * FMX map, "we want the maps to feel like manga comic like the town"):
+   * a freestyle motocross show in a castle park, two kickers into dirt
+   * landings, a yagura between them, scaffold stands and the keep across
+   * the moat, with four riders throwing tricks off the kickers and the
+   * camera game of Ridgeline MX (src/maps/fmx/). Built by the built map's
+   * pipeline and flown on the five inch at life size; off the board like
+   * the houses.
+   */
+  {
+    id: 'fmx',
+    name: 'Shiroyama FMX',
+    mode: 'freestyle',
+    note: 'A freestyle motocross show in a castle park. Riders flip and whip off two kickers over a festival drum tower, with grandstands down both sides and the castle keep across the moat. Follow them off the ramps and film the tricks.',
+    buildMs: MAP_BUILD_MS.fmx,
+    load: () => import('./fmx/index.js'),
+  },
+  /*
+   * KAZAMI AIRFIELD, on the owner's ask of 31 October 2026 (one of a set
+   * of new maps, each built from real places and our own design): a grass strip in a Japanese mountain
+   * valley with an arched hangar flown through, terraced paddies, cedar
+   * slopes and a race of fourteen gates (src/maps/airfield/). Built by the
+   * built map's pipeline in the town's light and flown on the five inch at
+   * life size; off the board like the houses.
+   */
+  {
+    id: 'airfield',
+    name: 'Kazami Airfield',
+    mode: 'freestyle',
+    note: 'A grass strip in a mountain valley: fly the arched hangar front to back and through its rafters, the paddies, the cedars, the vinyl houses, the channel under the red bridge, and fourteen gates to fly round it all.',
+    buildMs: MAP_BUILD_MS.airfield,
+    load: () => import('./airfield/index.js'),
    * TSUKIMI DANCHI, on the owner's ask of 31 October 2026 (a city bando,
    * "we want the maps to feel like manga comic like the town"): an
    * abandoned 1970s housing estate in the middle of the town's kind of
@@ -454,6 +502,10 @@ export const TOWERS_DOC_ID = 'trk-70e15c10';
 export const DOME_DOC_ID = 'trk-b4d0e0e1';
 /* Shiokaze Point's (src/maps/shiokaze/yard.js), the same way. */
 export const SHIOKAZE_DOC_ID = 'trk-5e1a0ca2';
+/* Shiroyama FMX's (src/maps/fmx/yard.js), the same way. */
+export const FMX_DOC_ID = 'trk-f3a10c55';
+/* Kazami Airfield's (src/maps/airfield/yard.js), the same way. */
+export const AIRFIELD_DOC_ID = 'trk-a1f1e1d0';
 
 /* Hamakaze Works' (src/maps/factory/yard.js), the same way. */
 export const FACTORY_DOC_ID = 'trk-fac70e31';
@@ -470,6 +522,9 @@ export const ALPS_DOC_ID = 'trk-a195a1e5';
 export const OFFICE_DOC_ID = 'trk-0f1ce5a1';
 /* Tsukimi Danchi's (src/maps/haikyo/yard.js), the same way. */
 export const HAIKYO_DOC_ID = 'trk-4a1c7d0e';
+
+/* Tanada RX's (src/maps/rally/yard.js), the same way. */
+export const RALLY_DOC_ID = 'trk-7a11c0b5';
 
 export function mapById(id) {
   return MAPS.find((m) => m.id === id) ?? MAPS[0];

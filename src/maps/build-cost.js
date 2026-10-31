@@ -117,6 +117,9 @@ export const MAP_BUILD_MS = {
   /* Kirigaoka Sanatorium (src/maps/sana/): Sunnyfield's pipeline and
    * frame on a smaller site. An estimate until it is measured. */
   sana: 2000,
+  /* Tanada RX (src/maps/rally/): a circuit, a hillside of terraces, a
+   * paddock and six cars. An estimate until it is measured. */
+  rally: 2800,
   /* Hotaru Valley (src/maps/hotaru/): the land grid, two thousand trees
    * and a village, a castle and a harbour. An estimate until it is
    * measured. */

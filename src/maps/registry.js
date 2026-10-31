@@ -405,6 +405,22 @@ export const MAPS = [
     load: () => import('./sana/index.js'),
   },
   /*
+   * TANADA RX, section 19 of the owner's map list of 31 October 2026: a
+   * rallycross circuit of tarmac and gravel with a jump and a joker, under
+   * a hillside of rice terraces, with a pack of rallycross cars racing it
+   * (src/maps/rally/). Built by the built map's pipeline in the town's
+   * look, flown on the five inch at life size; off the board like Ridgeline
+   * MX.
+   */
+  {
+    id: 'rally',
+    name: 'Tanada RX',
+    mode: 'freestyle',
+    note: 'A rallycross circuit of tarmac and gravel under a hillside of rice terraces. Six cars race it, sideways through the hairpins and long over the jump. Chase them over it, thread the grandstand roof, and find the gaps.',
+    buildMs: MAP_BUILD_MS.rally,
+    load: () => import('./rally/index.js'),
+  },
+  /*
    * HOTARU VALLEY, on the owner's ask of 31 October 2026 (the Meadow map of
    * the owner's list of new maps, "we want the maps to feel like manga comic
    * like the town"): a countryside of Japan of our own, after Shirakawa-go,
@@ -469,6 +485,8 @@ export const ALPS_DOC_ID = 'trk-a195a1e5';
 /* Hoshino Shoji's (src/maps/office/yard.js), the same way. */
 export const OFFICE_DOC_ID = 'trk-0f1ce5a1';
 
+/* Tanada RX's (src/maps/rally/yard.js), the same way. */
+export const RALLY_DOC_ID = 'trk-7a11c0b5';
 /* Hotaru Valley's (src/maps/hotaru/yard.js), the same way. */
 export const HOTARU_DOC_ID = 'trk-f1ef1ae5';
 

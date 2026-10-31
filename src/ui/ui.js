@@ -1003,7 +1003,7 @@ function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
     || mapId === 'shiokaze' || mapId === 'factory' || mapId === 'rally' || mapId === 'fmx'
     || mapId === 'airfield' || mapId === 'touge'
     || mapId === 'dock'
-    || mapId === 'hotaru' || mapId === 'dunes' || mapId === 'fest'
+    || mapId === 'hotaru' || mapId === 'dunes' || mapId === 'fest' || mapId === 'arctic'
     || mapId === 'haikyo';
   const where = mapId === 'house' ? "Nick's house"
     : mapId === 'heads' ? "Heads' house"
@@ -1012,6 +1012,7 @@ function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
           : mapId === 'office' ? 'Hoshino Shoji'
           : mapId === 'goats' ? "Heads' street"
           : mapId === 'sunny' ? 'Sunnyfield'
+          : mapId === 'arctic' ? 'Hyoura Island'
           : mapId === 'dock' ? 'Kamome Wharf'
           : mapId === 'factory' ? 'Hamakaze Works'
           : mapId === 'shiokaze' ? 'Shiokaze Point'
@@ -1089,6 +1090,10 @@ const FACTORY_OFF_BOARD = 'The board keeps no runs for Hamakaze Works, so a run 
   + ' Fly the town for a run that can go up.';
 /* Shiokaze Point, the same way. */
 const SHIOKAZE_OFF_BOARD = 'The board keeps no runs for Shiokaze Point, so a run flown there stays here.'
+  + ' Fly the town for a run that can go up.';
+
+/* Hyoura Island, the same way. */
+const ARCTIC_OFF_BOARD = 'The board keeps no runs for Hyoura Island, so a run flown there stays here.'
   + ' Fly the town for a run that can go up.';
 
 /* Drift Matsuri, the same way. */
@@ -11487,6 +11492,7 @@ export class Ui {
           || this.settings.map === 'fmx' || this.settings.map === 'airfield'
           || this.settings.map === 'dock'
           || this.settings.map === 'hotaru' || this.settings.map === 'dunes' || this.settings.map === 'fest'
+          || this.settings.map === 'arctic'
           || this.settings.map === 'haikyo';
         return [
           { label: 'Fly again', action: 'restart', primary: true },
@@ -11522,6 +11528,7 @@ export class Ui {
                         : this.settings.map === 'dock' ? DOCK_OFF_BOARD
                         : this.settings.map === 'factory' ? FACTORY_OFF_BOARD
                         : this.settings.map === 'shiokaze' ? SHIOKAZE_OFF_BOARD
+                        : this.settings.map === 'arctic' ? ARCTIC_OFF_BOARD
                           : this.settings.map === 'drift' ? DRIFT_OFF_BOARD
                             : this.settings.map === 'ball' ? BALL_OFF_BOARD
                           : this.settings.map === 'moto' ? MOTO_OFF_BOARD

@@ -49,6 +49,7 @@ import { HOUSE_DOC_ID, HEADS_DOC_ID, BARDWELL_DOC_ID, WAREHOUSE_DOC_ID, GOATS_DO
 import { DOCK_DOC_ID } from '../maps/registry.js';
 import { DUNES_DOC_ID } from '../maps/registry.js';
 import { TOUGE_DOC_ID } from '../maps/registry.js';
+import { ARCTIC_DOC_ID } from '../maps/registry.js';
 
 export const STAMPS_KEY = 'webfpv.stf.stamps.v1';
 
@@ -235,6 +236,9 @@ export function stampKeyForMap(mapId) {
   }
   if (mapId === 'fest') {
     return `built:${FEST_DOC_ID}`;
+  }
+  if (mapId === 'arctic') {
+    return `built:${ARCTIC_DOC_ID}`;
   }
   if (mapId === 'haikyo') {
     return `built:${HAIKYO_DOC_ID}`;

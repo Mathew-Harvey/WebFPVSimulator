@@ -538,6 +538,23 @@ export const MAPS = [
     load: () => import('./fest/index.js'),
   },
   /*
+   * HYOURA ISLAND, on the owner's ask of 31 October 2026 (the new
+   * maps, section 10, "we want the maps to feel like manga comic
+   * like the town"): an island of our own after the drift ice coast of
+   * Shiretoko, with its cliffs and waterfalls, its bergs and sea ice, a
+   * fishing hamlet and a lighthouse on the cape (src/maps/arctic/). Built
+   * by the built map's pipeline and flown on the five inch at life size;
+   * off the board like the houses.
+   */
+  {
+    id: 'arctic',
+    name: 'Hyoura Island',
+    mode: 'freestyle',
+    note: 'A winter island in the drift ice. Thread the iceberg arch, skim the floes, dive the cliffs beside the falls, find the grotto behind them and orbit the lighthouse on the cape.',
+    buildMs: MAP_BUILD_MS.arctic,
+    load: () => import('./arctic/index.js'),
+  },
+  /*
    * TSUKIMI DANCHI, on the owner's ask of 31 October 2026 (a city bando,
    * "we want the maps to feel like manga comic like the town"): an
    * abandoned 1970s housing estate in the middle of the town's kind of
@@ -615,6 +632,8 @@ export const OFFICE_DOC_ID = 'trk-0f1ce5a1';
 /* Tsukimi Danchi's (src/maps/haikyo/yard.js), the same way. */
 export const HAIKYO_DOC_ID = 'trk-4a1c7d0e';
 
+/* Hyoura Island's (src/maps/arctic/yard.js), the same way. */
+export const ARCTIC_DOC_ID = 'trk-a7c71c00';
 /* Tanada RX's (src/maps/rally/yard.js), the same way. */
 export const RALLY_DOC_ID = 'trk-7a11c0b5';
 /* Hotaru Valley's (src/maps/hotaru/yard.js), the same way. */

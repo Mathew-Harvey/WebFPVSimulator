@@ -41,6 +41,7 @@ import * as COURSE from './course.js';
 import * as WINDMILL from './windmill.js';
 import * as HOMES from './homes.js';
 import * as SUNNY from './sunny.js';
+import * as ARCTIC from './arctic.js';
 import * as DOCK from './dock.js';
 import * as FACTORY from './factory.js';
 import * as ALPINE from './alpine.js';
@@ -161,6 +162,7 @@ const FAMILIES = {
   shiokaze: SHIOKAZE, rally: RALLY,
   airfield: AIRFIELD, hotaru: HOTARU,
   fest: FEST, touge: TOUGE,
+  arctic: ARCTIC,
   fest: FEST,
   haikyo: HAIKYO,
 };

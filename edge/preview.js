@@ -111,6 +111,7 @@ const WORLDS = {
   drift: { name: 'Drift Matsuri', thumb: 'drift' },
   ball: { name: 'Quad Ball', thumb: 'ball' },
   towers: { name: 'Kumoi Towers', thumb: 'towers' },
+  shiokaze: { name: 'Shiokaze Point', thumb: 'shiokaze' },
   cedar: { name: 'Kodama Onsen', thumb: 'cedar' },
   office: { name: 'Hoshino Shoji', thumb: 'office' },
   built: { name: 'Hibari Yard', thumb: 'yard' },

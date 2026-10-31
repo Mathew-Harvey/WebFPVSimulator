@@ -497,7 +497,7 @@ const AXIS_X = new THREE.Vector3(1, 0, 0);
  * alone. The entry is written out because it has moved with the directory:
  * it was three before looks.js came and four before egg.js, and with no
  * entry then the bar sat at 75 percent until the import resolved. */
-const MAP_MODULE_COUNT = { field: 1, city: 72, custom: 1, built: 5, house: 3, heads: 4, bardwell: 4, warehouse: 3, goats: 9, sunny: 12, drift: 3, towers: 11, alps: 6, office: 4, kaza: 10, sana: 6, fmx: 8 };
+const MAP_MODULE_COUNT = { field: 1, city: 72, custom: 1, built: 5, house: 3, heads: 4, bardwell: 4, warehouse: 3, goats: 9, sunny: 12, drift: 3, towers: 11, alps: 6, office: 4, kaza: 10, sana: 6, shiokaze: 10, fmx: 8 };
 /* Where a map's modules live, so the loading bar can count them. Data, not a
  * ternary: the ternary read "field or else city", so a third map counted its
  * modules under the city's prefix and the bar sat at zero.
@@ -519,6 +519,7 @@ const MAP_MODULE_PREFIX = {
   sunny: '/src/maps/sunny/',
   drift: '/src/maps/drift/',
   alps: '/src/maps/alps/',
+  shiokaze: '/src/maps/shiokaze/',
   cedar: '/src/maps/cedar/',
   office: '/src/maps/office/',
   kaza: '/src/maps/kaza/',
@@ -6803,7 +6804,7 @@ export async function boot({ loading, bootStart, mapId }) {
    * word went out before this one. So has the goat map since 2026-10-28,
    * the same way. */
   const MARK_MAP_WORDS = {
-    starter: 'yard', injected: 'board', canvas: 'own', house: 'house', heads: 'heads', bardwell: 'bardwell', warehouse: 'warehouse', goats: 'goats', sunny: 'sunny', office: 'office', kaza: 'kaza', sana: 'sana',
+    starter: 'yard', injected: 'board', canvas: 'own', house: 'house', heads: 'heads', bardwell: 'bardwell', warehouse: 'warehouse', goats: 'goats', sunny: 'sunny', office: 'office', kaza: 'kaza', sana: 'sana', shiokaze: 'shiokaze',
   };
   function markMapWord(mark) {
     return String(mark.key).startsWith('city#') ? 'city' : (MARK_MAP_WORDS[view.source] || null);
@@ -9265,6 +9266,14 @@ export async function boot({ loading, bootStart, mapId }) {
     if (view.id === 'sunny') {
       notice = {
         text: 'The board keeps no runs for Sunnyfield, so its runs stay here.',
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
+    /* Nor for Shiokaze Point: SHIOKAZE_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'shiokaze') {
+      notice = {
+        text: 'The board keeps no runs for Shiokaze Point, so its runs stay here.',
         untilMs: performance.now() + 4200,
       };
       return;

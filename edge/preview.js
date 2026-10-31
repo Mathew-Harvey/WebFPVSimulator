@@ -115,7 +115,9 @@ const WORLDS = {
   towers: { name: 'Kumoi Towers', thumb: 'towers' },
   shiokaze: { name: 'Shiokaze Point', thumb: 'shiokaze' },
   cedar: { name: 'Kodama Onsen', thumb: 'cedar' },
+  dock: { name: 'Kamome Wharf', thumb: 'dock' },
   office: { name: 'Hoshino Shoji', thumb: 'office' },
+  hotaru: { name: 'Hotaru Valley', thumb: 'hotaru' },
   haikyo: { name: 'Tsukimi Danchi', thumb: 'haikyo' },
   built: { name: 'Hibari Yard', thumb: 'yard' },
 };

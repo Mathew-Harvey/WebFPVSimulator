@@ -356,6 +356,10 @@ const WORLDS = [
    * server for a file that was not there (found 30 October 2026). */
   { id: 'ball', file: 'ball.jpg', name: 'Quad Ball' },
   { id: 'moto', file: 'moto.jpg', name: 'Ridgeline MX' },
+  /* Kazesuna Dunes, added 31 October 2026. */
+  { id: 'dunes', file: 'dunes.jpg', name: 'Kazesuna Dunes' },
+  /* Kamome Wharf, added 31 October 2026. */
+  { id: 'dock', file: 'dock.jpg', name: 'Kamome Wharf' },
   /* Raicho Ridge, added 31 October 2026, from high over the valley so the
    * ridge, the ropeway and the lake are all in it. */
   { id: 'alps', file: 'alps.jpg', name: 'Raicho Ridge' },
@@ -382,6 +386,7 @@ const WORLDS = [
   /* Shiroyama FMX, added 31 October 2026 with its picture, from the
    * south east so the kickers, the yagura and the castle are in it. */
   { id: 'fmx', file: 'fmx.jpg', name: 'Shiroyama FMX', shot: { tp: 0.5, tr: 0.75, ta: -0.6 } },
+  { id: 'hotaru', file: 'hotaru.jpg', name: 'Hotaru Valley' },
   /* Tsukimi Danchi, added 31 October 2026, from the south east and high
    * enough that the block, the yard and the viaduct are all in it. */
   { id: 'haikyo', file: 'haikyo.jpg', name: 'Tsukimi Danchi', shot: { tp: 0.68, tr: 1.5, ta: -1.9 } },

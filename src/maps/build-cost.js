@@ -96,6 +96,14 @@ export const MAP_BUILD_MS = {
   /* Ridgeline MX (src/maps/moto/): a plot of trees, a track of mounds and
    * berms and ten bikes. An estimate until it is measured. */
   moto: 2400,
+  /* Kazesuna Dunes (src/maps/dunes/): a kilometre of sand on a 4 m grid,
+   * two hundred and thirty pines and the coast's buildings. An estimate
+   * until it is measured. */
+  dunes: 2600,
+  /* Kamome Wharf (src/maps/dock/): a container terminal at night, three
+   * blocks of stacks, three cranes, a ship. An estimate until it is
+   * measured. */
+  dock: 2600,
   /* Raicho Ridge (src/maps/alps/): its own ground, a forest, the hut, the
    * ropeway and the dam. An estimate until it is measured. */
   alps: 3600,
@@ -130,4 +138,8 @@ export const MAP_BUILD_MS = {
   /* Kazami Airfield (src/maps/airfield/): a valley of terraces and cedars,
    * the hangar and the field. An estimate until it is measured. */
   airfield: 2600,
+  /* Hotaru Valley (src/maps/hotaru/): the land grid, two thousand trees
+   * and a village, a castle and a harbour. An estimate until it is
+   * measured. */
+  hotaru: 2800,
 };

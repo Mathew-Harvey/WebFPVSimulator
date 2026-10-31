@@ -1001,7 +1001,10 @@ function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
     || mapId === 'goats' || mapId === 'sunny' || mapId === 'drift' || mapId === 'ball' || mapId === 'moto' || mapId === 'dome' || mapId === 'cedar'
     || mapId === 'towers' || mapId === 'alps' || mapId === 'office' || mapId === 'kaza' || mapId === 'sana'
     || mapId === 'shiokaze' || mapId === 'factory' || mapId === 'rally' || mapId === 'fmx'
-    || mapId === 'airfield' || mapId === 'haikyo';
+    || mapId === 'airfield'
+    || mapId === 'dock'
+    || mapId === 'hotaru' || mapId === 'dunes'
+    || mapId === 'haikyo';
   const where = mapId === 'house' ? "Nick's house"
     : mapId === 'heads' ? "Heads' house"
       : mapId === 'bardwell' ? "Joshua's house"
@@ -1009,9 +1012,10 @@ function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
           : mapId === 'office' ? 'Hoshino Shoji'
           : mapId === 'goats' ? "Heads' street"
           : mapId === 'sunny' ? 'Sunnyfield'
+          : mapId === 'dock' ? 'Kamome Wharf'
           : mapId === 'factory' ? 'Hamakaze Works'
           : mapId === 'shiokaze' ? 'Shiokaze Point'
-            : mapId === 'drift' ? 'Drift Matsuri' : mapId === 'ball' ? 'Quad Ball' : mapId === 'moto' ? 'Ridgeline MX' : mapId === 'dome' ? 'Bakuon Dome' : mapId === 'cedar' ? 'Kodama Onsen' : mapId === 'airfield' ? 'Kazami Airfield' : mapId === 'towers' ? 'Kumoi Towers' : mapId === 'alps' ? 'Raicho Ridge' : mapId === 'kaza' ? 'Kazahana Plain' : mapId === 'sana' ? 'Kirigaoka Sanatorium' : mapId === 'rally' ? 'Tanada RX' : mapId === 'fmx' ? 'Shiroyama FMX' : mapId === 'haikyo' ? 'Tsukimi Danchi' : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
+            : mapId === 'drift' ? 'Drift Matsuri' : mapId === 'ball' ? 'Quad Ball' : mapId === 'moto' ? 'Ridgeline MX' : mapId === 'dome' ? 'Bakuon Dome' : mapId === 'dunes' ? 'Kazesuna Dunes' : mapId === 'cedar' ? 'Kodama Onsen' : mapId === 'airfield' ? 'Kazami Airfield' : mapId === 'towers' ? 'Kumoi Towers' : mapId === 'alps' ? 'Raicho Ridge' : mapId === 'kaza' ? 'Kazahana Plain' : mapId === 'sana' ? 'Kirigaoka Sanatorium' : mapId === 'rally' ? 'Tanada RX' : mapId === 'fmx' ? 'Shiroyama FMX' : mapId === 'hotaru' ? 'Hotaru Valley' : mapId === 'haikyo' ? 'Tsukimi Danchi' : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
   if (mode === 'off') {
     return `${drawn ? '' : `${SCORING_UNDRAWN} `}${scoringOff(where)} ${built ? scoringMoreBuilt(where) : SCORING_MORE}`;
   }
@@ -1072,6 +1076,10 @@ const OFFICE_OFF_BOARD = 'The board keeps no runs for Hoshino Shoji, so a run fl
 const GOATS_OFF_BOARD = 'The board keeps no runs for 90%er goat herding, so a run flown there stays here.'
   + ' Fly the town for a run that can go up.';
 
+/* Kazesuna Dunes, the same way. */
+const DUNES_OFF_BOARD = 'The board keeps no runs for Kazesuna Dunes, so a run flown there stays here.'
+  + ' Fly the town for a run that can go up.';
+
 /* Sunnyfield, the same way. */
 const SUNNY_OFF_BOARD = 'The board keeps no runs for Sunnyfield, so a run flown there stays here.'
   + ' Fly the town for a run that can go up.';
@@ -1089,6 +1097,10 @@ const BALL_OFF_BOARD = 'The board keeps no runs for Quad Ball, so a run flown th
   + ' Fly the town for a run that can go up.';
 
 const MOTO_OFF_BOARD = 'The board keeps no runs for Ridgeline MX, so a run flown there stays here.';
+
+/* Kamome Wharf, the same way. */
+const DOCK_OFF_BOARD = 'The board keeps no runs for Kamome Wharf, so a run flown there stays here.'
+  + ' Fly the town for a run that can go up.';
 /* Raicho Ridge, the same way. */
 const ALPS_OFF_BOARD = 'The board keeps no runs for Raicho Ridge, so a run flown there stays here.'
   + ' Fly the town for a run that can go up.';
@@ -1100,6 +1112,8 @@ const CEDAR_OFF_BOARD = 'The board keeps no runs for Kodama Onsen, so a run flow
 const KAZA_OFF_BOARD = 'The board keeps no runs for Kazahana Plain, so a run flown there stays here.';
 /* Kirigaoka Sanatorium, the same way. */
 const SANA_OFF_BOARD = 'The board keeps no runs for Kirigaoka Sanatorium, so a run flown there stays here.'
+/* Hotaru Valley, the same way. */
+const HOTARU_OFF_BOARD = 'The board keeps no runs for Hotaru Valley, so a run flown there stays here.'
   + ' Fly the town for a run that can go up.';
 const RALLY_OFF_BOARD = 'The board keeps no runs for Tanada RX, so a run flown there stays here.';
 const FMX_OFF_BOARD = 'The board keeps no runs for Shiroyama FMX, so a run flown there stays here.';
@@ -11467,6 +11481,8 @@ export class Ui {
           || this.settings.map === 'shiokaze' || this.settings.map === 'factory'
           || this.settings.map === 'rally'
           || this.settings.map === 'fmx' || this.settings.map === 'airfield'
+          || this.settings.map === 'dock'
+          || this.settings.map === 'hotaru' || this.settings.map === 'dunes'
           || this.settings.map === 'haikyo';
         return [
           { label: 'Fly again', action: 'restart', primary: true },
@@ -11499,11 +11515,13 @@ export class Ui {
                     : this.settings.map === 'office' ? OFFICE_OFF_BOARD
                       : this.settings.map === 'goats' ? GOATS_OFF_BOARD
                         : this.settings.map === 'sunny' ? SUNNY_OFF_BOARD
+                        : this.settings.map === 'dock' ? DOCK_OFF_BOARD
                         : this.settings.map === 'factory' ? FACTORY_OFF_BOARD
                         : this.settings.map === 'shiokaze' ? SHIOKAZE_OFF_BOARD
                           : this.settings.map === 'drift' ? DRIFT_OFF_BOARD
                             : this.settings.map === 'ball' ? BALL_OFF_BOARD
                           : this.settings.map === 'moto' ? MOTO_OFF_BOARD
+                          : this.settings.map === 'dunes' ? DUNES_OFF_BOARD
                           : this.settings.map === 'alps' ? ALPS_OFF_BOARD
                           : this.settings.map === 'towers' ? TOWERS_OFF_BOARD
                           : this.settings.map === 'dome' ? DOME_OFF_BOARD
@@ -11513,6 +11531,7 @@ export class Ui {
                           : this.settings.map === 'rally' ? RALLY_OFF_BOARD
                           : this.settings.map === 'fmx' ? FMX_OFF_BOARD
                           : this.settings.map === 'airfield' ? AIRFIELD_OFF_BOARD
+                          : this.settings.map === 'hotaru' ? HOTARU_OFF_BOARD
                           : this.settings.map === 'haikyo' ? HAIKYO_OFF_BOARD
                       : (this.sharedMap ? BOARD_MAP_OFF_BOARD : BUILT_OFF_BOARD)) : (nothing
                 ? 'A run with no tricks in it is not a score. Fly one and it appears here.'

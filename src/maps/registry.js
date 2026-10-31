@@ -137,8 +137,8 @@ export const MAPS = [
    * JOSHUA BARDWELL'S HOUSE, on the owner's ask of 21 October 2026: the
    * house and yard of Joshua Bardwell, outside only, at life size and
    * flown on the five inch, "no need to blow it up to make it feel like a
-   * whoop map". Rebuilt the same day from the layout of a
-   * community workshop map of it the owner sent, when the first build from stills
+   * whoop map". Rebuilt the same day from a layout of it the owner
+   * sent, when the first build from stills
    * was wrong. Built by the same pipeline (src/maps/bardwell/) and, like
    * the houses, off the board.
    */
@@ -254,6 +254,40 @@ export const MAPS = [
     note: 'A motocross track on a ridge. Ten bikes rip it: berms, whoops, tabletops and doubles, tails out and whips off every lip. You are the camera. Chase the pack, keep a rider in the middle of the shot, and catch the whips.',
     buildMs: MAP_BUILD_MS.moto,
     load: () => import('./moto/index.js'),
+  },
+  /*
+   * KAZESUNA DUNES, on the owner's ask of 31 October 2026 (the Desert entry
+   * of the reference list, built as a coast of Japan's own: "we want the
+   * maps to feel like manga comic like the town"): a kilometre's slice of
+   * a dune coast on the Sea of Japan, its big ridge, its slip face, the
+   * pond in the hollow, the camels, the lift and the station, from real
+   * coasts and nobody's game (src/maps/dunes/). Built by the built map's
+   * pipeline, its sand the plant's floor, flown on the five inch at life
+   * size; off the board like the houses.
+   */
+  {
+    id: 'dunes',
+    name: 'Kazesuna Dunes',
+    mode: 'freestyle',
+    note: 'A dune coast on the Sea of Japan, flown on a five inch: surf the big ridge, dive its slip face to the pond, thread the sand fences, the camel hut and the chair lift, and race twelve bamboo gates from the look out to the sea and back.',
+    buildMs: MAP_BUILD_MS.dunes,
+    load: () => import('./dunes/index.js'),
+  },
+  /*
+   * KAMOME WHARF, on the owner's ask of 31 October 2026 (the dock of his
+   * list of new maps, "we want the maps to feel like manga comic like the
+   * town"): a container terminal of our own on a Kobe style
+   * waterfront at night, built from real terminals' sizes and nothing of
+   * anybody's game (src/maps/dock/). Built by the built map's pipeline and
+   * flown on the five inch at life size; off the board like the houses.
+   */
+  {
+    id: 'dock',
+    name: 'Kamome Wharf',
+    mode: 'freestyle',
+    note: 'A container terminal at night: canyons of stacked boxes, three ship to shore cranes over a moored ship, the brick warehouse, the gate and the port tower. Drift cars run the apron.',
+    buildMs: MAP_BUILD_MS.dock,
+    load: () => import('./dock/index.js'),
   },
   /*
    * HAMAKAZE WORKS, on the owner's ask of 31 October 2026 ("we want the
@@ -455,6 +489,23 @@ export const MAPS = [
     load: () => import('./airfield/index.js'),
   },
   /*
+   * HOTARU VALLEY, on the owner's ask of 31 October 2026 (the Meadow map of
+   * the owner's list of new maps, "we want the maps to feel like manga comic
+   * like the town"): a countryside of Japan of our own, after Shirakawa-go,
+   * the castle ruins, the water wheels of Asakura and the boat houses of
+   * Ine, with nothing of any game's in it (src/maps/hotaru/). Built by the
+   * built map's pipeline, flown on the five inch at life size, and off the
+   * board like the houses.
+   */
+  {
+    id: 'hotaru',
+    name: 'Hotaru Valley',
+    mode: 'freestyle',
+    note: 'A valley in the Japanese countryside: rice paddies and drying racks, thatched farmhouses, a water mill, a shrine with a tunnel of torii, terraces up the hill, a castle ruin, and a fishing harbour with a torii standing in the sea.',
+    buildMs: MAP_BUILD_MS.hotaru,
+    load: () => import('./hotaru/index.js'),
+  },
+  /*
    * TSUKIMI DANCHI, on the owner's ask of 31 October 2026 (a city bando,
    * "we want the maps to feel like manga comic like the town"): an
    * abandoned 1970s housing estate in the middle of the town's kind of
@@ -498,6 +549,8 @@ export const DRIFT_DOC_ID = 'trk-d81f7a75';
 export const BALL_DOC_ID = 'trk-ba11b0a1';
 /* Ridgeline MX's (src/maps/moto/yard.js), the same way. */
 export const MOTO_DOC_ID = 'trk-3c07e5a1';
+/* Kazesuna Dunes' (src/maps/dunes/yard.js), the same way. */
+export const DUNES_DOC_ID = 'trk-d07e5a17';
 /* Kumoi Towers' (src/maps/towers/yard.js), the same way. */
 export const TOWERS_DOC_ID = 'trk-70e15c10';
 /* Bakuon Dome's (src/maps/dome/yard.js), the same way. */
@@ -508,6 +561,9 @@ export const SHIOKAZE_DOC_ID = 'trk-5e1a0ca2';
 export const FMX_DOC_ID = 'trk-f3a10c55';
 /* Kazami Airfield's (src/maps/airfield/yard.js), the same way. */
 export const AIRFIELD_DOC_ID = 'trk-a1f1e1d0';
+
+/* Kamome Wharf's (src/maps/dock/doc.js), the same way. */
+export const DOCK_DOC_ID = 'trk-d0c4a3e7';
 
 /* Hamakaze Works' (src/maps/factory/yard.js), the same way. */
 export const FACTORY_DOC_ID = 'trk-fac70e31';
@@ -527,6 +583,8 @@ export const HAIKYO_DOC_ID = 'trk-4a1c7d0e';
 
 /* Tanada RX's (src/maps/rally/yard.js), the same way. */
 export const RALLY_DOC_ID = 'trk-7a11c0b5';
+/* Hotaru Valley's (src/maps/hotaru/yard.js), the same way. */
+export const HOTARU_DOC_ID = 'trk-f1ef1ae5';
 
 export function mapById(id) {
   return MAPS.find((m) => m.id === id) ?? MAPS[0];

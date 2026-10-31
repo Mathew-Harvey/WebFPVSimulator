@@ -99,8 +99,10 @@ const MAP_ROOTS = {
   drift: 'src/maps/drift/index.js',
   ball: 'src/maps/ball/index.js',
   moto: 'src/maps/moto/index.js',
+  dunes: 'src/maps/dunes/index.js',
   alps: 'src/maps/alps/index.js',
   towers: 'src/maps/towers/index.js',
+  dock: 'src/maps/dock/index.js',
   dome: 'src/maps/dome/index.js',
   shiokaze: 'src/maps/shiokaze/index.js',
   cedar: 'src/maps/cedar/index.js',
@@ -109,6 +111,7 @@ const MAP_ROOTS = {
   sana: 'src/maps/sana/index.js',
   rally: 'src/maps/rally/index.js',
   fmx: 'src/maps/fmx/index.js',
+  hotaru: 'src/maps/hotaru/index.js',
   haikyo: 'src/maps/haikyo/index.js',
 };
 

@@ -54,7 +54,12 @@ import { paintSigns, signMesh } from './signs.js';
 
 /* The chunk a drawn thing is filed under, or its near cell if it is set
  * dressing (./frame.js dress). */
-const cellOf = (thing, x, z) => (thing && thing.near ? nearOf(x, z) : chunkOf(x, z));
+/* On Low nothing is culled by distance, so a near cell would be a draw
+ * call of its own for nothing: what Low keeps of the dressing (the solid
+ * pieces) goes into the four chunks with everything else. Set by buildMap
+ * before anything is drawn. */
+let nearCells = true;
+const cellOf = (thing, x, z) => (nearCells && thing && thing.near ? nearOf(x, z) : chunkOf(x, z));
 const at = (px, py, thing) => cellOf(thing, px - W / 2, D / 2 - py);
 
 /* How near the dressing is drawn, by preset; Low draws none of it. The
@@ -268,6 +273,7 @@ function drawTown(kit, T, low) {
 
 export async function buildMap(shell, onProgress, options) {
   const low = qualityFor(options && options.quality).id === 'low';
+  nearCells = !low;
   const { parts, T } = haikyoLayout();
   const extra = {
     el: { id: 'haikyo', type: 'haikyo' },

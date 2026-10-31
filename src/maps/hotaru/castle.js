@@ -11,7 +11,7 @@
  * Sizes are from the castles a visitor walks round: Takeda castle's ruin
  * at Asago for the plan of baileys stepping down a ridge, Marugame's and
  * Okayama's walls for the fan slope (the tallest dry stone in Japan is
- * about 22 m at Iga Ueno and Osaka; a mountain castle's are 8 to 15), a
+ * about 30 m, at Iga Ueno and Osaka; a mountain castle's are 8 to 15), a
  * keep base of 18 m by 14 m standing 8 m over its bailey, the size of
  * Matsumoto's. A ruin's walls in the sizes the build asks for: 10 to 20 m
  * from the hill to the top.

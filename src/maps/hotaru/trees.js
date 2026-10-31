@@ -269,8 +269,10 @@ const GEO = {};
 function geo(K, key) {
   if (!GEO[key]) {
     const T3 = K.THREE;
-    if (key === 'cone7') {
-      GEO[key] = new T3.ConeGeometry(1, 1, 7, 1);
+    if (key === 'cone7' || key === 'cone7o') {
+      /* Low's has no base: from above, which is where Low is flown from
+       * over a forest, it is never seen, and it is a third of the cone. */
+      GEO[key] = new T3.ConeGeometry(1, 1, 7, 1, key === 'cone7o');
       GEO[key].translate(0, 0.5, 0);
     } else {
       GEO[key] = new T3.IcosahedronGeometry(1, 0);
@@ -282,8 +284,9 @@ function geo(K, key) {
 
 /*
  * Draw one tree into the kit at its place. `chunk` is the cull chunk its
- * root is filed under. `low` draws a cedar with three whorls, a broadleaf
- * with its top tufts and limbs only, and no fruit: the same outline from
+ * root is filed under. `low` draws a cedar with three whorls on a three
+ * sided stem, a broadleaf with half its tufts and no limbs, a pine without
+ * the stems to its pads, and no fruit: the same outline from
  * the air for fewer triangles, and the solids are the same on every preset.
  */
 export function drawTree(K, t, chunk, low) {
@@ -297,7 +300,7 @@ export function drawTree(K, t, chunk, low) {
   const v = new T3.Vector3();
   const sc = new T3.Vector3();
   if (t.kind === 'cedar') {
-    K.cyl('stCedarWood', [0, 0, 0], [0, s.H * 0.9, 0], s.trunkR, 5, s.trunkR * 0.35);
+    K.cyl('stCedarWood', [0, 0, 0], [0, s.H * 0.9, 0], s.trunkR, low ? 3 : 5, s.trunkR * 0.35);
     s.cones.forEach((c, i) => {
       if (low && i === 1) {
         return;
@@ -305,13 +308,14 @@ export function drawTree(K, t, chunk, low) {
       e.set(0, c.spin, 0);
       q.setFromEuler(e);
       m.compose(v.set(0, c.y, 0), q, sc.set(c.r, c.h, c.r));
-      K.add(CEDAR_TONES[c.tone], geo(K, 'cone7'), m.clone());
+      K.add(CEDAR_TONES[c.tone], geo(K, low ? 'cone7o' : 'cone7'), m.clone());
     });
     return;
   }
   if (t.kind === 'oak' || t.kind === 'kaki') {
-    K.cyl('stGroveWood', [0, 0, 0], [0, s.trunkH, 0], s.trunkR, 6, s.trunkR * 0.7);
-    for (const l of s.limbs) {
+    K.cyl('stGroveWood', [0, 0, 0], [0, s.trunkH, 0], s.trunkR, low ? 4 : 6, s.trunkR * 0.7);
+    /* The limbs are inside the crown from any range Low is played at. */
+    for (const l of low ? [] : s.limbs) {
       K.cyl('stGroveWood', l.a, l.b, l.r, 4, l.rTop);
     }
     const tones = t.kind === 'kaki' ? ['hvKakiLeaf', 'hvKakiLeaf', 'stGrove1'] : GROVE_TONES;
@@ -335,10 +339,12 @@ export function drawTree(K, t, chunk, low) {
   if (t.kind === 'pine') {
     for (let i = 0; i + 1 < s.pts.length; i += 1) {
       const r0 = s.trunkR * (1 - i * 0.2);
-      K.cyl('stCedarWood', s.pts[i], s.pts[i + 1], r0, 5, r0 * 0.8);
+      K.cyl('stCedarWood', s.pts[i], s.pts[i + 1], r0, low ? 3 : 5, r0 * 0.8);
     }
     for (const p of s.pads) {
-      K.cyl('stCedarWood', p.from, p.c, s.trunkR * 0.35, 4, s.trunkR * 0.2);
+      if (!low) {
+        K.cyl('stCedarWood', p.from, p.c, s.trunkR * 0.35, 4, s.trunkR * 0.2);
+      }
       e.set(0, (p.c[0] * 7.1 + p.c[2] * 3.3) % TAU, 0);
       q.setFromEuler(e);
       m.compose(v.set(p.c[0], p.c[1], p.c[2]), q, sc.set(p.r, p.ry, p.r));
@@ -348,7 +354,7 @@ export function drawTree(K, t, chunk, low) {
   }
   if (t.kind === 'bamboo') {
     for (const c of s.culms) {
-      K.cyl('hvBamboo', c.base, c.tip, c.r, 4, c.r * 0.6);
+      K.cyl('hvBamboo', c.base, c.tip, c.r, low ? 3 : 4, c.r * 0.6);
     }
     s.tufts.forEach((tf, i) => {
       if (low && i % 2 === 1) {

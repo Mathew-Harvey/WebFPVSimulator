@@ -256,6 +256,22 @@ export const MAPS = [
     load: () => import('./moto/index.js'),
   },
   /*
+   * KODAMA ONSEN, on the owner's ask of 31 October 2026 (a cedar forest
+   * with an abandoned area, in the town's manga look): an abandoned hot
+   * spring inn in a Japanese cedar plantation, with a shrine up the hill
+   * behind it, our own place built from the real kind of place
+   * (src/maps/cedar/). Life size and flown on the five inch, built by the
+   * built map's pipeline and, like the houses, off the board.
+   */
+  {
+    id: 'cedar',
+    name: 'Kodama Onsen',
+    mode: 'freestyle',
+    note: 'An abandoned hot spring inn in a cedar forest, flown on a five inch: rows of cedars to slalom, the inn and its bathhouse, the storehouse, a brick chimney, a line of torii and a tunnel of them, the stream and its bridges, and the shrine up the steps.',
+    buildMs: MAP_BUILD_MS.cedar,
+    load: () => import('./cedar/index.js'),
+  },
+  /*
    * KAZAMI AIRFIELD, on the owner's ask of 31 October 2026 (one of a set
    * of new maps, each built from real places and our own design): a grass strip in a Japanese mountain
    * valley with an arched hangar flown through, terraced paddies, cedar
@@ -300,6 +316,9 @@ export const BALL_DOC_ID = 'trk-ba11b0a1';
 export const MOTO_DOC_ID = 'trk-3c07e5a1';
 /* Kazami Airfield's (src/maps/airfield/yard.js), the same way. */
 export const AIRFIELD_DOC_ID = 'trk-a1f1e1d0';
+
+/* Kodama Onsen's (src/maps/cedar/yard.js), the same way. */
+export const CEDAR_DOC_ID = 'trk-ced4a0e5';
 
 export function mapById(id) {
   return MAPS.find((m) => m.id === id) ?? MAPS[0];

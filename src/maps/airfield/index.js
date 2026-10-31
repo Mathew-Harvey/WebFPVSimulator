@@ -58,7 +58,12 @@ import { smoothTop, OUTER } from './valley.js';
 
 /* The chunk a drawn thing is filed under, or its near cell if it is set
  * dressing (./frame.js). */
-const cellOf = (thing, x, z) => (thing && thing.near ? nearOf(x, z) : chunkOf(x, z));
+/* On Low the whole place is one chunk, the one the hidden sign is filed
+ * in: a chunk is a draw call for each look in it, and on Low a draw call
+ * costs more than the triangles a chunk's cull would save. Set by
+ * buildMap for the build in hand. */
+let one = null;
+const cellOf = (thing, x, z) => (one || (thing && thing.near ? nearOf(x, z) : chunkOf(x, z)));
 const at = (px, py, thing) => cellOf(thing, px - W / 2, D / 2 - py);
 
 /* How near the dressing is drawn, by preset; Low draws none of it. As
@@ -527,6 +532,7 @@ function mountains(fogColor, sunDir) {
 export async function buildMap(shell, onProgress, options) {
   const quality = qualityFor(options && options.quality);
   const low = quality.id === 'low';
+  one = low ? airfieldMarkSpots()[0].chunk : null;
   const { parts, T } = airfieldLayout();
   const extra = {
     el: { id: 'airfield', type: 'airfield' },

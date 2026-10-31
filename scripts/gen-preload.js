@@ -95,11 +95,14 @@ const MAP_ROOTS = {
   goats: 'src/maps/goats/index.js',
   sunny: 'src/maps/sunny/index.js',
   factory: 'src/maps/factory/index.js',
+  airfield: 'src/maps/airfield/index.js',
   drift: 'src/maps/drift/index.js',
   ball: 'src/maps/ball/index.js',
   moto: 'src/maps/moto/index.js',
+  dunes: 'src/maps/dunes/index.js',
   alps: 'src/maps/alps/index.js',
   towers: 'src/maps/towers/index.js',
+  dock: 'src/maps/dock/index.js',
   dome: 'src/maps/dome/index.js',
   shiokaze: 'src/maps/shiokaze/index.js',
   cedar: 'src/maps/cedar/index.js',
@@ -107,6 +110,8 @@ const MAP_ROOTS = {
   kaza: 'src/maps/kaza/index.js',
   sana: 'src/maps/sana/index.js',
   rally: 'src/maps/rally/index.js',
+  fmx: 'src/maps/fmx/index.js',
+  hotaru: 'src/maps/hotaru/index.js',
   fest: 'src/maps/fest/index.js',
 };
 

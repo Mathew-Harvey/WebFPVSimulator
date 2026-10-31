@@ -89,4 +89,7 @@ export const MAP_BUILD_MS = {
   /* Ridgeline MX (src/maps/moto/): a plot of trees, a track of mounds and
    * berms and ten bikes. An estimate until it is measured. */
   moto: 2400,
+  /* Momiji Pass (src/maps/touge/): a mountain of ground, a forest and a
+   * loop of road. An estimate until it is measured. */
+  touge: 3000,
 };

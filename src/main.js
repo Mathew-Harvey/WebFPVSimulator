@@ -9224,6 +9224,14 @@ export async function boot({ loading, bootStart, mapId }) {
       };
       return;
     }
+    /* Nor for Momiji Pass: TOUGE_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'touge') {
+      notice = {
+        text: 'The board keeps no runs for Momiji Pass, so its runs stay here.',
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
     /* Nor for Sunnyfield: SUNNY_OFF_BOARD in src/ui/ui.js. */
     if (view.id === 'sunny') {
       notice = {

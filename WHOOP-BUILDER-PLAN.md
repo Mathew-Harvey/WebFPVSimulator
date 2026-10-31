@@ -142,7 +142,7 @@ and freestyle canvases. The plan replaces the hands and keeps the brain.
 | Import their track JSON | Take | 3, 4 |
 | glb export; USDZ export for AR in Quick Look | Take | 5 |
 | WebXR walk-through | Later | 5, if wanted |
-| Liftoff and Velocidrone export | Later, not recommended now (5.4) | 5, if wanted |
+| Export to other simulators | Later, not recommended now (5.4) | 5, if wanted |
 | Server side versions and history | Skip: undo and autosave cover it | none |
 
 ## 3. The design: build in 3D
@@ -580,11 +580,11 @@ made it and is not committed.
   an iPhone or iPad in AR at 1:1, so a pilot laying out a real track can stand in
   it before cutting a pipe. That is the reason to do it.
 - **VR walk-through.** Theirs is about 250 lines. Later.
-- **Liftoff and Velocidrone.** Theirs writes both. Neither is worth it now. The
-  formats are reverse engineered from the games, as their comments say (the
-  Liftoff prop catalogue "is not readable from the game files" and was mined from
+- **Other simulators' formats.** Theirs writes two. Neither is worth it now. The
+  formats are reverse engineered from the games, as their comments say (one prop
+  catalogue "is not readable from the game files" and was mined from
   3,369 workshop tracks), a game update can break them, and they send a pilot to
-  another simulator. We already read Velocidrone `.trk` files
+  another simulator. We already read `.trk` files
   (`tracks/convert.mjs`), so the format knowledge exists in house. Decision 8.
 
 ### 5.5 Licence
@@ -592,7 +592,7 @@ made it and is not committed.
 Their code is MIT, which is GPLv3 compatible, so porting is allowed if the MIT
 notice stays with what is ported. This plan ports nothing: the gestures, panels
 and model are ours and differ in kind. If exports are chosen, what is worth
-porting is data and format code (the Liftoff prop catalogue, `js/liftoff`,
+porting is data and format code (the prop catalogue,
 `js/export`), and it would carry the notice. Their banner artwork (Devon and
 Cornwall flags, Menace, DRD) is not covered by the licence and is not ours to use.
 
@@ -774,8 +774,8 @@ Risks:
 7. **Keep the palette letters, and put RaceGOW's diagram colours on the openings**
    (recommended). The pictograms carry the meaning and existing habits keep
    working. Or re-key by number, or keep the current cream for everything.
-8. **Ways out.** glb and USDZ in Stage 5 (recommended), VR later, Liftoff and
-   Velocidrone not now (recommended). Or all of them.
+8. **Ways out.** glb and USDZ in Stage 5 (recommended), VR later, exports to
+   other simulators not now (recommended). Or all of them.
    **Answered 2026-09-30, "7 no need for that other stuff for now".** Read as: no exports and
    no other work beyond the parts. Stage 5 is not started, and the palette keeps the letters
    and the colours it has. If the owner meant the board (6) and not the exports (8), only the

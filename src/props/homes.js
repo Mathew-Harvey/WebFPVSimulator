@@ -7,7 +7,7 @@
  *
  * A FAMILY WITH NO ASSETS. The house is not in the builder's palette: it is
  * one particular building, laid out from its owner's videos and from three
- * Uncrashed Workshop layouts of it, and no dimension a builder could drag
+ * community workshop layouts of it, and no dimension a builder could drag
  * would make another house of it. But its walls, floors and furniture are
  * drawn by the same kit as every asset, and a colour the kit draws has to
  * be in the kit's table, so this file is the house's share of that table
@@ -119,8 +119,8 @@ export const MATERIALS = {
   headsPatio: { c: 0xb86a50, tint: 0x6a4a66 },
   headsMaple: { c: 0x7c2a40, tint: 0x4a2a50 },
   headsPurple: { c: 0x4c3240, tint: 0x342840 },
-  /* Joshua Bardwell's house (src/maps/bardwell/), outside only, from the
-   * Uncrashed Workshop map of it and its screenshots: the cream brick and
+  /* Joshua Bardwell's house (src/maps/bardwell/), outside only, from a
+   * community workshop map of it and its screenshots: the cream brick and
    * its mortar, the orange shingle roof and its courses, the dark split
    * rails, the gravel and the dirt, the woodshed's weathered planks and its
    * timber frame, the firewood and its cut ends, the lean-to's tin, the

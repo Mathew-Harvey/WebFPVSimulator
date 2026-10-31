@@ -102,6 +102,9 @@ export const MAP_BUILD_MS = {
   /* Kodama Onsen (src/maps/cedar/): three thousand cedars, an inn and a
    * shrine. An estimate until it is measured. */
   cedar: 3000,
+  /* Hoshino Shoji (src/maps/office/), the warehouse's pipeline with three
+   * floors of furniture. An estimate until it is measured. */
+  office: 2400,
   /* Shiroyama FMX (src/maps/fmx/), the same pipeline: 2.8 s on Low and
    * 3.6 s on High, headless, measured 31 October 2026. */
   fmx: 3200,

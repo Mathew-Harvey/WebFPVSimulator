@@ -360,6 +360,9 @@ const WORLDS = [
   /* Kodama Onsen, added 31 October 2026, picked by eye: the inn from the
    * car park side, the shrine's approach and the forest behind it. */
   { id: 'cedar', file: 'cedar.jpg', name: 'Kodama Onsen', shot: { tp: 0.55, tr: 0.75, ta: -1.9 } },
+  /* Hoshino Shoji, added 31 October 2026. Indoors like Thomas More's Shop,
+   * so it names its own lens too (CARD_LENS in src/maps/office/office.js). */
+  { id: 'office', file: 'office.jpg', name: 'Hoshino Shoji' },
   /* Shiroyama FMX, added 31 October 2026 with its picture, from the
    * south east so the kickers, the yagura and the castle are in it. */
   { id: 'fmx', file: 'fmx.jpg', name: 'Shiroyama FMX', shot: { tp: 0.5, tr: 0.75, ta: -0.6 } },

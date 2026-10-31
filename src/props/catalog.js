@@ -44,6 +44,7 @@ import * as SUNNY from './sunny.js';
 import * as ALPINE from './alpine.js';
 import * as TOWERS from './towers.js';
 import * as CEDAR from './cedar.js';
+import * as OFFICE from './office.js';
 import { buildingLayout, buildingDraw, bandoLayout, bandoDraw } from './buildings.js';
 import {
   craneLayout, craneDraw, waterLayout, waterDraw, mastLayout, mastDraw, chimneyLayout, chimneyDraw,
@@ -144,7 +145,7 @@ export const FURNITURE = {
  * a mistake, and it throws here rather than one silently winning.
  */
 const FAMILIES = {
-  buildings: BUILDINGS, industrial: INDUSTRIAL, street: STREET, skate: SKATE, course: COURSE, windmill: WINDMILL, homes: HOMES, sunny: SUNNY, cedar: CEDAR, towers: TOWERS, alpine: ALPINE,
+  buildings: BUILDINGS, industrial: INDUSTRIAL, street: STREET, skate: SKATE, course: COURSE, windmill: WINDMILL, homes: HOMES, sunny: SUNNY, cedar: CEDAR, towers: TOWERS, alpine: ALPINE, office: OFFICE,
 };
 export const FAMILY_MATERIALS = {};
 export const FAMILY_PAINTERS = {};

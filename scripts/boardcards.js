@@ -353,6 +353,10 @@ const WORLDS = [
   /* Raicho Ridge, added 31 October 2026, from high over the valley so the
    * ridge, the ropeway and the lake are all in it. */
   { id: 'alps', file: 'alps.jpg', name: 'Raicho Ridge' },
+  { id: 'dome', file: 'dome.jpg', name: 'Bakuon Dome' },
+  /* Kodama Onsen, added 31 October 2026, picked by eye: the inn from the
+   * car park side, the shrine's approach and the forest behind it. */
+  { id: 'cedar', file: 'cedar.jpg', name: 'Kodama Onsen', shot: { tp: 0.55, tr: 0.75, ta: -1.9 } },
 ];
 
 async function drawWorlds(opts) {

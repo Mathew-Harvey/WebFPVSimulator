@@ -256,6 +256,21 @@ export const MAPS = [
     load: () => import('./moto/index.js'),
   },
   /*
+   * BAKUON DOME, on the owner's ask of 31 October 2026 (a stadium map
+   * with monster trucks, "the maps to feel like manga comic like the
+   * town"): a dirt floored dome with four trucks running jumps under a
+   * trussed roof (src/maps/dome/). Built by the built map's pipeline and
+   * flown on the five inch at life size; off the board like the houses.
+   */
+  {
+    id: 'dome',
+    name: 'Bakuon Dome',
+    mode: 'freestyle',
+    note: 'A dirt floored dome with four monster trucks jumping cars and buses under its roof. Chase them over the ramps, thread the roof trusses and strafe the stands.',
+    buildMs: MAP_BUILD_MS.dome,
+    load: () => import('./dome/index.js'),
+  },
+  /*
    * KODAMA ONSEN, on the owner's ask of 31 October 2026 (a cedar forest
    * with an abandoned area, in the town's manga look): an abandoned hot
    * spring inn in a Japanese cedar plantation, with a shrine up the hill
@@ -316,6 +331,8 @@ export const DRIFT_DOC_ID = 'trk-d81f7a75';
 export const BALL_DOC_ID = 'trk-ba11b0a1';
 /* Ridgeline MX's (src/maps/moto/yard.js), the same way. */
 export const MOTO_DOC_ID = 'trk-3c07e5a1';
+/* Bakuon Dome's (src/maps/dome/yard.js), the same way. */
+export const DOME_DOC_ID = 'trk-b4d0e0e1';
 /* Shiroyama FMX's (src/maps/fmx/yard.js), the same way. */
 export const FMX_DOC_ID = 'trk-f3a10c55';
 

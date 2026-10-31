@@ -9202,9 +9202,9 @@ export async function boot({ loading, bootStart, mapId }) {
       return;
     }
     /* Nor for Drift Matsuri: DRIFT_OFF_BOARD in src/ui/ui.js. */
-    if (view.id === 'drift' || view.id === 'moto' || view.id === 'fmx') {
+    if (view.id === 'drift' || view.id === 'moto' || view.id === 'dome' || view.id === 'fmx') {
       notice = {
-        text: `The board keeps no runs for ${view.id === 'moto' ? 'Ridgeline MX' : view.id === 'fmx' ? 'Shiroyama FMX' : 'Drift Matsuri'}, so its runs stay here.`,
+        text: `The board keeps no runs for ${view.id === 'moto' ? 'Ridgeline MX' : (view.id === 'dome' ? 'Bakuon Dome' : (view.id === 'fmx' ? 'Shiroyama FMX' : 'Drift Matsuri'))}, so its runs stay here.`,
         untilMs: performance.now() + 4200,
       };
       return;

@@ -255,6 +255,24 @@ export const MAPS = [
     buildMs: MAP_BUILD_MS.moto,
     load: () => import('./moto/index.js'),
   },
+  /*
+   * KAZESUNA DUNES, on the owner's ask of 31 October 2026 (the Desert entry
+   * of the reference list, built as a coast of Japan's own: "we want the
+   * maps to feel like manga comic like the town"): a kilometre's slice of
+   * a dune coast on the Sea of Japan, its big ridge, its slip face, the
+   * pond in the hollow, the camels, the lift and the station, from real
+   * coasts and nobody's game (src/maps/dunes/). Built by the built map's
+   * pipeline, its sand the plant's floor, flown on the five inch at life
+   * size; off the board like the houses.
+   */
+  {
+    id: 'dunes',
+    name: 'Kazesuna Dunes',
+    mode: 'freestyle',
+    note: 'A dune coast on the Sea of Japan, flown on a five inch: surf the big ridge, dive its slip face to the pond, thread the sand fences, the camel hut and the chair lift, and race twelve bamboo gates from the look out to the sea and back.',
+    buildMs: MAP_BUILD_MS.dunes,
+    load: () => import('./dunes/index.js'),
+  },
 ];
 
 /* The house's document id (src/maps/house/yard.js), here so the stamps can
@@ -282,6 +300,8 @@ export const DRIFT_DOC_ID = 'trk-d81f7a75';
 export const BALL_DOC_ID = 'trk-ba11b0a1';
 /* Ridgeline MX's (src/maps/moto/yard.js), the same way. */
 export const MOTO_DOC_ID = 'trk-3c07e5a1';
+/* Kazesuna Dunes' (src/maps/dunes/yard.js), the same way. */
+export const DUNES_DOC_ID = 'trk-d07e5a17';
 
 export function mapById(id) {
   return MAPS.find((m) => m.id === id) ?? MAPS[0];

@@ -89,4 +89,8 @@ export const MAP_BUILD_MS = {
   /* Ridgeline MX (src/maps/moto/): a plot of trees, a track of mounds and
    * berms and ten bikes. An estimate until it is measured. */
   moto: 2400,
+  /* Kazesuna Dunes (src/maps/dunes/): a kilometre of sand on a 4 m grid,
+   * two hundred and thirty pines and the coast's buildings. An estimate
+   * until it is measured. */
+  dunes: 2600,
 };

@@ -9208,6 +9208,14 @@ export async function boot({ loading, bootStart, mapId }) {
       };
       return;
     }
+    /* Nor for Ekimae Drift: EKIMAE_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'ekimae') {
+      notice = {
+        text: 'The board keeps no runs for Ekimae Drift, so its runs stay here.',
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
     /* Nor for Thomas More's Shop: WAREHOUSE_OFF_BOARD in src/ui/ui.js. */
     if (view.id === 'warehouse') {
       notice = {

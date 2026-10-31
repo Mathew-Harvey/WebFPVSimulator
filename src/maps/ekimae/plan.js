@@ -103,7 +103,7 @@ export const ALLEY = { x0: 253, x1: 263 };
 
 /* The multi storey car park at the start, west of the last hairpin. */
 export const CP = {
-  x0: 4, x1: 34, y0: 66, y1: 106, floor: 3.2, decks: 4, slab: 0.3, parapet: 1.0,
+  x0: 4, x1: 34, y0: 66, y1: 106, floor: 3.4, decks: 4, slab: 0.3, parapet: 1.0,
   cols: [4.3, 11.75, 19.25, 26.75, 33.7], rows: [66.3, 74.2, 82.1, 90.0, 97.9, 105.7],
 };
 CP.roof = CP.floor * CP.decks;
@@ -125,7 +125,7 @@ export const ROTARY = { x: 137.4, y: 210, r: 6.2 };
 
 /* The covered shopping street: east to west through the block north of
  * the viaduct, shops both sides, a roof over the lane. */
-export const ARCADE = { x0: 222, x1: 316, y0: 184, y1: 192, roof0: 7.6, roof1: 8.2 };
+export const ARCADE = { x0: 222, x1: 314, y0: 184, y1: 192, roof0: 7.6, roof1: 8.2 };
 
 /* ------------------------------------------------------------------ */
 /* The builder                                                         */
@@ -341,8 +341,8 @@ function barriers(T) {
     const sm = (sa + sb) / 2;
     const bend = bendAt(line, sm);
     for (const side of [1, -1]) {
-      const pa = beside(line, sa, side * (HALF + 0.55));
-      const pb = beside(line, sb, side * (HALF + 0.55));
+      const pa = beside(line, sa, side * (HALF + 0.95));
+      const pb = beside(line, sb, side * (HALF + 0.95));
       const mx = (pa.x + pb.x) / 2;
       const my = (pa.y + pb.y) / 2;
       if (OPEN.some((o) => mx > o.x0 && mx < o.x1 && my > o.y0 && my < o.y1)) {
@@ -1066,8 +1066,8 @@ export function ekimaeGaps() {
     { name: 'CAR PARK', px: CP.x1, py: 86, deg: 0, w: 6, h0: cpBand0 + M, h1: cpBand1 - M, points: 1000 },
     { name: 'PUMP LANE', px: PS.c0, py: (PS.isl[0] + PS.isl[1]) / 2, deg: 0, w: 4.6, h0: 0.5, h1: PS.h0 - M - 0.3, points: 250 },
     { name: 'STONE TORII', px: SHRINE.x, py: SHRINE.torii, deg: 90, w: 2 * SHRINE.toriiHalf - 0.4 - 2 * M, h0: M, h1: SHRINE.toriiH - 0.65 - M, points: 1000 },
-    { name: 'SHOTENGAI', px: ARCADE.x1 - 0.6, py: (ARCADE.y0 + ARCADE.y1) / 2, deg: 0, w: ARCADE.y1 - ARCADE.y0 - 2 * M - 1.2, h0: M + 0.4, h1: ARCADE.roof0 - 0.4 - M, points: 250 },
-    { name: 'GIRDER GAP', px: (VIA.spans[0][0] + VIA.spans[0][1]) / 2, py: VIA.y1, deg: 90, w: 10, h0: 0.5, h1: VIA.soffit - 0.8 - M, points: 100 },
+    { name: 'SHOTENGAI', px: ARCADE.x1 - 3, py: (ARCADE.y0 + ARCADE.y1) / 2, deg: 0, w: ARCADE.y1 - ARCADE.y0 - 2 * M - 1.2, h0: M + 0.4, h1: ARCADE.roof0 - 0.4 - M, points: 250 },
+    { name: 'GIRDER GAP', px: COURSE_NODES[1][0], py: VIA.y1, deg: 90, w: 10, h0: 0.5, h1: VIA.soffit - 0.8 - M, points: 100 },
   ];
 }
 

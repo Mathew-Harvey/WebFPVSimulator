@@ -43,6 +43,8 @@
 import { EKIMAE_DOC_ID } from '../registry.js';
 import { nearestOn } from '../built/road.js';
 import { GAP_MIN } from '../../props/parts.js';
+import { assetOf, placedPartsOf } from '../../props/catalog.js';
+import { placeSolids, placedYaw } from '../../props/solids.js';
 import {
   W, D, HALF, courseElement, courseLine, rng, plan,
 } from './frame.js';
@@ -365,6 +367,36 @@ function rows() {
   return out;
 }
 
+/*
+ * Whether a building, as the catalog stands it, puts anything solid below a
+ * car's roof within a metre and a half of the road's edge. A lot is kept
+ * clear of the course by its footprint, but a warehouse's outside stair and
+ * an office's annex reach out of it, and which way they reach is rolled
+ * from the element's id, so it is only known once the element is whole.
+ * Such a building is left out, and the ids of the rest stay as they were.
+ */
+function inTheWay(el) {
+  const asset = assetOf(el);
+  if (!asset) {
+    return false;
+  }
+  const turns = asset.turns ?? 'any';
+  const solids = placeSolids(placedPartsOf(el), el.position.x - W / 2, 0, D / 2 - el.position.y, placedYaw(turns, el.yaw), turns, []);
+  const line = courseLine();
+  for (const s of solids) {
+    if (!s.box || s.box[1] > 3) {
+      continue;
+    }
+    const [x0, , z0, x1, , z1] = s.box;
+    for (const [x, z] of [[x0, z0], [x1, z1], [x0, z1], [x1, z0], [(x0 + x1) / 2, (z0 + z1) / 2]]) {
+      if (nearestOn(line, x + W / 2, D / 2 - z).d < HALF + 1.5) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 export function ekimaeDocument() {
   const elements = rows().map((r, i) => {
     if (r.type === 'road') {
@@ -386,7 +418,7 @@ export function ekimaeDocument() {
       }
     }
     return el;
-  });
+  }).filter((el) => el.type !== 'building' || !inTheWay(el));
   return {
     schemaVersion: 3,
     id: EKIMAE_DOC_ID,

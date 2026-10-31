@@ -581,7 +581,7 @@ function shopInside(T) {
   for (const [a, b] of gx) {
     T.box('fkYellow', a, H.y0 + 1.6, H.crane, b, H.y1 - 1.6, H.craneTop, { name: 'crane girder' });
   }
-  for (const [y0, y1] of [[H.y0 + 0.8, H.y0 + 2.4], [H.y1 - 2.4, H.y1 - 0.8]]) {
+  for (const [y0, y1] of [[H.y0, H.y0 + 2.4], [H.y1 - 2.4, H.y1]]) {
     T.box('fkYellow', C.x - 3.5, y0, H.crane, C.x + 3.5, y1, H.crane + 1.6, { name: 'end carriage' });
   }
   /* The trolley across both girders, and the ladle on its hook. */
@@ -790,8 +790,8 @@ function tower(T) {
   T.box('sheetGreen', R.x0 + 0.6, R.y0, top, R.x1 - 0.6, R.y0 + 0.2, R.roof, { name: 'head house' });
   T.box('sheetGreen', R.x0 + 0.6, R.y1 - 0.2, top, R.x1 - 0.6, R.y1, R.roof, { name: 'head house' });
   /* The head pulley and the chute down to the gallery's belt. */
-  T.box('fkSteelDark', R.x0 + 2, R.y0 + 2.5, top, R.x1 - 1, R.y1 - 2.5, top + 1.6, { name: 'drive' });
-  T.box('fkSteelDark', R.x0 + 0.8, R.y0 + 3, GALLERY.floor, R.x0 + 2.8, R.y1 - 3, R.floors[1] + 2.0, { name: 'chute' });
+  T.box('fkSteelDark', R.x0 + 2, R.y0 + 2.5, top, R.x1 - 1, R.y1 - 2.5, top + 1.4, { name: 'drive' });
+  T.box('fkSteelDark', R.x0 + 1.0, R.y0 + 0.6, GALLERY.floor, R.x0 + 3.0, GALLERY.y0, R.floors[1] + 2.0, { name: 'chute' });
   T.dress(() => {
     for (const f of R.floors) {
       for (const [y0, y1] of [[R.y0 - 0.04, R.y0], [R.y1, R.y1 + 0.04]]) {

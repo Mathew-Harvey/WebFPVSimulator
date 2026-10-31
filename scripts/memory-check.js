@@ -206,6 +206,9 @@ BORROWS.goats = {
 };
 /* And Sunnyfield (src/maps/sunny/index.js). */
 BORROWS.sunny = BORROWS.house;
+/* And Hamakaze Works (src/maps/factory/index.js), which also merges its
+ * batches with Sunnyfield's palette. */
+BORROWS.factory = { ...BORROWS.house, sunny: ['palette.js'] };
 
 /* The URLs under another world that this one is not allowed to have. */
 function bleedOf(urls, id, other) {

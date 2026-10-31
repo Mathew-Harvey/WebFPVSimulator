@@ -456,22 +456,22 @@ function house(T) {
   }
   /* Inside, ground floor: switchgear down both long walls of the switch
    * room; tables in the canteen. */
-  T.box('fkConsole', H.x0 + 1, H.y1 - t - 1.4, 0, H.partA - 0.6, H.y1 - t, 2.2, { name: 'switchgear' });
-  T.box('fkConsole', H.x0 + 2, H.y0 + t, 0, H.partA - 1.6, H.y0 + t + 1.2, 2.2, { name: 'switchgear' });
-  for (const y of [89.6, 97.4]) {
-    T.box('fkPallet', H.partB + 1.4, y, 0.7, H.x1 - 1.4, y + 1.2, 0.76, { name: 'canteen table', draw: true });
+  T.box('fkConsole', H.x0 + t, H.y1 - t - 1.4, 0, H.partA, H.y1 - t, 2.2, { name: 'switchgear' });
+  T.box('fkConsole', H.x0 + t, H.y0 + t, 0, H.partA, H.y0 + t + 1.2, 2.2, { name: 'switchgear' });
+  for (const y of [89.8, 97.0]) {
+    T.box('fkPallet', H.partB + 1.8, y, 0, H.x1 - 1.8, y + 1.0, 0.76, { name: 'canteen table' });
   }
   /* Upstairs: the long console along the north wall, its screens, and
    * the mimic panel over it; desks in the office. */
-  T.box('fkConsole', H.partA + 3, 96.6, f1 + s, H.x1 - 1.6, 98.4, f1 + s + 0.8, { name: 'console' });
+  T.box('fkConsole', H.partA + 3, 97.5, f1 + s, H.x1 - t, H.y1 - t - 0.4, f1 + s + 0.8, { name: 'console' });
   T.box('fkConsole', H.partA + 0.6, H.y1 - t - 0.4, f1 + s, H.x1 - 0.6, H.y1 - t, H.roof - 0.4, { name: 'mimic panel' });
-  T.box('fkPallet', H.x0 + 1.5, 89.5, f1 + s + 0.72, H.partA - 1.5, 91.5, f1 + s + 0.78, { name: 'desk' });
+  T.box('fkPallet', H.x0 + 1.8, 89.8, f1 + s, H.partA - 1.8, 91.6, f1 + s + 0.78, { name: 'desk' });
   T.dress(() => {
     /* The screens on the console, two to a seat, and the chairs. */
     for (let x = H.partA + 3.4; x < H.x1 - 2; x += 1.1) {
-      T.deco('fkScreenDark', x, 97.5, f1 + s + 0.8, x + 0.9, 97.6, f1 + s + 1.4);
-      T.paint('fkScreen', x + 0.05, 97.48, f1 + s + 0.85, x + 0.85, 97.5, f1 + s + 1.35);
-      T.deco('fkTarp', x + 0.2, 95.6, f1 + s, x + 0.7, 96.1, f1 + s + 0.5);
+      T.deco('fkScreenDark', x, 98.2, f1 + s + 0.8, x + 0.9, 98.3, f1 + s + 1.4);
+      T.paint('fkScreen', x + 0.05, 98.18, f1 + s + 0.85, x + 0.85, 98.2, f1 + s + 1.35);
+      T.deco('fkTarp', x + 0.2, 96.6, f1 + s, x + 0.7, 97.1, f1 + s + 0.5);
     }
     /* The mimic panel's lines and lamps. */
     for (let k = 0; k < 5; k += 1) {

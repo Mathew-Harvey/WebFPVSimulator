@@ -75,10 +75,9 @@ export const MATERIALS = {
   fkSphere: { c: 0xeef0ea, bands: 'soft3', tint: 0xb8b2d2 },
   fkTank: { c: 0xe2e0d6, tint: 0x8580a2 },
   fkTankRoof: { c: 0xb9bcc0, tint: 0x6a6890 },
-  /* the yard: ore, coal, slag, the canal, the quay's edge */
+  /* the yard: ore, coal, the canal, the quay's edge */
   fkOre: { c: 0x9a5a48, tint: 0x5a3e5a },
   fkCoal: { c: 0x3f3c48, tint: 0x2c2a3a },
-  fkSlag: { c: 0xa49c94, tint: 0x605a7a },
   fkWater: { f: 0x5f8f9c, noCast: true },
   fkWaterDeep: { f: 0x4a7482, noCast: true },
   fkQuay: { c: 0xb8b2aa, tint: TD },
@@ -88,7 +87,6 @@ export const MATERIALS = {
   fkRust: { c: 0xa0644a, tint: 0x5c4060 },
   fkSoot: { c: 0x4c4650, tint: 0x34303f },
   fkHot: { f: 0xff9a3c, noCast: true },
-  fkFlame: { f: 0xffc65a, noCast: true },
   /* lamps, and the green cross of the safety flag */
   fkLamp: { f: 0xfff2c8, noCast: true },
   fkCross: { c: 0x3f9a5a, tint: 0x2f5a5a },

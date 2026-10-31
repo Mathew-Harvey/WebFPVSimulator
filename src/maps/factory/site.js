@@ -250,11 +250,11 @@ function workshop(T) {
   });
   /* Inside: a lathe, a press, a workbench, solid; slabs and billets
    * stacked outside along its south wall. */
-  T.box('fkWaterPipe', 30, S.y0 + 1, 0, 34, S.y0 + 2.2, 1.4, { name: 'lathe' });
-  T.box('fkCross', 44, S.y1 - 3, 0, 46.5, S.y1 - 1, 3.0, { name: 'press' });
+  T.box('fkWaterPipe', 30, S.y0 + 0.3, 0, 34, S.y0 + 1.5, 1.4, { name: 'lathe' });
+  T.box('fkCross', 44, S.y1 - 2.3, 0, 46.5, S.y1 - 0.3, 3.0, { name: 'press' });
   T.box('fkPallet', 50, S.y0 + 0.9, 0.85, 56, S.y0 + 1.8, 0.95, { name: 'bench' });
   for (let k = 0; k < 4; k += 1) {
-    T.box('fkRust', 24 + k * 7, 40.6, 0, 29 + k * 7, 42.2, 0.5 + (k % 2) * 0.5, { name: 'slab stack' });
+    T.box('fkRust', 24 + k * 7, 40.0, 0, 29 + k * 7, 41.4, 0.5 + (k % 2) * 0.5, { name: 'slab stack' });
   }
   T.sign('workshop', (S.x0 + S.x1) / 2, S.y0 - 0.04, 4.4, 7.2, 1.0, 's');
 }

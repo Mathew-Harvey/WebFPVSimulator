@@ -255,6 +255,23 @@ export const MAPS = [
     buildMs: MAP_BUILD_MS.moto,
     load: () => import('./moto/index.js'),
   },
+  /*
+   * KAZAMI AIRFIELD, on the owner's ask of 31 October 2026 (one of the
+   * maps from the list of the kinds of place other sims fly, built from
+   * real places and our own design): a grass strip in a Japanese mountain
+   * valley with an arched hangar flown through, terraced paddies, cedar
+   * slopes and a race of fourteen gates (src/maps/airfield/). Built by the
+   * built map's pipeline in the town's light and flown on the five inch at
+   * life size; off the board like the houses.
+   */
+  {
+    id: 'airfield',
+    name: 'Kazami Airfield',
+    mode: 'freestyle',
+    note: 'A grass strip in a mountain valley: fly the arched hangar front to back and through its rafters, the paddies, the cedars, the channel under the red bridge, and a race of fourteen gates round it all.',
+    buildMs: MAP_BUILD_MS.airfield,
+    load: () => import('./airfield/index.js'),
+  },
 ];
 
 /* The house's document id (src/maps/house/yard.js), here so the stamps can
@@ -282,6 +299,8 @@ export const DRIFT_DOC_ID = 'trk-d81f7a75';
 export const BALL_DOC_ID = 'trk-ba11b0a1';
 /* Ridgeline MX's (src/maps/moto/yard.js), the same way. */
 export const MOTO_DOC_ID = 'trk-3c07e5a1';
+/* Kazami Airfield's (src/maps/airfield/yard.js), the same way. */
+export const AIRFIELD_DOC_ID = 'trk-a1f1e1d0';
 
 export function mapById(id) {
   return MAPS.find((m) => m.id === id) ?? MAPS[0];

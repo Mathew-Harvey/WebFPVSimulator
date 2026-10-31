@@ -207,7 +207,7 @@ const world = (px, py, h) => [wx(px), h, wz(py)];
 const CROPS = ['afPaddyWater', 'afPaddyWater', 'afPaddyWater', 'afPaddyGreen', 'afPaddyWater', 'afBenchDry'];
 
 /* The terraces: walls, benches and paddies, and their solids. */
-function terraces(T) {
+function terraces(T, dry) {
   const r = rng(0x7a77ace5);
   const STEP = 4;
   const STEP_FOREST = 8;
@@ -239,6 +239,7 @@ function terraces(T) {
             T.dress(() => T.wide(() => T.deco('afBenchDry', pa - 0.2, Math.min(fa, ba), t.h, pa + 0.2, Math.max(fa, ba), t.h + 0.22)));
           }
         }
+        const kept = dry.some((d) => d.side === side && d.k === k && pb > d.x0 && pa < d.x1);
         const fa = wallPy(side, k, pa);
         const fb = wallPy(side, k, pb);
         const ba = backPy(pa);
@@ -267,7 +268,8 @@ function terraces(T) {
         /* The bench, or the paddy on it. Water stands a hand below the
          * wall's cap, so the cap reads as the paddy's rim. */
         const top = [];
-        const wet = crop === 'afPaddyWater';
+        const here = kept ? 'afBench' : crop;
+        const wet = here === 'afPaddyWater';
         const y = wet ? t.h - 0.06 : t.h;
         const fA = fa2 - sgn * BATTER;
         const fB = fb2 - sgn * BATTER;
@@ -276,7 +278,7 @@ function terraces(T) {
         } else {
           quad(top, world(pa, fA, y), world(pb, fB, y), world(pb, bb2, y), world(pa, ba2, y));
         }
-        T.surface(crop, top, wx(mx), wz((fa2 + ba2) / 2));
+        T.surface(here, top, wx(mx), wz((fa2 + ba2) / 2));
         if (wet) {
           /* The rim: the wall's cap, a strip of earth along the front. */
           const rim = [];
@@ -288,7 +290,7 @@ function terraces(T) {
             quad(rim, world(pa, fA, t.h), world(pb, fB, t.h), world(pb, ib, t.h), world(pa, ia, t.h));
           }
           T.surface('afBenchDry', rim, wx(mx), wz((fa2 + fb2) / 2));
-        } else if (crop === 'afPaddyGreen') {
+        } else if (here === 'afPaddyGreen') {
           /* Rows of young rice: dark green lines along the bench. */
           T.dress(() => T.wide(() => {
             for (let j = 1; j < 4; j += 1) {
@@ -520,9 +522,10 @@ function mountainSolids(T) {
 }
 
 /* The whole valley: the ground's parts, the woods and the mountains'
- * solids. `clear` as for the woods. */
-export function valley(T, clear) {
-  terraces(T);
+ * solids. `clear` as for the woods; `dry` the benches ({ side, k, x0, x1 })
+ * kept to grass where something stands on them. */
+export function valley(T, clear, dry = []) {
+  terraces(T, dry);
   skirts(T);
   channel(T);
   const trees = woods(T, clear);

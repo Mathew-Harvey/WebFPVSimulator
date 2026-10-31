@@ -99,6 +99,20 @@ export const MATERIALS = {
   afLantern: { c: 0xc8c1b6, tint: 0x6a6288 },
   afRope: { c: 0xe2d4a4, tint: 0x8a7a84 },
   afPaper: { f: 0xfbf8f0, noCast: true },
+  /* the farm belt: vinyl house film and its hoops, tilled soil, the
+   * crops, straw, wrapped bales, the storehouse's plaster, new leaf */
+  afVinyl: { c: 0xe6eceb, tint: 0x8890ac },
+  afVinylRib: { c: 0x7d879c, tint: 0x4a4e70 },
+  afSoil: { c: 0xa47c5e, tint: 0x5e4660 },
+  afSoilDark: { c: 0x8c6a52, tint: 0x54405c },
+  afCabbage: { c: 0xa9cf7e, tint: 0x5a7a86 },
+  afNegi: { c: 0x74b062, tint: 0x4c6e7e },
+  afStraw: { c: 0xdcc07a, tint: 0x857462 },
+  afSwath: { f: 0xb7c27e, noCast: true },
+  afBaleWrap: { c: 0xf3f1ea, tint: 0x8a83a8 },
+  afBalePink: { c: 0xf0c2c8, tint: 0x8c6c8c },
+  afKura: { c: 0xf5f1e8, tint: 0x8a83a8 },
+  afLeaf: { c: 0x8fbe5c, tint: 0x4f6e72, foliage: true },
   /* the race: banner cloth in the town's two reds and its indigo */
   afBanner: { c: 0x3b4f86, tint: 0x2c3260 },
   afBannerRed: { c: 0xe0503f, tint: 0x7a3a5a },

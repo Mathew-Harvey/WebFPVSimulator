@@ -308,6 +308,12 @@ export function hangar(T) {
       }));
     }
   }
+  /* The gable's number and name, the safety signs on the door posts. */
+  T.sign('hangarNo', CX, H.y0 - 0.14, 9.55, 2.0, 2.0, 's');
+  T.sign('hangarName', CX, H.y0 - 0.14, 8.05, 7.2, 0.8, 's');
+  T.sign('safety', H.door.x1 + 1.5, H.y0 - 0.14, 2.4, 1.1, 1.3, 's');
+  T.sign('noFire', H.door.x0 - 1.5, H.y0 - 0.14, 2.4, 0.6, 1.6, 's');
+  T.sign('safety', H.x0 + 0.29, 240, 2.4, 1.1, 1.3, 'e');
   /* ---- the roof: the sheet in three runs, the middle run cut for the
    * skylight; its eave flashing and the ridge cap. */
   const S = H.skylight;
@@ -360,11 +366,11 @@ export function hangar(T) {
   for (const y of H.trusses) {
     truss(T, y);
   }
-  /* A crane rail down the crown and its hoist, parked forward. */
+  /* A crane rail down the crown and its hoist, parked forward with its
+   * hook wound up, above THE RAFTERS' window and not across it. */
   T.cap('afFrame', [CX, H.y0 + 1, H.crown - 1.25], [CX, H.y1 - 1, H.crown - 1.25], 0.12, { kind: 'pole', name: 'crane rail' });
-  T.box('craneYellow', CX - 0.3, 227.2, H.crown - 1.8, CX + 0.3, 228.2, H.crown - 1.38, { kind: 'obstacle', name: 'hoist' });
-  T.cyl('rope', [CX, 227.7, H.crown - 1.8], [CX, 227.7, 8.4], 0.02, 4);
-  T.box('craneYellowDeep', CX - 0.18, 227.5, 8.15, CX + 0.18, 227.9, 8.45, { solid: false });
+  T.box('craneYellow', CX - 0.3, 223.2, H.crown - 1.8, CX + 0.3, 224.2, H.crown - 1.38, { kind: 'obstacle', name: 'hoist' });
+  T.box('craneYellowDeep', CX - 0.18, 223.5, H.crown - 2.05, CX + 0.18, 223.9, H.crown - 1.8, { solid: false });
   /* The high bay lamps, hung from the bottom chords outside the hangers. */
   for (const y of H.trusses) {
     for (const s of [-1, 1]) {

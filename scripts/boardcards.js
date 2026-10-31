@@ -345,6 +345,9 @@ const WORLDS = [
   /* Sunnyfield, added 28 October 2026, picked by eye from four sides: the
    * one with the hill's letters, the town hall and the gorge in it. */
   { id: 'sunny', file: 'sunny.jpg', name: 'Sunnyfield', shot: { tp: 0.62, tr: 0.9, ta: -2.4 } },
+  /* Kazami Airfield, added 31 October 2026: the hangar and the strip
+   * from over the paddies, with the mountains behind. */
+  { id: 'airfield', file: 'airfield.jpg', name: 'Kazami Airfield', shot: { tp: 0.5, tr: 0.8, ta: -2.0 } },
   /* Quad Ball's stadium and Ridgeline MX, added 29 October 2026 with no
    * picture, so their map cards were blank and every picker asked the
    * server for a file that was not there (found 30 October 2026). */

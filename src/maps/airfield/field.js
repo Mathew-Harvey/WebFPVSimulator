@@ -605,7 +605,7 @@ export function raceGates() {
     { kind: 'hoop', name: 'THE THRESHOLD', px: 92, py: 178, deg: 0, w: 2.6, hh: 2.6, base: 1.3, points: 100 },
     { kind: 'nobori', name: 'THE STRIP', px: 170, py: 178, deg: 0, w: 3.4, hh: 3.2, base: 0, points: 100 },
     { kind: 'dive', name: 'THE HIGH GATE', px: 250, py: 160, deg: 0, w: 3.0, hh: 2.4, base: 7.5, points: 250 },
-    { kind: 'open', name: 'THE CHANNEL', px: 336, py: (C.y0 + C.y1) / 2, deg: 0, w: C.y1 - C.y0 - 0.6, hh: 1.4, base: C.water + 0.1, points: 500 },
+    { kind: 'open', name: 'THE CHANNEL', px: 336, py: (C.y0 + C.y1) / 2, deg: 0, w: C.y1 - C.y0 - 0.6, hh: 1.9, base: C.water + 0.1, points: 500 },
     { kind: 'open', name: 'UNDER THE RED BRIDGE', px: RED_BRIDGE.px, py: (C.y0 + C.y1) / 2, deg: 0, w: C.y1 - C.y0 - 0.6, hh: 1.25, base: C.water + 0.1, points: 1000 },
     { kind: 'banner', name: 'EAST WINDSOCK', px: 420, py: 214, deg: 90, w: 3.2, hh: 2.4, base: 0.4, points: 100 },
     { kind: 'open', name: 'UNDER THE BALCONY', px: CLUB.x1 + 0.5, py: CLUB.y0 - CLUB.balcony / 2 + 0.05, deg: 180, w: CLUB.balcony - 0.62, hh: CLUB.floor - 0.6, base: 0.3, points: 500 },
@@ -665,7 +665,6 @@ function gate(T, g) {
     const fx = face === 'w' ? -off : face === 'e' ? off : 0;
     const fy = face === 's' ? -off : face === 'n' ? off : 0;
     T.sign('gateBanner', g.px + fx, g.py + fy, (lo + hi) / 2, 2 * half - 0.2, hi - lo - 0.1, face);
-    T.striped = null;
     striped(T, at(-half, top), at(-half, hi), tube, 'gate', 0.45);
     striped(T, at(half, top), at(half, hi), tube, 'gate', 0.45);
   }

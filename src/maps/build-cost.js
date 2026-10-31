@@ -89,4 +89,7 @@ export const MAP_BUILD_MS = {
   /* Ridgeline MX (src/maps/moto/): a plot of trees, a track of mounds and
    * berms and ten bikes. An estimate until it is measured. */
   moto: 2400,
+  /* Kazami Airfield (src/maps/airfield/): a valley of terraces and cedars,
+   * the hangar and the field. An estimate until it is measured. */
+  airfield: 2600,
 };

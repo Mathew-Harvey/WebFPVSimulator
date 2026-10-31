@@ -497,7 +497,7 @@ const AXIS_X = new THREE.Vector3(1, 0, 0);
  * alone. The entry is written out because it has moved with the directory:
  * it was three before looks.js came and four before egg.js, and with no
  * entry then the bar sat at 75 percent until the import resolved. */
-const MAP_MODULE_COUNT = { field: 1, city: 72, custom: 1, built: 5, house: 3, heads: 4, bardwell: 4, warehouse: 3, goats: 9, sunny: 12, factory: 9, drift: 3, towers: 11, alps: 6, office: 4, kaza: 10, sana: 6, shiokaze: 10, fmx: 8, airfield: 9, dunes: 5 };
+const MAP_MODULE_COUNT = { field: 1, city: 72, custom: 1, built: 5, house: 3, heads: 4, bardwell: 4, warehouse: 3, goats: 9, sunny: 12, factory: 9, drift: 3, towers: 11, alps: 6, office: 4, kaza: 10, sana: 6, shiokaze: 10, fmx: 8, airfield: 9, dunes: 5, arctic: 9 };
 /* Kamome Wharf (src/maps/dock/): its ten. */
 MAP_MODULE_COUNT.dock = 10;
 /* Hayate Circuit (src/maps/hayate/): its ten. */
@@ -528,11 +528,13 @@ const MAP_MODULE_PREFIX = {
   alps: '/src/maps/alps/',
   shiokaze: '/src/maps/shiokaze/',
   cedar: '/src/maps/cedar/',
+  touge: '/src/maps/touge/',
   office: '/src/maps/office/',
   kaza: '/src/maps/kaza/',
   sana: '/src/maps/sana/',
   airfield: '/src/maps/airfield/',
   hotaru: '/src/maps/hotaru/',
+  arctic: '/src/maps/arctic/',
 };
 
 /*
@@ -6817,6 +6819,7 @@ export async function boot({ loading, bootStart, mapId }) {
     airfield: 'airfield',
     dunes: 'dunes',
     airfield: 'airfield', hotaru: 'hotaru',
+    arctic: 'arctic',
   };
   function markMapWord(mark) {
     return String(mark.key).startsWith('city#') ? 'city' : (MARK_MAP_WORDS[view.source] || null);
@@ -9234,6 +9237,14 @@ export async function boot({ loading, bootStart, mapId }) {
       };
       return;
     }
+    /* Nor for Tonbo Fest: FEST_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'fest') {
+      notice = {
+        text: 'The board keeps no runs for Tonbo Fest, so its runs stay here.',
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
     /* Nor for Thomas More's Shop: WAREHOUSE_OFF_BOARD in src/ui/ui.js. */
     if (view.id === 'warehouse') {
       notice = {
@@ -9330,10 +9341,26 @@ export async function boot({ loading, bootStart, mapId }) {
       };
       return;
     }
+    /* Nor for Momiji Pass: TOUGE_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'touge') {
+      notice = {
+        text: 'The board keeps no runs for Momiji Pass, so its runs stay here.',
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
     /* Nor for Kazami Airfield: AIRFIELD_OFF_BOARD in src/ui/ui.js. */
     if (view.id === 'airfield') {
       notice = {
         text: 'The board keeps no runs for Kazami Airfield, so its runs stay here.',
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
+    /* Nor for Hyoura Island: ARCTIC_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'arctic') {
+      notice = {
+        text: 'The board keeps no runs for Hyoura Island, so its runs stay here.',
         untilMs: performance.now() + 4200,
       };
       return;

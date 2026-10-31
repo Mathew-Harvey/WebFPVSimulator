@@ -506,6 +506,55 @@ export const MAPS = [
     load: () => import('./hotaru/index.js'),
   },
   /*
+   * MOMIJI PASS, on the owner's ask of 31 October 2026 (a mountain pass
+   * road map, "we want the maps to feel like manga comic like the town"): a
+   * Japanese touge of our own in autumn, a loop of hairpins up one face of
+   * a mountain and down the other, a gorge crossed on a red arch bridge, a
+   * tunnel under the ridge, a rest stop at the pass, and cars on the road
+   * (src/maps/touge/). Built by the built map's pipeline and flown on the
+   * five inch at life size; off the board like the houses.
+   */
+  {
+    id: 'touge',
+    name: 'Momiji Pass',
+    mode: 'freestyle',
+    note: 'A mountain pass road in autumn. Hairpins stacked up the mountain, cars to chase, a tunnel under the ridge, a red bridge over the gorge, and a tea house at the top.',
+    buildMs: MAP_BUILD_MS.touge,
+    load: () => import('./touge/index.js'),
+  },
+  /*
+   * TONBO FEST, on the owner's ask of 31 October 2026: a drone racing
+   * festival of our own on a river's sports ground under the levee, in the
+   * town's manga look: inflatable gates, the pits, the stage, the stalls,
+   * the railway bridge (src/maps/fest/). Built by the built map's pipeline
+   * and flown on the five inch at life size; off the board like the houses.
+   */
+  {
+    id: 'fest',
+    name: 'Tonbo Fest',
+    mode: 'freestyle',
+    note: 'A drone racing festival on the river ground under the levee. Sixteen gates in one lap, the pits, the main stage, the food stalls, the sluice gate and the railway bridge over the river.',
+    buildMs: MAP_BUILD_MS.fest,
+    load: () => import('./fest/index.js'),
+  },
+  /*
+   * HYOURA ISLAND, on the owner's ask of 31 October 2026 (the new
+   * maps, section 10, "we want the maps to feel like manga comic
+   * like the town"): an island of our own after the drift ice coast of
+   * Shiretoko, with its cliffs and waterfalls, its bergs and sea ice, a
+   * fishing hamlet and a lighthouse on the cape (src/maps/arctic/). Built
+   * by the built map's pipeline and flown on the five inch at life size;
+   * off the board like the houses.
+   */
+  {
+    id: 'arctic',
+    name: 'Hyoura Island',
+    mode: 'freestyle',
+    note: 'A winter island in the drift ice. Thread the iceberg arch, skim the floes, dive the cliffs beside the falls, find the grotto behind them and orbit the lighthouse on the cape.',
+    buildMs: MAP_BUILD_MS.arctic,
+    load: () => import('./arctic/index.js'),
+  },
+  /*
    * HAYATE CIRCUIT, on the owner's ask of 31 October 2026 (section 14 of
    * the map ideas, "Racetrack"): an international road circuit of our own
    * in the Japanese hills in autumn, built from how the real ones are laid
@@ -570,6 +619,8 @@ export const DOCK_DOC_ID = 'trk-d0c4a3e7';
 export const FACTORY_DOC_ID = 'trk-fac70e31';
 /* Kodama Onsen's (src/maps/cedar/yard.js), the same way. */
 export const CEDAR_DOC_ID = 'trk-ced4a0e5';
+/* Momiji Pass's (src/maps/touge/yard.js), the same way. */
+export const TOUGE_DOC_ID = 'trk-70a9e5a1';
 /* Kazahana Plain's (src/maps/kaza/yard.js), the same way. */
 export const KAZA_DOC_ID = 'trk-ca2a4a7a';
 /* Kirigaoka Sanatorium's (src/maps/sana/yard.js), the same way. */
@@ -580,6 +631,8 @@ export const ALPS_DOC_ID = 'trk-a195a1e5';
 /* Hoshino Shoji's (src/maps/office/yard.js), the same way. */
 export const OFFICE_DOC_ID = 'trk-0f1ce5a1';
 
+/* Hyoura Island's (src/maps/arctic/yard.js), the same way. */
+export const ARCTIC_DOC_ID = 'trk-a7c71c00';
 /* Tanada RX's (src/maps/rally/yard.js), the same way. */
 export const RALLY_DOC_ID = 'trk-7a11c0b5';
 /* Hotaru Valley's (src/maps/hotaru/yard.js), the same way. */
@@ -589,5 +642,7 @@ export function mapById(id) {
   return MAPS.find((m) => m.id === id) ?? MAPS[0];
 }
 
+/* Tonbo Fest's (src/maps/fest/yard.js), the same way. */
+export const FEST_DOC_ID = 'trk-70b0f357';
 /* Hayate Circuit's (src/maps/hayate/yard.js), the same way. */
 export const HAYATE_DOC_ID = 'trk-4a7a7e01';

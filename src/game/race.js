@@ -903,7 +903,7 @@ export class Race {
      * correct gate."
      *
      * It is the right call for this simulator even though it departs from the
-     * rulebook. These courses are imported from Velocidrone and several of
+     * rulebook. These courses are imported from a .trk file and several of
      * them are dense: 2025 WA States has a five gate tunnel the lap crosses
      * on the way to somewhere else, and WCMRC Round 5 flies one gate five
      * times in a lap. On a course like that an incidental crossing is a

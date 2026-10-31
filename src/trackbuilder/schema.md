@@ -288,7 +288,7 @@ Four kinds of thing are left alone, because nothing built is held up:
 
 The rule is `needsSeat` and `seatFloating` in `src/trackbuilder/seat.js`, and a
 map's half, which needs the solids, is `seatDocument` in
-`src/maps/built/place.js`. FAI Turkiye 2024, imported from Velocidrone, was
+`src/maps/built/place.js`. FAI Turkiye 2024, imported from a .trk file, was
 stored with four flags 20 m up and a gate 15 m up over a rooftop that the field
 does not have, and a pilot could clear them neither where they hung nor where
 they should have stood (29 September 2026).
@@ -516,7 +516,7 @@ a marker so that the rule above gives it what it needs: the knot lands at
 `position + clearance * side`, and its clearance is zero, so the knot is the
 point itself and the tangent comes from the run of the course. It is drawn in
 the builder so an author can grab it, and nothing is built for it on the race
-field. It exists because imported courses need it: Velocidrone lets an author
+field. It exists because imported courses need it: the .trk format lets an author
 drop an invisible trigger volume in open air to pin the racing line where there
 is no gate, and a course that reads one of those as a gate puts obstacles on
 the field that are not on the real track.

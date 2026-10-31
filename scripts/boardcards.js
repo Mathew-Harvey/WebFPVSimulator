@@ -350,9 +350,23 @@ const WORLDS = [
    * server for a file that was not there (found 30 October 2026). */
   { id: 'ball', file: 'ball.jpg', name: 'Quad Ball' },
   { id: 'moto', file: 'moto.jpg', name: 'Ridgeline MX' },
+  /* Raicho Ridge, added 31 October 2026, from high over the valley so the
+   * ridge, the ropeway and the lake are all in it. */
+  { id: 'alps', file: 'alps.jpg', name: 'Raicho Ridge' },
+  /* Kumoi Towers, added 31 October 2026: the plaza with the twin crowns
+   * over it, from the plaza's south side, picked by eye from six shots. */
+  { id: 'towers', file: 'towers.jpg', name: 'Kumoi Towers', shot: { tp: 0.25, tr: 0.6, ta: 0 } },
+  { id: 'dome', file: 'dome.jpg', name: 'Bakuon Dome' },
   /* Kodama Onsen, added 31 October 2026, picked by eye: the inn from the
    * car park side, the shrine's approach and the forest behind it. */
   { id: 'cedar', file: 'cedar.jpg', name: 'Kodama Onsen', shot: { tp: 0.55, tr: 0.75, ta: -1.9 } },
+  /* Hoshino Shoji, added 31 October 2026. Indoors like Thomas More's Shop,
+   * so it names its own lens too (CARD_LENS in src/maps/office/office.js). */
+  { id: 'office', file: 'office.jpg', name: 'Hoshino Shoji' },
+  { id: 'kaza', file: 'kaza.jpg', name: 'Kazahana Plain' },
+  /* Kirigaoka Sanatorium, added 31 October 2026, from the avenue's side
+   * so the wings, the tower and the terrace stair are in it. */
+  { id: 'sana', file: 'sana.jpg', name: 'Kirigaoka Sanatorium', shot: { tp: 0.45, tr: 0.9, ta: -1.57 } },
   /* Tsukimi Danchi, added 31 October 2026, from the south east and high
    * enough that the block, the yard and the viaduct are all in it. */
   { id: 'haikyo', file: 'haikyo.jpg', name: 'Tsukimi Danchi', shot: { tp: 0.68, tr: 1.5, ta: -1.9 } },

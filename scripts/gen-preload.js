@@ -103,6 +103,7 @@ const MAP_ROOTS = {
   dome: 'src/maps/dome/index.js',
   cedar: 'src/maps/cedar/index.js',
   office: 'src/maps/office/index.js',
+  kaza: 'src/maps/kaza/index.js',
 };
 
 /* three@0.160.0's add-ons, and what each imports besides 'three'. Read off

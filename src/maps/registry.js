@@ -353,6 +353,24 @@ export const MAPS = [
     mapScale: 3.5,
     load: () => import('./office/index.js'),
   },
+  /*
+   * KAZAHANA PLAIN, on the owner's ask of 31 October 2026 (a map in the
+   * town's manga look, after the open long range grassland kind of place):
+   * a flat Hokkaido plain at the end of autumn, a balloon meet with a chase
+   * line of tethered balloons climbing to sixty metres, a winter
+   * illumination market, a dairy farm between larch windbreaks, and an old
+   * arch viaduct and three wind turbines a mile north (src/maps/kaza/).
+   * Built by the built map's pipeline, life size on the five inch; off the
+   * board like the houses.
+   */
+  {
+    id: 'kaza',
+    name: 'Kazahana Plain',
+    mode: 'freestyle',
+    note: 'A Hokkaido plain at the first snow, flown on a five inch: climb the balloon meet through four gates of air, thread the winter market\'s lit tunnel and stall gaps, run the red barn and the silos, and cruise the birch avenue a mile north to the old arch viaduct and the wind turbines.',
+    buildMs: MAP_BUILD_MS.kaza,
+    load: () => import('./kaza/index.js'),
+  },
 ];
 
 /* The house's document id (src/maps/house/yard.js), here so the stamps can
@@ -390,6 +408,8 @@ export const DOCK_DOC_ID = 'trk-d0c4a3e7';
 
 /* Kodama Onsen's (src/maps/cedar/yard.js), the same way. */
 export const CEDAR_DOC_ID = 'trk-ced4a0e5';
+/* Kazahana Plain's (src/maps/kaza/yard.js), the same way. */
+export const KAZA_DOC_ID = 'trk-ca2a4a7a';
 
 /* Raicho Ridge's (src/maps/alps/yard.js), the same way. */
 export const ALPS_DOC_ID = 'trk-a195a1e5';

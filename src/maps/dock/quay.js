@@ -96,6 +96,14 @@ function edge(T) {
     for (let x = 2; x < W; x += 5) {
       T.paint('dkLineYellow', x, QUAY_Y - 3.1, 0, x + 3, QUAY_Y - 2.9, 0.02);
     }
+    /* The tractors' lanes under the cranes, between the rails: white
+     * dashes, six on and six off, the lines the yard's trucks hold to
+     * while a box comes down on them. */
+    for (const y of [RAIL_L + 11, RAIL_L + 17.5, RAIL_L + 24]) {
+      for (let x = 3; x < W - 6; x += 12) {
+        T.paint('lineWhite', x, y - 0.08, 0.012, x + 6, y + 0.08, 0.016);
+      }
+    }
   }));
   T.sign('berth', 160, QUAY_Y - 6.5, 0.03, 9, 4.5, 'up', 0);
   T.sign('berth', 330, QUAY_Y - 6.5, 0.03, 9, 4.5, 'up', 0);

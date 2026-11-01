@@ -73920,3 +73920,9 @@ Cost, High, against the parent: mid and high views same calls and +48 triangles;
 The roof deck the pilot starts on was clean grey between its bay lines. Every roof bay now has a concrete wheel stop at its back (solid, 12 cm, so it collides as drawn) and about half have the dark patch of oil a parked car leaves (paint, fine, two triangles), in `carPark()` in `src/maps/ekimae/plan.js`.
 
 Cost, High, against the parent: same calls in all four views, +984 triangles; Ekimae had banked about 4,000 under a7285fa in the floor trims, so it stays under. `npm run check:ekimae` passed, `lint:quality` 71 of 71. Not flown.
+
+### 2026-11-01: Kamome Wharf, the truck lanes under the cranes (pass 4, batch 15)
+
+The thirty metres of apron between the crane rails was bare. Three lanes of white dashes, six metres on and six off, now run the length of the berth between the rails, the lines the yard tractors hold to under a crane (`edge()` in `src/maps/dock/quay.js`, the town's flat `lineWhite`, two triangles a dash, near set dressing).
+
+Cost, High, against the parent: same calls in all four views, +412 triangles; the dock banked about 17,000 under a7285fa in the floor trims. `npm run check:dock` passed, `lint:quality` 71 of 71. Not flown.

@@ -292,7 +292,9 @@ async function sceneMenu() {
   const onPage = (card) => `const u = window.__ui; return u.screen === 'title' && u.onGate() && u.gatePageNow() === 'games' && (u.items()[u.cursor] || {}).card === '${card}';`;
   try {
     check('the title is up', await until("return Boolean(window.__ui && window.__ui.screen === 'title' && window.__ui.onGate())", 120000));
-    check('the cover has Mini games', await ev("return window.__ui.items().some((i) => i.card === 'games')"));
+    check('the cover asks only solo or multiplayer', await ev("return window.__ui.items().every((i) => i.card !== 'games')"));
+    await ev("window.__ui.act('gate-solo'); return 1;");
+    check('Fly solo has the Mini games door', await until("return window.__ui.gatePageNow() === 'solo' && window.__ui.items().some((i) => i.card === 'games')", 5000));
     await ev("window.__ui.act('gate-games'); return 1;");
     check('Mini games turns to its page', await until("return window.__ui.gatePageNow() === 'games'", 5000));
     const cards = await ev("return window.__ui.items().map((i) => i.card).join(',')");

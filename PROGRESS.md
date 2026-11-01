@@ -73763,3 +73763,14 @@ Scene census and four spawn views per map on High, `origin/main` (b285dc5) again
 ## 2026-11-01 | ship | Manga and AAA passes 1 to 3 to main
 
 Mat, 2026-11-01 11:39Z: "push everything to main and i'll fly it". PR 210 is fast-forwarded onto main, which had not moved (b285dc5). Not flown before the push: he flies it now.
+
+## 2026-11-01 | menu | The cover asks solo or multiplayer, nothing else
+
+Mat, 2026-11-01 11:48Z, over a screenshot of "How do you want to fly?" with three panels: "i should see single player or multiplayer, no mini games".
+
+- The cover is now two panels, Fly solo and Multiplayer (`GATE_SIDES`, `.gate-page-cover` grid in `index.html`). Mini games left the cover.
+- Mini games is not lost: it is one panel at the foot of the Fly solo page (`GATE_MINI` in `src/ui/gatepages.js`, grid area `games`, only while rooms are on, since the page it opens hangs off the cover). It opens the same Mini games page, which still asks "alone or with friends" per game. Back from that page goes to Fly solo, not the cover (`turnGate` call in `back()`), and the cover's remembered side is never `games`.
+- `scripts/minigames-check.js` now expects the cover to hold no Mini games panel and finds the door on the solo page.
+- Not changed: the two cover panels still open the Fly solo page and the Multiplayer page, which are the places where the real choices live (Career, Race, Freestyle, Builder; Host, Find, Code, Pilot). I did not collapse them straight into the map picker, because Fly solo holds more than a map.
+- Latency: no change. Menu only, nothing in the flight loop or input path.
+- Checks: syntax check of the three edited files only. NOT run: `node scripts/shots.js`, `minigames-check --only=menu`, `npm run verify`. The solo page's new five-panel grid (Mini games is a narrow panel) has not been looked at.

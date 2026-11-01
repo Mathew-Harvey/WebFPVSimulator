@@ -87,21 +87,24 @@ export const GATE_SIDES = [
     sticker: 'NEW!',
     action: 'gate-together',
   },
-  /*
-   * The mini games, the owner's ask of 2026-10-29: "the dog fight category
-   * to belong to a mini games mode, so we can also aggregate other mini
-   * games there". The panel the dogfight had, with its picture, now opens
-   * a page of its own (GATE_GAMES).
-   */
-  {
-    id: 'games',
-    label: 'Mini games',
-    kicker: 'Play',
-    art: 'assets/gate/dogfight.jpg',
-    caption: 'Dogfights, ribbon cutting, goat herding, drift filming and motocross chasing.',
-    action: 'gate-games',
-  },
 ];
+
+/*
+ * The Mini games door, a panel at the end of the solo page. It stood on the
+ * cover as a third choice until the owner's ask of 2026-11-01: "i should see
+ * single player or multiplayer, no mini games". Every mini game still plays
+ * alone or with friends (the question is asked when a game is chosen, ui.js
+ * gameDoor), so the one door belongs under Fly solo, and the cover asks only
+ * the two things a pilot arriving has to answer.
+ */
+export const GATE_MINI = {
+  id: 'games',
+  label: 'Mini games',
+  kicker: 'Play',
+  art: 'assets/gate/dogfight.jpg',
+  caption: 'Dogfights, ribbons, goats, drift, Quad Ball and motocross. Alone or with friends.',
+  action: 'gate-games',
+};
 
 /*
  * THE MINI GAMES PAGE, one panel a game. The owner, 2026-10-29 04:51Z:

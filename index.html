@@ -2621,7 +2621,7 @@
         gap: clamp(10px, 1.4vw, 18px);
       }
       .gate-page-cover .gate-grid {
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) minmax(0, 0.9fr);
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
         grid-template-rows: minmax(0, 1fr);
       }
       .gate-page-solo .gate-grid {
@@ -2629,7 +2629,7 @@
         grid-template-rows: repeat(2, minmax(0, 1fr));
         grid-template-areas:
           "career career career career five five five five whoop whoop whoop whoop"
-          "career career career career free free free free free build build build";
+          "career career career career free free free build build games games games";
       }
       .gate-page-together .gate-grid {
         grid-template-columns: repeat(12, minmax(0, 1fr));
@@ -2643,6 +2643,7 @@
       .gate-card-race-whoop65 { grid-area: whoop; }
       .gate-card-freestyle-5inch { grid-area: free; }
       .gate-card-builder { grid-area: build; }
+      .gate-card-games { grid-area: games; }
       .gate-card-mp-host { grid-area: host; }
       .gate-card-mp-find { grid-area: find; }
       .gate-card-mp-code { grid-area: code; }

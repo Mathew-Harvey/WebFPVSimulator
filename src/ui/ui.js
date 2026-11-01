@@ -234,7 +234,7 @@ import {
 } from './mangapage.js';
 import { paintTitle } from './lettering.js';
 import {
-  GATE_GAMES, GATE_HEADS, GATE_ROOMS, GATE_SIDES, SOLO_PANELS, paintGatePilot, sceneFor,
+  GATE_GAMES, GATE_HEADS, GATE_MINI, GATE_ROOMS, GATE_SIDES, SOLO_PANELS, paintGatePilot, sceneFor,
 } from './gatepages.js';
 import { formatScore } from '../game/score.js';
 import { PRACTICE_LAPS } from '../game/race.js';
@@ -9802,6 +9802,17 @@ export class Ui {
             caption: panel(BUILDER_CARD.id).caption,
             action: BUILDER_CARD.action,
           },
+          /* The mini games' one door, under Fly solo (gatepages.js
+           * GATE_MINI). Only while rooms are on: the page it opens is
+           * reached through the cover, which is not there without them. */
+          ...(this.roomsOn ? [{
+            label: GATE_MINI.label,
+            card: GATE_MINI.id,
+            art: GATE_MINI.art,
+            kicker: GATE_MINI.kicker,
+            caption: GATE_MINI.caption,
+            action: GATE_MINI.action,
+          }] : []),
           ...tail,
         ];
       }
@@ -13814,7 +13825,7 @@ export class Ui {
     const head = el('div', 'gate-head');
     if (page !== this.gateRoot()) {
       const back = btn('gate-back', 'Back');
-      back.setAttribute('aria-label', 'Back to the cover');
+      back.setAttribute('aria-label', page === 'games' ? 'Back to Fly solo' : 'Back to the cover');
       back.addEventListener('click', () => this.back());
       head.append(back);
     }
@@ -13846,7 +13857,7 @@ export class Ui {
     if (page === was) {
       return;
     }
-    if (page === 'solo' || page === 'together' || page === 'games') {
+    if (page === 'solo' || page === 'together') {
       this.gateSide = page;
     }
     this.gateTurn = order[page] > order[was] ? 'fwd' : 'back';
@@ -21262,7 +21273,8 @@ export class Ui {
       if (this.onGate()) {
         /* An inside page of the gate turns back to the cover first. */
         if (this.gatePageNow() !== this.gateRoot()) {
-          this.turnGate(this.gateRoot());
+          /* Mini games hangs off Fly solo, so Back goes there first. */
+          this.turnGate(this.gatePageNow() === 'games' ? 'solo' : this.gateRoot());
           return;
         }
         this.confirmLeave();

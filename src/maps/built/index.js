@@ -1543,6 +1543,19 @@ export async function buildMap(shell, onProgress, options) {
      * map's own where it has one, 0 where it does not. */
     const floorAt = typeof extra.floor === 'function' ? extra.floor : () => 0;
     kit.onFloor = (p) => {
+      if (p.t !== 'box') {
+        /* A round part: upright, its lower end on the floor with its whole
+         * foot (a cap of radius r round that end) on or under it. */
+        const [lo, hi] = p.a[1] <= p.b[1] ? [p.a, p.b] : [p.b, p.a];
+        const run = Math.hypot(hi[0] - lo[0], hi[2] - lo[2]);
+        if (run > 1e-3 * Math.max(1, hi[1] - lo[1])) {
+          return false;
+        }
+        const y = lo[1] - 0.02;
+        const r = p.r;
+        return y <= floorAt(lo[0], lo[2]) && y <= floorAt(lo[0] - r, lo[2] - r) && y <= floorAt(lo[0] + r, lo[2] - r)
+          && y <= floorAt(lo[0] - r, lo[2] + r) && y <= floorAt(lo[0] + r, lo[2] + r);
+      }
       const y = p.lo[1] - 0.02;
       const [x0, , z0] = p.lo;
       const [x1, , z1] = p.hi;

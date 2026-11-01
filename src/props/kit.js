@@ -813,6 +813,25 @@ function unitCyl(seg) {
   return g;
 }
 
+/* A unit cylinder without its cap at the a end (its -y end, which
+ * alongMatrix puts at a), for a post standing on the floor: the floorBox
+ * argument, for a round part. CylinderGeometry's groups are the side, the
+ * +y cap and the -y cap, in that order. */
+const CYL_FOOT = new Map();
+function footCyl(seg) {
+  let g = CYL_FOOT.get(seg);
+  if (!g) {
+    const full = new THREE.CylinderGeometry(1, 1, 1, seg, 1);
+    const foot = full.groups[2];
+    const idx = Array.from(full.index.array);
+    g = full;
+    g.setIndex([...idx.slice(0, foot.start), ...idx.slice(foot.start + foot.count)]);
+    g.clearGroups();
+    CYL_FOOT.set(seg, g);
+  }
+  return g;
+}
+
 const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
 const _v = new THREE.Vector3();
@@ -1419,6 +1438,13 @@ export class PropKit {
       this.box(p.m, p.lo[0], p.lo[1], p.lo[2], p.hi[0], p.hi[1], p.hi[2]);
     } else if (p.look === 'capsule') {
       this.capsule(p.m, p.a, p.b, p.r, p.seg);
+    } else if (this.onFloor && (p.rTop == null || Math.abs(p.rTop - p.r) < 1e-6) && this.onFloor(p)) {
+      /* Drawn from its foot up, so the cap left off is the one on the floor. */
+      const foot = p.a[1] <= p.b[1] ? [p.a, p.b] : [p.b, p.a];
+      const m = alongMatrix(foot[0], foot[1], p.r, p.r, new THREE.Matrix4());
+      if (m) {
+        this.add(p.m, footCyl(p.seg ?? 8), m);
+      }
     } else {
       this.cyl(p.m, p.a, p.b, p.r, p.seg, p.rTop);
     }

@@ -1128,6 +1128,7 @@ export const MAP_PRELOAD = {
     'maps/sunny/palette.js',
     'maps/built/ground.js',
     'maps/built/logosurface.js',
+    'maps/built/sea.js',
     'maps/arctic/frame.js',
     'maps/arctic/terrain.js',
     'maps/arctic/plan.js',
@@ -1551,6 +1552,7 @@ export const MAP_PRELOAD = {
     'maps/shiokaze/park.js',
     'maps/shiokaze/yard.js',
     'maps/shiokaze/signs.js',
+    'maps/built/sea.js',
   ],
   cedar: [
     'maps/cedar/index.js',

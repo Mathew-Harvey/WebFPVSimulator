@@ -397,9 +397,15 @@ function centroid(poly) {
   return [x / poly.length, y / poly.length];
 }
 
-/* The rock's rows: two greys in turn, the wet band in the last metre and
- * a half over the sea. */
-const rockRows = (wetTo) => (k, n, hBottom) => (hBottom < wetTo ? 'skWet' : k % 2 === 0 ? 'skRock' : 'skRockDark');
+/*
+ * The rock's rows: the light grey, with a dark stratum every few rows
+ * where the count falls, and the wet band in the last metre and a half
+ * over the sea. The two greys used to take every other row, which drew
+ * every stack and cliff as a striped barrel (the owner's "not minecraft
+ * all blocky", pass 4). A manga background inks a rock as one tone with a
+ * few hard dark seams, and the cel light does the rest. Same triangles.
+ */
+const rockRows = (wetTo) => (k, n, hBottom) => (hBottom < wetTo ? 'skWet' : (k * 3 + n) % 4 === 1 ? 'skRockDark' : 'skRock');
 
 /*
  * A TERRACE: its top, its cliff and its solid. `top` is a ground colour,
@@ -456,7 +462,7 @@ function seaRock(T, s, name) {
   }
   const scale = (h) => 1 - s.taper * (h / s.h);
   T.mesh('skRockWarm', topTris(poly.map(([x, y]) => [s.px + (x - s.px) * (1 - s.taper), s.py + (y - s.py) * (1 - s.taper)]), s.h));
-  cliff(T, poly, 0, s.h, { seed: s.seed + 1, jag: 0.6, rows: rockRows(1.5), scale });
+  cliff(T, poly, 0, s.h, { seed: s.seed + 1, jag: 1.3, rows: rockRows(1.5), scale });
   /* The solid row by row, each at the row's own top. */
   const rows = Math.max(1, Math.round(s.h / ROW));
   for (let k = 0; k < rows; k += 1) {

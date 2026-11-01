@@ -19,8 +19,9 @@
  * walls flat. Nothing of the columns is solid and none of them stands more
  * than 0.55 m off the wall, so the flight is the same on every preset.
  *
- * THE SEA is one plane at the plant's sea level, in the cel colours, so the
- * cliffs and the bergs throw their shadows on it.
+ * THE SEA is one plane at the plant's sea level, the comic's inked swell
+ * (../built/sea.js) on the cel material, so the cliffs and the bergs throw
+ * their shadows on it.
  *
  * FOR THE LATENCY RULE: this file loads only when the island is chosen. On
  * the island, everything is baked into the built map's batches and merged
@@ -53,6 +54,7 @@ import { qualityFor } from '../../render/quality.js';
 import { paintMaterial } from '../../art/stf.js';
 import { partnerAllowed } from '../../steam/edition.js';
 import { mergeProps } from '../sunny/palette.js';
+import { seaMesh } from '../built/sea.js';
 import { chunkOf, nearOf, rng } from './frame.js';
 import {
   grid, noise, NX, NZ, CELL, GX0, GZ0, WALL_FOOT, QUAY_TOP, GROTTO, GROTTO_ROOF, isTopCell, isLandCell,
@@ -510,13 +512,18 @@ function wireLines(I) {
   return lines;
 }
 
-/* The sea: one plane, far past the fog, in the chunk of its own. */
-function drawSea(kit) {
-  const g = new THREE.PlaneGeometry(5000, 5000, 1, 1);
-  g.rotateX(-Math.PI / 2);
-  kit.begin(0, 0, 0, 0, 'sea');
-  kit.add('arSea', g);
-}
+/*
+ * The sea: one plane, far past the fog, on the comic's open water picture
+ * (../built/sea.js) in the cold sea's tones, on the cel material so the
+ * cliffs and the bergs still shade it. It was a plain tone; pass 4 gave it
+ * the inked swell Shiokaze Point's has, held still here. 2400 m in four
+ * cells, the picture every 40 m: eight triangles against the old plane's
+ * two, and the same one draw call.
+ */
+const ARCTIC_SEA = {
+  size: 2400, cells: 2, tile: 40, y: 0, name: 'arctic sea', litTint: 0x2e3f66,
+  tones: { base: '#46708a', trough: '#3d6580', sky: '#5b84a0', ink: '#24405c', glint: '#e4eef5', light: '#a9c3d4' },
+};
 
 /* THE NEAR CULL, as Sunnyfield's: the near cells off past `r`. */
 function nearCull(props, r) {
@@ -566,7 +573,6 @@ export async function buildMap(shell, onProgress, options) {
     draw: (kit) => {
       drawLand(kit);
       drawCliffs(kit, low);
-      drawSea(kit);
       drawIsle(kit, I, low);
     },
     floor: arcticFloor,
@@ -588,6 +594,7 @@ export async function buildMap(shell, onProgress, options) {
       m.visible = false;
     }
   }
+  map.scene.add(seaMesh(ARCTIC_SEA).mesh);
   const props = map.scene.getObjectByName('props');
   /* The dressing casts no shadow, as Sunnyfield's does not. */
   if (props) {

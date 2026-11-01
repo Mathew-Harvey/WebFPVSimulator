@@ -73894,3 +73894,9 @@ Cost: none. Sanatorium census identical to the parent in all four views (87/96/9
 The pilot's first view on the dunes map was a deck of one even orange. About one board in five is now silver grey `dnDrift` timber the sun and salt have got at (`deco`, fine, so the sheet path: two triangles a board, none on Low), and sand the wind has blown up onto the deck is banked against the sea rail and in the far corners (four low `dnSand` blobs, fine, under 0.3 m so nothing to fly round). First tried in `dnSlat`, which read olive green against the timber; dropped for the greyer driftwood.
 
 Cost, High, against the parent: same calls in all four views, +232 triangles. Against a7285fa, before pass 4: 550,891 / 555,865 / 525,323 / 696,047 now, 556,727 / 561,317 / 530,653 / 701,005 then, so still about 5,000 under. Low: the boards and sand are fine, so not drawn. `npm run check:dunes` passed, `lint:quality` 71 of 71. Not flown.
+
+### 2026-11-01: the snow harbour's quay, wet by the sea and old snow at the back (pass 4, batch 11)
+
+The quay the pilot starts on was one clean pale slab. `patch()` in `src/maps/arctic/hamlet.js` lays a jittered octagon on a level top (the map's own `poly`, the shape its ice floes already use): dark `arConcreteDark` patches every five to nine metres along the sea edge where spray keeps it wet, and `arSnowDirty` drifts along the back where the plough left them, all fine (none on Low), never solid, kept clear of the start pads.
+
+Cost, High, against the parent: same calls in all four views, +880 triangles. Against a7285fa: 383,591 / 445,927 / 446,143 / 452,495 now, 390,423 / 453,203 / 453,419 / 459,771 then, so about 6,800 under. `npm run check:arctic` passed, `lint:quality` 71 of 71. The octagons are flat and a little geometric, in keeping with the floes; worth a look when flown. Not flown.

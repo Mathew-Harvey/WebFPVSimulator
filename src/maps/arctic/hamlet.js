@@ -39,6 +39,8 @@ import { HAMLET_H, QUAY_TOP, groundAt } from './terrain.js';
 
 /* The quay's apron: its sea face is the coast at z = QUAY.z1. */
 export const QUAY = { x0: 27, x1: 129, z0: 84, z1: 99 };
+/* The start's x on the quay (./plan.js SPAWN), kept clear of the apron's patches. */
+const SPAWN_X = 48;
 /* The pier, on two rows of piles, its deck high enough to fly under. */
 export const PIER = { x0: 58.5, x1: 61.5, z0: 99, z1: 128, deck0: 2.9, deck1: 3.2, piles: [58.8, 61.2] };
 /* The net shed that stands open at both ends. */
@@ -321,6 +323,20 @@ export function wires(I, a, b, sag = 0.6) {
   }
 }
 
+/* A patch lying on a level top: an octagon in the box (x0, z0)..(x1, z1),
+ * each corner cut by its own share and nudged, so no two read as the same
+ * shape. Paint: fine, a hair proud of the top, never solid. */
+function patch(I, r, m, x0, z0, x1, z1, top) {
+  const s = Math.min(x1 - x0, z1 - z0);
+  const c = [0, 1, 2, 3].map(() => r.range(0.18, 0.42) * s);
+  const j = () => r.range(-0.08, 0.08) * s;
+  const pts = [
+    [x0 + c[0], z0 + j()], [x1 - c[1], z0 + j()], [x1 + j(), z0 + c[1]], [x1 + j(), z1 - c[2]],
+    [x1 - c[2], z1 + j()], [x0 + c[3], z1 + j()], [x0 + j(), z1 - c[3]], [x0 + j(), z0 + c[0]],
+  ];
+  I.poly(m, m, pts, top, top + 0.012, true);
+}
+
 export function hamletLayout(I) {
   const r = rng(81);
   const y = HAMLET_H;
@@ -336,6 +352,21 @@ export function hamletLayout(I) {
     I.dress(() => {
       I.cyl('arTyre', [x + 2, QUAY_TOP - 0.5, QUAY.z1 + 0.15], [x + 2, QUAY_TOP - 0.5, QUAY.z1 + 0.5], 0.45, 8);
     });
+  }
+  /* The apron is not one clean slab: dark where the spray off the
+   * harbour keeps it wet along the sea edge, and old snow lying in drifts
+   * along the back where the plough left it. Clear of the start pads. */
+  const wet = rng(83);
+  for (let x = QUAY.x0 + 2; x < QUAY.x1 - 6; x += wet.range(5, 9)) {
+    const len = wet.range(3.5, 7);
+    if (Math.abs(x + len / 2 - SPAWN_X) < 4 + len / 2) {
+      continue;
+    }
+    patch(I, wet, 'arConcreteDark', x, QUAY.z1 - wet.range(4, 6.5), x + len, QUAY.z1 - 0.7, QUAY_TOP);
+  }
+  for (let x = QUAY.x0 + 1; x < QUAY.x1 - 4; x += wet.range(9, 16)) {
+    const len = wet.range(4, 9);
+    patch(I, wet, 'arSnowDirty', x, QUAY.z0 + 0.1, x + len, QUAY.z0 + wet.range(1.4, 2.6), QUAY_TOP);
   }
   /* The breakwaters, their armour and their lights. */
   for (const b of BREAKWATERS) {

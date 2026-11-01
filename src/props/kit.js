@@ -517,6 +517,25 @@ function floorBox() {
   return g;
 }
 
+/*
+ * A unit box with only its two faces across `axis` (0 x, 1 y, 2 z), for
+ * paint (pass 4 of 2026-11-01): a layer of colour a centimetre or two
+ * thick on a wall or a floor, a window, a line, a stain. Its four edges
+ * are slivers no wider than the layer is thick, seen only edge on, and
+ * were eight of its twelve triangles. BoxGeometry's faces are +x, -x, +y,
+ * -y, +z, -z, six indices each.
+ */
+function sheetBox(axis) {
+  const g = new THREE.BoxGeometry(1, 1, 1);
+  const idx = Array.from(g.index.array);
+  g.setIndex(idx.slice(axis * 12, axis * 12 + 12));
+  g.clearGroups();
+  return g;
+}
+
+/* How thin paint is, at most, to be drawn as a sheet. */
+const SHEET = 0.03;
+
 /* ------------------------------------------------------------------ *
  * Shared geometry: unit shapes scaled by a matrix, so the batches clone
  * one small buffer each time rather than building a new one.
@@ -525,6 +544,7 @@ function floorBox() {
 const UNIT = {
   box: new THREE.BoxGeometry(1, 1, 1),
   floorBox: floorBox(),
+  sheet: [sheetBox(0), sheetBox(1), sheetBox(2)],
   ball: roundSphere(new THREE.IcosahedronGeometry(1, 1)),
   blob: new THREE.IcosahedronGeometry(1, 0),
   leaf: roundBlob(),
@@ -1431,6 +1451,14 @@ export class PropKit {
     }
     this.counts.parts += 1;
     if (p.t === 'box') {
+      if (p.cast === false) {
+        const d = [p.hi[0] - p.lo[0], p.hi[1] - p.lo[1], p.hi[2] - p.lo[2]].map(Math.abs);
+        const axis = d.indexOf(Math.min(...d));
+        if (d[axis] < SHEET && d[(axis + 1) % 3] > SHEET * 4 && d[(axis + 2) % 3] > SHEET * 4) {
+          this.box(p.m, p.lo[0], p.lo[1], p.lo[2], p.hi[0], p.hi[1], p.hi[2], UNIT.sheet[axis]);
+          return;
+        }
+      }
       if (this.onFloor && this.onFloor(p)) {
         this.box(p.m, p.lo[0], p.lo[1], p.lo[2], p.hi[0], p.hi[1], p.hi[2], UNIT.floorBox);
         return;

@@ -116,6 +116,19 @@ function house(T, x0, y0, x1, y1, h, opts, r) {
   for (let x = x0 + 1; x < x1 - 1.6; x += 2.4) {
     T.paint(r.chance(0.3) ? 'skGlass' : 'skVoid', x, y0 - 0.03, TOP + 3.6, x + 1.4, y0, TOP + 5.2);
   }
+  /* The back and the gable ends had no openings at all, a plaster box seen
+   * from the road behind (the manga pass of 2026-11-01): a row of small
+   * windows on the back on both floors and one up in each end, in the
+   * paints the front already uses, so no material is added. */
+  for (let x = x0 + 1.4; x < x1 - 1.6; x += 3.2) {
+    T.paint('skVoid', x, y1, TOP + 1.2, x + 1.0, y1 + 0.03, TOP + 2.2);
+    T.paint(r.chance(0.3) ? 'skGlass' : 'skVoid', x, y1, TOP + 3.8, x + 1.0, y1 + 0.03, TOP + 4.9);
+  }
+  const ym = (y0 + y1) / 2;
+  for (const [xa, xb] of [[x0 - 0.03, x0], [x1, x1 + 0.03]]) {
+    T.paint('skVoid', xa, ym - 0.6, TOP + 3.8, xb, ym + 0.6, TOP + 4.9);
+    T.paint('skVoid', xa, ym - 0.6, TOP + 1.2, xb, ym + 0.6, TOP + 2.2);
+  }
   T.dress(() => {
     for (let q = 0; q < 14; q += 1) {
       const z = TOP + 0.2 + q * 0.17;

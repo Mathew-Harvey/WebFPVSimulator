@@ -92,6 +92,42 @@ function gorge(B) {
     B.paint('tgRockDark', sx, a - 0.02, GORGE.floor + 5.2, sx + 8, a + 0.02, GORGE.floor + 6.4);
     B.paint('tgRockDark', sx, b - 0.02, GORGE.floor + 9.6, sx + 8, b + 0.02, GORGE.floor + 10.3);
   }
+  /* THE LEDGES (the manga pass of 2026-11-01). Each wall was a run of
+   * eight metre boxes, a sheer face stepped at every seam: the blocky look
+   * the owner asked to lose. Over each face now stand three to five
+   * strata, slabs pushed out by a different amount each and running past
+   * the seams by a random metre or two, so the face reads as a drawn rock
+   * of ledges and every ledge is an ink line, as Shiokaze's cliffs are
+   * (../shiokaze/terrain.js). Drawn only: the boxes stay the solid, and a
+   * slab stands at most 0.9 m proud of them, so the rock a pilot sees is
+   * never further in than the rock that stops them. In the materials the
+   * walls already use, so no batch and no draw call is added. */
+  const rs = rng(7177);
+  for (let sx = GORGE_X0; sx < GORGE_END; sx += 8) {
+    const [a, b] = lipsAt(sx);
+    const prev = lipsAt(sx - 8);
+    const next = lipsAt(sx + 8);
+    for (const [face, sign, i] of [[a, 1, 0], [b, -1, 1]]) {
+      /* Past a seam only where the next face is in line with this one: at
+       * a jog the slab would be a fin standing in the air. */
+      const runW = sx > GORGE_X0 && prev[i] === face ? 1.6 : 0;
+      const runE = next[i] === face ? 1.6 : 0;
+      const top = lipTop(sx, sx + 8, face) - 0.4;
+      let z = GORGE.floor - 0.5;
+      let k = 0;
+      while (z < top - 1.2) {
+        const ht = Math.min(top - z, rs.range(2.2, 4.4));
+        const out = rs.range(0.25, 0.9);
+        const x0 = sx - rs.range(0, runW);
+        const x1 = Math.min(GORGE_END, sx + 8 + rs.range(0, runE));
+        const y0 = sign > 0 ? face - 0.1 : face - out;
+        const y1 = sign > 0 ? face + out : face + 0.1;
+        B.deco(k % 2 ? 'tgRockDark' : 'tgRock', x0, y0, z, x1, y1, z + ht);
+        z += ht;
+        k += 1;
+      }
+    }
+  }
   /* The head of the gorge, where the river falls in. */
   const [a0, b0] = lipsAt(GORGE_X0);
   B.box('tgRock', GORGE_X0 - 6, a0 - 6, lo, GORGE_X0, b0 + 6, lipTop(GORGE_X0, GORGE_X0, (a0 + b0) / 2), { name: 'gorge head' });

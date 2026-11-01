@@ -504,7 +504,7 @@ export function lookedTownMaterial(m, look) {
 
 const UNIT = {
   box: new THREE.BoxGeometry(1, 1, 1),
-  ball: new THREE.IcosahedronGeometry(1, 1),
+  ball: roundSphere(new THREE.IcosahedronGeometry(1, 1)),
   blob: new THREE.IcosahedronGeometry(1, 0),
   leaf: roundBlob(),
 };
@@ -535,7 +535,18 @@ const UNIT = {
  * thousand more triangles a tree: 5,670 to 22,680 in the default yard.
  */
 function roundBlob() {
-  const g = new THREE.IcosahedronGeometry(0.92, 1);
+  return roundSphere(new THREE.IcosahedronGeometry(0.92, 1));
+}
+
+/*
+ * A ball's normals taken from the sphere, the canopy blob's fix above put
+ * on kit.ball too (the manga pass of 2026-11-01). Three.js gives the
+ * eighty faced icosahedron every vertex its face's normal, so a ginkgo's
+ * crown, a lantern, a buoy or a pear was a cut gem in eighty flat tones
+ * close up, which is the blocky look the owner asked to lose. The same
+ * triangles and the same vertices, so the frame costs what it did.
+ */
+function roundSphere(g) {
   const p = g.attributes.position;
   const n = g.attributes.normal;
   const v = new THREE.Vector3();

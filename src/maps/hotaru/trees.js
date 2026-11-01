@@ -274,6 +274,16 @@ function geo(K, key) {
     const T3 = K.THREE;
     GEO[key] = new T3.IcosahedronGeometry(1, 0);
     GEO[key].setIndex(Array.from({ length: GEO[key].attributes.position.count }, (_, i) => i));
+    /* Shaded round (the manga pass of 2026-11-01): every vertex is on the
+     * unit sphere, so its normal is its own direction, and a tuft takes two
+     * or three clean cel bands instead of twenty lit and shaded facets. The
+     * kit's canopy blob did the same (roundBlob); same triangles. */
+    const p = GEO[key].attributes.position;
+    const n = GEO[key].attributes.normal;
+    for (let i = 0; i < p.count; i += 1) {
+      const l = Math.hypot(p.getX(i), p.getY(i), p.getZ(i)) || 1;
+      n.setXYZ(i, p.getX(i) / l, p.getY(i) / l, p.getZ(i) / l);
+    }
   }
   return GEO[key];
 }

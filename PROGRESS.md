@@ -73780,3 +73780,10 @@ Follow-up, same day, Mat 11:50Z over the Fly solo page: "if click on free style 
 - The Fly solo cards that name a shelf now open it: Freestyle opens the freestyle maps picker, Five inch racing and Whoop racing open the tracks picker, always (`way-` branch in `act()`, src/ui/ui.js). Before, a seated track or world skipped the picker and landed on the menu behind the gate. Five inch racing follows Whoop racing for consistency, which he did not name. Career, Builder and Mini games unchanged.
 - Cost: a pilot who wants their last seated map flown again now picks it in the picker (it is the chosen card) instead of pressing Fly on the menu. Say so if the one-keypress path should come back.
 - Checked: syntax only. Any check that drives a way card and expects the menu behind it (shell-check, shots flows) may now see the picker; not run.
+
+Follow-up 2, same day, Mat 11:54Z: "if i select freestyle, i should not see the mini game maps, however i should be able to fly the drift and mx maps just with no filming scoring, the filming scoring is in the mini game map".
+
+- Freestyle's map list no longer shows 90%er goat herding or Quad Ball (src/ui/ui.js, `miniOnly` in the freestyle screen's items). They list when the pilot came from a Mini games panel (`mapGamePick`, now set before the shelf is built in `playMapGame`), a dogfight arena pick or a room host pick, so the mini games and Host a room still find them.
+- Drift Matsuri and Ridgeline MX stay in Freestyle. Flown from there they have no viewfinder and no filming score: `filmFrame` in src/main.js shows and feeds the HUD only while a Drift round is the running fight game. The "You are the camera" launch line likewise only in the round. Before, plain Freestyle on those two maps ran the film scoring.
+- Reading I took: "mini game maps" are the two that exist only as a game (goats, ball). If drift and MX should also leave the Freestyle list while staying flyable some other way, say so.
+- Checked: syntax only. Not run: minigames-check, shots, verify. Latency: removes a HUD and the per frame film drain from plain freestyle on two maps, adds nothing; not measured.

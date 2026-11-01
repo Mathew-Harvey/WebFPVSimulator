@@ -1922,7 +1922,10 @@ export async function boot({ loading, bootStart, mapId }) {
     /* A dogfight or ribbon cutting on the map is the game being played:
      * the take's HUD sat over the fight's, two games on one screen. */
     /* A Drift Matsuri round is this game with bots: its viewfinder stays. */
-    const filming = !fightGame || fightKind === 'drift';
+    /* Filming and its score belong to the mini game (the owner,
+     * 2026-11-01): plain Freestyle on the drift and motocross maps is just
+     * flying them. */
+    const filming = Boolean(fightGame) && fightKind === 'drift';
     ui.filmHud.setVisible(Boolean(game) && filming && !replayMode && (ui.screen === 'flight' || ui.screen === 'paused'));
     if (!game) {
       return;
@@ -13464,7 +13467,7 @@ export async function boot({ loading, bootStart, mapId }) {
       let second = runLaps === PRACTICE_LAPS
         ? '\nPractice: no lap limit. The green gate starts your lap'
         : '\nThe green gate starts your lap';
-      if (race.freestyle && view.filmGame) {
+      if (race.freestyle && view.filmGame && fightGame) {
         /* Drift Matsuri: the take is the game, and it starts in the air. */
         second = view.filmGame.words ? view.filmGame.words.tip : '\nYou are the camera. Film the drift battles for a minute.';
       } else if (race.freestyle && view.goatGame) {

@@ -10349,7 +10349,14 @@ export class Ui {
        * seat back (bug-850375dc), and without the card this room is the
        * one place in the menu that says "The town" and cannot load it.
        */
-      const worlds = MAPS.filter((x) => x.mode === 'freestyle');
+      /* Goat herding and Quad Ball are mini games and nothing else, so
+       * Freestyle does not list them (the owner, 2026-11-01). Their panels
+       * on the Mini games page set mapGamePick before the shelf is read, and
+       * a room or a fight's arena pick still lists every map. Drift Matsuri
+       * and Ridgeline MX stay: flown here they are only maps, with no
+       * filming score (main.js filmFrame). */
+      const miniOnly = !this.mapGamePick && !this.fightPick && !this.hostPick;
+      const worlds = MAPS.filter((x) => x.mode === 'freestyle' && !(miniOnly && (x.id === 'goats' || x.id === 'ball')));
       const cards = worlds.length > 1 || !seatedFreestyleMap(s) ? worlds.map((x) => ({
         label: x.name,
         note: x.note,
@@ -13750,8 +13757,10 @@ export class Ui {
       this.craftGate = false;
       this.settings.airframeAsked = true;
     }
-    this.pickerShelfChosen('maps');
+    /* Before the shelf is built: Freestyle does not list the mini game
+     * maps, and this is how the shelf knows the pilot came for one. */
     this.mapGamePick = true;
+    this.pickerShelfChosen('maps');
     /* The picker is fetched on its first visit (mountPicker), so the very
      * first game played from the page waits for it, on the map cards. */
     if (!this.pickerLib) {

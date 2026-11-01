@@ -24,7 +24,7 @@
 import { Vale, worldAt, W, D, chunkOf } from './frame.js';
 import { landAt, worldFloor, shoreAt, nearestOnLine, RIVER, RIVER_HALF, TERRACES, WATER, BAMBOO, QUAY } from './land.js';
 import {
-  village, fields, archBridge, bridges, villageKeepOut, paddies, onRoad, polePlaces, ROAD, BILLBOARDS, BOARD, billboard,
+  village, fields, archBridge, bridges, villageKeepOut, paddies, onRoad, polePlaces, ROAD, ROAD_T, BILLBOARDS, BOARD, billboard,
   KURAS, BARN_LOT, GASSHOS, FLUME, KAKI, BUS_STOP, RACK, roadPieces, MILL_LANE, TERRACE_ROAD, ROAD_W,
 } from './village.js';
 import { castle, inCastle } from './castle.js';
@@ -129,19 +129,19 @@ function powerLine(T, keep) {
 function roads(T) {
   let k = 0;
   for (const p of roadPieces()) {
-    T.rod(p.m, p.a, p.b, p.w, 0.07);
+    T.rod(p.m, p.a, p.b, p.w, ROAD_T);
     if (p.line && (k += 1) % 2 === 0) {
       const f = 0.2;
-      const a = [p.a[0] + (p.b[0] - p.a[0]) * f, p.a[1] + (p.b[1] - p.a[1]) * f, p.a[2] + 0.04];
-      const b = [p.a[0] + (p.b[0] - p.a[0]) * (1 - f), p.a[1] + (p.b[1] - p.a[1]) * (1 - f), p.b[2] + 0.04];
-      T.rod('hvLine', a, b, 0.14, 0.02);
+      const a = [p.a[0] + (p.b[0] - p.a[0]) * f, p.a[1] + (p.b[1] - p.a[1]) * f, p.a[2] + ROAD_T / 2];
+      const b = [p.a[0] + (p.b[0] - p.a[0]) * (1 - f), p.a[1] + (p.b[1] - p.a[1]) * (1 - f), p.b[2] + ROAD_T / 2];
+      T.rod('hvLine', a, b, 0.14, 0.008);
     }
   }
   for (const [line, w, m] of [[ROAD, ROAD_W, 'hvAsphalt'], [MILL_LANE, 3.5, 'hvGravel'], [TERRACE_ROAD, 4, 'hvAsphalt']]) {
     for (let i = 1; i + 1 < line.length; i += 1) {
       const [px, py] = line[i];
       const h = Math.max(0, landAt(px, py));
-      T.disc(m, px, py, w / 2, h, h + 0.07, 16);
+      T.disc(m, px, py, w / 2, h, h + ROAD_T, 16);
     }
   }
 }

@@ -44,6 +44,15 @@ export const ROAD = [
   [436, 62], [306, 62], [289, 63], [262, 66], [240, 70], [232, 78], [232, 196], [226, 204], [128, 204], [116, 206],
 ];
 export const ROAD_W = 5;
+
+/*
+ * The roads' drawn thickness over the land. The land is the floor and a
+ * road is paint, so this is how far a craft resting on a road sits inside
+ * the asphalt; it was 7 cm, which put the start's mats and a landed craft's
+ * camera under the road's top (the owner, 2026-11-01: "i started under the
+ * road"). Now 2.4 cm, under the mats' 3.
+ */
+export const ROAD_T = 0.024;
 /* The lane to the mill, and the road over the arch bridge to the terraces. */
 export const MILL_LANE = [[214, 206.5], [214, 262]];
 export const TERRACE_ROAD = [[234.5, 118], [254, 118], [282, 118], [318, 120]];
@@ -495,11 +504,15 @@ export function fields(T) {
       scarecrow(T, p.x0 + (p.x1 - p.x0) * hash2(p.n, 45), p.y0 + 3 + (p.y1 - p.y0 - 6) * hash2(p.n, 47), hash2(p.n, 49));
     }
   }
-  /* The terraces: each band of each step a box, earth or dry stone. */
+  /* The terraces: each band of each step a box, earth or dry stone, down
+   * into the valley floor. A box was once only its step and a little
+   * more deep, so the upper steps stood on nothing and a pilot flew under
+   * them from the side (the owner, 2026-11-01). Still one box a band:
+   * the same triangles, only taller. */
   const B = terraceBands();
   for (const t of B) {
     const stone = t.k > 5 || hash2(t.b, t.k + 90) < 0.25;
-    T.box(stone ? 'hvStoneDark' : 'hvEarth', t.x0, t.y0, t.h - TERRACE_STEP - 0.6, TERRACE_COUNT === t.k + 1 ? t.x1 : t.x1 + 0.01, t.y1, t.h, { kind: 'wall', name: 'terrace' });
+    T.box(stone ? 'hvStoneDark' : 'hvEarth', t.x0, t.y0, -0.6, TERRACE_COUNT === t.k + 1 ? t.x1 : t.x1 + 0.01, t.y1, t.h, { kind: 'wall', name: 'terrace' });
     T.dress(() => T.wide(() => {
       T.box('hvAze', t.x0, t.y0, t.h, t.x0 + 0.55, t.y1, t.h + 0.22, { solid: false, cast: false });
     }));
@@ -686,7 +699,7 @@ export function roadPieces() {
           continue;
         }
         const h = Math.max(0, landAt(mx, my), mx > 283 && mx < 299 && my < 70 ? 0.05 : 0);
-        out.push({ a: [...pa, h + 0.035], b: [...pb, h + 0.035], w, m, line: line === ROAD });
+        out.push({ a: [...pa, h + ROAD_T / 2], b: [...pb, h + ROAD_T / 2], w, m, line: line === ROAD });
       }
     }
   }

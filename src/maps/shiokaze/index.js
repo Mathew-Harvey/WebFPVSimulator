@@ -400,19 +400,26 @@ function groundMesh(T, grassMat) {
 }
 
 /*
- * THE SEA, one plane on one picture. The picture is the comic's water: the
- * town's canal blue (PAL.water, 0x93b8ce) with hard edged pale panels of
- * sky in it and short ink strokes of the swell, the strokes a manga
- * artist lays on open water, 256 pixels across and tiled every 24 m. Cut
- * into 48 m cells for the same reason the field's terrain is (the
- * rasteriser's note in ../built/ground.js). Unlit, so it is the same blue
- * under any light, as a flat tone on a page is, and the fog takes it to
- * the horizon. One draw call; it drifts with the swell on the map's clock.
+ * THE SEA, one plane on one picture. The picture is the comic's water,
+ * drawn the way a manga artist inks open sea: a flat tone of the town's
+ * canal blue (PAL.water, 0x93b8ce), long level streaks a shade up and a
+ * shade down for the rows of the swell, and on those rows the shallow
+ * arcs of ink that say "wave", each with a white glint on its back. The
+ * crests sit on rows, never scattered, because scattered marks
+ * read as something floating and rows read as water. 512 pixels across
+ * and tiled every 48 m, so a pilot low over it never sees the same patch
+ * twice in one view (the first picture, 256 over 24 m, repeated its dark
+ * blots in a grid that read as lily pads). Cut into 48 m cells for the
+ * same reason the field's terrain is (the rasteriser's note in
+ * ../built/ground.js). Unlit, so it is the same blue under any light, as
+ * a flat tone on a page is, and the fog takes it to the horizon. One draw
+ * call and one shader, as before; the picture is 1 MB of texture memory
+ * instead of a quarter of one and costs nothing per frame.
  */
-const SEA = { size: 1920, cells: 40, tile: 24, y: -0.03 };
+const SEA = { size: 1920, cells: 40, tile: 48, y: -0.03 };
 
 function seaTexture() {
-  const S = 256;
+  const S = 512;
   const c = document.createElement('canvas');
   c.width = S;
   c.height = S;
@@ -425,50 +432,78 @@ function seaTexture() {
     seed = (Math.imul(seed, 1103515245) + 12345) >>> 0;
     return seed / 4294967296;
   };
-  /* The deeper patches, a shade down, soft edged by being drawn twice. */
-  g.fillStyle = '#86adc6';
-  for (let i = 0; i < 6; i += 1) {
-    const x = rand() * S;
-    const y = rand() * S;
-    for (const [dx, dy] of [[0, 0], [S, 0], [-S, 0], [0, S], [0, -S]]) {
-      g.beginPath();
-      g.ellipse(x + dx, y + dy, 40 + rand() * 30, 14 + rand() * 8, 0, 0, Math.PI * 2);
-      g.fill();
-    }
-  }
-  /* The sky's panels: long pale slivers across the swell. */
-  g.fillStyle = '#c5dbe6';
-  for (let i = 0; i < 9; i += 1) {
-    const x = rand() * S;
-    const y = rand() * S;
-    const w = 22 + rand() * 40;
-    for (const dx of [0, S, -S]) {
-      g.beginPath();
-      g.moveTo(x + dx, y);
-      g.lineTo(x + dx + w, y - 1.5);
-      g.lineTo(x + dx + w * 0.8, y + 2.5);
-      g.lineTo(x + dx + w * 0.1, y + 3);
-      g.closePath();
-      g.fill();
-    }
-  }
-  /* The swell's strokes: short curved ink lines, thick in the middle and
-   * thin at the ends, in the sea's own dark. */
-  g.strokeStyle = '#4f6f8d';
-  g.lineCap = 'round';
-  for (let i = 0; i < 26; i += 1) {
-    const x = rand() * S;
-    const y = rand() * S;
-    const w = 10 + rand() * 16;
+  /* Everything is drawn three times across and three times down, so a
+   * mark that runs off one edge comes back on the other. */
+  const wrap = (draw) => {
     for (const dx of [0, S, -S]) {
       for (const dy of [0, S, -S]) {
-        g.lineWidth = 1.6;
-        g.beginPath();
-        g.moveTo(x + dx - w / 2, y + dy);
-        g.quadraticCurveTo(x + dx, y + dy - 3.5, x + dx + w / 2, y + dy);
-        g.stroke();
+        draw(dx, dy);
       }
     }
+  };
+  /* A level sliver, pointed at both ends: the swell's rows. */
+  const sliver = (x, y, w, h) => wrap((dx, dy) => {
+    g.beginPath();
+    g.moveTo(x + dx, y + dy);
+    g.quadraticCurveTo(x + dx + w / 2, y + dy - h, x + dx + w, y + dy);
+    g.quadraticCurveTo(x + dx + w / 2, y + dy + h * 0.6, x + dx, y + dy);
+    g.fill();
+  });
+  /* The troughs: long darker streaks, a few per row. */
+  g.fillStyle = '#85aac3';
+  for (let i = 0; i < 34; i += 1) {
+    sliver(rand() * S, rand() * S, 70 + rand() * 150, 2.5 + rand() * 3);
+  }
+  /* The sky on the faces: long pale streaks. */
+  g.fillStyle = '#a9c8d9';
+  for (let i = 0; i < 26; i += 1) {
+    sliver(rand() * S, rand() * S, 50 + rand() * 120, 1.5 + rand() * 2);
+  }
+  /* The rows the crests sit on, 14 of them, unevenly spaced. */
+  const rows = [];
+  for (let i = 0; i < 14; i += 1) {
+    rows.push((i + 0.2 + rand() * 0.6) * (S / 14));
+  }
+  /* One crest: a long shallow arc, thick in the middle and thin at the
+   * ends, with a thin white glint under it. Two arcs joined at a cusp
+   * were tried first and read as gulls from a few metres up. */
+  g.lineCap = 'round';
+  const crest = (x, y, w, lift) => wrap((dx, dy) => {
+    const cx = x + dx;
+    const cy = y + dy;
+    g.strokeStyle = '#557592';
+    for (const [lw, k] of [[0.9, 1], [1.8, 0.55]]) {
+      g.lineWidth = lw;
+      g.beginPath();
+      g.moveTo(cx - w * k, cy + lift * (1 - k));
+      g.quadraticCurveTo(cx, cy - lift * (1 + k) * 0.5 - lift * 0.5, cx + w * k, cy + lift * (1 - k));
+      g.stroke();
+    }
+    g.strokeStyle = '#eaf3f7';
+    g.lineWidth = 1.2;
+    g.beginPath();
+    g.moveTo(cx - w * 0.6, cy + 2.4);
+    g.quadraticCurveTo(cx, cy - lift + 2.6, cx + w * 0.5, cy + 2.4);
+    g.stroke();
+  });
+  for (const ry of rows) {
+    /* Each row has its crests in loose runs, with open water between. */
+    let x = rand() * S;
+    const runs = 2 + Math.floor(rand() * 3);
+    for (let k = 0; k < runs; k += 1) {
+      const n = 1 + Math.floor(rand() * 3);
+      for (let j = 0; j < n; j += 1) {
+        const w = 12 + rand() * 14;
+        crest(x, ry + (rand() - 0.5) * 8, w, 1.5 + rand() * 1.5);
+        x += w * 2.2 + 6 + rand() * 18;
+      }
+      x += 50 + rand() * 120;
+    }
+  }
+  /* Loose glints between the rows, the light on the flat water. */
+  g.fillStyle = '#d6e7ef';
+  for (let i = 0; i < 40; i += 1) {
+    sliver(rand() * S, rand() * S, 6 + rand() * 14, 1.2);
   }
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -490,8 +525,15 @@ function seaMesh() {
   return { mesh, tex };
 }
 
-/* The swell's drift, metres a second along each axis of the picture. */
-const DRIFT = [0.35, 0.12];
+/*
+ * The swell's drift, as the milliseconds the picture takes to slide one
+ * tile along each axis: 0.35 and 0.12 metres a second over a 48 m tile.
+ * The map's clock hands updateAnim the whole step count, not the steps
+ * since the last frame, so the offset is read from that count directly.
+ * Summing it as a delta made the sea run faster every frame (Mat flew it
+ * on 2026-11-01: "the water is rushing by, really fast").
+ */
+const DRIFT_MS = [137143, 400000];
 
 export async function buildMap(shell, onProgress, options) {
   const q = qualityFor(options && options.quality);
@@ -558,13 +600,13 @@ export async function buildMap(shell, onProgress, options) {
   map.scene.add(wireLines(T));
   await warmPrograms(shell.renderer, map.scene, shell.camera, map.post.rtScene);
   /* The swell, on the map's clock: the step is the physics' fixed one, so
-   * a replay drifts the same. Wrapped at a tile, so it never loses bits. */
+   * a replay drifts the same. Wrapped at a tile in whole steps, so it never
+   * loses bits however long the map has run. */
   const anim = map.updateAnim;
-  let t = 0;
   map.updateAnim = (step) => {
     anim(step);
-    t += step || 0;
-    sea.tex.offset.set((t * DRIFT[0] / SEA.tile) % 1, (t * DRIFT[1] / SEA.tile) % 1);
+    const n = Math.max(0, Math.floor(step || 0));
+    sea.tex.offset.set((n % DRIFT_MS[0]) / DRIFT_MS[0], (n % DRIFT_MS[1]) / DRIFT_MS[1]);
   };
   return map;
 }

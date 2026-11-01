@@ -73,7 +73,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { Parts, seededRandom } from '../../props/parts.js';
+import { Parts, seededRandom, GAP_MIN } from '../../props/parts.js';
 import { sincos } from '../../props/trig.js';
 
 /* ------------------------------------------------------------------ */
@@ -82,6 +82,9 @@ import { sincos } from '../../props/trig.js';
 
 /* World metres to a real metre, the houses'. */
 export const S = 3.5;
+
+/* The gap rule's clearance in the plan's metres, a hair over. */
+const GAP_PLAN = GAP_MIN / S + 0.01;
 
 /* The building inside, real metres. */
 export const LEN = 24;
@@ -644,7 +647,7 @@ function load(O, x0, y0, x1, y1, h0, h, r, o = {}) {
     const last = k === tiers - 1;
     for (let i = 0; i < nx; i += 1) {
       for (let j = 0; j < ny; j += 1) {
-        if (last && r.chance(0.25)) {
+        if (last && r.chance(0.25) && !o.full) {
           continue;
         }
         const a = x0 + (x1 - x0) * (i / nx);
@@ -1047,27 +1050,34 @@ function core(O) {
 /* The ground floor: goods in                                          */
 /* ------------------------------------------------------------------ */
 
-/* A row of pallet racking along py: blue uprights at every bay, orange
- * beams at each level, a pallet of cartons on most, one solid round the
- * whole row and its load. */
-function racking(O, x0, x1, y0, y1, f, r, face) {
+/*
+ * A row of pallet racking along py: blue uprights at every bay, orange
+ * beams at each level, a pallet of cartons on most. Every part is solid as
+ * it is drawn, so an empty bay is a hole a pilot can fly through, as it
+ * looks. It was one solid box round the whole row until the owner flew it
+ * on 2026-11-01: "every gap i can see i should be able to fly through".
+ * A load is either low enough to leave the gap rule's clearance under the
+ * beam over it, or tall enough to leave less than a craft's width, so the
+ * space over a load is a gap or plainly none, never a slot to misjudge.
+ */
+function racking(O, x0, x1, y0, y1, f, r, face, no) {
   const H = 3.3;
   const levels = [1.15, 2.3];
-  O.hidden(x0, y0, f, x1, y1, f + H, 'racking');
+  const CLEAR = levels[0];
   const bays = Math.max(1, Math.round((y1 - y0) / 2.7));
   const bay = (y1 - y0) / bays;
   const u = 0.08;
   for (let i = 0; i <= bays; i += 1) {
     const y = Math.min(y0 + i * bay, y1 - u);
     for (const x of [x0, x1 - u]) {
-      O.box('ofRack', x, y, f, x + u, y + u, f + H, { name: 'upright', solid: false });
+      O.box('ofRack', x, y, f, x + u, y + u, f + H, { name: 'upright' });
     }
-    O.fine('ofRack', x0 + u, y + 0.02, f + 0.3, x1 - u, y + 0.05, f + 0.34, 'brace');
-    O.fine('ofRack', x0 + u, y + 0.02, f + 1.8, x1 - u, y + 0.05, f + 1.84, 'brace');
+    O.box('ofRack', x0 + u, y + 0.02, f + 0.3, x1 - u, y + 0.05, f + 0.34, { name: 'brace' });
+    O.box('ofRack', x0 + u, y + 0.02, f + 1.8, x1 - u, y + 0.05, f + 1.84, { name: 'brace' });
   }
   for (const h of levels) {
     for (const x of [x0, x1 - u]) {
-      O.box('ofRackBeam', x, y0, f + h - 0.1, x + u, y1, f + h, { name: 'beam', solid: false });
+      O.box('ofRackBeam', x, y0, f + h - 0.1, x + u, y1, f + h, { name: 'beam' });
     }
   }
   for (let i = 0; i < bays; i += 1) {
@@ -1077,23 +1087,31 @@ function racking(O, x0, x1, y0, y1, f, r, face) {
       if (r.chance(k === 0 ? 0.1 : 0.2)) {
         return;
       }
-      for (const [c0, c1] of [[b0 + 0.08, (b0 + b1) / 2 - 0.04], [(b0 + b1) / 2 + 0.04, b1 - 0.08]]) {
+      for (const [c0, c1] of [[b0 + 0.16, (b0 + b1) / 2 - 0.005], [(b0 + b1) / 2 + 0.005, b1 - 0.16]]) {
         if (r.chance(0.15)) {
           continue;
         }
         const top = f + h + (k === 0 ? 0 : 0.0);
         const px0 = x0 + 0.05;
         const px1 = x1 - 0.05;
-        const p0 = O.box('ofPallet', px0, c0, top, px1, c1, top + 0.14, { name: 'pallet', solid: false });
-        if (p0) {
-          p0.fine = false;
-        }
-        const ht = r.range(0.45, k === 2 ? 0.9 : 0.85);
-        if (r.chance(0.25)) {
-          O.box('ofWrap', px0 + 0.03, c0 + 0.03, top + 0.14, px1 - 0.03, c1 - 0.03, top + 0.14 + ht, { name: 'wrapped', solid: false });
+        O.box('ofPallet', px0, c0, top, px1, c1, top + 0.14, { name: 'pallet' });
+        /* Under the level over it: low (the gap rule's clearance over it)
+         * or full (less than a craft's width over it), from the one draw
+         * the row always took. The top level has nothing over it. More
+         * pallets are wrapped than were, one box for a stack of cartons,
+         * so the floor draws fewer parts than when the racking was one
+         * hidden solid. */
+        const room = CLEAR - 0.14;
+        const v = r.range(0.45, k === 2 ? 0.9 : 0.85);
+        const t = (v - 0.45) / 0.4;
+        const ht = k === 2
+          ? v
+          : (t < 0.5 ? 0.4 + (room - GAP_PLAN - 0.4) * t * 2 : room - 0.08 + 0.05 * (t - 0.5) * 2);
+        if (r.chance(0.8)) {
+          O.box('ofWrap', px0 + 0.03, c0 + 0.03, top + 0.14, px1 - 0.03, c1 - 0.03, top + 0.14 + ht, { name: 'wrapped' });
           O.fine('ofCard', px0 + 0.02, c0 + 0.05, top + 0.2, px1 - 0.02, c1 - 0.05, top + 0.1 + ht, 'wrapped');
         } else {
-          load(O, px0 + 0.02, c0 + 0.02, px1 - 0.02, c1 - 0.02, top + 0.14, ht, r, { solid: false, labels: 0 });
+          load(O, px0 + 0.02, c0 + 0.02, px1 - 0.02, c1 - 0.02, top + 0.14, ht, r, { labels: 0, full: true });
           const lx = face > 0 ? px1 - 0.02 : px0 + 0.02;
           if (r.chance(0.6)) {
             O.sign(r.pick(['fragile', 'thisway', 'boxLabel']), lx, (c0 + c1) / 2, top + 0.14 + ht * 0.5, 0.26, 0.16, face > 0 ? 'e' : 'w', { lift: 0.004 });
@@ -1103,32 +1121,42 @@ function racking(O, x0, x1, y0, y1, f, r, face) {
     });
   }
   /* The bay's number on the beam's end. */
-  O.sign(`rack${r.int(1, 9)}`, (x0 + x1) / 2, y0 - 0.01, f + 3.1, 0.4, 0.4, 's');
+  O.sign(no, (x0 + x1) / 2, y0 - 0.01, f + 3.1, 0.4, 0.4, 's');
 }
 
-/* A roll cage: four posts, the mesh drawn, the load in it, one solid
- * round it to the floor. */
+/* A roll cage: four posts, the mesh, the load in it, each solid as it is
+ * drawn, so its open top and its open east side are open and a square of
+ * its mesh over the load is a hole (the owner's rule of 2026-11-01, at
+ * the racking). The mesh is drawn coarser than it was, now that it is
+ * solid and so drawn on Low too, to keep Low's part count where it was. The hidden solids fill the casters' height under the deck
+ * and the load's, each a slot the gap rule forbids. */
 function rollCage(O, x0, y0, x1, y1, f, r) {
   const H = 1.7;
-  O.hidden(x0, y0, f, x1, y1, f + H, 'roll cage');
+  const mesh = (px0, py0, h0, px1, py1, h1) => O.box('ofCage', px0, py0, h0, px1, py1, h1, { name: 'mesh', cast: false });
   for (const [x, y] of [[x0, y0], [x1 - 0.04, y0], [x0, y1 - 0.04], [x1 - 0.04, y1 - 0.04]]) {
-    O.box('ofCage', x, y, f + 0.12, x + 0.04, y + 0.04, f + H, { name: 'cage post', solid: false });
+    O.box('ofCage', x, y, f + 0.12, x + 0.04, y + 0.04, f + H, { name: 'cage post' });
   }
-  O.box('ofCage', x0, y0, f + 0.12, x1, y1, f + 0.17, { name: 'cage deck', solid: false });
-  for (let h = 0.35; h < H; h += 0.22) {
-    O.fine('ofCage', x0, y0, f + h, x1, y0 + 0.015, f + h + 0.015, 'mesh');
-    O.fine('ofCage', x0, y1 - 0.015, f + h, x1, y1, f + h + 0.015, 'mesh');
-    O.fine('ofCage', x0, y0, f + h, x0 + 0.015, y1, f + h + 0.015, 'mesh');
+  O.box('ofCage', x0, y0, f + 0.12, x1, y1, f + 0.17, { name: 'cage deck' });
+  O.hidden(x0, y0, f, x1, y1, f + 0.12, 'roll cage');
+  for (let h = 0.4; h < H; h += 0.42) {
+    mesh(x0, y0, f + h, x1, y0 + 0.015, f + h + 0.015);
+    mesh(x0, y1 - 0.015, f + h, x1, y1, f + h + 0.015);
+    mesh(x0, y0, f + h, x0 + 0.015, y1, f + h + 0.015);
   }
-  for (let x = x0 + 0.15; x < x1 - 0.1; x += 0.15) {
-    O.fine('ofCage', x, y0, f + 0.17, x + 0.015, y0 + 0.015, f + H, 'mesh');
-    O.fine('ofCage', x, y1 - 0.015, f + 0.17, x + 0.015, y1, f + H, 'mesh');
+  for (let x = x0 + 0.26; x < x1 - 0.2; x += 0.26) {
+    mesh(x, y0, f + 0.17, x + 0.015, y0 + 0.015, f + H);
+    mesh(x, y1 - 0.015, f + 0.17, x + 0.015, y1, f + H);
   }
   for (const [x, y] of [[x0 + 0.05, y0 + 0.05], [x1 - 0.13, y0 + 0.05], [x0 + 0.05, y1 - 0.13], [x1 - 0.13, y1 - 0.13]]) {
     O.box('ofBlack', x, y, f, x + 0.08, y + 0.08, f + 0.12, { name: 'caster', solid: false });
   }
   if (r.chance(0.8)) {
-    load(O, x0 + 0.05, y0 + 0.05, x1 - 0.05, y1 - 0.05, f + 0.17, r.range(0.5, 1.4), r, { solid: false, labels: 0.4 });
+    const h = r.range(0.5, 1.4);
+    load(O, x0 + 0.05, y0 + 0.05, x1 - 0.05, y1 - 0.05, f + 0.17, h, r, { solid: false, labels: 0.4 });
+    /* The load is one solid to the cage's walls: the cartons in a cage
+     * stand a few centimetres off its mesh and off the next cage's, a
+     * slot the gap rule forbids. Over it the cage is open. */
+    O.hidden(x0, y0, f + 0.17, x1, y1, f + 0.17 + h, 'roll cage');
   }
 }
 
@@ -1150,9 +1178,9 @@ function groundFloor(O) {
   }
   /* The racking: along the west wall, a double row, and a single row,
    * each 2.7 m aisle open at both ends. */
-  racking(O, 0.0, 1.2, 0.6, 11.2, f, r, 1);
-  racking(O, 3.9, 6.1, 0.6, 9.6, f, r, -1);
-  racking(O, 8.8, 9.9, 0.6, 9.6, f, r, -1);
+  racking(O, 0.0, 1.2, 0.6, 11.2, f, r, 1, 'rack2');
+  racking(O, 3.9, 6.1, 0.6, 9.6, f, r, -1, 'rack3');
+  racking(O, 8.8, 9.9, 0.6, 9.6, f, r, -1, 'rack5');
   O.paint('ofSlabLine', 3.9, 0.5, f, 6.1, 0.6, f + 0.006, 'line');
   /* The H steel beams across the ceiling and the strip lights hung on
    * their chains between them. */
@@ -1234,7 +1262,7 @@ function groundFloor(O) {
       O.box('ofWrap', x0 + 0.04, y0 + 0.04, f + 0.14, x0 + 1.06, y0 + 1.06, f + 0.14 + h, { name: 'wrapped' });
       O.fine('ofCard', x0 + 0.03, y0 + 0.08, f + 0.2, x0 + 1.07, y0 + 1.02, f + h, 'wrapped');
     } else {
-      load(O, x0 + 0.02, y0 + 0.02, x0 + 1.08, y0 + 1.08, f + 0.14, h, r, { labels: 0.5 });
+      load(O, x0 + 0.02, y0 + 0.02, x0 + 1.08, y0 + 1.08, f + 0.14, h, r, { labels: 0.5, full: true });
     }
   }
   /* The hand pallet truck by them, the forklift parked by the racking. */
@@ -2218,7 +2246,6 @@ function keiTruck(O, x, y, r) {
   /* Nose east: the cab at the east end, the bed west of it. */
   const L = 3.4;
   const W = 1.48;
-  O.hidden(x + 0.2, y + 0.15, 0, x + L - 0.2, y + W - 0.15, 0.4, 'truck');
   O.box('ofKei', x + 2.2, y, 0.4, x + L, y + W, 1.25, { name: 'truck cab' });
   O.box('ofKei', x + 2.2, y + 0.03, 1.25, x + L - 0.05, y + W - 0.03, 1.85, { name: 'truck cab' });
   O.face('ofNbWindow', 'y', x + L, 1, y + 0.1, y + W - 0.1, 1.28, 1.8);
@@ -2239,22 +2266,29 @@ function keiTruck(O, x, y, r) {
   load(O, x + 0.1, y + 0.1, x + 1.3, y + W - 0.1, 0.55, 0.65, r, { labels: 0.5 });
 }
 
-/* A bicycle, parked: two wheels and a frame, drawn, one solid round it. */
+/* A bicycle, parked: two wheels and a frame, each solid as it is drawn,
+ * so the frame's triangle is a gap (the owner's rule of 2026-11-01). A
+ * wheel is a picture with a thin solid disc behind it, its spokes too
+ * close to fly between. */
 function bike(O, px, py, axis) {
   const L = 1.7;
-  const [x0, y0, x1, y1] = axis === 'x' ? [px - 0.25, py - L / 2, px + 0.25, py + L / 2] : [px - L / 2, py - 0.25, px + L / 2, py + 0.25];
-  O.hidden(x0 + 0.15, y0 + 0.1, 0, x1 - 0.15, y1 - 0.1, 1.0, 'bike');
+  const [x0, y0] = axis === 'x' ? [px - 0.25, py - L / 2] : [px - L / 2, py - 0.25];
   const along = (t, h) => (axis === 'x' ? [px, y0 + L * t, h] : [x0 + L * t, py, h]);
   for (const t of [0.18, 0.82]) {
     const [cx, cy, ch] = along(t, 0.33);
+    if (axis === 'x') {
+      O.hidden(cx - 0.02, cy - 0.33, 0, cx + 0.02, cy + 0.33, 0.66, 'bike wheel');
+    } else {
+      O.hidden(cx - 0.33, cy - 0.02, 0, cx + 0.33, cy + 0.02, 0.66, 'bike wheel');
+    }
     O.sign('wheel', cx, cy, ch, 0.66, 0.66, axis === 'x' ? 'e' : 'n', { lift: 0.0 });
     O.sign('wheel', cx, cy, ch, 0.66, 0.66, axis === 'x' ? 'w' : 's', { lift: 0.0 });
   }
-  O.cap('ofBike', along(0.18, 0.33), along(0.45, 0.85), 0.02, { fine: true, seg: 4, name: 'bike frame' });
-  O.cap('ofBike', along(0.45, 0.85), along(0.82, 0.35), 0.02, { fine: true, seg: 4, name: 'bike frame' });
-  O.cap('ofBike', along(0.45, 0.85), along(0.75, 0.9), 0.02, { fine: true, seg: 4, name: 'bike frame' });
-  O.cap('ofBlack', along(0.75, 0.95), along(0.75, 1.0), 0.06, { fine: true, seg: 5, name: 'saddle' });
-  O.cap('ofSteel', along(0.2, 0.9), along(0.2, 1.05), 0.12, { fine: true, seg: 6, name: 'basket' });
+  O.cap('ofBike', along(0.18, 0.33), along(0.45, 0.85), 0.02, { seg: 4, name: 'bike frame' });
+  O.cap('ofBike', along(0.45, 0.85), along(0.82, 0.35), 0.02, { seg: 4, name: 'bike frame' });
+  O.cap('ofBike', along(0.45, 0.85), along(0.75, 0.9), 0.02, { seg: 4, name: 'bike frame' });
+  O.cap('ofBlack', along(0.75, 0.95), along(0.75, 1.0), 0.06, { seg: 5, name: 'saddle' });
+  O.cap('ofSteel', along(0.2, 0.9), along(0.2, 1.05), 0.12, { seg: 6, name: 'basket' });
 }
 
 /* ------------------------------------------------------------------ */

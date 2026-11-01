@@ -123,9 +123,17 @@ export function forest() {
  * which is what lets the forest be as dense as it is (the owner's "we
  * need much more trees", 2026-10-21) at less than the town's frame cost.
  *
- * Solid as two capsules inside what is drawn: the trunk, and a spine
- * through the tiers no wider than the narrowest of them is at that height,
- * so the gaps between trees are as wide as they look.
+ * Solid as three capsules inside what is drawn: the trunk; a ball in the
+ * bottom tier, the largest that fits its cone; and a capsule up through
+ * the two tiers over it, the widest that fits them. They used to be the
+ * trunk and one thin spine, a third of the bottom tier's width, and the
+ * owner flew through the branches on 2026-11-01 ("the trees have no
+ * collision other than the tunks"). The ball and the capsule were fitted
+ * to the three cones numerically (the largest radius whose swept ball
+ * stays inside the stack at every height), so the solid is still inside
+ * the drawing and the gaps between trees are as wide as they look; a
+ * craft now meets the branches about two thirds of the way out from the
+ * trunk instead of a third. One more capsule a fir, nothing more drawn.
  */
 const FIR_TONES = [['alPine0', 'alPine1', 'alPine2'], ['alPine1', 'alPine2', 'alPine2'], ['alPine0', 'alPine0', 'alPine1']];
 
@@ -237,12 +245,11 @@ export function plant(B) {
       continue;
     }
     const sp = firSpec(t);
-    const top = sp.tiers[2];
     B.cap('alTimberDark', at([0, 0, 0]), at([0, sp.tiers[0].y + 0.4, 0]), 0.16 * t.size, { draw: false, name: 'trunk', kind: 'tree' });
-    /* The spine: from the bottom tier's middle, as wide as the top tier is
-     * halfway up it, to near the top. */
-    B.cap('alPine1', at([0, sp.tiers[0].y + sp.tiers[0].h * 0.35, 0]), at([0, top.y + top.h * 0.45, 0]),
-      Math.min(sp.tiers[0].r * 0.55, top.r * 0.55), { draw: false, name: 'canopy', kind: 'canopy' });
+    /* The bottom tier's ball and the upper tiers' capsule, in fractions of
+     * the fir's height (firSpec's tiers), each 5% inside its fit. */
+    B.cap('alPine1', at([0, sp.H * 0.327, 0]), at([0, sp.H * 0.327, 0]), sp.H * 0.14, { draw: false, name: 'canopy', kind: 'canopy' });
+    B.cap('alPine1', at([0, sp.H * 0.45, 0]), at([0, sp.H * 0.70, 0]), sp.H * 0.079, { draw: false, name: 'canopy', kind: 'canopy' });
     const tones = FIR_TONES[t.tone];
     B.draw(t.x, t.z, (K) => {
       K.begin(t.x, t.y, t.z, t.spin, K.chunk);

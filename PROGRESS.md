@@ -73888,3 +73888,9 @@ Cost: none. Sanatorium census identical to the parent in all four views (87/96/9
 ### 2026-11-01: the meadow tone on Suginomori, the FMX stadium's grounds and the park (pass 4, batch 9)
 
 `meadowTone` (batch 8) passed as `plotTone` by `src/maps/cedar/index.js`, `src/maps/fmx/index.js` and `src/maps/park/index.js`, each with its own seed. Tried on the alps and Hotaru too and taken back off: their own terrain covers the plot, so it changed nothing a pilot sees. Census identical to the parent in all four views on all three maps (calls and triangles to the unit). `check:cedar`, `check:fmx`, `check:park` passed, `lint:quality` 71 of 71. Subtle from the air, invisible to a census. Not flown.
+
+### 2026-11-01: Tottori style dunes, the lookout deck weathered (pass 4, batch 10)
+
+The pilot's first view on the dunes map was a deck of one even orange. About one board in five is now silver grey `dnDrift` timber the sun and salt have got at (`deco`, fine, so the sheet path: two triangles a board, none on Low), and sand the wind has blown up onto the deck is banked against the sea rail and in the far corners (four low `dnSand` blobs, fine, under 0.3 m so nothing to fly round). First tried in `dnSlat`, which read olive green against the timber; dropped for the greyer driftwood.
+
+Cost, High, against the parent: same calls in all four views, +232 triangles. Against a7285fa, before pass 4: 550,891 / 555,865 / 525,323 / 696,047 now, 556,727 / 561,317 / 530,653 / 701,005 then, so still about 5,000 under. Low: the boards and sand are fine, so not drawn. `npm run check:dunes` passed, `lint:quality` 71 of 71. Not flown.

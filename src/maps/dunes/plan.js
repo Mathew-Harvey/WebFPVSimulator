@@ -169,6 +169,21 @@ function lookout(C) {
       K.box('dnWoodDark', a[0], a[1], b[2], b[0], b[1], a[2]);
     }
   }, true);
+  /* Boards the sun and the salt have got at, greyer than the rest, here
+   * and there along the deck: paint, two triangles a board. */
+  const grey = seededRandom(0x5a17);
+  for (let x = d.x0 + 0.05; x < d.x1 - 0.5; x += 0.6) {
+    if (grey.next() < 0.22) {
+      C.deco('dnDrift', x, d.y0 + 0.05, d.top, x + 0.55, d.y1 - 0.05, d.top + 0.004, true);
+    }
+  }
+  /* Sand the wind has blown up onto the deck, banked against the rail on
+   * the sea side and in the two far corners, low enough to fly over. */
+  C.draw(540, 118, (K) => {
+    for (const [x, y, rr, hh] of [[d.x0 + 1.4, d.y1 - 1.0, 1.8, 0.22], [d.x1 - 1.6, d.y1 - 1.1, 2.2, 0.28], [538, d.y1 - 0.6, 1.6, 0.16], [d.x1 - 0.8, 111, 1.3, 0.14]]) {
+      K.blob('dnSand', w(x, y, d.top), rr, hh, [0, x, 0]);
+    }
+  }, true);
   /* The posts under it, braced, from the bluff. */
   for (const px of [d.x0 + 0.4, 540, d.x1 - 0.4]) {
     for (const py of [112, d.y1 - 0.4]) {

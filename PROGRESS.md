@@ -73759,3 +73759,7 @@ Scene census and four spawn views per map on High, `origin/main` (b285dc5) again
 - Over all 88 views, draw calls go from 16,221 to 9,785, a 40 percent drop. Scene triangles go from 21.0 M to 20.2 M, down 3.7 percent. Kazahana is up 1.5 percent because of the balloon chase, which is in one run and not the other. Shiokaze is up 0.35 percent from its windows.
 - Tried and binned: Kumoi Towers' ginkgo crowns drawn as the kit's lumpy canopy clumps. They have a scalloped outline instead of the ball's polygon, but cost 14 to 18 percent more triangles in the plaza views. That is not flat, so it was reverted before it was committed.
 - `check:builder` run alone fails one check, "and the ring is at its foot". The same check is recorded as failing on main in earlier entries (4 October and after), and this change does not touch the selection ring. Every other check in it passed.
+
+## 2026-11-01 | ship | Manga and AAA passes 1 to 3 to main
+
+Mat, 2026-11-01 11:39Z: "push everything to main and i'll fly it". PR 210 is fast-forwarded onto main, which had not moved (b285dc5). Not flown before the push: he flies it now.

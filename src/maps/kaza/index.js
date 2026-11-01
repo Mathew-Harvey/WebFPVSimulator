@@ -58,7 +58,7 @@ import { qualityFor } from '../../render/quality.js';
 import { paintMaterial } from '../../art/stf.js';
 import { turbineShape } from '../../props/industrial.js';
 import { cel } from '../city/vendored/core/toon.js';
-import { mergePalette } from '../sunny/palette.js';
+import { mergeProps } from '../sunny/palette.js';
 import { kazaLayout, kazaMarkSpots, W, D, worldAt, chunkOf } from './plan.js';
 import { kazaDocument } from './yard.js';
 import { paintSigns, signMesh } from './signs.js';
@@ -516,7 +516,7 @@ export async function buildMap(shell, onProgress, options) {
       }
     }
   }
-  const palette = props ? mergePalette(props) : { from: 0, to: 0 };
+  const palette = props ? mergeProps(props, map, shell) : { from: 0, to: 0 };
   /* A plain has no kerb: the plot runs on into the land round it. */
   for (const name of ['kerb', 'verge']) {
     const o = map.scene.getObjectByName(name);

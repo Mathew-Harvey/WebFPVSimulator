@@ -56,7 +56,7 @@ import {
 } from './plan.js';
 import { cedarDocument } from './yard.js';
 import { setChunkCut } from './frame.js';
-import { mergePalette } from '../sunny/palette.js';
+import { mergeProps } from '../sunny/palette.js';
 import { whorlGeometry, coniferPoints } from '../../props/kit.js';
 
 /* Chunks across on Low (./frame.js): measured against The town at the
@@ -354,7 +354,7 @@ export async function buildMap(shell, onProgress, options) {
   map.source = 'cedar';
   /* One batch a look in each chunk rather than one a colour. */
   const props = map.scene.getObjectByName('props');
-  const palette = props ? mergePalette(props) : { from: 0, to: 0 };
+  const palette = props ? mergeProps(props, map, shell) : { from: 0, to: 0 };
   /* The stream, cut out of the ground. */
   openGround(map.scene, 'plot', STREAM_HOLE);
   openGround(map.scene, 'terrain', STREAM_HOLE);

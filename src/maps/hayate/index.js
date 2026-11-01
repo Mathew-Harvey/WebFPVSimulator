@@ -74,7 +74,7 @@ import {
 import { Parts } from '../../props/parts.js';
 import { paintSigns, signMesh } from './signs.js';
 import { PIT } from './pits.js';
-import { mergePalette } from '../sunny/palette.js';
+import { mergeProps } from '../sunny/palette.js';
 
 /* A plan heading as a yaw for kit.begin, whose local x it turns onto the
  * heading: render only. */
@@ -672,7 +672,7 @@ export async function buildMap(shell, onProgress, options) {
     }
   }
   const props = map.scene.getObjectByName('props');
-  const palette = props ? mergePalette(props) : { from: 0, to: 0 };
+  const palette = props ? mergeProps(props, map, shell) : { from: 0, to: 0 };
   const stats = map.stats;
   const mountain = volcano(map.scene);
   /* What the map holds, once: triangles by the top level group, for the

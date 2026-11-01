@@ -51,7 +51,7 @@ import { warmPrograms } from '../../render/warm.js';
 import { qualityFor } from '../../render/quality.js';
 import { paintMaterial } from '../../art/stf.js';
 import { nearOf } from '../sunny/frame.js';
-import { mergePalette } from '../sunny/palette.js';
+import { mergeProps } from '../sunny/palette.js';
 import { sanaLayout, sanaMarkSpots, SANA_ID, W, D, worldAt, chunkOf } from './plan.js';
 import { sanaDocument } from './yard.js';
 import { paintSigns, signMesh } from './signs.js';
@@ -280,7 +280,7 @@ export async function buildMap(shell, onProgress, options) {
       }
     }
   }
-  const palette = props ? mergePalette(props) : { from: 0, to: 0 };
+  const palette = props ? mergeProps(props, map, shell) : { from: 0, to: 0 };
   const stats = map.stats;
   const near = props && !low ? nearCull(props, NEAR_R[quality] || NEAR_R.high) : null;
   if (near) {

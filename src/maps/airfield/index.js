@@ -52,7 +52,7 @@ import { cel } from '../city/vendored/core/toon.js';
 import { airfieldLayout, airfieldFloor, airfieldMarkSpots, CHANNEL_HOLE, W, D, worldAt, chunkOf } from './plan.js';
 import { airfieldDocument } from './yard.js';
 import { paintSigns, signMesh } from './signs.js';
-import { mergePalette } from '../sunny/palette.js';
+import { mergeProps } from '../sunny/palette.js';
 import { nearOf } from './frame.js';
 import { smoothTop, OUTER } from './valley.js';
 
@@ -566,7 +566,7 @@ export async function buildMap(shell, onProgress, options) {
       }
     }
   }
-  const palette = props ? mergePalette(props) : { from: 0, to: 0 };
+  const palette = props ? mergeProps(props, map, shell) : { from: 0, to: 0 };
   const stats = map.stats;
   const near = props && !low ? nearCull(props, NEAR_R[quality.id] || NEAR_R.high) : null;
   if (near) {

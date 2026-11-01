@@ -52,7 +52,7 @@ import { warmPrograms } from '../../render/warm.js';
 import { qualityFor } from '../../render/quality.js';
 import { MATERIALS } from '../../props/rally.js';
 import { cel } from '../city/vendored/core/toon.js';
-import { mergePalette } from '../sunny/palette.js';
+import { mergeProps } from '../sunny/palette.js';
 import {
   Place, w, chunkOf, nearOf,
 } from './frame.js';
@@ -371,7 +371,7 @@ export async function buildMap(shell, onProgress, options) {
       }
     }
   }
-  const palette = props ? mergePalette(props) : { from: 0, to: 0 };
+  const palette = props ? mergeProps(props, map, shell) : { from: 0, to: 0 };
   const near = props && !low ? nearCull(props, NEAR_R[qualityFor(options && options.quality).id] || NEAR_R.high) : null;
   if (near) {
     const focus = map.updateShadowFocus;

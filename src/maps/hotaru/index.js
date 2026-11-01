@@ -54,7 +54,7 @@ import { PAL } from '../city/vendored/core/palette.js';
 import { cel } from '../city/vendored/core/toon.js';
 import { hotaruLayout, hotaruFloor, hotaruMarkSpots, W, D, worldAt, chunkOf } from './plan.js';
 import { hotaruDocument } from './yard.js';
-import { mergePalette } from '../sunny/palette.js';
+import { mergeProps } from '../sunny/palette.js';
 import { nearOf, hash2 } from './frame.js';
 import { heights, GX, GY, WATER, shoreAt, inCedarStand, QUAY, HARBOUR_EAST } from './land.js';
 import { drawTree } from './trees.js';
@@ -505,7 +505,7 @@ export async function buildMap(shell, onProgress, options) {
       }
     }
   }
-  const palette = props ? mergePalette(props) : { from: 0, to: 0 };
+  const palette = props ? mergeProps(props, map, shell) : { from: 0, to: 0 };
   const stats = map.stats;
   const near = props && !low ? nearCull(props, NEAR_R[quality] || NEAR_R.high) : null;
   if (near) {

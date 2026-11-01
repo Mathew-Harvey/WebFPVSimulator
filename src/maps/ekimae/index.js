@@ -48,7 +48,7 @@ import { qualityFor } from '../../render/quality.js';
 import { paintMaterial } from '../../art/stf.js';
 import { Film } from '../../game/film.js';
 import { KINDS } from '../../game/collide.js';
-import { mergePalette } from '../sunny/palette.js';
+import { mergeProps } from '../sunny/palette.js';
 import { W, D, w, chunkOf } from './frame.js';
 import { ekimaeLayout, ekimaeMarkSpots, CP } from './plan.js';
 import { ekimaeDocument, groupIds, GROUPS } from './yard.js';
@@ -552,7 +552,7 @@ export async function buildMap(shell, onProgress, options) {
   map.source = 'ekimae';
   /* One batch a look in each chunk rather than one a colour. */
   const props = map.scene.getObjectByName('props');
-  const palette = props ? mergePalette(props) : { from: 0, to: 0 };
+  const palette = props ? mergeProps(props, map, shell) : { from: 0, to: 0 };
   const signs = props ? signAtlas(props) : { from: 0, to: 0 };
   const shadows = props && map.colliders ? solidShadows(props, map.colliders) : { from: 0, to: 0 };
   const stats = map.stats;

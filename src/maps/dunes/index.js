@@ -50,7 +50,7 @@
 import * as THREE from 'three';
 import { buildMap as buildBuilt } from '../built/index.js';
 import { warmPrograms } from '../../render/warm.js';
-import { mergePalette } from '../sunny/palette.js';
+import { mergeProps } from '../sunny/palette.js';
 import { qualityFor } from '../../render/quality.js';
 import { loblollyDraw } from '../../props/street.js';
 import { paintMaterial } from '../../art/stf.js';
@@ -641,7 +641,7 @@ export async function buildMap(shell, onProgress, options) {
    * way (../sunny/palette.js), as nineteen of the other new maps already
    * do (the AAA pass of 2026-11-01: this map was left out). */
   const props = map.scene.getObjectByName('props');
-  const palette = props ? mergePalette(props) : { from: 0, to: 0 };
+  const palette = props ? mergeProps(props, map, shell) : { from: 0, to: 0 };
   const stats = map.stats;
   map.stats = () => ({ ...(stats ? stats() : {}), palette, dunes: { parts: L.parts.length, pines: L.pines, gaps: L.gaps.length } });
   const dispose = map.dispose;

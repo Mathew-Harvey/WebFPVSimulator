@@ -39,7 +39,7 @@ import { domeDocument } from './yard.js';
 import { domeTraffic, makeRider } from './course.js';
 import { drawDome } from './draw.js';
 import { buildTrucks } from './trucks.js';
-import { mergePalette } from '../sunny/palette.js';
+import { mergeProps } from '../sunny/palette.js';
 
 /*
  * THE CHUNKS: the hall is one ('extra', where its own drawing goes), the
@@ -136,7 +136,7 @@ export async function buildMap(shell, onProgress, options) {
    * hundred colours a chunk, each a draw call, and the hall's named
    * materials a dozen more. */
   const props = map.scene.getObjectByName('props');
-  const palette = props ? mergePalette(props) : { from: 0, to: 0 };
+  const palette = props ? mergeProps(props, map, shell) : { from: 0, to: 0 };
   const town = props ? props.children.filter((g) => /^props:dm[ns]$/.test(g.name)) : [];
   let off = null;
   const focus = map.updateShadowFocus;

@@ -48,7 +48,7 @@ import { towersLayout, towersMarkSpots, W, D, worldAt, chunkOf } from './plan.js
 import { towersDocument } from './yard.js';
 import { nearOf, WORLD_FACE } from './frame.js';
 import { facadeMeshes, nameSignMaterial } from './facade.js';
-import { mergePalette } from '../sunny/palette.js';
+import { mergeProps } from '../sunny/palette.js';
 
 /* The chunk a drawn thing is filed under, or its near cell if it is set
  * dressing. */
@@ -288,7 +288,7 @@ export async function buildMap(shell, onProgress, options) {
       }
     }
   }
-  const palette = props ? mergePalette(props) : { from: 0, to: 0 };
+  const palette = props ? mergeProps(props, map, shell) : { from: 0, to: 0 };
   /* The towers' skins, each in its chunk's group. */
   const skins = facadeMeshes(T.facades);
   for (const { mesh, chunk } of skins) {

@@ -51,7 +51,7 @@ import { paintMaterial } from '../../art/stf.js';
 import { shiokazeLayout, shiokazeMarkSpots, W, D, worldAt, chunkOf } from './plan.js';
 import { shiokazeDocument } from './yard.js';
 import { paintSigns, signMesh } from './signs.js';
-import { mergePalette } from '../sunny/palette.js';
+import { mergeProps } from '../sunny/palette.js';
 import { nearOf } from './frame.js';
 import { TOP, GRASS, DRY } from './terrain.js';
 
@@ -526,7 +526,7 @@ export async function buildMap(shell, onProgress, options) {
       }
     }
   }
-  const palette = props ? mergePalette(props) : { from: 0, to: 0 };
+  const palette = props ? mergeProps(props, map, shell) : { from: 0, to: 0 };
   const stats = map.stats;
   const near = props && !low ? nearCull(props, NEAR_R[q.id] || NEAR_R.high) : null;
   if (near) {

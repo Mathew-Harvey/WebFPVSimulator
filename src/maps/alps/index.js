@@ -64,7 +64,7 @@ import { layout, KONEX_SPOT } from './places.js';
 import { plant } from './nature.js';
 import { chunkOf } from './build.js';
 import { alpsDocument } from './yard.js';
-import { mergePalette } from '../sunny/palette.js';
+import { mergeProps } from '../sunny/palette.js';
 
 /* How far the pilot sees on each preset, metres: the fog's start and end,
  * and how far out the structures and the forest are drawn. The ground is
@@ -408,7 +408,7 @@ export async function buildMap(shell, onProgress, options) {
   /* One batch a look in each cell rather than one a colour, Sunnyfield's
    * way (../sunny/palette.js). */
   const props = scene.getObjectByName('props');
-  const palette = props ? mergePalette(props) : { from: 0, to: 0 };
+  const palette = props ? mergeProps(props, map, shell) : { from: 0, to: 0 };
   const groundMat = cel({ color: 0xffffff, vertexColors: true, bands: 3, tint: 0x6f6790, cache: false });
   const pieces = buildGround(groundMat);
   const groundGroup = new THREE.Group();

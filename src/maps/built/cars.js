@@ -115,6 +115,7 @@ import { bake, trs } from '../city/vendored/core/util.js';
 import { lookedTownMaterial } from '../../props/kit.js';
 import { carColourOf } from '../../props/street.js';
 import { kitLook } from './looks.js';
+import { mergeCar } from '../sunny/palette.js';
 
 /* How the meter names a car nobody named, by its body. */
 const STYLE_LABEL = {
@@ -586,6 +587,8 @@ export function buildCars(THREE, look, traffic, opts = {}) {
   /* The wheel sets: one InstancedMesh for every wheel of one kind in one
    * wheel colour, filled in below once every car has said how many it has. */
   const wheelSets = new Map();
+  /* The merged looks every car's parts share (mergeCar). */
+  const carLooks = new Map();
   for (const v of vehicles) {
     const style = MODEL[v.style] ? v.style : 'kei';
     const colour = (colourOf && colourOf(v)) ?? CAR[carColourOf(v.seed)] ?? CAR.white;
@@ -595,6 +598,7 @@ export function buildCars(THREE, look, traffic, opts = {}) {
     root.visible = false;
     const body = buildCar({ kind: style, color: colour, variant: v.variant, wheels: false, detail: 'full' });
     let tailMat = null;
+    let tailMesh = null;
     body.traverse((o) => {
       if (!o.isMesh) {
         return;
@@ -610,6 +614,7 @@ export function buildCars(THREE, look, traffic, opts = {}) {
         tailMat.userData = { ...m.userData };
         owned.materials.push(tailMat);
         o.material = tailMat;
+        tailMesh = o;
       } else if (night && m.isMeshBasicMaterial && m.color.getHex() === LAMP_FRONT) {
         o.material = lampLit;
       } else if (klook && klook.flats) {
@@ -617,6 +622,19 @@ export function buildCars(THREE, look, traffic, opts = {}) {
       }
     });
     root.add(body);
+    /* ONE BATCH A LOOK A CAR (the AAA pass of 2026-11-01): the body's
+     * thirteen parts were thirteen draw calls, which on Kumoi Towers and
+     * Ekimae was a third of the frame's. They merge as a cell's batches
+     * do (../sunny/palette.js mergeCar), colour and tint on the vertices,
+     * the same pixels; the tail lamp stays its own, because it brakes, and
+     * a part with a picture (the plate) is left as it was. */
+    const merged = mergeCar(body, carLooks, tailMesh ? new Set([tailMesh]) : null);
+    meshes -= merged.from - merged.to;
+    for (const o of body.children) {
+      if (o.isMesh && o.name === 'propBatch') {
+        owned.geometries.push(o.geometry);
+      }
+    }
 
     /* The wheels: where each stands on the car, and which set draws it. */
     const base = carWheelBase(style);
@@ -679,6 +697,8 @@ export function buildCars(THREE, look, traffic, opts = {}) {
       hz: 0,
     });
   }
+
+  owned.materials.push(...carLooks.values());
 
   /* Each wheel set's one batch: the kind's wheel, a matrix a wheel, written
    * by place() every frame. Never culled as a whole: its bounds would be

@@ -49,7 +49,7 @@
 import { buildMap as buildBuilt } from '../built/index.js';
 import { uploadTraffic } from '../built/traffic.js';
 import { warmPrograms } from '../../render/warm.js';
-import { mergePalette } from '../sunny/palette.js';
+import { mergeProps } from '../sunny/palette.js';
 import { qualityFor } from '../../render/quality.js';
 import { Film } from '../../game/film.js';
 import { arenaLayout, KONEX } from './arena.js';
@@ -111,7 +111,7 @@ export async function buildMap(shell, onProgress, options) {
    * way (../sunny/palette.js), as nineteen of the other new maps already
    * do (the AAA pass of 2026-11-01: this map was left out). */
   const props = map.scene.getObjectByName('props');
-  const palette = props ? mergePalette(props) : { from: 0, to: 0 };
+  const palette = props ? mergeProps(props, map, shell) : { from: 0, to: 0 };
   const baseStats = map.stats;
   map.stats = () => {
     const s = baseStats();

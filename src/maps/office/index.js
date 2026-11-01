@@ -42,7 +42,7 @@ import { buildMap as buildBuilt } from '../built/index.js';
 import { warmPrograms } from '../../render/warm.js';
 import { qualityFor } from '../../render/quality.js';
 import { paintMaterial } from '../../art/stf.js';
-import { mergePalette } from '../sunny/palette.js';
+import { mergeProps } from '../sunny/palette.js';
 import { INK_COLOR } from '../../render/comic.js';
 import {
   officeLayout, signSpots, officeLoop, CARD_LENS, SPAWN, S, FLOORS, FRAME, LEN, DEP, F2, F3, ROOF,
@@ -149,7 +149,7 @@ export async function buildMap(shell, onProgress, options) {
     }
   }
   /* One batch a look in each chunk rather than one a colour. */
-  const palette = props ? mergePalette(props) : { from: 0, to: 0 };
+  const palette = props ? mergeProps(props, map, shell) : { from: 0, to: 0 };
   /* A storey is drawn only when it can be seen: see floorOf. */
   const seen = { n: 0 };
   const cullFloors = (eye) => {

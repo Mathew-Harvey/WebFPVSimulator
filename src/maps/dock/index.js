@@ -53,7 +53,7 @@ import { paintMaterial } from '../../art/stf.js';
 import { dockLayout, dockFloor, dockMarkSpots, WATER_HOLE, W, D, worldAt, chunkOf } from './plan.js';
 import { dockDocument } from './doc.js';
 import { paintSigns, signMesh } from './signs.js';
-import { mergePalette } from '../sunny/palette.js';
+import { mergeProps } from '../sunny/palette.js';
 import { nearOf, WATER_H } from './frame.js';
 
 /* The chunk a drawn thing is filed under, or its near cell if it is set
@@ -434,7 +434,7 @@ export async function buildMap(shell, onProgress, options) {
       }
     }
   }
-  const palette = props ? mergePalette(props) : { from: 0, to: 0 };
+  const palette = props ? mergeProps(props, map, shell) : { from: 0, to: 0 };
   const stats = map.stats;
   const near = props && !low ? nearCull(props, NEAR_R[qid] || NEAR_R.high) : null;
   if (near) {

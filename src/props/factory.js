@@ -67,6 +67,7 @@ export const MATERIALS = {
   fkPanelBlue: { c: 0x9fb2c2, tint: 0x5e638a },
   fkFloor: { c: 0x7e9c84, tint: 0x4e5a72 },
   fkFloorLine: { f: 0xf2d24a, noCast: true },
+  fkWalkway: { f: 0x6e9e78, noCast: true },
   fkConsole: { c: 0xc9cfcf, tint: T },
   fkScreen: { f: 0x6fd0b0, noCast: true },
   fkScreenDark: { f: 0x2a3a48, noCast: true },

@@ -73900,3 +73900,11 @@ Cost, High, against the parent: same calls in all four views, +232 triangles. Ag
 The quay the pilot starts on was one clean pale slab. `patch()` in `src/maps/arctic/hamlet.js` lays a jittered octagon on a level top (the map's own `poly`, the shape its ice floes already use): dark `arConcreteDark` patches every five to nine metres along the sea edge where spray keeps it wet, and `arSnowDirty` drifts along the back where the plough left them, all fine (none on Low), never solid, kept clear of the start pads.
 
 Cost, High, against the parent: same calls in all four views, +880 triangles. Against a7285fa: 383,591 / 445,927 / 446,143 / 452,495 now, 390,423 / 453,203 / 453,419 / 459,771 then, so about 6,800 under. `npm run check:arctic` passed, `lint:quality` 71 of 71. The octagons are flat and a little geometric, in keeping with the floes; worth a look when flown. Not flown.
+
+### 2026-11-01: Hamakaze Works, a green walkway down the plant road; the airfield strip left alone (pass 4, batch 12)
+
+The works' first view was a road through a wide grey apron. A green pedestrian walkway, white edged, now runs beside the plant road from the gate to the quay road (`src/maps/factory/site.js`, new flat `fkWalkway` in `src/props/factory.js`), broken where a road or a crossing meets it, as a Japanese works paints the way it wants its people to walk. Paint on the sheet path: two triangles a strip.
+
+Cost, High, against the parent: same calls in all four views, +72 triangles. `npm run check:factory` passed, `lint:quality` 71 of 71. Not flown.
+
+Tried and dropped: the airfield's grass strip is drawn as flat `afMown` paint, the plastic look of the old Rally stripes. Laid instead as a plot tone, the tone reached the plot (probed: the vertex colours carried it) but nothing changed on screen even at 0.7, so what a pilot sees there is not the plot. Reverted; the strip stays paint until somebody finds which surface it is.

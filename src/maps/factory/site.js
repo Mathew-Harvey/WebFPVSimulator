@@ -85,6 +85,22 @@ function roads(T) {
       const Y = ROADS.yard;
       T.paint('fkFloorLine', Y.x0, Y.y0 + 0.2, 0.012, Y.x1, Y.y0 + 0.35, 0.016);
       T.paint('fkFloorLine', Y.x0, Y.y1 - 0.35, 0.012, Y.x1, Y.y1 - 0.2, 0.016);
+      /* The green walkway down the plant road's east side, white edged,
+       * as a Japanese works paints the way it wants its people to walk:
+       * it breaks the apron's grey and leads the eye from the start down
+       * to the quay. Broken where a road or a crossing meets it. */
+      const wx0 = P.x1 + 0.6;
+      const wx1 = P.x1 + 2.1;
+      const breaks = [[ROADS.north.y0 - 0.5, ROADS.north.y1 + 0.5], [ROADS.yard.y0 - 0.5, ROADS.yard.y1 + 0.5], [72.2, 75.8], [94.2, 97.8], [GUARD.y0 - 1, GATE.y + 2]];
+      let a = QUAY.road1 + 1;
+      for (const [b0, b1] of [...breaks, [P.y1, P.y1]].sort((p, q) => p[0] - q[0])) {
+        if (b0 > a + 1) {
+          T.paint('fkWalkway', wx0, a, 0.011, wx1, b0, 0.013);
+          T.paint('lineWhite', wx0 - 0.15, a, 0.012, wx0, b0, 0.015);
+          T.paint('lineWhite', wx1, a, 0.012, wx1 + 0.15, b0, 0.015);
+        }
+        a = Math.max(a, b1);
+      }
       /* Pedestrian crossings by the steel shop and the control house. */
       for (const y of [74, 96]) {
         for (let x = P.x0 + 0.6; x < P.x1 - 0.6; x += 0.9) {

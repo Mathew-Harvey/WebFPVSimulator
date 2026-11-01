@@ -39,6 +39,7 @@ export const MATERIALS = {
   /* the land: pasture, mown field, stubble, ploughed earth, two crops */
   kzPasture: { c: 0x9fbe66, tint: 0x55707a },
   kzMown: { c: 0xb6cf74, tint: 0x5f7a7c },
+  kzLawn: { c: 0x82a476, tint: 0x5b6f7c },
   kzStubble: { c: 0xe4c77e, tint: 0x8a7478 },
   kzSoil: { c: 0x9a7458, tint: 0x5e4a62 },
   kzSoilDark: { c: 0x7b5c4a, tint: 0x4c3a58 },

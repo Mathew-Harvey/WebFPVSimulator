@@ -73838,3 +73838,8 @@ The owner, 15:21Z: "Push to main and continue, do not stop untill you are satisf
 - Census against main ef96134 with gorge views (bridge end, inside the gorge both ways, the north rim, over it), each taken twice and the settled second pass compared: High the same calls in every view and about 3,500 triangles fewer; Low the same calls and 1,100 to 2,300 triangles fewer. The rim view wanders by up to nine calls between runs on both builds (the moving cars), so it is not quoted.
 - Also: src/fresh.js was missing src/maps/built/sea.js since batch 1 (bbf23ee); regenerated with `node scripts/gen-preload.js`.
 - Checks run: `check:touge` all passed; `lint:quality` 71 of 71; `lint:preload` up to date after regenerating. Thumbnail redrawn. Not flown.
+
+## 2026-11-01: pass 4, batch 4: Kazahana's launch field, and Tanada RX stripes dropped
+
+- Tanada RX: tried mowing the infield and verges in stripes (flat quads on the grass clear of every track and barrier, paid for by open ended crowd legs). Dropped before commit: a flat colour over the ground's drawn grass texture read as painted bands, in a bright tone and in a muted one, and the stripes cost about 180 triangles in the start's views that the legs did not pay back there. Nothing of it is in the tree.
+- Kazahana (kaza): the launch field's mown stripes were the farm's lime (kzMown), bands of flat bright green across the whole start view, the same painted look. They are now kzLawn in src/props/kaza.js, a tone a shade off the ground's own green, so they read as mown grass. The farm's mown field keeps kzMown. Colour only: census against main, headless High, the four start views each taken twice, identical calls and triangles. `check:kaza` all passed; thumbnail redrawn. Not flown.

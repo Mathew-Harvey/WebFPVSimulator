@@ -321,7 +321,10 @@ function board(T, b) {
 }
 
 /*
- * The field: mown in stripes (paint, at every range), its edge of rope on
+ * The field: mown in stripes (paint, at every range), in kzLawn, a tone a
+ * shade off the ground's own green (pass 4 of 2026-11-01: they were the
+ * farm's lime, kzMown, which read as painted bands across the start's
+ * whole view), its edge of rope on
  * short stakes, the boards, the balloons, the crew's corner.
  */
 export function festival(T) {
@@ -329,7 +332,7 @@ export function festival(T) {
   T.dress(() => T.wide(() => {
     for (let x = x0; x < x1; x += 10) {
       if ((x - x0) % 20 === 0) {
-        T.paint('kzMown', x, y0, 0.006, x + 10, y1, 0.012);
+        T.paint('kzLawn', x, y0, 0.006, x + 10, y1, 0.012);
       }
     }
   }));

@@ -70,3 +70,48 @@ test('the gate card\'s lesson count is the curriculum\'s', async () => {
   const total = CHAPTERS.reduce((n, c) => n + c.lessons.length, 0);
   assert.equal(Number(m && m[1]), total);
 });
+
+/*
+ * A SPREAD BETWEEN LAPS READS AS ONE, NEVER AS A TOTAL (bug-b5a946be).
+ *
+ * Steady Laps asked for "Five laps inside 0.8 s", and a pilot read it the
+ * way anybody would, as five laps flown in eight tenths of a second, and
+ * filed it as a bug: "NO ONE CAN DO 5 laps in point 8 seconds". The rule
+ * (objectives.js, gates.steady) is that the last laps sit within that many
+ * ms of each other. So every steady objective has to say what the time is
+ * between, and the seconds it quotes have to be the ones it scores.
+ */
+test('a steady objective says its time is between the laps, and quotes the time it scores', () => {
+  let steady = 0;
+  for (const c of CHAPTERS) {
+    for (const l of c.lessons) {
+      for (const o of l.objectives) {
+        if (o.steady == null) {
+          continue;
+        }
+        steady += 1;
+        assert.match(o.text, /of each other|apart/, `${l.id}: "${o.text}" reads as a total time`);
+        const quoted = /(\d+(?:\.\d+)?) s\b/.exec(o.text);
+        assert.ok(quoted, `${l.id}: "${o.text}" quotes no time`);
+        assert.equal(Number(quoted[1]) * 1000, o.steady, `${l.id}: "${o.text}" quotes a time it does not score`);
+      }
+    }
+  }
+  assert.ok(steady > 0, 'the curriculum has a steady objective to check');
+});
+
+test('no lesson line puts a count of laps in a number of seconds without saying of what', () => {
+  for (const c of CHAPTERS) {
+    for (const l of c.lessons) {
+      const lines = [l.briefing.goal, l.briefing.why, ...l.briefing.steps, l.briefing.note, l.crashTip, l.lapsTip];
+      for (const o of l.objectives) {
+        lines.push(o.text, o.hint);
+      }
+      for (const line of lines.filter(Boolean)) {
+        if (/\blaps? (in|inside|within) (\d|one|two|three|four|five|six|seven|eight|nine|ten)\b/i.test(line)) {
+          assert.match(line, /of each other|apart/, `${l.id}: "${line}" reads as laps flown in that time`);
+        }
+      }
+    }
+  }
+});

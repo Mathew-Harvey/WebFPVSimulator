@@ -1675,14 +1675,17 @@ function upperFloor(H) {
 
   /* Bedroom 2, over the dining room, the tall window's upper half. */
   bed(H, TX, 1.3, 1.6, 2.05, 'w', 'homeRug');
-  H.box('homeWood', TX, 2.95, f, TX + 0.45, 3.8 - TI / 2, f + 0.6, { name: 'nightstand' });
+  /* Against the bed and not 5 cm off it, the master's two as well: that
+   * 5 cm was a slot a craft fell into on its edge, to the floor, and could
+   * not be flown out of (bug-243d42f7, scripts/bedslot-check.js). */
+  H.box('homeWood', TX, 2.9, f, TX + 0.45, 3.8 - TI / 2, f + 0.6, { name: 'nightstand' });
   H.box('homeWood', 3.9, 0.4, f, BRICK_X1 - TI / 2, 1.9, f + 0.85, { name: 'dresser' });
   H.paint('homeWicker', 1.0, -0.9, f + 0.004, 3.6, 0.3, f + 0.012);
   /* The master. */
   const ms = 3.8 + TI / 2;
   bed(H, TX, ms + 0.5, 2.0, 2.1, 'w', 'homeWhite');
-  for (const y of [ms, ms + 2.55]) {
-    H.box('homeWood', TX, y, f, TX + 0.45, y + 0.45, f + 0.6, { name: 'nightstand' });
+  for (const [y, y0, y1] of [[ms, ms, ms + 0.5], [ms + 2.55, ms + 2.5, ms + 3.0]]) {
+    H.box('homeWood', TX, y0, f, TX + 0.45, y1, f + 0.6, { name: 'nightstand' });
     H.drum('homeLamp', TX + 0.1, y + 0.1, f + 0.6, f + 0.9, 0.12, { seg: 10 });
   }
   H.paint('homeRug', 1.6, 4.4, f + 0.004, 3.9, 7.6, f + 0.012);
@@ -1716,7 +1719,18 @@ function bed(H, x, y, w, l, head, m, f = FLOOR1) {
   const x1 = x + (along ? l : w);
   const y1 = y + (along ? w : l);
   H.box('homeWood', x0, y0, f, x1, y1, f + 0.3, { name: 'bed frame' });
-  H.box(m, x0 + 0.03, y0 + 0.03, f + 0.3, x1 - 0.03, y1 - 0.03, f + 0.55, { name: 'mattress' });
+  /*
+   * FLUSH WITH THE FRAME ON EVERY SIDE BUT THE HEAD, where the headboard
+   * stands over the lip. The mattress was 3 cm in from the frame all round,
+   * and a bed stands with a side against a wall, so that was a slot 0.105 m
+   * of the world wide and 0.875 m deep between the mattress and the wall: a craft on
+   * its edge dropped into it, rested on the frame and could not be flown out,
+   * full throttle and full stick moving it 4 mm (bug-243d42f7, "Got stuck
+   * between a bed and a wall"). scripts/bedslot-check.js holds every bed in
+   * the house to it.
+   */
+  const lip = (side) => (side === head ? 0.03 : 0);
+  H.box(m, x0 + lip('w'), y0 + lip('s'), f + 0.3, x1 - lip('e'), y1 - lip('n'), f + 0.55, { name: 'mattress' });
   const hb = 0.08;
   const hh = f + 1.15;
   if (head === 'w') {
@@ -2156,7 +2170,9 @@ function basementRooms(H) {
   for (let i = 0; i < 3; i += 1) {
     H.paint('homeStone', 9.13, 6.45 + i * 0.36, f + 0.55, 10.47, 6.63 + i * 0.36, f + 0.562);
   }
-  H.box('homeWhite', 9.5, 5.75, f, g.x1, 6.12, f + 0.45, { name: 'bench' });
+  /* Up against the foot of the bed: 8 cm short of it was a slot a craft
+   * wedged in (bug-243d42f7, scripts/bedslot-check.js). */
+  H.box('homeWhite', 9.5, 5.75, f, g.x1, 6.2, f + 0.45, { name: 'bench' });
   H.box('homeWood', g.x0, 7.65, f, 8.5, g.y1, f + 1.0, { name: 'dresser' });
   for (let i = 0; i < 3; i += 1) {
     H.paint('homeShelf', g.x0 + 0.05, 7.645, f + 0.31 + i * 0.3, 8.45, 7.65, f + 0.32 + i * 0.3);

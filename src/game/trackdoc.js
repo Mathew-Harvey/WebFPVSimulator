@@ -66,6 +66,7 @@ import { buildPath } from '../trackbuilder/path.js';
 import { apertureFrame } from '../trackbuilder/geometry.js';
 import { wrapBetween, figureCueOf, upgradeStackedFigures } from '../trackbuilder/figures.js';
 import { gateScaleFor, MICRO_SCALE } from './track.js';
+import { ROOM_WIDTH, ROOM_DEPTH, ROOM_HEIGHT } from '../trackbuilder/racegow.js';
 import { startBlockLaneOffset, startBlockDims } from '../art/startblock.js';
 import { guideFromKnots } from './guide.js';
 
@@ -891,8 +892,84 @@ function buildCourse(raw) {
      * the object it always was. */
     ...(cls === 'micro' ? { knots: raceKnots(path.knots, field, knotStation) } : {}),
   };
+  /* The room a RaceGOW course is flown in, which holds every piece of it.
+   * See roomOf. A field course has no room and gets no key. */
+  if (cls === 'micro') {
+    out.room = roomOf(out);
+  }
   out.samples = corridorSamples(out);
   return out;
+}
+
+/*
+ * THE ROOM A MICRO COURSE IS FLOWN IN, in scene metres, and it holds the
+ * whole course.
+ *
+ * The room is RaceGOW's 10 by 12 by 4 m hall (src/trackbuilder/racegow.js)
+ * built MICRO_SCALE times life size, centred on the field's middle, which is
+ * the origin trackdoc.js maps every position about. That was a constant in
+ * every reader, and a constant room has no answer for a piece that stands
+ * outside it. The builder lets a piece stand there: its warnings are
+ * advisory by decision (src/trackbuilder/warnings.js, element-out-of-field),
+ * and an author can resize a room's field in the inspector, which the
+ * builder honours. So a published course could put a gate on the far side
+ * of a wall the game builds solid, and it did: bug-dcc2264f, "The 8th door
+ * is outside the room, the map is wrong", is "weaving practice"
+ * (trk-65d4bdcc), whose second double stack stands 2.3 m past the 10 m
+ * wall and a hex gate 0.8 m past it. Nobody could finish a lap of it.
+ *
+ * So the room is RaceGOW's, unchanged, for every course whose pieces all
+ * stand inside it, and that is every course on the board but that one. A
+ * piece whose CENTRE stands outside (the builder's own test, so a banner
+ * hung flush on the wall does not count) grows the room, both walls of that
+ * axis alike, because the room stays centred on the origin and every reader
+ * draws it that way: far enough to take the outermost piece, its own half
+ * width, and ROOM_RUNOFF of floor past it to turn in, rounded up to half a
+ * metre. The height is RaceGOW's: nothing the builder places reaches it.
+ *
+ * Every reader of the room takes it from here: src/render/scene.js builds
+ * the walls, ceiling, colliders, lamps and posters from it, src/game/
+ * raceline.js solves the line inside it and src/share/orbit.js takes the
+ * board's thumbnail from its corner. A course built before this had no
+ * `room`, and each of those readers falls back to RaceGOW's for it.
+ */
+export const ROOM_RUNOFF = 2.0;
+
+export function roomOf(course) {
+  const K = MICRO_SCALE;
+  const base = { width: ROOM_WIDTH * K, depth: ROOM_DEPTH * K, height: ROOM_HEIGHT * K };
+  let halfW = base.width / 2;
+  let halfD = base.depth / 2;
+  const pieces = [...(course.structures ?? []), ...(course.loose ?? [])];
+  let growW = 0;
+  let growD = 0;
+  for (const p of pieces) {
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.z)) {
+      continue;
+    }
+    const d = p.dims || (p.structure && p.structure.dims) || {};
+    /* The piece's own reach from its centre, the larger of what it is
+     * across: a gate's opening, a box's width or depth. A stack's levels
+     * are upwards and do not count. */
+    const across = Math.max(d.width || 0, d.depth || 0, d.clearW || 0, p.clearW || 0, (d.radius || 0) * 2, (d.baseRadius || 0) * 2);
+    const reach = across / 2 + ROOM_RUNOFF * K;
+    if (Math.abs(p.x) > halfW) {
+      growW = Math.max(growW, Math.abs(p.x) + reach);
+    }
+    if (Math.abs(p.z) > halfD) {
+      growD = Math.max(growD, Math.abs(p.z) + reach);
+    }
+  }
+  /* Rounded up to half a true metre, so the hall is a size somebody could
+   * have measured, and never smaller than RaceGOW's. */
+  const tidy = (h) => Math.ceil((h / K) * 2 - 1e-9) / 2 * K;
+  if (growW > 0) {
+    halfW = Math.max(halfW, tidy(growW));
+  }
+  if (growD > 0) {
+    halfD = Math.max(halfD, tidy(growD));
+  }
+  return { width: halfW * 2, depth: halfD * 2, height: base.height };
 }
 
 /*

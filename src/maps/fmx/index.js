@@ -78,7 +78,7 @@ export async function buildMap(shell, onProgress, options) {
   const markSpots = [{
     slug: 'konexdrone', key: 'fmx#konexdrone~hidden', p: KONEX.p, n: KONEX.n, up: KONEX.up, w: KONEX.w, chunk: CHUNK_ARENA,
   }];
-  const map = await buildBuilt(shell, onProgress, { ...(options || {}), document: doc, extra, markSpots });
+  const map = await buildBuilt(shell, onProgress, { ...(options || {}), inkFacets: false, document: doc, extra, markSpots });
   map.id = 'fmx';
   map.source = 'fmx';
 

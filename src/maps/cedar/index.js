@@ -346,7 +346,7 @@ export async function buildMap(shell, onProgress, options) {
   };
   const doc = cedarDocument();
   const map = await buildBuilt(shell, onProgress, {
-    ...(options || {}), document: doc, extra, sponsorMarks: false, markSpots: cedarMarkSpots(),
+    ...(options || {}), inkFacets: false, document: doc, extra, sponsorMarks: false, markSpots: cedarMarkSpots(),
   });
   /* Its own world: the shell keys the world, the results and the board's
    * refusal by this id (src/main.js, src/ui/ui.js). */

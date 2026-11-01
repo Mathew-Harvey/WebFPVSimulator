@@ -594,7 +594,7 @@ export async function buildMap(shell, onProgress, options) {
   };
   const doc = dunesDocument();
   const map = await buildBuilt(shell, onProgress, {
-    ...(options || {}), document: doc, extra, markSpots: dunesMarkSpots(),
+    ...(options || {}), inkFacets: false, document: doc, extra, markSpots: dunesMarkSpots(),
   });
   /* The air is clear on a sea wind: the haze starts well out and ends
    * where the pipeline's own fog ends, which is what its cull is sized to,

@@ -486,7 +486,7 @@ export async function buildMap(shell, onProgress, options) {
   };
   const doc = hotaruDocument(info);
   const map = await buildBuilt(shell, onProgress, {
-    ...(options || {}), document: doc, extra, sponsorMarks: false, markSpots: hotaruMarkSpots(),
+    ...(options || {}), inkFacets: false, document: doc, extra, sponsorMarks: false, markSpots: hotaruMarkSpots(),
   });
   map.id = 'hotaru';
   map.source = 'hotaru';

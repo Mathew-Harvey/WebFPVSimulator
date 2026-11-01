@@ -508,7 +508,7 @@ export async function buildMap(shell, onProgress, options) {
   };
   const doc = shiokazeDocument();
   const map = await buildBuilt(shell, onProgress, {
-    ...(options || {}), document: doc, extra, sponsorMarks: false, markSpots: shiokazeMarkSpots(),
+    ...(options || {}), inkFacets: false, document: doc, extra, sponsorMarks: false, markSpots: shiokazeMarkSpots(),
   });
   map.id = 'shiokaze';
   map.source = 'shiokaze';

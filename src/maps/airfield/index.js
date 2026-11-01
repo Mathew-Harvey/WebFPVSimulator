@@ -544,7 +544,7 @@ export async function buildMap(shell, onProgress, options) {
   };
   const doc = airfieldDocument();
   const map = await buildBuilt(shell, onProgress, {
-    ...(options || {}), document: doc, extra, markSpots: airfieldMarkSpots(),
+    ...(options || {}), inkFacets: false, document: doc, extra, markSpots: airfieldMarkSpots(),
   });
   /* Its own world: the shell keys the world, the results and the board's
    * refusal by this id, and `source` is the word the board counts its

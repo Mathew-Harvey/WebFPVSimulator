@@ -656,7 +656,7 @@ export async function buildMap(shell, onProgress, options) {
   };
   const doc = hayateDocument();
   const map = await buildBuilt(shell, onProgress, {
-    ...(options || {}), document: doc, extra, sponsorMarks: false, markSpots: L.markSpots,
+    ...(options || {}), inkFacets: false, document: doc, extra, sponsorMarks: false, markSpots: L.markSpots,
   });
   /* Its own world: the shell keys the world, the results and the board's
    * refusal by this id (src/main.js, src/ui/ui.js), and `source` is the word

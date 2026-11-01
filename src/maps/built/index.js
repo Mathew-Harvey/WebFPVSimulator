@@ -308,6 +308,25 @@ const INK_INVERSE = `      float sx = 2.0 - dc / dl - dc / dr;
  * every pixel before, it only threw the answer away past 98 m. Same taps,
  * same targets, same draw calls, and the sky still leaves before any fetch.
  */
+/*
+ * NO LINE ON A FACET, for the maps of 2026-10-31 (buildMap's inkFacets
+ * false). A canopy clump, a rock or a sea stack is a round thing drawn in
+ * flat faces, and the ink inked every turn between two faces, about 20
+ * degrees: close to, a tree was a cut gem with a line or a dot at every
+ * edge, which is the low polygon look the owner called blocky. The town
+ * stops that with a code per blob (src/render/comic.js), which is compiled
+ * out on every preset since the latency rule. This does it with the
+ * threshold: a convex crease is inked from FACET_SENS times the town's
+ * reading, which a facet's shallow turn does not reach and a box's right
+ * angle and every silhouette pass many times over. Picked by eye at 1.8 on
+ * Kumoi Towers' ginkgos and Momiji Pass's maples against the walls and
+ * kerbs beside them, which kept every line. A uniform: no cost.
+ *
+ * Not for the houses and the office, which set their own pen (HOUSE_PEN),
+ * and not for a pilot's own map, whose look is the builder's.
+ */
+export const FACET_SENS = 1.8;
+
 const INK_FADE = '      edge *= 1.0 - smoothstep( uFadeStart, uFadeEnd, dc );';
 export const FAR_INK = 0.55;
 export const FAR_INK_START = 60;
@@ -357,6 +376,10 @@ export class BuiltPipeline extends Pipeline {
      * blobs option is the ink half of the codes the kit's leaf() gives
      * a tree's canopy blobs (src/props/kit.js). */
     comicPipeline(this, { blobs: true });
+    /* A map drawn as a comic asks for no facet lines: see FACET_SENS. */
+    if (opts && opts.inkFacets === false) {
+      this.ink.mat.uniforms.uSens.value *= FACET_SENS;
+    }
   }
 
   setSize(w, h) {
@@ -1609,6 +1632,7 @@ export async function buildMap(shell, onProgress, options) {
 
   setComicQuality(q, { edges: true, grime: true });
   const pipeline = new BuiltPipeline(renderer, scene, camera, {
+    inkFacets: opts.inkFacets,
     pixelBudget: q.city.pixelBudget,
     minScale: q.city.minScale,
     preferScale: q.city.preferScale,

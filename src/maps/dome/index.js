@@ -91,7 +91,7 @@ export async function buildMap(shell, onProgress, options) {
     slug: 'konexdrone', key: 'dome#konexdrone~hidden', p: KONEX.p, n: KONEX.n, up: KONEX.up, w: KONEX.w, chunk: 'extra',
   }];
   const map = await buildBuilt(shell, onProgress, {
-    ...(options || {}), document: domeDocument(), extra, markSpots,
+    ...(options || {}), inkFacets: false, document: domeDocument(), extra, markSpots,
   });
   /* Its own world: the shell keys the world, the results and the board's
    * refusal by this id (src/main.js, src/ui/ui.js). */

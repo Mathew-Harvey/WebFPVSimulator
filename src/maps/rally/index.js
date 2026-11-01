@@ -350,7 +350,7 @@ export async function buildMap(shell, onProgress, options) {
   }];
   const doc = rallyDocument();
   const map = await buildBuilt(shell, onProgress, {
-    ...(options || {}), document: doc, extra, markSpots, sponsorMarks: false,
+    ...(options || {}), inkFacets: false, document: doc, extra, markSpots, sponsorMarks: false,
   });
   map.id = 'rally';
   map.source = 'rally';

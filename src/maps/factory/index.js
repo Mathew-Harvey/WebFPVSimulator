@@ -397,7 +397,7 @@ export async function buildMap(shell, onProgress, options) {
     chunkOf: (x, z, p) => cellOf(p, x, z),
   };
   const map = await buildBuilt(shell, onProgress, {
-    ...(options || {}), document: factoryDocument(), extra, sponsorMarks: false, markSpots: factoryMarkSpots(),
+    ...(options || {}), inkFacets: false, document: factoryDocument(), extra, sponsorMarks: false, markSpots: factoryMarkSpots(),
   });
   /* Its own world: the shell keys the world, the results and the board's
    * refusal by this id (src/main.js, src/ui/ui.js), and `source` is the word

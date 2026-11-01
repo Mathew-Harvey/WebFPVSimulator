@@ -268,7 +268,7 @@ export async function buildMap(shell, onProgress, options) {
     chunkOf: (x, z, p) => cellOf(p, x, z),
   };
   const map = await buildBuilt(shell, onProgress, {
-    ...(options || {}), document: towersDocument(), extra, sponsorMarks: false, markSpots: towersMarkSpots(),
+    ...(options || {}), inkFacets: false, document: towersDocument(), extra, sponsorMarks: false, markSpots: towersMarkSpots(),
   });
   map.id = 'towers';
   map.source = 'towers';

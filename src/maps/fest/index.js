@@ -518,7 +518,7 @@ export async function buildMap(shell, onProgress, options) {
     chunkOf: (x, z, p) => cellAt(p, x, z),
   };
   const map = await buildBuilt(shell, onProgress, {
-    ...(options || {}), document: doc, extra, sponsorMarks: false, markSpots: festMarkSpots(),
+    ...(options || {}), inkFacets: false, document: doc, extra, sponsorMarks: false, markSpots: festMarkSpots(),
   });
   /* Its own world: the shell keys the world, the results and the board's
    * refusal by this id (src/main.js, src/ui/ui.js). */

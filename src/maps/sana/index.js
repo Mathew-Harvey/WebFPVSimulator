@@ -257,7 +257,7 @@ export async function buildMap(shell, onProgress, options) {
     chunkOf: (x, z, p) => cellOf(p, x, z),
   };
   const map = await buildBuilt(shell, onProgress, {
-    ...(options || {}), document: sanaDocument(), extra, sponsorMarks: false, markSpots: sanaMarkSpots(),
+    ...(options || {}), inkFacets: false, document: sanaDocument(), extra, sponsorMarks: false, markSpots: sanaMarkSpots(),
   });
   /* Its own world: the shell keys the world, the results and the board's
    * refusal by this id, and `source` is the word the board counts its

@@ -546,7 +546,7 @@ export async function buildMap(shell, onProgress, options) {
     },
   };
   const map = await buildBuilt(shell, onProgress, {
-    ...(options || {}), document: doc, extra, markSpots: ekimaeMarkSpots(),
+    ...(options || {}), inkFacets: false, document: doc, extra, markSpots: ekimaeMarkSpots(),
   });
   map.id = 'ekimae';
   map.source = 'ekimae';

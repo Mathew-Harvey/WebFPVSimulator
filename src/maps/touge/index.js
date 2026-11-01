@@ -543,7 +543,7 @@ export async function buildMap(shell, onProgress, options) {
   };
   const doc = tougeDocument();
   const map = await buildBuilt(shell, onProgress, {
-    ...(options || {}), document: doc, extra, sponsorMarks: false, markSpots: markSpots(),
+    ...(options || {}), inkFacets: false, document: doc, extra, sponsorMarks: false, markSpots: markSpots(),
   });
   map.id = 'touge';
   map.source = 'touge';

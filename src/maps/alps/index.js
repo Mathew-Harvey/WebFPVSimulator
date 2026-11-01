@@ -386,7 +386,7 @@ export async function buildMap(shell, onProgress, options) {
     slug: 'konexdrone', key: 'alps#konexdrone~hidden', ...KONEX_SPOT, chunk: chunkOf(KONEX_SPOT.p[0], KONEX_SPOT.p[2]),
   }];
   const map = await buildBuilt(shell, onProgress, {
-    ...(options || {}), document: doc, extra, sponsorMarks: false, markSpots,
+    ...(options || {}), inkFacets: false, document: doc, extra, sponsorMarks: false, markSpots,
   });
   map.id = 'alps';
   map.source = 'alps';

@@ -284,7 +284,7 @@ export async function buildMap(shell, onProgress, options) {
   };
   const doc = haikyoDocument();
   const map = await buildBuilt(shell, onProgress, {
-    ...(options || {}), document: doc, extra, sponsorMarks: false, markSpots: haikyoMarkSpots(),
+    ...(options || {}), inkFacets: false, document: doc, extra, sponsorMarks: false, markSpots: haikyoMarkSpots(),
   });
   /* Its own world: the shell keys the world, the results and the board's
    * refusal by this id, and `source` is the word the board counts its

@@ -577,7 +577,7 @@ export async function buildMap(shell, onProgress, options) {
   const doc = arcticDocument();
   const spots = arcticMarkSpots(partnerAllowed);
   const map = await buildBuilt(shell, onProgress, {
-    ...(options || {}), document: doc, extra, sponsorMarks: false, markSpots: spots,
+    ...(options || {}), inkFacets: false, document: doc, extra, sponsorMarks: false, markSpots: spots,
   });
   map.id = 'arctic';
   map.source = 'arctic';

@@ -45,8 +45,16 @@ export const SUBWAY = { x0: P.x0 + 8, x1: P.x0 + 20, y0: P.y1 - 20, y1: P.y1 - 8
 
 const PAVE_H = 0.035;
 
+/*
+ * The paving is solid, a box top the plant lands on and the shell finds
+ * (groundUnder in ../built/place.js). As paint it was 3.5 cm of stone over
+ * a floor at 0, so the start's craft and any craft set down on the plaza
+ * sat inside the stones (the owner, 2026-11-01: "i start underground").
+ * Sinking it to a few millimetres proud was tried and flickered against
+ * the ground under it from a few hundred metres up.
+ */
 function plazaGround(T) {
-  T.paint('twPave', P.x0, P.y0, 0, P.x1, P.y1, PAVE_H);
+  T.box('twPave', P.x0, P.y0, 0, P.x1, P.y1, PAVE_H, { cast: false, kind: 'wall', name: 'plaza paving' });
   T.dress(() => T.wide(() => {
     /* The paving's grid, a joint every 4 m, and a darker band every 16. */
     for (let x = P.x0 + 4; x < P.x1; x += 4) {

@@ -5109,6 +5109,15 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
    */
   const indoor = Boolean(course && course.trackClass === 'micro');
   /*
+   * THE HALL THIS COURSE IS FLOWN IN: ROOM's colours and RaceGOW's size, and
+   * a bigger floor only for a course with a piece standing outside RaceGOW's
+   * walls (roomOf in src/game/trackdoc.js, bug-dcc2264f). Every length the
+   * room is built from below is the hall's, so the walls, their colliders,
+   * the ceiling, the purlins, the light panels, the lamps and the posters
+   * all move out together. A course built without a room is RaceGOW's.
+   */
+  const hall = indoor ? { ...ROOM, ...(course.room || {}) } : ROOM;
+  /*
    * The wall art's two modules, asked for now so they arrive while the room
    * is being built rather than after it. Only a room asks: the race field
    * must not fetch a byte of it, and a failure here costs the posters and
@@ -5216,10 +5225,10 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
      * 45 to 75 above the band and its ink 110 or more below the plaster. At
      * 15 each the far plaster crossed the bloom threshold and glowed.
      */
-    for (const lx of [-ROOM.width * ROOM_LAMP_X, ROOM.width * ROOM_LAMP_X]) {
-      for (const lz of [-ROOM.depth * 0.25, ROOM.depth * 0.25]) {
-        const lamp = new THREE.PointLight(ROOM.light, 10 * MICRO_SCALE ** 1.7, ROOM.depth * 2.5, 1.7);
-        lamp.position.set(lx, ROOM.height - 0.9 * MICRO_SCALE, lz);
+    for (const lx of [-hall.width * ROOM_LAMP_X, hall.width * ROOM_LAMP_X]) {
+      for (const lz of [-hall.depth * 0.25, hall.depth * 0.25]) {
+        const lamp = new THREE.PointLight(ROOM.light, 10 * MICRO_SCALE ** 1.7, hall.depth * 2.5, 1.7);
+        lamp.position.set(lx, hall.height - 0.9 * MICRO_SCALE, lz);
         lamp.castShadow = false;
         scene.add(lamp);
       }
@@ -5386,9 +5395,9 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
      * picture is the shed it was.
      */
     const K = MICRO_SCALE;
-    const halfW = ROOM.width * 0.5;
-    const halfD = ROOM.depth * 0.5;
-    const H = ROOM.height;
+    const halfW = hall.width * 0.5;
+    const halfD = hall.depth * 0.5;
+    const H = hall.height;
     const T = 0.10 * K; /* wall thickness, so a corner reads as a corner */
     const y0 = height(0, 0);
 
@@ -5427,7 +5436,7 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
      * two planes cannot z fight each other or the ground.
      */
     const boards = new THREE.Mesh(
-      new THREE.PlaneGeometry(ROOM.width + 24 * K, ROOM.depth + 24 * K), edgeMat,
+      new THREE.PlaneGeometry(hall.width + 24 * K, hall.depth + 24 * K), edgeMat,
     );
     boards.rotation.x = -Math.PI * 0.5;
     boards.position.set(0, y0 + 0.004 * K, 0);
@@ -5440,7 +5449,7 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
      * mat, and it is what makes a bare PVC gate read at all.
      */
     const mat = new THREE.Mesh(
-      new THREE.PlaneGeometry(ROOM.width - 0.4 * K, ROOM.depth - 0.4 * K), matMat,
+      new THREE.PlaneGeometry(hall.width - 0.4 * K, hall.depth - 0.4 * K), matMat,
     );
     mat.rotation.x = -Math.PI * 0.5;
     mat.position.set(0, y0 + 0.008 * K, 0);
@@ -5463,10 +5472,10 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
      * skirting. The band is also what gives a pilot a horizon to fly
      * against. */
     const wallSpecs = [
-      { x: 0, z: -halfD - T * 0.5, w: ROOM.width + T * 2, d: T },
-      { x: 0, z: halfD + T * 0.5, w: ROOM.width + T * 2, d: T },
-      { x: -halfW - T * 0.5, z: 0, w: T, d: ROOM.depth + T * 2 },
-      { x: halfW + T * 0.5, z: 0, w: T, d: ROOM.depth + T * 2 },
+      { x: 0, z: -halfD - T * 0.5, w: hall.width + T * 2, d: T },
+      { x: 0, z: halfD + T * 0.5, w: hall.width + T * 2, d: T },
+      { x: -halfW - T * 0.5, z: 0, w: T, d: hall.depth + T * 2 },
+      { x: halfW + T * 0.5, z: 0, w: T, d: hall.depth + T * 2 },
     ];
     /* The gate band's top, the rail and the skirting, in the room's metres.
      * The band was 0.82 m under a 0.9 m panel line with a slot of dark
@@ -5516,7 +5525,7 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
      * high they are when they are near it, and they are the one part of the
      * roof that reads as structure rather than as a lid. */
     const ceil = new THREE.Mesh(
-      new THREE.BoxGeometry(ROOM.width + T * 2, T, ROOM.depth + T * 2), ceilMat,
+      new THREE.BoxGeometry(hall.width + T * 2, T, hall.depth + T * 2), ceilMat,
     );
     ceil.position.set(0, y0 + H + T * 0.5, 0);
     shellGroup.add(ceil);
@@ -5530,14 +5539,14 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
      * 10 m clear span is a thing that would be on the floor.
      */
     const purlinPitch = 0.9 * K;
-    const purlins = Math.max(3, Math.round(ROOM.depth / purlinPitch));
+    const purlins = Math.max(3, Math.round(hall.depth / purlinPitch));
     /* Judged on the room RaceGOW would recognise, not the built one, or every
      * room is over 7 m and the branch is dead. */
     const purlinD = (ROOM_WIDTH_TRUE > 7 ? 0.14 : 0.075) * K;
-    const bay = ROOM.depth / purlins;
+    const bay = hall.depth / purlins;
     for (let i = 0; i < purlins; i += 1) {
       const jz = -halfD + (i + 0.5) * bay;
-      const joist = new THREE.Mesh(new THREE.BoxGeometry(ROOM.width, purlinD, 0.055 * K), joistMat);
+      const joist = new THREE.Mesh(new THREE.BoxGeometry(hall.width, purlinD, 0.055 * K), joistMat);
       joist.position.set(0, y0 + H - purlinD * 0.5, jz);
       shellGroup.add(joist);
     }
@@ -5553,7 +5562,7 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
       fixtureRows.push(-halfD + k * bay, halfD - k * bay);
     }
     for (const fz of fixtureRows) {
-      for (const fx of [-ROOM.width * ROOM_LAMP_X, ROOM.width * ROOM_LAMP_X]) {
+      for (const fx of [-hall.width * ROOM_LAMP_X, hall.width * ROOM_LAMP_X]) {
         const frame = new THREE.Mesh(
           new THREE.PlaneGeometry(1.28 * K, 0.38 * K).rotateX(Math.PI * 0.5), frameMat,
         );
@@ -7159,6 +7168,9 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
      * The built in field has no document, so it is full sized.
      */
     trackClass: (course && course.trackClass) || 'full',
+    /* The hall the room was built at, in scene metres, for a room; null on
+     * the field. src/share/orbit.js takes a room's thumbnail from its corner. */
+    room: indoor ? { width: hall.width, depth: hall.depth, height: hall.height } : null,
     scene, gates, curve, colliders, spawn, attract,
     /* Anything the reader could not honour, for the shell to show once. */
     notes: course ? course.warnings : [],

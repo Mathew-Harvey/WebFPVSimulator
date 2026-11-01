@@ -820,9 +820,13 @@ function placeCardCamera(view, camera, craft, THREE, shot = CARD_SHOT) {
 const ROOM_THUMB_FOV = 68;
 function placeRoomCamera(view, camera, THREE, corner) {
   const spec = (view && view.attract) || {};
-  const w = ROOM_WIDTH * MICRO_SCALE;
-  const d = ROOM_DEPTH * MICRO_SCALE;
-  const h = ROOM_HEIGHT * MICRO_SCALE;
+  /* The hall the scene built (view.room), which is RaceGOW's unless the
+   * course has a piece outside it (roomOf in src/game/trackdoc.js); a view
+   * from before it carried one is RaceGOW's. */
+  const hall = (view && view.room) || {};
+  const w = hall.width || ROOM_WIDTH * MICRO_SCALE;
+  const d = hall.depth || ROOM_DEPTH * MICRO_SCALE;
+  const h = hall.height || ROOM_HEIGHT * MICRO_SCALE;
   const inset = 0.7 * MICRO_SCALE;
   const sx = corner & 1 ? 1 : -1;
   const sz = corner & 2 ? 1 : -1;

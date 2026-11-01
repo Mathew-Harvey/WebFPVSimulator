@@ -1750,7 +1750,10 @@ export const CHAPTERS = [
           sticks: [{ stick: 'throttle', dir: 'hold' }, { stick: 'roll', dir: 'both' }, { stick: 'yaw', dir: 'both' }],
         },
         objectives: [
-          { kind: 'gates', text: 'Five laps inside 0.8 s', laps: 5, steady: 800, maxLaps: 10, hint: 'The same lap, again.' },
+          /* "Five laps inside 0.8 s" was read as five laps flown in 0.8 s, and
+           * reported as a bug (bug-b5a946be, "NO ONE CAN DO 5 laps in point 8
+           * seconds"). It is a spread between laps, so the line says so. */
+          { kind: 'gates', text: 'Five laps within 0.8 s of each other', laps: 5, steady: 800, maxLaps: 10, hint: 'The same lap, again.' },
         ],
         medals: raceMedals('meadow-sprint', 5),
         crashTip: 'A crash breaks the run of laps. Back off until you can fly five without one.',

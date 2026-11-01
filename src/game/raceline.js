@@ -299,6 +299,21 @@ function frameCaps(structure, yaw, pitch, out) {
 }
 
 /*
+ * The room the course is flown in, in scene metres: the course's own when it
+ * carries one (roomOf in src/game/trackdoc.js, which grows RaceGOW's hall for
+ * a course with a piece outside it), RaceGOW's when it does not. The walls the
+ * line is kept off are the walls src/render/scene.js builds, from the same
+ * object, so a gate past RaceGOW's wall is not one the solver walls off.
+ */
+function roomSize(course) {
+  const r = course && course.room;
+  if (r && Number.isFinite(r.width) && Number.isFinite(r.depth) && Number.isFinite(r.height)) {
+    return r;
+  }
+  return { width: ROOM_WIDTH * MICRO_SCALE, depth: ROOM_DEPTH * MICRO_SCALE, height: ROOM_HEIGHT * MICRO_SCALE };
+}
+
+/*
  * Everything in a RaceGOW room the aircraft can hit, as capsules and boxes:
  * the frames, the poles, the bars, the walls and the ceiling. The floor is
  * not here, the line keeps its own height off it. Anything this does not
@@ -384,9 +399,7 @@ export function solidsOf(course) {
   }
   /* The walls and the ceiling: the inner faces are the room, the boxes are
    * 0.1 of a true metre thick as scene.js builds them. */
-  const W = ROOM_WIDTH * MICRO_SCALE;
-  const D = ROOM_DEPTH * MICRO_SCALE;
-  const H = ROOM_HEIGHT * MICRO_SCALE;
+  const { width: W, depth: D, height: H } = roomSize(course);
   const T = 0.10 * MICRO_SCALE;
   boxes.push({ lo: [-W / 2 - T, -1, -D / 2 - T], hi: [-W / 2, H, D / 2 + T] });
   boxes.push({ lo: [W / 2, -1, -D / 2 - T], hi: [W / 2 + T, H, D / 2 + T] });
@@ -599,7 +612,7 @@ function knotsOf(course, tuning) {
   }
   const need = CRAFT_SWEEP + tuning.margin;
   const ymin = need;
-  const ymax = ROOM_HEIGHT * MICRO_SCALE - need - 0.15;
+  const ymax = roomSize(course).height - need - 0.15;
   for (const raw of course.knots) {
     /* The builder's own steering knots are left out. A wrap round a stack or
      * a gate the lap comes back through was put where the builder's fixed
@@ -1092,8 +1105,8 @@ function prepare(course, options) {
     loops,
     ymin,
     ymax,
-    halfX: (ROOM_WIDTH * MICRO_SCALE) / 2 - need,
-    halfZ: (ROOM_DEPTH * MICRO_SCALE) / 2 - need,
+    halfX: roomSize(course).width / 2 - need,
+    halfZ: roomSize(course).depth / 2 - need,
   };
 }
 

@@ -42,6 +42,7 @@
 import * as THREE from 'three';
 import { buildMap as buildBuilt } from '../built/index.js';
 import { warmPrograms } from '../../render/warm.js';
+import { mergePalette } from '../sunny/palette.js';
 import { qualityFor } from '../../render/quality.js';
 import { paintMaterial } from '../../art/stf.js';
 import { signAspect } from '../../art/partnermark.js';
@@ -579,8 +580,13 @@ export async function buildMap(shell, onProgress, options) {
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 4;
   map.scene.add(signMesh(THREE, low ? B.signs.filter((s) => !s.near) : B.signs, atlas, paintMaterial(THREE, tex), worldAt));
+  /* One batch a look in each cell rather than one a colour, Sunnyfield's
+   * way (../sunny/palette.js), as nineteen of the other new maps already
+   * do (the AAA pass of 2026-11-01: this map was left out). */
+  const props = map.scene.getObjectByName('props');
+  const palette = props ? mergePalette(props) : { from: 0, to: 0 };
   const stats = map.stats;
-  map.stats = () => ({ ...(stats ? stats() : {}), trees: B.trees.length, parts: B.P.list.length });
+  map.stats = () => ({ ...(stats ? stats() : {}), palette, trees: B.trees.length, parts: B.P.list.length });
   await warmPrograms(shell.renderer, map.scene, shell.camera, map.post.rtScene);
   void TEA;
   return map;

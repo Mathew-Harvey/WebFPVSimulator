@@ -73703,3 +73703,13 @@ Mat, 2026-11-01 06:58Z, after batch 1: "happy finish them all". Then 09:14Z: "ke
 - Thumbnails regenerated for touge and shiokaze.
 - Went wrong: the first survey framed every map on a box that included the far ground, so Ekimae's views were empty sand; it now frames the 12th to 88th percentile of drawn vertices. The 22 map survey ran three at a time in software GL and took about an hour; its background job hit the time limit before Haikyo, Hayate and Park were shot, so those three were not surveyed. The views of the Hyoura Island survey put the camera under the sea and taught nothing. The worker restarted mid turn and the thread went quiet until Mat wrote "Try again".
 - Checks run: `shiokaze-check`, `hotaru-check`, `towers-check`, `touge-check` all passed. Shots: gorge before and after, Shiokaze's bath and shops, Towers and Hotaru tours. Not run: `npm run verify` (no physics, plant, ABI or build change). Not flown.
+
+## 2026-11-01 | render | AAA pass 3: colours merged on Momiji Pass, Kazesuna Dunes and Shiroyama FMX
+
+Mat, 2026-11-01 09:14Z: "keep doing passes untill we are at aaa game quality with each map, that means the models, the art and the performance". On draft PR 210, not on main.
+
+- Found: Momiji Pass drew 685 calls in one gorge view. A per object tally showed one batch per colour per cell, with up to 53 toon batches in a single cell. Nineteen of the new maps already merge each cell's plain batches into one batch per look (`mergePalette`, `src/maps/sunny/palette.js`). Momiji Pass, Kazesuna Dunes and Shiroyama FMX never called it.
+- Change: each of the three calls `mergePalette(props)` after the pipeline builds, as the other nineteen do, and reports `palette` in stats. No new code path.
+- Latency: draw calls on High at the four spawn views (fpv, chase, mid, high) went from Momiji 504/525/620/717 to 209/213/263/295, Dunes 236/238/232/330 to 94/95/94/119, and FMX 407/412/426/454 to 181/185/190/201. On Low: Momiji 94/94/94/498 to 51/51/210/210, Dunes 139/129/129/216 to 59/62/62/84, and FMX 246/246/410/410 to 109/109/175/175. Scene meshes: Momiji 930 to 439, Dunes 622 to 272, FMX 532 to 270. Scene triangles are unchanged. Per view triangles rise 1 to 13 percent, because a merged batch is culled as a whole. The merged look adds one sRGB to linear conversion per vertex, the same cost the other nineteen maps already pay.
+- Checked pixel for pixel by eye: shots of the same four views before and after match.
+- Checks run: `fmx-check` 18 of 18, `touge-check` and `dunes-check` all passed, `lint:quality` 71 of 71, `lint:frame` 34 of 34. Not run: `npm run verify` (no physics, plant, ABI or build change). Not flown.

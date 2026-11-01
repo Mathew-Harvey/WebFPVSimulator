@@ -73725,3 +73725,37 @@ The same ask from Mat (09:14Z). On draft PR 210, not on main.
 - Checked by eye: Tsukimi Danchi's signs side by side, before and after, match. Close-ups of three Kumoi Towers cars, before and after, match.
 - `src/maps/preload.js` regenerated, because cars.js now imports palette.js.
 - Checks run: towers, haikyo, dunes and touge checks all passed; ekimae 27 of 27, rally 28 of 28, fmx 18 of 18; `check:clip` 2632 of 2632; `lint:quality` 71 of 71; `lint:frame` 34 of 34; `lint:preload` up to date. Not run: `npm run verify` (no physics, plant, ABI or build change). Not flown.
+
+## 2026-11-01 | render | AAA pass 3: all 22 maps measured against main
+
+Scene census and four spawn views per map on High, `origin/main` (b285dc5) against this branch (bc01778):
+
+| Map | Draw calls main (fpv/chase/mid/high) | Draw calls now | Change | Scene triangles main | now |
+|---|---|---|---|---|---|
+| ekimae | 234/231/233/236 | 169/168/170/171 | -27% | 1,176,801 | 1,176,801 |
+| dunes | 236/238/232/330 | 94/94/93/113 | -62% | 1,219,958 | 1,219,958 |
+| dock | 176/184/179/183 | 119/122/120/121 | -33% | 747,092 | 747,092 |
+| factory | 129/137/138/150 | 99/100/99/99 | -28% | 451,051 | 451,051 |
+| shiokaze | 55/64/64/73 | 55/60/60/69 | -5% | 397,954 | 399,344 |
+| alps | 150/150/153/153 | 145/144/147/147 | -4% | 1,275,686 | 1,052,504 |
+| towers | 215/240/270/303 | 163/174/182/201 | -30% | 987,633 | 987,633 |
+| dome | 87/88/183/198 | 75/76/104/107 | -35% | 1,128,549 | 1,128,549 |
+| cedar | 102/112/113/110 | 94/100/101/98 | -10% | 617,811 | 512,691 |
+| office | 31/31/29/38 | 30/30/29/37 | -2% | 178,570 | 178,570 |
+| kaza | 149/154/154/155 | 126/126/125/126 | -18% | 986,878 | 1,001,808 |
+| sana | 106/121/122/127 | 87/96/98/99 | -20% | 797,418 | 754,554 |
+| rally | 140/147/178/225 | 106/107/138/137 | -29% | 1,221,392 | 1,221,392 |
+| fmx | 407/412/426/454 | 91/95/98/101 | -77% | 1,156,336 | 1,156,336 |
+| airfield | 104/111/111/119 | 82/85/85/89 | -23% | 795,077 | 748,571 |
+| hotaru | 89/95/100/104 | 77/77/83/85 | -17% | 1,189,742 | 1,063,652 |
+| touge | 504/525/620/717 | 161/163/189/211 | -69% | 1,723,573 | 1,541,227 |
+| fest | 202/211/222/243 | 157/159/163/175 | -26% | 960,615 | 960,615 |
+| arctic | 55/61/62/66 | 52/54/55/59 | -10% | 668,752 | 641,914 |
+| haikyo | 209/240/267/284 | 123/127/134/128 | -49% | 738,681 | 738,681 |
+| hayate | 75/78/108/111 | 69/71/85/88 | -16% | 1,449,437 | 1,419,257 |
+| park | 184/186/190/233 | 139/138/139/148 | -29% | 1,131,298 | 1,131,298 |
+| all | 16221 | 9785 | -40% | 21,000,304 | 20,233,498 (-3.7%) |
+
+- Over all 88 views, draw calls go from 16,221 to 9,785, a 40 percent drop. Scene triangles go from 21.0 M to 20.2 M, down 3.7 percent. Kazahana is up 1.5 percent because of the balloon chase, which is in one run and not the other. Shiokaze is up 0.35 percent from its windows.
+- Tried and binned: Kumoi Towers' ginkgo crowns drawn as the kit's lumpy canopy clumps. They have a scalloped outline instead of the ball's polygon, but cost 14 to 18 percent more triangles in the plaza views. That is not flat, so it was reverted before it was committed.
+- `check:builder` run alone fails one check, "and the ring is at its foot". The same check is recorded as failing on main in earlier entries (4 October and after), and this change does not touch the selection ring. Every other check in it passed.

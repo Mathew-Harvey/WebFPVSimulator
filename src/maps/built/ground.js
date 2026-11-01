@@ -16,7 +16,7 @@
  *
  * THE API.
  *
- *   buildGround(placed, doc, look, cover)
+ *   buildGround(placed, doc, look, cover, drawn, tone)
  *     placed   placeDocument(doc) from ./place.js
  *     doc      the normalized document, for its id (the repairs' seed) and
  *              its logos
@@ -24,6 +24,9 @@
  *     cover    ./roadmesh.js roadCover for the map's roads: no paint of the
  *              yard's goes on a road, and a bridge with a road under it
  *              paints no lane of its own
+ *     drawn    the grass's drawn tufts (the maps that drop facet ink)
+ *     tone     optional (x, z) => factor on the plot's colour at a vertex,
+ *              in the world frame: a map's own slow pattern on its ground
  *   returns { group, painted, cancelLogos, stickers }: the group to add to
  *   a scene, what was painted (for stats), a way to stop a logo still
  *   decoding from painting into a map that has gone, and the stickers that
@@ -420,7 +423,7 @@ function dirtTexture() {
 const LATTICE = 30;
 const PLOT_VARY = { tarmac: [0.07, 0, 0], grass: [0.08, 0.05, 0.06], dirt: [0.09, 0.03, 0] };
 
-function plotGeometry(W, D, groundId, seed) {
+function plotGeometry(W, D, groundId, seed, tone = null) {
   const vary = PLOT_VARY[groundId];
   /* Four metre cells, well inside the noise's lattice, and no more than a
    * hundred a side, so a plot of a kilometre is 20,000 triangles and not
@@ -451,7 +454,9 @@ function plotGeometry(W, D, groundId, seed) {
     const z = pos.getZ(n);
     const value = 0.7 * noise(x, z, LATTICE, 1) + 0.3 * noise(x, z, LATTICE / 3, 2);
     const hue = noise(x, z, LATTICE * 1.4, 3);
-    const k = 1 + vary[0] * value;
+    /* A map may lay its own slow tone over the noise, a mown field's
+     * bands, say: a factor at the vertex, so the texture stays under it. */
+    const k = (1 + vary[0] * value) * (tone ? tone(x, z) : 1);
     col[n * 3] = k * (1 + vary[1] * hue);
     col[n * 3 + 1] = k;
     col[n * 3 + 2] = k * (1 - vary[2] * hue);
@@ -863,7 +868,7 @@ function dirtRuts(placed, doc, cover) {
  * of its own. Returns the group, what it painted for stats(), and a way to
  * stop a logo still decoding from painting into a map that has gone.
  */
-export function buildGround(placed, doc, look, cover, drawn = false) {
+export function buildGround(placed, doc, look, cover, drawn = false, tone = null) {
   const { W, D } = placed;
   const G = look.ground;
   const groundId = look.groundId;
@@ -877,7 +882,7 @@ export function buildGround(placed, doc, look, cover, drawn = false) {
   const tile = painter ? GROUND_TILE[groundId] : SLAB * TILE_SLABS;
   const yard = canvasTexture(painter ? painter(drawn) : yardTexture(), W / tile, D / tile);
   const plot = new THREE.Mesh(
-    painter ? plotGeometry(W, D, groundId, hashString(doc.id)) : new THREE.PlaneGeometry(W, D).rotateX(-Math.PI / 2),
+    painter ? plotGeometry(W, D, groundId, hashString(doc.id), tone) : new THREE.PlaneGeometry(W, D).rotateX(-Math.PI / 2),
     cel({ color: 0xffffff, map: yard, bands: 3, tint: G.tint, vertexColors: Boolean(painter), cache: false }),
   );
   plot.receiveShadow = true;

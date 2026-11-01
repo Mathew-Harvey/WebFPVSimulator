@@ -1496,7 +1496,7 @@ export async function buildMap(shell, onProgress, options) {
 
   /* The ground and its paint, then the roads over it (./roadmesh.js): flat
    * paint, three batches for every road, and nothing solid. */
-  const ground = buildGround(placed, doc, look, cover, opts.inkFacets === false);
+  const ground = buildGround(placed, doc, look, cover, opts.inkFacets === false, opts.plotTone || null);
   scene.add(ground.group);
   const roads = buildRoadMesh(THREE, look, traffic);
   if (roads.batches) {

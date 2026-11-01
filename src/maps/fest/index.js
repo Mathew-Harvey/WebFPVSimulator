@@ -43,7 +43,9 @@ import { signAspect } from '../../art/partnermark.js';
 import { PARTNERS, MAP_ONLY_PARTNERS, PATRON_MAP_BRANDS, shownOn } from '../../partners/roster.js';
 import { partnerAllowed } from '../../steam/edition.js';
 import { mergeProps } from '../sunny/palette.js';
-import { venueLayout, w, chunkOf, nearOf, BANNERS, HIDDEN_KONEX } from './venue.js';
+import {
+  venueLayout, w, chunkOf, nearOf, BANNERS, HIDDEN_KONEX, ARENA, FIELD_W, FIELD_D,
+} from './venue.js';
 import { festDocument } from './yard.js';
 import { paintSigns, signMesh } from './signs.js';
 
@@ -496,6 +498,21 @@ export function festMarkSpots() {
   return out;
 }
 
+/* The arena is a mown field: bands across the run from the pads, every
+ * other one cut the other way and so a shade darker. Laid as a tone on
+ * the plot's own vertices, four metres apart, so the grass texture stays
+ * under it, the band edges are soft as a mown edge is, and it costs not a
+ * triangle. Outside the nets the grass is left long. */
+const MOW_BAND = 8;
+function mownBands(x, z) {
+  const px = x + FIELD_W / 2;
+  const py = FIELD_D / 2 - z;
+  if (px < ARENA.x0 + 2 || px > ARENA.x1 - 2 || py < ARENA.y0 + 2 || py > ARENA.y1 - 2) {
+    return 1;
+  }
+  return Math.floor((py - ARENA.y0) / MOW_BAND) % 2 ? 0.8 : 1.06;
+}
+
 export async function buildMap(shell, onProgress, options) {
   const qid = qualityFor(options && options.quality).id;
   const low = qid === 'low';
@@ -519,6 +536,7 @@ export async function buildMap(shell, onProgress, options) {
   };
   const map = await buildBuilt(shell, onProgress, {
     ...(options || {}), inkFacets: false, document: doc, extra, sponsorMarks: false, markSpots: festMarkSpots(),
+    plotTone: mownBands,
   });
   /* Its own world: the shell keys the world, the results and the board's
    * refusal by this id (src/main.js, src/ui/ui.js). */

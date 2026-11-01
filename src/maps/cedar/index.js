@@ -328,6 +328,8 @@ function openGround(scene, name, rect) {
   G.setIndex(index);
   G.computeBoundingBox();
   G.computeBoundingSphere();
+  /* Keep what the plot was told, its tone's ceiling among it. */
+  G.userData = { ...old.userData };
   old.dispose();
   mesh.geometry = G;
 }

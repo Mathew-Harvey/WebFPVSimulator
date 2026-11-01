@@ -54,6 +54,7 @@ import { airfieldDocument } from './yard.js';
 import { paintSigns, signMesh } from './signs.js';
 import { mergeProps } from '../sunny/palette.js';
 import { nearOf } from './frame.js';
+import { STRIP } from './field.js';
 import { smoothTop, OUTER } from './valley.js';
 
 /* The chunk a drawn thing is filed under, or its near cell if it is set
@@ -434,6 +435,8 @@ function openGround(scene, name, rect) {
   G.setIndex(index);
   G.computeBoundingBox();
   G.computeBoundingSphere();
+  /* Keep what the plot was told, its tone's ceiling among it. */
+  G.userData = { ...old.userData };
   old.dispose();
   mesh.geometry = G;
 }
@@ -529,6 +532,30 @@ function mountains(fogColor, sunDir) {
   return mesh;
 }
 
+/* The grass strip as it is cut, laid on the ground's own vertices so the
+ * grass texture stays under it (../built/ground.js, `tone`): the strip in
+ * twelve metre bands along its length, light and dark by the way the
+ * mower went, the taxiway to the apron a dark mown lane, and the rough
+ * either side left longer and a shade darker, so the strip reads. The
+ * light bands go over 1, which a toned plot may (src/render/look.js). */
+const MOWN_LIGHT = [1.3, 1.32, 1.16];
+const MOWN_DARK = [0.98, 1.02, 0.94];
+const ROUGH = [0.86, 0.9, 0.92];
+function stripTone(x, z) {
+  const px = x + W / 2;
+  const py = D / 2 - z;
+  const S = STRIP;
+  const y0 = S.y - S.w / 2;
+  const y1 = S.y + S.w / 2;
+  if (px >= S.x0 && px <= S.x1 && py >= y0 && py <= y1) {
+    return Math.floor((px - S.x0) / 12) % 2 ? MOWN_DARK : MOWN_LIGHT;
+  }
+  if (px >= 214 && px <= 226 && py > y1 && py <= 205) {
+    return MOWN_DARK;
+  }
+  return ROUGH;
+}
+
 export async function buildMap(shell, onProgress, options) {
   const quality = qualityFor(options && options.quality);
   const low = quality.id === 'low';
@@ -545,6 +572,7 @@ export async function buildMap(shell, onProgress, options) {
   const doc = airfieldDocument();
   const map = await buildBuilt(shell, onProgress, {
     ...(options || {}), inkFacets: false, document: doc, extra, markSpots: airfieldMarkSpots(),
+    plotTone: stripTone,
   });
   /* Its own world: the shell keys the world, the results and the board's
    * refusal by this id, and `source` is the word the board counts its

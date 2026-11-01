@@ -73928,3 +73928,13 @@ The thirty metres of apron between the crane rails was bare. Three lanes of whit
 Cost, High, against the parent: same calls in all four views, +412 triangles; the dock banked about 17,000 under a7285fa in the floor trims. `npm run check:dock` passed, `lint:quality` 71 of 71. Not flown.
 
 Mat, 2026-11-01 22:08Z: "Push to main and keep going". Every pass 4 batch was already on main (d790525); nothing new to push at that moment.
+
+### 2026-11-01: Kazami Airfield, the grass strip mown in the grass itself (pass 4, batch 16)
+
+Mat 23:01Z: "Push to main, how we looking ? What map are you going to work on next ?", then 23:02Z "Go next" on the airfield.
+
+The strip's mown bands were flat `afMown` and `afMownDark` paint, the first thing seen from the start and the plastic look this pass has been removing. They are gone from `src/maps/airfield/field.js`, the taxiway's dark lane with them, and `stripTone` in `src/maps/airfield/index.js` lays them on the plot's own vertices: light and dark twelve metre bands along the strip, a dark lane to the apron, and the rough either side a shade darker, the grass texture under all of it.
+
+Why the first try (batch 12) showed nothing: it did reach the plot (a test tone of [0.3, 0.3, 1] turned it blue), but the light, the toon bands and the fog compress a vertex colour hard, so 0.78 against 1 read as about a tenth, and a tone could only darken, because `toneGeometry` in `src/render/look.js` clamps every vertex colour to 1. A mown strip is lighter than the rough, so the ceiling is lifted to 1.6 for a geometry flagged `userData.brightTone`, which `plotGeometry` sets only when a map passes a tone; every other mesh keeps the old ceiling. The airfield's and Suginomori's `openGround` now carry the plot's `userData` across when they rebuild it. Side effect, on the six toned plots only (airfield, festival, sanatorium, Suginomori, FMX, park): the ground's own slow noise keeps its bright half, up to 8 percent, that the clamp used to cut.
+
+Cost, High, against the parent: same calls, triangles down 188 in every view (the paint bands are gone). `check:airfield`, `check:fest`, `check:sana`, `check:cedar`, `check:fmx`, `check:park` passed, `lint:quality` 71 of 71. The bands are soft edged (four metre vertices). Not flown.

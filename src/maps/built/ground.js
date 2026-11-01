@@ -444,10 +444,10 @@ function valueNoise(x, z, cell, k, seed) {
  * of sun dried grass, paler and yellower, and of long lush grass, darker
  * and bluer, a few tens of metres across, the texture kept under both.
  * `keep(x, z)`, if given, says where the grass is still kept and gets
- * none of it. Returns [r, g, b] factors, none over 1: the shell's look
- * pass (src/render/look.js toneGeometry) clamps every vertex colour to 1,
- * so a tone can only take away. Dry is yellower by losing blue, not by
- * gaining red.
+ * none of it. Returns [r, g, b] factors, none over 1: written when the
+ * look pass (src/render/look.js toneGeometry) clamped every vertex colour
+ * to 1, so dry is yellower by losing blue, not by gaining red. A toned
+ * plot may now go to 1.6.
  */
 export function meadowTone(seed, keep = null, cell = 26) {
   return (x, z) => {
@@ -488,7 +488,7 @@ function plotGeometry(W, D, groundId, seed, tone = null) {
     const hue = noise(x, z, LATTICE * 1.4, 3);
     /* A map may lay its own slow tone over the noise, a mown field's
      * bands, say: a factor at the vertex, so the texture stays under it.
-     * Keep it at 1 or under: the look pass clamps a vertex colour to 1. */
+     * Over 1 is kept: a toned plot is flagged brightTone, below. */
     const k = 1 + vary[0] * value;
     const t = tone ? tone(x, z) : 1;
     const [tr, tg, tb] = typeof t === 'number' ? [t, t, t] : t;
@@ -497,6 +497,11 @@ function plotGeometry(W, D, groundId, seed, tone = null) {
     col[n * 3 + 2] = k * (1 - vary[2] * hue) * tb;
   }
   geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  /* A plot with a tone may go over 1 (the look pass's ceiling is lifted
+   * for it, src/render/look.js); without one it keeps the old ceiling. */
+  if (tone) {
+    geo.userData.brightTone = true;
+  }
   return geo;
 }
 

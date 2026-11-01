@@ -108,11 +108,10 @@ function strip(T) {
   const S = STRIP;
   const y0 = S.y - S.w / 2;
   const y1 = S.y + S.w / 2;
-  /* Mown in bands along its length, as a grass runway is cut: light and
-   * dark by the way the mower went. */
-  for (let x = S.x0, i = 0; x < S.x1; x += 12, i += 1) {
-    T.paint(i % 2 ? 'afMownDark' : 'afMown', x, y0, 0.0, Math.min(S.x1, x + 12), y1, 0.02);
-  }
+  /* Mown in bands along its length, as a grass runway is cut, light and
+   * dark by the way the mower went: a tone on the ground's own vertices
+   * (stripTone, ./index.js), no longer paint. Flat paint hid the grass's
+   * texture and read as plastic from the start. */
   /* The thresholds: chalk bars across each end, and the numbers. */
   for (const [x, dir] of [[S.x0, 1], [S.x1, -1]]) {
     for (let j = 0; j < 8; j += 1) {
@@ -129,8 +128,7 @@ function strip(T) {
       T.hidden(x - 0.2, y - 0.52, 0, x + 0.2, y + 0.52, 0.42, 'obstacle', 'marker tyre');
     }
   }
-  /* The taxiway from the apron, a darker mown lane. */
-  T.paint('afMownDark', 214, y1, 0.0, 226, 205, 0.02);
+  /* The taxiway from the apron, a darker mown lane: a tone too. */
   /* The apron, concrete, in front of the hangar and the clubhouse. */
   T.paint('concrete', 150, 205, 0.0, 300, 222, 0.03);
   T.paint('concrete', 238, 222, 0.0, 300, 226, 0.03);

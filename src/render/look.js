@@ -80,6 +80,11 @@ function skyColour(c, top) {
  */
 function toneGeometry(geo) {
   const col = geo.attributes.color;
+  /* A colour is held to 1, except on a geometry that asks for more: a
+   * built map's plot laid with a tone of its own (../maps/built/ground.js),
+   * where a mown band is lighter than the grass and not only the rest
+   * darker. */
+  const top = geo.userData.brightTone ? 1.6 : 1;
   const pos = geo.attributes.position;
   const nor = geo.attributes.normal;
   const a = col.array;
@@ -102,9 +107,9 @@ function toneGeometry(geo) {
     }
     const warm = (h2 - 0.5) * 2 * GEM.hueJitter;
     const j = i * 3;
-    a[j] = Math.min(1, Math.max(0, a[j] * k * (1 + warm)));
-    a[j + 1] = Math.min(1, Math.max(0, a[j + 1] * k));
-    a[j + 2] = Math.min(1, Math.max(0, a[j + 2] * k * (1 - warm)));
+    a[j] = Math.min(top, Math.max(0, a[j] * k * (1 + warm)));
+    a[j + 1] = Math.min(top, Math.max(0, a[j + 1] * k));
+    a[j + 2] = Math.min(top, Math.max(0, a[j + 2] * k * (1 - warm)));
   }
   col.needsUpdate = true;
 }

@@ -68,6 +68,38 @@ function plazaGround(T) {
   }));
 }
 
+/*
+ * The tactile paving, the yellow studded line every Japanese pavement
+ * carries for the blind: round the plaza a metre and a half in from the
+ * kerb, and up from the south kerb to the subway's mouth, with the square
+ * warning block where a line turns or ends. Flat paint, a few millimetres
+ * over the joints, two triangles a strip. Left out where the start pads
+ * stand.
+ */
+function tactile(T) {
+  const h = PAVE_H + 0.007;
+  const w = 0.3;
+  const i = 1.5;
+  const line = (x0, y0, x1, y1) => T.paint('twTactile', Math.min(x0, x1) - w / 2, Math.min(y0, y1) - w / 2, h, Math.max(x0, x1) + w / 2, Math.max(y0, y1) + w / 2, h + 0.004);
+  const stop = (x, y) => T.paint('twTactile', x - 0.45, y - 0.45, h, x + 0.45, y + 0.45, h + 0.004);
+  const sx = (SUBWAY.x0 + SUBWAY.x1) / 2;
+  T.dress(() => T.wide(() => {
+    /* Round the edge: the south side in two runs, clear of the pads. */
+    line(P.x0 + i, P.y0 + i, PADS.px - 6, P.y0 + i);
+    line(PADS.px + 6, P.y0 + i, P.x1 - i, P.y0 + i);
+    line(P.x0 + i, P.y1 - i, P.x1 - i, P.y1 - i);
+    line(P.x0 + i, P.y0 + i, P.x0 + i, P.y1 - i);
+    line(P.x1 - i, P.y0 + i, P.x1 - i, P.y1 - i);
+    for (const [x, y] of [[P.x0 + i, P.y0 + i], [P.x1 - i, P.y0 + i], [P.x0 + i, P.y1 - i], [P.x1 - i, P.y1 - i]]) {
+      stop(x, y);
+    }
+    /* From the south edge's line up to the subway's mouth. */
+    line(sx, P.y0 + i, sx, SUBWAY.y0 - 1.2);
+    stop(sx, P.y0 + i);
+    stop(sx, SUBWAY.y0 - 1.2);
+  }));
+}
+
 function fountain(T) {
   const { px, py, r } = FOUNTAIN;
   /* A sunken bowl: the rim is solid to sit on, the water a step down. */
@@ -170,6 +202,7 @@ function furniture(T) {
 
 export function plaza(T) {
   plazaGround(T);
+  tactile(T);
   fountain(T);
   ring(T);
   canopy(T);

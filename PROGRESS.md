@@ -73908,3 +73908,9 @@ The works' first view was a road through a wide grey apron. A green pedestrian w
 Cost, High, against the parent: same calls in all four views, +72 triangles. `npm run check:factory` passed, `lint:quality` 71 of 71. Not flown.
 
 Tried and dropped: the airfield's grass strip is drawn as flat `afMown` paint, the plastic look of the old Rally stripes. Laid instead as a plot tone, the tone reached the plot (probed: the vertex colours carried it) but nothing changed on screen even at 0.7, so what a pilot sees there is not the plot. Reverted; the strip stays paint until somebody finds which surface it is.
+
+### 2026-11-01: Kumoi towers plaza, tactile paving (pass 4, batch 13)
+
+The yellow studded line a Japanese pavement carries for the blind now runs round the plaza a metre and a half in from the kerb and up from the south kerb to the subway's mouth, with the square warning blocks at its corners and ends, left out where the start pads stand (`tactile()` in `src/maps/towers/plaza.js`, the map's existing flat `twTactile`). Paint, two triangles a strip, set dressing so near cells only.
+
+Cost, High, against the parent: mid and high views same calls and +48 triangles; fpv and chase moved 162 to 167 and 174 to 173, inside this map's wander from its trains and cars (about 5). `npm run check:towers` passed, `lint:quality` 71 of 71. Reads at the start, faint from the air. Not flown.

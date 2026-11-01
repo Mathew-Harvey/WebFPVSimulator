@@ -284,9 +284,9 @@ function tarmacTexture() {
  * and yellow flowers. No mowing stripes: from the air they are a second
  * grid.
  */
-function grassTexture() {
+function grassTexture(drawn = false) {
   const S = 512;
-  const { c, g, blob } = groundCanvas(S, '#86ab84');
+  const { c, g, blob, wrapped } = groundCanvas(S, '#86ab84');
   const rng = seededRandom(0x3b8d21);
   for (let n = 0; n < 46; n += 1) {
     const light = rng.chance(0.55);
@@ -314,7 +314,58 @@ function grassTexture() {
     g.fillStyle = rng.chance(0.6) ? 'rgba(250, 248, 238, 0.85)' : 'rgba(246, 212, 96, 0.85)';
     g.fillRect(Math.floor(rng.range(1, S - 2)), Math.floor(rng.range(1, S - 2)), 2, 2);
   }
+  if (drawn) {
+    drawnTufts(g, wrapped, S, seededRandom(0x6d2a91));
+  }
   return c;
+}
+
+/*
+ * DRAWN TUFTS (2026-11-01, the owner's "it should feel like a manga comic,
+ * not minecraft"). A mangaka does not paint a field: they lay a flat tone
+ * and put a scatter of little inked tufts over it, three to five strokes
+ * fanned from one root, thicker in clumps and gone in between, and the eye
+ * fills in the rest. Painted into the lawn's own tile, in the ink's violet
+ * green, so the same one texture fetch the ground always made now reads as
+ * a drawn field. A flat field was the emptiest thing on the maps of 31
+ * October, and this is what it costs to fill it: nothing per frame.
+ *
+ * Only on a map that asks to be drawn (buildGround's `drawn`, the maps that
+ * pass inkFacets false), so a pilot's own lawn is the builder's.
+ */
+function drawnTufts(g, wrapped, S, rng) {
+  g.lineCap = 'round';
+  const clumps = 20;
+  for (let n = 0; n < clumps; n += 1) {
+    const cx = rng.range(0, S);
+    const cy = rng.range(0, S);
+    const count = 2 + Math.floor(rng.range(0, 5));
+    for (let k = 0; k < count; k += 1) {
+      const x = cx + rng.range(-26, 26);
+      const y = cy + rng.range(-20, 20);
+      const strokes = 3 + Math.floor(rng.range(0, 3));
+      const len = rng.range(13, 22);
+      const lean = rng.range(-0.25, 0.25);
+      const tone = rng.chance(0.75) ? 'rgba(44, 66, 66, 0.72)' : 'rgba(58, 88, 76, 0.6)';
+      const width = rng.range(1.7, 2.5);
+      const fan = [];
+      for (let j = 0; j < strokes; j += 1) {
+        const a = -Math.PI / 2 + lean + (j - (strokes - 1) / 2) * rng.range(0.32, 0.48);
+        fan.push([a, len * rng.range(0.7, 1.1)]);
+      }
+      wrapped((ox, oy) => {
+        g.strokeStyle = tone;
+        g.lineWidth = width;
+        g.beginPath();
+        for (const [a, l] of fan) {
+          g.moveTo(x + ox, y + oy);
+          g.quadraticCurveTo(x + ox + Math.cos(a) * l * 0.4, y + oy + Math.sin(a) * l * 0.6,
+            x + ox + Math.cos(a) * l, y + oy + Math.sin(a) * l);
+        }
+        g.stroke();
+      });
+    }
+  }
 }
 
 /*
@@ -812,7 +863,7 @@ function dirtRuts(placed, doc, cover) {
  * of its own. Returns the group, what it painted for stats(), and a way to
  * stop a logo still decoding from painting into a map that has gone.
  */
-export function buildGround(placed, doc, look, cover) {
+export function buildGround(placed, doc, look, cover, drawn = false) {
   const { W, D } = placed;
   const G = look.ground;
   const groundId = look.groundId;
@@ -824,7 +875,7 @@ export function buildGround(placed, doc, look, cover) {
    * it is painted as, it is the same flat plane: a ground is paint. */
   const painter = { tarmac: tarmacTexture, grass: grassTexture, dirt: dirtTexture }[groundId];
   const tile = painter ? GROUND_TILE[groundId] : SLAB * TILE_SLABS;
-  const yard = canvasTexture(painter ? painter() : yardTexture(), W / tile, D / tile);
+  const yard = canvasTexture(painter ? painter(drawn) : yardTexture(), W / tile, D / tile);
   const plot = new THREE.Mesh(
     painter ? plotGeometry(W, D, groundId, hashString(doc.id)) : new THREE.PlaneGeometry(W, D).rotateX(-Math.PI / 2),
     cel({ color: 0xffffff, map: yard, bands: 3, tint: G.tint, vertexColors: Boolean(painter), cache: false }),

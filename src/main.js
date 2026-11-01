@@ -2781,7 +2781,7 @@ export async function boot({ loading, bootStart, mapId }) {
             } else if (fightKind === 'drift') {
               together.driftStart();
             } else if (fightKind === 'ball') {
-              together.ballStart();
+              together.ballAgain();
             } else {
               together.dogfightStart();
             }
@@ -2795,7 +2795,9 @@ export async function boot({ loading, bootStart, mapId }) {
           }
         },
         onChange: () => ui.act('fight-change'),
-        onLeave: () => ui.act('fight-leave'),
+        /* A room's Leave leaves the room, back on the Mini games page, as
+         * its pause's Quit to title does. */
+        onLeave: () => ui.act(fightGame && fightGame.room ? 'room-title' : 'fight-leave'),
       });
     }
     fightHud = fightHuds[kind];
@@ -3207,6 +3209,7 @@ export async function boot({ loading, bootStart, mapId }) {
     fightExtra.best = fightBest;
     fightExtra.newBest = fightNewBest;
     fightExtra.nextMs = g.over ? Math.max(0, RESULT_MS - g.sinceOverMs()) : 0;
+    fightExtra.again = g.room && g.over && fightKind === 'ball' && together ? together.ballAgainInfo() : null;
     fightHud.frame(g, t, shell.camera, nowMs, fightExtra);
   }
 
@@ -13889,6 +13892,9 @@ export async function boot({ loading, bootStart, mapId }) {
   window.__together = () => (together ? together.debugState() : null);
   /* For scripts/together-shots.js: the room's bot seats (src/net/roombots.js). */
   window.__roomBots = () => (together && together.roomBots ? together.roomBots() : null);
+  /* For scripts/together-shots.js: a Quad Ball room's word to the board, as
+   * the host's ball says it, so a check can end a match without flying one. */
+  window.__ballSend = (msg) => (together ? together.sendBall(msg) : null);
   /* For scripts/together-shots.js: the watching camera as it is now, and
    * what one of its frames costs, timed riding behind the pilot watched on
    * the real map's colliders with a camera of its own. Harness only. */

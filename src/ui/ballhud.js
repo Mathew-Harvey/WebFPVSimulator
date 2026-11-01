@@ -61,6 +61,19 @@ function clockText(ms) {
   return `${m}:${r < 10 ? '0' : ''}${r}`;
 }
 
+/* The results' line under Rematch in a room: who wants one more. */
+function againWords(a, host) {
+  if (!a) {
+    return host ? 'Press G for another match' : 'Press Rematch for another match';
+  }
+  if (a.here <= 1) {
+    return a.mine ? 'Starting against a bot' : 'Everyone else left. Rematch plays a bot.';
+  }
+  const need = Math.floor(a.here / 2) + 1;
+  const tail = host ? '. G starts it now' : '';
+  return `Rematch: ${a.want} of ${need} needed${tail}`;
+}
+
 export class BallHud extends DogfightHud {
   constructor(root, opts = {}) {
     super(root, opts);
@@ -333,11 +346,15 @@ export class BallHud extends DogfightHud {
       }
     }
     const nextRound = showing ? Math.max(1, Math.ceil((extra.nextMs || 0) / 1000)) : 0;
-    if (showing && this.resultKeys && L.nextRound !== nextRound) {
-      L.nextRound = nextRound;
-      this.resultKeys.textContent = g.room
-        ? (g.host ? 'Press G for another match' : 'The host starts the next match')
-        : `Next match in ${nextRound} s`;
+    const keys = !showing ? '' : g.room ? againWords(extra.again, g.host) : `Next match in ${nextRound} s`;
+    if (showing && this.resultKeys && L.keys !== keys) {
+      L.keys = keys;
+      this.resultKeys.textContent = keys;
+      const a = extra.again;
+      if (this.againBtn) {
+        this.againBtn.disabled = Boolean(a && a.mine);
+        this.againBtn.textContent = a && a.mine ? 'Rematch asked' : a && a.here <= 1 ? 'Rematch vs a bot' : 'Rematch';
+      }
     }
   }
 
@@ -395,11 +412,17 @@ export class BallHud extends DogfightHud {
     leave.addEventListener('click', () => this.onLeave && this.onLeave());
     const keys = el('span', 'df-keys', '');
     this.resultKeys = keys;
+    this.againBtn = null;
+    this.last.keys = null;
     if (g.room) {
+      /* Everybody gets Rematch, a vote (src/net/together.js ballAgain),
+       * Fly on to wait in the stadium, and Leave for the Mini games page. */
+      again.textContent = 'Rematch';
+      this.againBtn = again;
       const fly = el('button', 'df-btn', 'Fly on');
       fly.type = 'button';
       fly.addEventListener('click', () => this.onFlyOn && this.onFlyOn());
-      row.append(...(g.host ? [again, fly] : [fly]), keys);
+      row.append(again, fly, leave, keys);
     } else {
       row.append(again, change, leave, keys);
     }

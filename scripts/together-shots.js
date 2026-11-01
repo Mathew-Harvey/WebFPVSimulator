@@ -4652,6 +4652,48 @@ async function sceneQuickBall() {
     check('two a side on the host\'s page', count === '2,2', JSON.stringify(sides));
     await wait(1500);
     await shotB('joined');
+    /* The end of a match (the owner, 2026-11-01: "Once a game is over, do
+     * we see a leader board? ... Do we get a rematch option? What about
+     * when one leaves and the other wants to play?"). The host's page puts
+     * the room on first to five and scores five, as its ball would. */
+    const send = (msg) => a.evaluate(`(() => { window.__ballSend(${JSON.stringify(msg)}); return 1; })()`);
+    await send({ t: 'blPit' });
+    await send({ t: 'blSet', round: 'first5' });
+    await send({ t: 'blStart' });
+    await a.until(`(() => { const g = ${G}; return g && g.state.phase === 'live'; })()`, 20000);
+    /* Each goal is sent until the board has counted it: the board holds
+     * the ball for the kickoff after every goal, and refuses one inside it. */
+    for (let k = 1; k <= 5; k += 1) {
+      for (let tries = 0; tries < 20; tries += 1) {
+        const n = await a.evaluate(`${G}.state.n`);
+        await send({ t: 'blGoal', n, team: 0, by: -1 });
+        await wait(700);
+        if (await a.evaluate(`${G}.state.score[0] >= ${k}`)) break;
+      }
+    }
+    const results = (pg) => pg.until("(() => { const r = document.querySelector('.df-result:not(.is-off)'); return Boolean(r && r.querySelectorAll('tr').length >= 5); })()", 20000).then(() => true, () => false);
+    check('the match over, both pages show the results table with all four seats', await results(a) && await results(b), await a.evaluate(`JSON.stringify({ st: ${G}.state, over: ${G}.over, dis: ${G}.dismissed, res: [...document.querySelectorAll('.df-result')].map((r) => r.className + ':' + r.querySelectorAll('tr').length), screen: window.__ui.screen })`));
+    const buttons = (pg) => pg.evaluate("[...document.querySelectorAll('.df-result:not(.is-off) .df-row button')].map((x) => x.textContent).join(',')");
+    check('the joiner gets Rematch, Fly on and Leave, not only Fly on', (await buttons(b)) === 'Rematch,Fly on,Leave', await buttons(b));
+    await shotB('results');
+    await b.evaluate("(() => { document.querySelector('.df-result:not(.is-off) .df-btn.is-go').click(); return 1; })()");
+    const line = (pg) => pg.evaluate("(document.querySelector('.df-result:not(.is-off) .df-keys') || {}).textContent || ''");
+    check('one Rematch of two waits, and the host sees it', await a.until("(document.querySelector('.df-result:not(.is-off) .df-keys') || {}).textContent.startsWith('Rematch: 1 of 2')", 10000).then(() => true, () => false), await line(a));
+    check('and the joiner\'s button says it is asked', await b.evaluate("document.querySelector('.df-result:not(.is-off) .df-btn.is-go').textContent === 'Rematch asked'"));
+    await shotA('rematch-asked');
+    await a.evaluate("(() => { document.querySelector('.df-result:not(.is-off) .df-btn.is-go').click(); return 1; })()");
+    check('both asking starts the rematch on both pages',
+      await a.until(`(() => { const g = ${G}; return g && ['count', 'live'].includes(g.state.phase) && !g.over; })()`, 15000).then(() => true, () => false)
+      && await b.until(`(() => { const g = ${G}; return g && ['count', 'live'].includes(g.state.phase) && !g.over; })()`, 15000).then(() => true, () => false));
+    await a.until(`(() => { const g = ${G}; return g && g.state.phase === 'live'; })()`, 20000);
+    /* The joiner leaves mid match from the pause's Quit to title. */
+    await b.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); window.__ui.act('room-title'); return 1; })()");
+    check('the pilot who leaves lands on the Mini games page, on Quad Ball',
+      await b.until("window.__ui.gatePage === 'games' && window.__ui.gameLast === 'mg-ball'", 20000).then(() => true, () => false),
+      await b.evaluate("JSON.stringify({ page: window.__ui.gatePage, last: window.__ui.gameLast, screen: window.__ui.screen })"));
+    check('and a bot takes their seat, so the one left still has a full match',
+      await a.until(`(() => { const g = ${G}; const rows = g && g.state.rows; return window.__roomBots().seats().length === 3 && rows.length === 4 && !rows.some((r) => r.id === ${you}) && g.state.phase === 'live'; })()`, 15000).then(() => true, () => false),
+      await rows(a));
     endChecks(a, /thumbs\/ball\.jpg/);
     endChecks(b, /thumbs\/ball\.jpg/);
   } catch (e) {

@@ -1978,6 +1978,41 @@ export function createTogether(shell) {
     return true;
   }
 
+  /*
+   * REMATCH, anybody's press on a Quad Ball room's results (the owner,
+   * 2026-11-01). A vote on the board (src/rooms.js blAgain): the next match
+   * starts when more than half the pilots here want one, and a pilot left
+   * alone plays a bot. The host's G still starts one at once.
+   */
+  function ballAgain() {
+    if (!ballRoom() || !ballNow || ballNow.state.phase !== 'results') {
+      return false;
+    }
+    session.link.raceSend({ t: 'blAgain' });
+    return true;
+  }
+
+  /* Who wants one more, for the results: { want, here, mine }, the pilots
+   * here and not in the menus. Null outside a ball room's results. */
+  function ballAgainInfo() {
+    if (!ballRoom() || !ballNow || ballNow.state.phase !== 'results') {
+      return null;
+    }
+    const votes = new Set(ballNow.state.again || []);
+    let here = 0;
+    let want = 0;
+    for (const p of session.link.pilots.values()) {
+      if (p.away && p.id !== session.you) {
+        continue;
+      }
+      here += 1;
+      if (votes.has(p.id)) {
+        want += 1;
+      }
+    }
+    return { want, here: Math.max(1, here), mine: votes.has(session.you) };
+  }
+
   /* The host's match length between matches, one press a step. */
   function ballRound() {
     if (!ballRoom() || !isHost() || !ballNow) {
@@ -6551,6 +6586,8 @@ export function createTogether(shell) {
       }
     },
     ballStart,
+    ballAgain,
+    ballAgainInfo,
     /* A Drift Matsuri room's, as the goats'. */
     takeDrift() {
       const d = driftNow;

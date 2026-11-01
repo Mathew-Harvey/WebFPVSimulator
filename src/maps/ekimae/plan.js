@@ -765,6 +765,28 @@ function carPark(T) {
       }
     }
   }
+  /* The roof, where the pilot starts, used: a concrete wheel stop at the
+   * back of every bay, and the oil a parked car leaves where its engine
+   * sat, darker in some bays than others. The stops are solid and low
+   * (12 cm); the stains are paint, two triangles each. */
+  {
+    const h = roof;
+    const stain = rng(79);
+    for (let by = y0 + 3; by + 2.6 < y1 - 3; by += 2.6) {
+      for (const side of [-1, 1]) {
+        const back = side < 0 ? x0 + 1.0 : x1 - 1.0;
+        const sx0 = side < 0 ? back : back - 0.16;
+        pbox(T, 'concrete', sx0, by + 0.5, h, sx0 + 0.16, by + 2.1, h + 0.12, { name: 'wheel stop' });
+        if (stain.chance(0.55)) {
+          const cx = side < 0 ? x0 + 2.4 : x1 - 2.4;
+          const cy = by + 1.3 + stain.range(-0.25, 0.25);
+          const rw = stain.range(0.35, 0.6);
+          const rl = stain.range(0.5, 0.9);
+          pbox(T, 'asphalt', cx - rl, cy - rw, h, cx + rl, cy + rw, h + 0.006, { solid: false, cast: false, fine: true });
+        }
+      }
+    }
+  }
   /* The ground floor's low wall, open where the cars come in on the east. */
   pbox(T, 'wallCream', x0, y0, 0, x1, y0 + 0.2, 0.9, { name: 'parapet' });
   pbox(T, 'wallCream', x0, y1 - 0.2, 0, x1, y1, 0.9, { name: 'parapet' });

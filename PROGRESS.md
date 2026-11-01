@@ -73914,3 +73914,9 @@ Tried and dropped: the airfield's grass strip is drawn as flat `afMown` paint, t
 The yellow studded line a Japanese pavement carries for the blind now runs round the plaza a metre and a half in from the kerb and up from the south kerb to the subway's mouth, with the square warning blocks at its corners and ends, left out where the start pads stand (`tactile()` in `src/maps/towers/plaza.js`, the map's existing flat `twTactile`). Paint, two triangles a strip, set dressing so near cells only.
 
 Cost, High, against the parent: mid and high views same calls and +48 triangles; fpv and chase moved 162 to 167 and 174 to 173, inside this map's wander from its trains and cars (about 5). `npm run check:towers` passed, `lint:quality` 71 of 71. Reads at the start, faint from the air. Not flown.
+
+### 2026-11-01: Ekimae, the car park roof in use (pass 4, batch 14)
+
+The roof deck the pilot starts on was clean grey between its bay lines. Every roof bay now has a concrete wheel stop at its back (solid, 12 cm, so it collides as drawn) and about half have the dark patch of oil a parked car leaves (paint, fine, two triangles), in `carPark()` in `src/maps/ekimae/plan.js`.
+
+Cost, High, against the parent: same calls in all four views, +984 triangles; Ekimae had banked about 4,000 under a7285fa in the floor trims, so it stays under. `npm run check:ekimae` passed, `lint:quality` 71 of 71. Not flown.

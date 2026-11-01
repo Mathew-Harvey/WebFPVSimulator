@@ -84,6 +84,22 @@ const SPRING_RATE = 8;
 const TRAVEL_FRACTION = 0.72;
 
 /*
+ * The pilot's choice of plate size. `scale` multiplies the drawn plate
+ * (index.html --touch-scale), and the thumb travel follows the drawn plate,
+ * so a larger plate is also more glass per degree. Normal is 1: the size
+ * this overlay has always been.
+ */
+export const TOUCH_SIZES = [
+  { id: 'small', label: 'Small', scale: 0.8 },
+  { id: 'normal', label: 'Normal', scale: 1 },
+  { id: 'large', label: 'Large', scale: 1.25 },
+];
+
+export function normaliseTouchSize(id) {
+  return TOUCH_SIZES.some((t) => t.id === id) ? id : 'normal';
+}
+
+/*
  * Whether this device wants thumb sticks at all. Touch points are the
  * signal: a phone and a tablet report them, a desktop does not, and a
  * touchscreen laptop reports them and ALSO keeps its keyboard: a stick key

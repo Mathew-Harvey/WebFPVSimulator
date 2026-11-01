@@ -64,7 +64,7 @@ import { LapVoice, lapCall } from './render/voice.js';
 import { ClipVoice } from './render/clips.js';
 import { InputManager, NAV_DEFLECT } from './input/input.js';
 import { PAD_CALM } from './input/padgate.js';
-import { mountTouchSticks, touchWanted } from './input/touchsticks.js';
+import { mountTouchSticks, touchWanted, TOUCH_SIZES, normaliseTouchSize } from './input/touchsticks.js';
 import { RcLink, LINK_DEFAULT, LINK_PRESETS } from './input/link.js';
 import { setTicketMeta, wasmFingerprint } from './share/bugs.js';
 import { FlightRecorder, downloadText, flightLogName } from './share/flightlog.js';
@@ -796,6 +796,7 @@ export async function boot({ loading, bootStart, mapId }) {
    * through the same two calls the Escape key makes from flight.
    */
   let touch = null;
+  let appliedTouchSize = '';
   if (touchWanted()) {
     touch = mountTouchSticks({
       onPause: () => {
@@ -8420,6 +8421,16 @@ export async function boot({ loading, bootStart, mapId }) {
     /* What the throttle keys do when let go. The collective stays where it
      * is across a change, so this is safe mid flight. */
     input.setKeyThrottle(s.keyThrottle);
+    /* The thumb stick size: one CSS variable, written only when it moves,
+     * so nothing here runs per frame. The plates' travel is measured off
+     * the drawn plate at touchdown and follows on its own. */
+    if (touch) {
+      const size = TOUCH_SIZES.find((t) => t.id === normaliseTouchSize(s.touchSize));
+      if (size.id !== appliedTouchSize) {
+        appliedTouchSize = size.id;
+        uiRoot.style.setProperty('--touch-scale', String(size.scale));
+      }
+    }
     camTilt = clampCameraAngle(s.cameraAngle);
     s.cameraAngle = camTilt;
     qTilt.setFromAxisAngle(AXIS_X, cameraTiltRad(camTilt));

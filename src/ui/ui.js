@@ -243,7 +243,7 @@ import { fillCredits } from './credits.js';
 import { INSTAGRAM_NOTE, PATREON_NOTE, TIP_NOTE, STEAM_NOTE, openInstagram, openSupport, openTip, openWishlist, patreonAnchor, wishlistAnchor } from '../share/patreon.js';
 import { mountRatesPanel } from './ratespanel.js';
 import { mountPidsPanel } from './pidspanel.js';
-import { touchWanted } from '../input/touchsticks.js';
+import { touchWanted, TOUCH_SIZES, normaliseTouchSize } from '../input/touchsticks.js';
 import {
   closePadGate, newPadGate, openPadGate, padDtMs, stepPadGate,
 } from '../input/padgate.js';
@@ -1513,6 +1513,14 @@ const DEFAULTS = {
    */
   stickMode: DEFAULT_STICK_MODE,
   /*
+   * HOW BIG THE THUMB STICKS ARE on a phone or tablet. A key of
+   * TOUCH_SIZES; 'normal' is the size they have always been. Only the drawn
+   * plate changes: the shell writes one CSS variable when this moves, and
+   * the deflection travel, measured off the drawn plate at touchdown,
+   * follows it. See applySettings in main.js.
+   */
+  touchSize: 'normal',
+  /*
    * WHAT THE THROTTLE KEYS DO WHEN THEY ARE LET GO. 'hover' springs back to
    * hover in the air and to idle on the pad, which is what they have always
    * done. 'hold' leaves the throttle where it was put, like a radio's.
@@ -2090,6 +2098,7 @@ export function loadSettings() {
     s.mapOrder = DEFAULTS.mapOrder;
   }
   s.stickMode = normaliseStickMode(s.stickMode);
+  s.touchSize = normaliseTouchSize(s.touchSize);
   s.keyThrottle = normaliseKeyThrottle(s.keyThrottle);
   /*
    * A setting the pilot picks off a LIST has to still be on that list.
@@ -10759,6 +10768,19 @@ export class Ui {
           (n) => `Mode ${n}`,
           (n) => { s.stickMode = normaliseStickMode(n); },
         ),
+        /* Only on a device with a touchscreen: a desktop has no thumb sticks
+         * to resize. The words say what the size does for the thumbs. */
+        ...(touchWanted() ? [choice(
+          'Thumb stick size',
+          'How big the two sticks on the glass are. Bigger sticks are easier to hit and'
+          + ' give your thumb more room for each bit of stick, so the quad feels calmer.'
+          + ' Smaller sticks leave more of the picture clear. Normal is the size they have'
+          + ' always been. Only shown on a touchscreen.',
+          TOUCH_SIZES.map((t) => t.id),
+          s.touchSize,
+          (id) => TOUCH_SIZES.find((t) => t.id === id).label,
+          (id) => { s.touchSize = normaliseTouchSize(id); },
+        )] : []),
         /*
          * WHAT THE THROTTLE KEYS DO WHEN LET GO, beside the row that decides
          * which keys they are. bug-3a7be142: "it snaps strangely, and doesn't

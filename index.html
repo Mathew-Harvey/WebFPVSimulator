@@ -1778,9 +1778,22 @@
          touchsticks.js scales off the drawn plate's width. Landscape only;
          the portrait block below keeps the smaller plates, because two
          doubled plates are wider than a portrait phone. */
+      /* THUMB STICK SIZE. --touch-scale is the pilot's Thumb stick size
+         * setting (1 is the size it has always been), written once on #ui
+         * when the setting changes and never per frame. A bigger plate is
+         * more glass per degree, because the deflection travel scales off
+         * the drawn plate, and a bigger box is a bigger target. The cap
+         * keeps two scaled plates on the screen: it can only ever shrink
+         * the scaled size, and never below the plain one, so at scale 1
+         * nothing changes. */
+      #ui {
+        --touch-base: clamp(200px, 60vmin, 300px);
+        --touch-fit: min(42vw, 76vh);
+        --touch-size: min(calc(var(--touch-base) * var(--touch-scale, 1)), max(var(--touch-base), var(--touch-fit)));
+      }
       .touch-plate {
-        width: clamp(200px, 60vmin, 300px);
-        height: clamp(200px, 60vmin, 300px);
+        width: var(--touch-size);
+        height: var(--touch-size);
         background: rgba(12, 18, 14, 0.30);
         transition: background 0.15s ease, box-shadow 0.15s ease;
       }
@@ -1960,13 +1973,10 @@
          The slider stays off in flight, as it always was upright, and the
          turn-sideways hint goes up out of the middle to the top third. */
       @media (orientation: portrait) {
-        .touch-plate {
-          width: clamp(112px, 30vmin, 168px);
-          height: clamp(112px, 30vmin, 168px);
-        }
+        #ui { --touch-base: clamp(112px, 30vmin, 168px); --touch-fit: min(46vw, 40vh); }
         .touch-fly-on .osd-sticks { display: none; }
         .touch-fly-on .osd-corner {
-          top: auto; bottom: calc(clamp(112px, 30vmin, 168px) + 44px);
+          top: auto; bottom: calc(var(--touch-size) + 44px);
         }
         .touch-fly-on .osd-right { right: max(14px, env(safe-area-inset-right)); }
         .touch-rotate { top: 24%; }

@@ -40,6 +40,8 @@ export const MATERIALS = {
   tgRockDark: { c: 0x7d7068, tint: 0x4f4868 },
   tgCut: { c: 0xbdbab0, tint: TD },
   tgGravel: { c: 0x8e8996, tint: 0x5a5480 },
+  tgLotPatch: { c: 0x75728a, tint: 0x4c476e },
+  tgLotFresh: { c: 0x625f76, tint: 0x433e5c },
   tgRiverBed: { c: 0xb0a48e, tint: 0x655d84 },
   tgWater: { f: 0x6fb9d8, noCast: true },
   tgFoam: { f: 0xf2f6f6, noCast: true },

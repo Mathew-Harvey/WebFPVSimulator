@@ -193,6 +193,13 @@ function building(T) {
   T.box('white', x0 - 0.6, balcony + 0.3, top, x0 - 0.3, y1, parapet, { name: 'parapet' });
   T.box('white', x1 + 0.3, balcony + 0.3, top, x1 + 0.6, y1, parapet, { name: 'parapet' });
   T.deco('hyKerbRed', x0 - 0.62, balcony - 0.02, roof + 0.1, x1 + 0.62, balcony + 0.01, top - 0.05);
+  /* The roof's seams, walkway and painted name (./signs.js roofPanel):
+   * four quads on the signs' one picture, no draw call and eight
+   * triangles. They stop short of the plant along the back. */
+  for (let k = 0; k < 4; k += 1) {
+    const a = x0 + k * 60;
+    T.sign(k === 0 || k === 3 ? 'roofName' : 'roofPanel', a + 30, (balcony + 0.4 + y1 - 5) / 2, top, 0, 0, 60, y1 - 5 - balcony - 0.4, 0.02);
+  }
   /* Roof plant: air handlers along the back. */
   for (let x = x0 + 8; x < x1 - 6; x += 22) {
     T.box('acUnit', x, y1 - 4.5, top, x + 3.2, y1 - 1.5, top + 1.5, { name: 'roof plant' });

@@ -64,12 +64,28 @@ import { paintSigns, signMesh } from './signs.js';
 /* The mountain                                                        */
 /* ------------------------------------------------------------------ */
 
+/* The car park's surface, a 4 m cell at a time (pass 4 of 2026-11-01).
+ * It was one flat tone over 94 by 42 metres, two thirds of the start's
+ * view. A mountain pass car park is worn asphalt repaired in squares, the
+ * aisle by the road laid fresh and darker where the traffic wears it, so
+ * each cell is worn, patched or fresh. The ground is merged by colour
+ * (../sunny/palette.js), so on Medium and up this costs no draw call and
+ * no triangle; Low keeps the one tone (LOW_GROUND), where the two more
+ * colours were a draw call more in the census. */
+function lotMaterial(px, py) {
+  if (py < REST.y0 + 8) {
+    return 'tgLotFresh';
+  }
+  const cell = hash2(Math.floor(px / 4), Math.floor(py / 4), 47);
+  return cell < 0.16 ? 'tgLotPatch' : 'tgGravel';
+}
+
 /* What a ground triangle is, from where it is and how steep. */
 function groundMaterial(px, py, h, ny) {
   const near = nearest(px, py, 30);
   const d = near ? near.d : 99;
   if (px > REST.x0 - 1 && px < REST.x1 + 1 && py > REST.y0 - 1 && py < REST.y1 + 1) {
-    return 'tgGravel';
+    return lotMaterial(px, py);
   }
   if (d < HALF + 1.6 && Math.abs(h - heightAt(near.s)) < 0.6) {
     return 'tgVerge';
@@ -142,8 +158,8 @@ function addGrid(bins, g, skip, chunkFor, pick) {
 
 /* On Low the ground keeps five colours rather than seven: the shoulder
  * takes the grass's and bare rock the cutting's, two draw calls fewer in
- * every chunk. */
-const LOW_GROUND = { tgVerge: 'tgGrass', tgRock: 'tgCut' };
+ * every chunk, and the car park keeps its one tone. */
+const LOW_GROUND = { tgVerge: 'tgGrass', tgRock: 'tgCut', tgLotPatch: 'tgGravel', tgLotFresh: 'tgGravel' };
 
 function drawMountain(kit, low) {
   const { fine, far } = ground();

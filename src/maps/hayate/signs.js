@@ -295,6 +295,41 @@ const gridBox = (n) => (g, w, h) => {
   words(g, String(n), w / 2, h * 0.62, w * 0.7, h * 0.5, CREAM);
 };
 
+/* A stretch of the pit roof, lying face up with its top to the north
+ * (pass 4 of 2026-11-01). The start pads stand on this roof, and it was
+ * 240 metres of one flat navy, most of what the start and the chase
+ * camera see. A standing seam roof: a light seam every metre and a bit
+ * running front to back, a grey walkway along the front with a yellow
+ * safety line, and on two of the four stretches the circuit's name
+ * painted big for the helicopters. The name is painted upside down in
+ * the cell, so it reads the right way up to a camera behind the pads
+ * looking south over the straight. Transparent between, so the roof's own
+ * shaded tone shows through. */
+function roofPanel(g, w, h, name) {
+  g.fillStyle = 'rgba(232,238,248,0.16)';
+  const seam = w / 50;
+  for (let x = seam / 2; x < w; x += seam) {
+    g.fillRect(Math.round(x), 0, 2, h);
+  }
+  const walk = h * 0.135;
+  g.fillStyle = '#8f98ab';
+  g.fillRect(0, h - walk, w, walk);
+  g.fillStyle = '#f2c43a';
+  for (let x = 0; x < w; x += 28) {
+    g.fillRect(x, h - walk - 5, 18, 4);
+  }
+  g.fillStyle = 'rgba(30,28,40,0.35)';
+  g.fillRect(0, h - walk - 1, w, 1);
+  if (name) {
+    g.save();
+    g.translate(w / 2, (h - walk) / 2);
+    g.rotate(Math.PI);
+    lettered(g, '疾風', -w * 0.3, 0, w * 0.3, h * 0.62, CREAM, INK, JP);
+    lettered(g, 'HAYATE', w * 0.17, 0, w * 0.56, h * 0.5, CREAM);
+    g.restore();
+  }
+}
+
 /* A row of the crowd: heads and shoulders in a dozen shirts, three rows
  * deep, a flag or a raised arm here and there. `seed` picks the faces. */
 const SHIRTS = ['#f0721e', '#2f6fd0', '#2f9a4c', '#d8333d', '#f4f2f0', '#dcbc58', '#f2a6bd', '#2e4382', '#e9a23a', '#3a3f58'];
@@ -493,6 +528,8 @@ const SIGNS = {
     words(g, 'H', w / 2, h / 2 + 3, w * 0.5, h * 0.56, CREAM);
   } },
   hayateGate: { h: 64, paint: named('#c22c3a', CREAM, 'HAYATE CIRCUIT', '疾風') },
+  roofPanel: { h: 256, paint: (g, w, h) => roofPanel(g, w, h, false) },
+  roofName: { h: 256, paint: (g, w, h) => roofPanel(g, w, h, true) },
 };
 for (let i = 1; i <= 12; i += 1) {
   SIGNS[`grid${i}`] = { h: 64, paint: gridBox(i) };

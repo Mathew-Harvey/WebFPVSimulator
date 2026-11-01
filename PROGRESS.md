@@ -73774,3 +73774,9 @@ Mat, 2026-11-01 11:48Z, over a screenshot of "How do you want to fly?" with thre
 - Not changed: the two cover panels still open the Fly solo page and the Multiplayer page, which are the places where the real choices live (Career, Race, Freestyle, Builder; Host, Find, Code, Pilot). I did not collapse them straight into the map picker, because Fly solo holds more than a map.
 - Latency: no change. Menu only, nothing in the flight loop or input path.
 - Checks: syntax check of the three edited files only. NOT run: `node scripts/shots.js`, `minigames-check --only=menu`, `npm run verify`. The solo page's new five-panel grid (Mini games is a narrow panel) has not been looked at.
+
+Follow-up, same day, Mat 11:50Z over the Fly solo page: "if click on free style i should see freetyle maps, i should see mini games, if i click on that mini games, whoop racing - whoop tracks career and builder are correct".
+
+- The Fly solo cards that name a shelf now open it: Freestyle opens the freestyle maps picker, Five inch racing and Whoop racing open the tracks picker, always (`way-` branch in `act()`, src/ui/ui.js). Before, a seated track or world skipped the picker and landed on the menu behind the gate. Five inch racing follows Whoop racing for consistency, which he did not name. Career, Builder and Mini games unchanged.
+- Cost: a pilot who wants their last seated map flown again now picks it in the picker (it is the chosen card) instead of pressing Fly on the menu. Say so if the one-keypress path should come back.
+- Checked: syntax only. Any check that drives a way card and expects the menu behind it (shell-check, shots flows) may now see the picker; not run.

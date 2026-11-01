@@ -21922,52 +21922,15 @@ export class Ui {
       }
       this.returnTo = 'title';
       this.roomFrom = null;
-      if (way.mode === 'race') {
-        if (!hasLoadedTrack()) {
-          this.show('courses');
-          return;
-        }
-        if (this.settings.map !== 'custom') {
-          this.seatMap('custom');
-          return;
-        }
-      } else if (!seatedFreestyleMap(this.settings)) {
-        /*
-         * NO PICKER WHEN THERE IS NOTHING TO PICK.
-         *
-         * This used to open the Freestyle room so a first visit could choose
-         * among four worlds with the cards in front of it. Three of those
-         * worlds were removed on 2026-08-30 and the picker stayed, so
-         * answering "Freestyle" put a screen in front of a pilot whose only
-         * content was one card saying the name of the only place they could
-         * possibly be going. That is a question with one answer, and a
-         * question with one answer is a keypress somebody has to make.
-         *
-         * The remembered world is still consulted FIRST, and the picker
-         * still comes back the moment there is a real choice, which is why
-         * this is written as "what is remembered, or the only one" rather
-         * than as the id of the town. A second freestyle world costs the
-         * registry entry and this branch and nothing else.
-         */
-        const want = freestyleWorldToSeat(this.settings);
-        if (!want) {
-          this.show('freestyle');
-          return;
-        }
-        this.seatWorld(want);
-        return;
-      }
       /*
-       * The seat already agrees with the answer, so the gate was one
-       * keypress and the menu is behind it. The cursor lands on the first
-       * row of what the answer opened rather than staying on the index of
-       * the card that was pressed: the third card is the third row, so
-       * choosing Freestyle would otherwise put the cursor on the menu's
-       * third row and the Fly button under it would read as something
-       * else's. Same call back() makes for the same reason.
+       * THE PICKER, ALWAYS (the owner, 2026-11-01, over the Fly solo page:
+       * "if click on free style i should see freestyle maps ... whoop
+       * racing, whoop tracks"). A seated track or world used to skip it and
+       * land on the menu behind the gate, so the card named one place and
+       * opened another. Now the card opens the shelf it names, with the
+       * seated entry already chosen in it.
        */
-      this.setCursor(this.titleStop());
-      this.renderMenu();
+      this.show(way.mode === 'race' ? 'courses' : 'freestyle');
       return;
     }
     /*

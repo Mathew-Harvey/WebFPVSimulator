@@ -25,7 +25,7 @@
  *              yard's goes on a road, and a bridge with a road under it
  *              paints no lane of its own
  *     drawn    the grass's drawn tufts (the maps that drop facet ink)
- *     tone     optional (x, z) => factor on the plot's colour at a vertex,
+ *     tone     optional (x, z) => factor, or [r, g, b] factors, on the plot's colour at a vertex,
  *              in the world frame: a map's own slow pattern on its ground
  *   returns { group, painted, cancelLogos, stickers }: the group to add to
  *   a scene, what was painted (for stats), a way to stop a logo still
@@ -423,6 +423,50 @@ function dirtTexture() {
 const LATTICE = 30;
 const PLOT_VARY = { tarmac: [0.07, 0, 0], grass: [0.08, 0.05, 0.06], dirt: [0.09, 0.03, 0] };
 
+/* Smoothed value noise in [-1, 1] on a lattice of `cell` metres, the
+ * octave `k`, the same for a seed on every machine. */
+function valueNoise(x, z, cell, k, seed) {
+  const lattice = (i, j) => seededRandom((Math.imul(i, 73856093) ^ Math.imul(j, 19349663) ^ Math.imul(k, 83492791) ^ seed) >>> 0).next() * 2 - 1;
+  const smooth = (t) => t * t * (3 - 2 * t);
+  const fx = x / cell;
+  const fz = z / cell;
+  const i = Math.floor(fx);
+  const j = Math.floor(fz);
+  const u = smooth(fx - i);
+  const v = smooth(fz - j);
+  const a = lattice(i, j) + (lattice(i + 1, j) - lattice(i, j)) * u;
+  const b = lattice(i, j + 1) + (lattice(i + 1, j + 1) - lattice(i, j + 1)) * u;
+  return a + (b - a) * v;
+}
+
+/*
+ * A LAWN GONE TO MEADOW, as a plot tone (buildGround's `tone`): patches
+ * of sun dried grass, paler and yellower, and of long lush grass, darker
+ * and bluer, a few tens of metres across, the texture kept under both.
+ * `keep(x, z)`, if given, says where the grass is still kept and gets
+ * none of it. Returns [r, g, b] factors, none over 1: the shell's look
+ * pass (src/render/look.js toneGeometry) clamps every vertex colour to 1,
+ * so a tone can only take away. Dry is yellower by losing blue, not by
+ * gaining red.
+ */
+export function meadowTone(seed, keep = null, cell = 26) {
+  return (x, z) => {
+    if (keep && keep(x, z)) {
+      return 1;
+    }
+    const n = 0.75 * valueNoise(x, z, cell, 11, seed) + 0.25 * valueNoise(x, z, cell / 3, 12, seed);
+    if (n > 0.18) {
+      const t = Math.min(1, (n - 0.18) / 0.3);
+      return [1, 1 - 0.09 * t, 1 - 0.4 * t];
+    }
+    if (n < -0.22) {
+      const t = Math.min(1, (-0.22 - n) / 0.3);
+      return [1 - 0.32 * t, 1 - 0.18 * t, 1 - 0.14 * t];
+    }
+    return 1;
+  };
+}
+
 function plotGeometry(W, D, groundId, seed, tone = null) {
   const vary = PLOT_VARY[groundId];
   /* Four metre cells, well inside the noise's lattice, and no more than a
@@ -434,19 +478,7 @@ function plotGeometry(W, D, groundId, seed, tone = null) {
   if (!vary) {
     return geo;
   }
-  const lattice = (i, j, k) => seededRandom((Math.imul(i, 73856093) ^ Math.imul(j, 19349663) ^ Math.imul(k, 83492791) ^ seed) >>> 0).next() * 2 - 1;
-  const smooth = (t) => t * t * (3 - 2 * t);
-  const noise = (x, z, cell, k) => {
-    const fx = x / cell;
-    const fz = z / cell;
-    const i = Math.floor(fx);
-    const j = Math.floor(fz);
-    const u = smooth(fx - i);
-    const v = smooth(fz - j);
-    const a = lattice(i, j, k) + (lattice(i + 1, j, k) - lattice(i, j, k)) * u;
-    const b = lattice(i, j + 1, k) + (lattice(i + 1, j + 1, k) - lattice(i, j + 1, k)) * u;
-    return a + (b - a) * v;
-  };
+  const noise = (x, z, cell, k) => valueNoise(x, z, cell, k, seed);
   const pos = geo.attributes.position;
   const col = new Float32Array(pos.count * 3);
   for (let n = 0; n < pos.count; n += 1) {
@@ -455,11 +487,14 @@ function plotGeometry(W, D, groundId, seed, tone = null) {
     const value = 0.7 * noise(x, z, LATTICE, 1) + 0.3 * noise(x, z, LATTICE / 3, 2);
     const hue = noise(x, z, LATTICE * 1.4, 3);
     /* A map may lay its own slow tone over the noise, a mown field's
-     * bands, say: a factor at the vertex, so the texture stays under it. */
-    const k = (1 + vary[0] * value) * (tone ? tone(x, z) : 1);
-    col[n * 3] = k * (1 + vary[1] * hue);
-    col[n * 3 + 1] = k;
-    col[n * 3 + 2] = k * (1 - vary[2] * hue);
+     * bands, say: a factor at the vertex, so the texture stays under it.
+     * Keep it at 1 or under: the look pass clamps a vertex colour to 1. */
+    const k = 1 + vary[0] * value;
+    const t = tone ? tone(x, z) : 1;
+    const [tr, tg, tb] = typeof t === 'number' ? [t, t, t] : t;
+    col[n * 3] = k * (1 + vary[1] * hue) * tr;
+    col[n * 3 + 1] = k * tg;
+    col[n * 3 + 2] = k * (1 - vary[2] * hue) * tb;
   }
   geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
   return geo;

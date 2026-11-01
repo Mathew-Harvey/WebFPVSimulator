@@ -47,6 +47,7 @@
 
 import * as THREE from 'three';
 import { buildMap as buildBuilt } from '../built/index.js';
+import { meadowTone } from '../built/ground.js';
 import { warmPrograms } from '../../render/warm.js';
 import { qualityFor } from '../../render/quality.js';
 import { paintMaterial } from '../../art/stf.js';
@@ -258,6 +259,9 @@ export async function buildMap(shell, onProgress, options) {
   };
   const map = await buildBuilt(shell, onProgress, {
     ...(options || {}), inkFacets: false, document: sanaDocument(), extra, sponsorMarks: false, markSpots: sanaMarkSpots(),
+    /* The lawns have gone to meadow: dry patches and lush ones on the
+     * plot's own vertices, no triangle and no batch (../built/ground.js). */
+    plotTone: meadowTone(0x5a7a),
   });
   /* Its own world: the shell keys the world, the results and the board's
    * refusal by this id, and `source` is the word the board counts its

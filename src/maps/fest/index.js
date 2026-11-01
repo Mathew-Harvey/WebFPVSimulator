@@ -510,7 +510,7 @@ function mownBands(x, z) {
   if (px < ARENA.x0 + 2 || px > ARENA.x1 - 2 || py < ARENA.y0 + 2 || py > ARENA.y1 - 2) {
     return 1;
   }
-  return Math.floor((py - ARENA.y0) / MOW_BAND) % 2 ? 0.8 : 1.06;
+  return Math.floor((py - ARENA.y0) / MOW_BAND) % 2 ? 0.8 : 1;
 }
 
 export async function buildMap(shell, onProgress, options) {

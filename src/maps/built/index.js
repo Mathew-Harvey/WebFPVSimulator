@@ -327,6 +327,16 @@ const INK_INVERSE = `      float sx = 2.0 - dc / dl - dc / dr;
  */
 export const FACET_SENS = 1.8;
 
+/*
+ * AND A HEAVIER PEN, on the same maps: the line DRAWN_PEN times as wide,
+ * with the crease thresholds taken up by the same factor, because the ink
+ * reads a crease across the pen's reach and a wider reach reads every
+ * crease stronger (comicPipeline's note on INK_WEIGHT). So the same lines
+ * are drawn, bolder, the way the town's near streets read. The taps move
+ * further apart and there are no more of them: no cost.
+ */
+export const DRAWN_PEN = 1.3;
+
 const INK_FADE = '      edge *= 1.0 - smoothstep( uFadeStart, uFadeEnd, dc );';
 export const FAR_INK = 0.55;
 export const FAR_INK_START = 60;
@@ -378,7 +388,9 @@ export class BuiltPipeline extends Pipeline {
     comicPipeline(this, { blobs: true });
     /* A map drawn as a comic asks for no facet lines: see FACET_SENS. */
     if (opts && opts.inkFacets === false) {
-      this.ink.mat.uniforms.uSens.value *= FACET_SENS;
+      this.ink.mat.uniforms.uSens.value *= FACET_SENS * DRAWN_PEN;
+      this.ink.mat.uniforms.uConcave.value *= DRAWN_PEN;
+      this.inkWeight *= DRAWN_PEN;
     }
   }
 

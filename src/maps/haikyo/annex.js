@@ -42,6 +42,7 @@
  */
 
 import { rng } from './frame.js';
+import { sincos } from '../../props/trig.js';
 import { wall, slab, rebar } from './bits.js';
 import { BLOCK } from './danchi.js';
 
@@ -317,27 +318,51 @@ function tank(T, r) {
     }
   }));
   T.sign('tankNo', (K.x0 + K.x1) / 2, K.y0 + 0.46, K.top - 1.3, 3.0, 1.2, 's');
-  /* The deck's railing, a ladder cage up the north west leg, the hatch. */
+  /*
+   * The deck's railing and the ladder cage up the north west leg: drawn on
+   * every preset and solid as drawn, a capsule along each rail, post and
+   * stile, and each hoop of the cage eight short capsules round it. They
+   * were dressing, drawn on Medium and up and never solid, and the owner
+   * dived the cage and went through it on 2026-11-01 ("there is a ring
+   * dive that has no collider on it"). The rungs are one thin solid
+   * between the stiles: 27 cm apart, under a craft's width, they are a
+   * wall to a craft as a real ladder is. The hoops are drawn with eight
+   * sides instead of twelve, which pays for Low now drawing them.
+   */
+  const solidRod = (a, b, r) => {
+    T.cyl('hkRust', a, b, r, 3);
+    T.cap('hkRust', a, b, r, { draw: false, name: 'tank railing', kind: 'pole' });
+  };
+  const e = [K.x0 - 0.95, K.y0 - 0.95, K.x1 + 0.95, K.y1 + 0.95];
+  const top = K.deck + 0.35 + 1.1;
+  solidRod([e[0], e[1], top], [e[2], e[1], top], 0.03);
+  solidRod([e[2], e[1], top], [e[2], e[3], top], 0.03);
+  solidRod([e[2], e[3], top], [e[0], e[3], top], 0.03);
+  solidRod([e[0], e[3], top], [e[0], e[1], top], 0.03);
+  for (const [x, y] of [[e[0], e[1]], [e[2], e[1]], [e[0], e[3]], [e[2], e[3]]]) {
+    solidRod([x, y, K.deck + 0.35], [x, y, top], 0.03);
+  }
+  const lx = K.x0 - 0.55;
+  const ly = K.y1;
+  solidRod([lx, ly - 0.25, 2.2], [lx, ly - 0.25, K.deck + 0.35], 0.025);
+  solidRod([lx, ly + 0.25, 2.2], [lx, ly + 0.25, K.deck + 0.35], 0.025);
+  for (let h = 2.4; h < K.deck; h += 0.3) {
+    T.cyl('hkRust', [lx, ly - 0.25, h], [lx, ly + 0.25, h], 0.015, 3);
+  }
+  T.hidden(lx - 0.015, ly - 0.25, 2.4 - 0.015, lx + 0.015, ly + 0.25, K.deck, 'pole', 'tank ladder');
+  const sc = { s: 0, c: 1 };
+  const HOOP = 8;
+  for (let h = 4.4; h < K.deck; h += 1.0) {
+    T.torus('hkRust', lx - 0.35, ly, h, 0.42, 0.02, 0, 0, 3, HOOP);
+    const at = (k) => {
+      sincos((k / HOOP) * Math.PI * 2, sc);
+      return [lx - 0.35 + 0.42 * sc.c, ly + 0.42 * sc.s, h];
+    };
+    for (let k = 0; k < HOOP; k += 1) {
+      T.cap('hkRust', at(k), at(k + 1), 0.025, { draw: false, name: 'ladder hoop', kind: 'pole' });
+    }
+  }
   T.dress(() => {
-    const e = [K.x0 - 0.95, K.y0 - 0.95, K.x1 + 0.95, K.y1 + 0.95];
-    const top = K.deck + 0.35 + 1.1;
-    T.cyl('hkRust', [e[0], e[1], top], [e[2], e[1], top], 0.03, 4);
-    T.cyl('hkRust', [e[2], e[1], top], [e[2], e[3], top], 0.03, 4);
-    T.cyl('hkRust', [e[2], e[3], top], [e[0], e[3], top], 0.03, 4);
-    T.cyl('hkRust', [e[0], e[3], top], [e[0], e[1], top], 0.03, 4);
-    for (const [x, y] of [[e[0], e[1]], [e[2], e[1]], [e[0], e[3]], [e[2], e[3]]]) {
-      T.cyl('hkRust', [x, y, K.deck + 0.35], [x, y, top], 0.03, 4);
-    }
-    const lx = K.x0 - 0.55;
-    const ly = K.y1;
-    T.cyl('hkRust', [lx, ly - 0.25, 2.2], [lx, ly - 0.25, K.deck + 0.35], 0.025, 3);
-    T.cyl('hkRust', [lx, ly + 0.25, 2.2], [lx, ly + 0.25, K.deck + 0.35], 0.025, 3);
-    for (let h = 2.4; h < K.deck; h += 0.3) {
-      T.cyl('hkRust', [lx, ly - 0.25, h], [lx, ly + 0.25, h], 0.015, 3);
-    }
-    for (let h = 4.4; h < K.deck; h += 1.0) {
-      T.torus('hkRust', lx - 0.35, ly, h, 0.42, 0.02, 0, 0, 3, 12);
-    }
     T.box('metalDark', 98.5, 76.5, K.top, 99.5, 77.5, K.top + 0.12, { solid: false });
     /* Moss on the deck's edge and streaks down the legs. */
     for (const [x, y] of legs) {

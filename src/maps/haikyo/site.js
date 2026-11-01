@@ -223,17 +223,27 @@ function playground(T, r) {
     T.torus('hkTelly', (M.x0 + M.x1) / 2, (M.y0 + M.y1) / 2, M.h + 0.15, 0.4, 0.14, 0, 0, 6, 12);
   });
 
-  /* The climbing frame: a cube of bars, solid as the cube. */
+  /*
+   * The climbing frame: a cube of bars, each bar solid as drawn, so its
+   * 80 cm squares are holes a craft goes through. It was one solid cube
+   * until the owner flew it on 2026-11-01 ("the kids playground equipment
+   * the gap is not there in the matrix frame"); his word that every gap
+   * he can see is flyable is what lets these squares stand inside the gap
+   * rule's 1.4 m.
+   */
   const G = GYM;
   const side = G.n * G.s;
-  T.box('hkPlayRed', G.x0, G.y0, 0, G.x0 + side, G.y0 + side, side, { draw: false, name: 'climbing frame' });
+  const bar = (m, a, b, r) => {
+    T.cyl(m, a, b, r, 4);
+    T.cap(m, a, b, r, { draw: false, name: 'climbing frame', kind: 'pole' });
+  };
   for (let a = 0; a <= G.n; a += 1) {
     for (let b = 0; b <= G.n; b += 1) {
       const u = G.x0 + a * G.s;
       const v = G.y0 + b * G.s;
-      T.cyl('hkPlayRed', [u, v, 0], [u, v, side], 0.025, 4);
-      T.cyl('hkPlayGreen', [G.x0, v, a * G.s], [G.x0 + side, v, a * G.s], 0.02, 4);
-      T.cyl('hkPlayGreen', [u, G.y0, b * G.s], [u, G.y0 + side, b * G.s], 0.02, 4);
+      bar('hkPlayRed', [u, v, 0], [u, v, side], 0.025);
+      bar('hkPlayGreen', [G.x0, v, a * G.s], [G.x0 + side, v, a * G.s], 0.02);
+      bar('hkPlayGreen', [u, G.y0, b * G.s], [u, G.y0 + side, b * G.s], 0.02);
     }
   }
 

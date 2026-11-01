@@ -305,7 +305,7 @@ function centre(C) {
   C.post('tankPaint', 600, 52, roof, roof + 3.2, 1.3, { kind: 'wall', name: 'tank' });
   C.draw(600, 52, (K) => {
     const t = w(600, 52, roof + 3.2);
-    K.cone('tankSeam', t, 1.35, 0.6, 14);
+    K.crownCone('tankSeam', t, 1.35, 0.6, 14);
   }, true);
   /* The name on the roof, on a lattice frame over the lounge's roof,
    * facing the dunes. */
@@ -975,7 +975,7 @@ function person(K, x, y, k, hat = false) {
   K.blob('drSkin', [p[0], p[1] + tall * 0.93, p[2]], 0.12, 0.13, [0, k, 0]);
   if (hat) {
     K.cyl(k % 2 ? 'white' : 'dnStraw', [p[0], p[1] + tall * 0.98, p[2]], [p[0], p[1] + tall * 1.0, p[2]], 0.24, 10);
-    K.cone(k % 2 ? 'white' : 'dnStraw', [p[0], p[1] + tall * 1.0, p[2]], 0.13, 0.1, 8);
+    K.crownCone(k % 2 ? 'white' : 'dnStraw', [p[0], p[1] + tall * 1.0, p[2]], 0.13, 0.1, 8);
   }
 }
 
@@ -1062,7 +1062,7 @@ function grass(C) {
       const q = w(x, y, g(x, y) - 0.05);
       for (let k = 0; k < 3; k += 1) {
         const a = k * 2.1 + x;
-        K.cone(m, [q[0] + Math.cos(a) * 0.18 * s, q[1], q[2] + Math.sin(a) * 0.18 * s], 0.16 * s, 0.9 * s + k * 0.12, 4);
+        K.crownCone(m, [q[0] + Math.cos(a) * 0.18 * s, q[1], q[2] + Math.sin(a) * 0.18 * s], 0.16 * s, 0.9 * s + k * 0.12, 4);
       }
     }, true);
   }
@@ -1150,7 +1150,7 @@ function beach(C) {
     K.ladder('white', w(L.x, L.y - half - 0.9, gy), w(L.x, L.y - half - 0.2, gy + L.deck), 0.5);
     const top = w(L.x, L.y, gy + L.deck + 0.18);
     K.cyl('white', top, [top[0], top[1] + 2.6, top[2]], 0.03, 4);
-    K.cone('drNoboriRed', [top[0], top[1] + 2.2, top[2]], 1.4, 0.55, 10);
+    K.crownCone('drNoboriRed', [top[0], top[1] + 2.2, top[2]], 1.4, 0.55, 10);
     K.box('mxOrange', top[0] - 0.3, top[1], top[2] - 0.3, top[0] + 0.3, top[1] + 0.45, top[2] + 0.3);
     K.box('mxOrange', top[0] - 0.3, top[1] + 0.45, top[2] + 0.22, top[0] + 0.3, top[1] + 0.95, top[2] + 0.3);
   });

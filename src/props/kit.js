@@ -643,6 +643,134 @@ function turnedInside(g) {
   return g;
 }
 
+/*
+ * A CONIFER'S WHORL AS A MANGAKA DRAWS IT (2026-11-01, the owner's "it
+ * should feel like a manga comic, not minecraft all blocky").
+ *
+ * The maps stacked plain cones for their cedars and pines: a smooth sided
+ * six or seven faced cone, and the ink pass drew its facet edges, so a
+ * forest was a field of cut gems. A comic draws a cedar's tier as a skirt of
+ * points, each point a line from the top, with the notches between them
+ * tucked up and in. This is that shape: `points` tips at radius 1 on the
+ * base, a notch between each pair at NOTCH_R, lifted NOTCH_Y, every side
+ * vertex given the round cone's normal for its angle so the cel ramp shades
+ * the tier round and not in facets, and a shallow underside, which a pilot
+ * flying under a crown sees, faced down.
+ *
+ * Unit size, standing on the origin: radius 1, height 1. Indexed, with uv,
+ * so it bakes beside three's own shapes without un-indexing a batch.
+ *
+ * TRIANGLES: 4 x points, 2 x points open, against a cone's 2 x segments
+ * (one x segments open). coniferPoints picks the points so no tier gains
+ * one: a seven segment cone's 14 becomes three points' 12.
+ */
+/* The notch's radius as a share of the tip's, and its lift, of the
+ * tier's height. */
+const NOTCH_K = 0.78;
+const NOTCH_Y = 0.17;
+const UNDER_Y = 0.24;
+/*
+ * WHAT IS SOLID DOES NOT MOVE. Every map's tier solid was sized inside the
+ * cone it drew (the town's coneSolid and its copies), which is inside the
+ * cone's inscribed circle. A star's inscribed circle is its edges' nearest
+ * approach, between a tip and a notch, so the tips are pushed out until that
+ * is HOLD of the old radius: the solid stays inside what is drawn, and the
+ * points stand past it, as a cedar's branch tips do, brushed and not hit.
+ * 0.92 is over the 0.9 of a cone's inscribed sphere that the widest of
+ * them (Kazahana's fir, kaza/market.js) stands in a tier, and over
+ * cos(pi / 7), the seven sided cone's own inscribed share. The tips come
+ * out at about 1.2 of the old radius.
+ */
+const HOLD = 0.92;
+function tipRadius(points) {
+  const a = Math.PI / points;
+  const k = NOTCH_K;
+  const f = (k * Math.sin(a)) / Math.hypot(1 - k * Math.cos(a), k * Math.sin(a));
+  return HOLD / f;
+}
+const WHORLS = new Map();
+export function whorlGeometry(points, open = false) {
+  const key = open ? `${points}o` : `${points}`;
+  let g = WHORLS.get(key);
+  if (g) {
+    return g;
+  }
+  const n = points * 2;
+  const tip = tipRadius(points);
+  const pos = [];
+  const nor = [];
+  const uv = [];
+  const idx = [];
+  const rimR = (i) => (i % 2 ? tip * NOTCH_K : tip);
+  const rimY = (i) => (i % 2 ? NOTCH_Y : 0);
+  /* The round cone's normal at angle a: out, and up by the slope. */
+  const coneN = (a) => {
+    const l = Math.SQRT2;
+    return [Math.cos(a) / l, 1 / l, Math.sin(a) / l];
+  };
+  /* Side: a rim ring, then an apex per face carrying the normal of the
+   * face's middle angle, as three's cone does, so the top is not a seam. */
+  for (let i = 0; i < n; i += 1) {
+    const a = (i / n) * Math.PI * 2;
+    pos.push(Math.cos(a) * rimR(i), rimY(i), Math.sin(a) * rimR(i));
+    nor.push(...coneN(a));
+    uv.push(i / n, 0);
+  }
+  for (let i = 0; i < n; i += 1) {
+    const a = ((i + 0.5) / n) * Math.PI * 2;
+    pos.push(0, 1, 0);
+    nor.push(...coneN(a));
+    uv.push((i + 0.5) / n, 1);
+    /* Wound so the face looks out: three's front faces are counter
+     * clockwise seen from outside. */
+    idx.push(n + i, (i + 1) % n, i);
+  }
+  /* Underside: the same rim faced down, to a centre lifted inside. An open
+   * whorl has none, for a map that drew an open cone where a tier is only
+   * ever seen from above (Hotaru Valley's Low). */
+  const base = n * 2;
+  for (let i = 0; i < (open ? 0 : n); i += 1) {
+    const a = (i / n) * Math.PI * 2;
+    pos.push(Math.cos(a) * rimR(i), rimY(i), Math.sin(a) * rimR(i));
+    nor.push(0, -1, 0);
+    uv.push(i / n, 0);
+  }
+  if (!open) {
+    pos.push(0, UNDER_Y, 0);
+    nor.push(0, -1, 0);
+    uv.push(0.5, 0.5);
+    const c = base + n;
+    for (let i = 0; i < n; i += 1) {
+      idx.push(c, base + i, base + ((i + 1) % n));
+    }
+  }
+  g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  WHORLS.set(key, g);
+  return g;
+}
+
+/* The points a whorl gets for a tier a map drew as a `seg` sided cone, so
+ * the tier's triangles do not rise: 4 x points is at most 2 x seg, and
+ * never fewer than three points. */
+export function coniferPoints(seg) {
+  return Math.max(3, Math.floor(seg / 2));
+}
+
+/* The tones that are a conifer's needles, on the maps of 2026-10-31: a
+ * map draws its tiers through crownCone, which draws these as whorls and
+ * anything else as the cone it was. The town and the builder's own pine
+ * (stCedar through ./street.js treeDraw) keep their cones: only a map that
+ * calls crownCone opts in. */
+export const CONIFER_TONES = new Set([
+  'stCedar0', 'stCedar1', 'stCedar2', 'tgCedar0', 'tgCedar1', 'tgCedar2',
+  'afCedar', 'afCedarDeep', 'kiCedar', 'kiCedarDeep', 'kzFir',
+  'alPine0', 'alPine1', 'alPine2', 'rxCedar', 'arFir', 'arFirDark',
+]);
+
 const CYL = new Map();
 function unitCyl(seg) {
   let g = CYL.get(seg);
@@ -888,6 +1016,35 @@ export class PropKit {
     const g = new THREE.ConeGeometry(r, h, seg, 1);
     g.translate(base[0], base[1] + h / 2, base[2]);
     this.add(mat, g);
+  }
+
+  /* A conifer's tier where a map drew `cone(mat, base, r, h, seg)`: the
+   * same footprint and height, drawn as a whorl of points (whorlGeometry),
+   * turned by `spin` about its axis so stacked tiers do not line up. */
+  whorl(mat, base, r, h, seg = 7, spin = 0) {
+    _v.set(base[0], base[1], base[2]);
+    _s.set(r, h, r);
+    _q.setFromAxisAngle(_up, spin);
+    this.add(mat, whorlGeometry(coniferPoints(seg)), new THREE.Matrix4().compose(_v, _q, _s));
+  }
+
+  /* The whorl shape for a tier a map drew as a `seg` sided cone, for a
+   * family's draw() that bakes its own matrices (Hotaru Valley's cedars)
+   * and must not import this file, being loaded in Node. */
+  whorlOf(seg, open = false) {
+    return whorlGeometry(coniferPoints(seg), open);
+  }
+
+  /* A cone, or a conifer's tier where `mat` is one of CONIFER_TONES: the
+   * whorl, turned by a hash of where it stands so a stack does not line
+   * its points up. Same footprint, same height, no more triangles. */
+  crownCone(mat, base, r, h, seg = 10) {
+    if (typeof mat === 'string' && CONIFER_TONES.has(mat) && r > 0 && h > 0) {
+      const k = mix32(Math.round(base[0] * 16), Math.round(base[1] * 16), Math.round(base[2] * 16));
+      this.whorl(mat, base, r, h, seg, (k / 4294967296) * Math.PI * 2);
+      return;
+    }
+    this.cone(mat, base, r, h, seg);
   }
 
   torus(mat, c, R, t) {

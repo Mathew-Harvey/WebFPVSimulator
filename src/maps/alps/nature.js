@@ -247,7 +247,7 @@ export function plant(B) {
     B.draw(t.x, t.z, (K) => {
       K.begin(t.x, t.y, t.z, t.spin, K.chunk);
       K.cyl('alTimberDark', [0, 0, 0], [0, sp.tiers[0].y + 0.6, 0], 0.17 * t.size, 5, 0.12 * t.size);
-      sp.tiers.forEach((q, k) => K.cone(tones[k], [0, q.y, 0], q.r, q.h, 7));
+      sp.tiers.forEach((q, k) => K.crownCone(tones[k], [0, q.y, 0], q.r, q.h, 7));
       K.begin(0, 0, 0, 0, K.chunk);
     });
   }

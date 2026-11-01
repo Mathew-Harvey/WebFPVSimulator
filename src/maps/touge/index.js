@@ -377,7 +377,7 @@ function drawRound(kit, B, low) {
       continue;
     }
     kit.begin(0, 0, 0, 0, chunkOf(c.c[0], c.c[2]));
-    kit.cone(c.m, c.c, c.r, c.height, c.seg);
+    kit.crownCone(c.m, c.c, c.r, c.height, c.seg);
   }
   for (const b of B.balls) {
     if (low && b.fine) {
@@ -406,8 +406,9 @@ function drawRound(kit, B, low) {
  * draw call in every chunk it stands in, and the widest views from the air
  * were a sixth over the town's calls on Low with three of each. */
 function drawTrees(kit, trees, tones = 3, low = false) {
-  const cone = new THREE.ConeGeometry(1, 1, 7, 1);
-  cone.translate(0, 0.5, 0);
+  /* The cedar's tier: the kit's drawn whorl since 2026-11-01, three points
+   * in fewer triangles than the seven sided cone it replaced. */
+  const cone = kit.whorlOf(7);
   const m4 = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   const v = new THREE.Vector3();

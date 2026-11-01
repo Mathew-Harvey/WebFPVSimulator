@@ -694,7 +694,7 @@ function infield(T, Lay) {
       K.cyl('rxIndigo', [q[0], q[1], q[2]], [q[0], q[1] + 1.4, q[2]], 0.22, 6, 0.2);
       K.blob('rxSkin', [q[0], q[1] + 1.58, q[2]], 0.15, 0.17, [0, x, 0]);
       K.cyl('rxSteel', [q[0], q[1], q[2]], [q[0], q[1] + 2.4, q[2]], 0.02, 4);
-      K.cone('rxCanvasWhite', [q[0], q[1] + 2.1, q[2]], 1.0, 0.45, 10);
+      K.crownCone('rxCanvasWhite', [q[0], q[1] + 2.1, q[2]], 1.0, 0.45, 10);
     });
   }
 }

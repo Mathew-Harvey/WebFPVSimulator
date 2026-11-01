@@ -426,7 +426,7 @@ function drawIsle(kit, I, low) {
       g.translate(c.x, c.y + c.h / 2, c.z);
       kit.add(c.m, g);
     } else {
-      kit.cone(c.m, [c.x, c.y, c.z], c.r, c.h, c.seg);
+      kit.crownCone(c.m, [c.x, c.y, c.z], c.r, c.h, c.seg);
     }
   }
   const m4 = new THREE.Matrix4();

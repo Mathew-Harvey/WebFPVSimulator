@@ -347,7 +347,7 @@ function drawOp(kit, o, low) {
     case 'parasol': {
       const p = w(...o.c);
       kit.begin(0, 0, 0, 0, cellAt(o, p[0], p[2]));
-      kit.cone(o.m, p, o.r, o.h, 8);
+      kit.crownCone(o.m, p, o.r, o.h, 8);
       break;
     }
     case 'cable':

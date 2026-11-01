@@ -263,21 +263,17 @@ const CEDAR_TONES = ['stCedar0', 'stCedar1', 'stCedar2'];
 const GROVE_TONES = ['stGrove0', 'stGrove1', 'stGrove2'];
 const BAMBOO_TONES = ['hvBambooLeaf0', 'hvBambooLeaf1'];
 
-/* The two shared shapes: the cedar's whorl and the twenty faced tuft,
- * indexed as street.js's are so the shadow proxies batch them together. */
+/* The shared shapes: the twenty faced tuft, indexed as street.js's are so
+ * the shadow proxies batch them together, and the cedar's whorl, which
+ * since 2026-11-01 is the kit's drawn one (whorlGeometry in
+ * ../../props/kit.js), three points in fewer triangles than the seven
+ * sided cone it replaced; on Low it is open underneath as the cone was. */
 const GEO = {};
 function geo(K, key) {
   if (!GEO[key]) {
     const T3 = K.THREE;
-    if (key === 'cone7' || key === 'cone7o') {
-      /* Low's has no base: from above, which is where Low is flown from
-       * over a forest, it is never seen, and it is a third of the cone. */
-      GEO[key] = new T3.ConeGeometry(1, 1, 7, 1, key === 'cone7o');
-      GEO[key].translate(0, 0.5, 0);
-    } else {
-      GEO[key] = new T3.IcosahedronGeometry(1, 0);
-      GEO[key].setIndex(Array.from({ length: GEO[key].attributes.position.count }, (_, i) => i));
-    }
+    GEO[key] = new T3.IcosahedronGeometry(1, 0);
+    GEO[key].setIndex(Array.from({ length: GEO[key].attributes.position.count }, (_, i) => i));
   }
   return GEO[key];
 }
@@ -308,7 +304,7 @@ export function drawTree(K, t, chunk, low) {
       e.set(0, c.spin, 0);
       q.setFromEuler(e);
       m.compose(v.set(0, c.y, 0), q, sc.set(c.r, c.h, c.r));
-      K.add(CEDAR_TONES[c.tone], geo(K, low ? 'cone7o' : 'cone7'), m.clone());
+      K.add(CEDAR_TONES[c.tone], K.whorlOf(7, low), m.clone());
     });
     return;
   }

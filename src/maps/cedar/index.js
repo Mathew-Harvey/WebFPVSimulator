@@ -57,6 +57,7 @@ import {
 import { cedarDocument } from './yard.js';
 import { setChunkCut } from './frame.js';
 import { mergePalette } from '../sunny/palette.js';
+import { whorlGeometry, coniferPoints } from '../../props/kit.js';
 
 /* Chunks across on Low (./frame.js): measured against The town at the
  * start on 31 October 2026, see PROGRESS.md. */
@@ -129,16 +130,16 @@ function wireCurve(w) {
 /*
  * THE CEDAR'S SHARED SHAPES, made once: a six sided stem tapering to a
  * third, open at both ends (its foot is in the ground and its top in the
- * crown); a six sided cone with its base, standing on the origin; and the
- * root flare, a short cone frustum. Every tree is these at a scale.
+ * crown), and the root flare, a short cone frustum. Each whorl of the crown
+ * is the kit's drawn whorl (whorlGeometry in ../../props/kit.js), three
+ * points in the six sided cone's triangles, since 2026-11-01. Every tree is
+ * these at a scale.
  */
 const GEO = {};
 function geo(key) {
   if (!GEO[key]) {
     if (key === 'stem') {
       GEO[key] = new THREE.CylinderGeometry(0.34, 1, 1, 6, 1, true);
-    } else if (key === 'whorl') {
-      GEO[key] = new THREE.ConeGeometry(1, 1, 6, 1);
     } else {
       GEO[key] = new THREE.CylinderGeometry(1, 1.7, 1, 6, 1, true);
     }
@@ -170,7 +171,7 @@ function drawTrees(kit, trees, low) {
       _q.setFromAxisAngle(_up, w.spin);
       _p.set(x, w.y, z);
       _s.set(w.r, w.h, w.r * w.ell);
-      kit.add(TONES[w.tone], geo('whorl'), _m.compose(_p, _q, _s).clone());
+      kit.add(TONES[w.tone], whorlGeometry(coniferPoints(6)), _m.compose(_p, _q, _s).clone());
     }
   }
 }
@@ -206,7 +207,7 @@ function drawPlace(kit, T, low) {
     }
     const [x, y, z] = worldAt(c.px, c.py, c.h);
     kit.begin(0, 0, 0, 0, chunkOf(x, z));
-    kit.cone(c.m, [x, y, z], c.r, c.height, c.seg);
+    kit.crownCone(c.m, [x, y, z], c.r, c.height, c.seg);
   }
   for (const f of T.frusta) {
     if (low && f.fine) {

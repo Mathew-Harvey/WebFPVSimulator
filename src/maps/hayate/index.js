@@ -177,7 +177,7 @@ function drawOp(kit, o, low, line) {
       break;
     case 'cone':
       kit.begin(0, 0, 0, 0, cell);
-      kit.cone(o.m, w(...o.c), o.r, o.h, o.seg);
+      kit.crownCone(o.m, w(...o.c), o.r, o.h, o.seg);
       break;
     case 'prism':
       prism(kit, o);
@@ -251,7 +251,7 @@ function drawOp(kit, o, low, line) {
       kit.box('metalDark', -0.25, o.h + 1.3, -0.2, 0.45, o.h + 1.7, 0.2);
       kit.cyl('metalDark', [0.45, o.h + 1.5, 0], [0.75, o.h + 1.5, 0], 0.11, 6);
       kit.cyl('flagMast', [-0.6, o.h, 0.6], [-0.6, o.h + 2.6, 0.6], 0.03, 4);
-      kit.cone('white', [-0.6, o.h + 2.3, 0.6], 1.3, 0.5, 8);
+      kit.crownCone('white', [-0.6, o.h + 2.3, 0.6], 1.3, 0.5, 8);
       break;
     }
     case 'fan':
@@ -290,7 +290,7 @@ function drawOp(kit, o, low, line) {
       }
       kit.box(o.m, -s - 0.05, o.h - 0.3, -s - 0.05, s + 0.05, o.h, s + 0.05);
       kit.begin(...w(o.x, o.y, o.h), Math.PI / 4, cell);
-      kit.cone(o.m, [0, 0, 0], s * 1.414, 1.1, 4);
+      kit.crownCone(o.m, [0, 0, 0], s * 1.414, 1.1, 4);
       break;
     }
     case 'tableSet': {
@@ -362,7 +362,7 @@ function drawOp(kit, o, low, line) {
     case 'parasol':
       kit.begin(0, 0, 0, 0, cell);
       kit.cyl('white', w(o.x, o.y, o.h), w(o.x, o.y, o.h + 2.1), 0.03, 4);
-      kit.cone(o.m, w(o.x, o.y, o.h + 1.8), 1.3, 0.5, 8);
+      kit.crownCone(o.m, w(o.x, o.y, o.h + 1.8), 1.3, 0.5, 8);
       break;
     case 'giantTyre': {
       /* The tyre over the back straight: a giant's racing tyre on its
@@ -523,11 +523,11 @@ function plainTree(kit, t, low) {
   kit.begin(p[0], 0, p[2], (k * Math.PI) / 7, chunkOf(p[0], p[2]));
   if (t.style === 'pine') {
     kit.cyl('stCedarWood', [0, 0, 0], [0, 2.2 * s, 0], 0.26 * s, 5, 0.2 * s);
-    kit.cone('stCedar1', [0, 1.4 * s, 0], 2.3 * s, 4.4 * s, full ? 9 : 7);
-    kit.cone('stCedar0', [0, 3.7 * s, 0], 1.85 * s, 3.8 * s, full ? 9 : 7);
-    kit.cone('stCedar2', [0, 5.9 * s, 0], 1.3 * s, 3.2 * s, 7);
+    kit.crownCone('stCedar1', [0, 1.4 * s, 0], 2.3 * s, 4.4 * s, full ? 9 : 7);
+    kit.crownCone('stCedar0', [0, 3.7 * s, 0], 1.85 * s, 3.8 * s, full ? 9 : 7);
+    kit.crownCone('stCedar2', [0, 5.9 * s, 0], 1.3 * s, 3.2 * s, 7);
     if (full) {
-      kit.cone('stCedar0', [0, 7.9 * s, 0], 0.75 * s, 2.2 * s, 6);
+      kit.crownCone('stCedar0', [0, 7.9 * s, 0], 0.75 * s, 2.2 * s, 6);
     }
     return;
   }

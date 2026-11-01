@@ -288,6 +288,33 @@ const INK_INVERSE = `      float sx = 2.0 - dc / dl - dc / dr;
       float sy = 2.0 - dc / du - dc / dd;`;
 
 /*
+ * THE INK REACHES THE HORIZON, AS A PENCIL LINE (2026-11-01, the owner's
+ * "it should feel like a manga comic, not minecraft all blocky").
+ *
+ * The town's pass fades every line to nothing between 40 and 98 m. In the
+ * town that is the far end of most streets, so nobody sees it. On the new
+ * maps a pilot looks across a valley, a circuit or a city of towers, and
+ * everything past 98 m was flat colour with no line at all: the cones, the
+ * boxes and the clumps a mangaka would have drawn read as bare polygons,
+ * which is the blocky look. A comic draws the background too, lighter.
+ *
+ * So the line no longer fades out. It is full to FAR_INK_START metres and
+ * eases to FAR_INK of its weight by FAR_INK_END, and stays there to the sky,
+ * the way the panel's background is drawn with a lighter pen. The line's
+ * colour already keeps a share of the pixel under it, and far pixels are
+ * the fog's, so a far line is a grey pencil stroke over haze and not black.
+ *
+ * Free: the pass fetched these five depths and did this arithmetic for
+ * every pixel before, it only threw the answer away past 98 m. Same taps,
+ * same targets, same draw calls, and the sky still leaves before any fetch.
+ */
+const INK_FADE = '      edge *= 1.0 - smoothstep( uFadeStart, uFadeEnd, dc );';
+export const FAR_INK = 0.55;
+export const FAR_INK_START = 60;
+export const FAR_INK_END = 220;
+const INK_FAR = `      edge *= 1.0 - ${(1 - FAR_INK).toFixed(3)} * smoothstep( uFadeStart, uFadeEnd, dc );`;
+
+/*
  * The vendored pipeline with the two things it does to a shared renderer
  * undone, the scale floor a low tier needs, and the ink above. The first
  * two are CityPipeline from src/maps/city/index.js, restated rather than
@@ -312,6 +339,15 @@ export class BuiltPipeline extends Pipeline {
     this.inkPlanar = frag.includes(INK_LINEAR);
     if (this.inkPlanar) {
       this.ink.mat.fragmentShader = frag.replace(INK_LINEAR, INK_INVERSE);
+      this.ink.mat.needsUpdate = true;
+    }
+    /* The far pencil line: see INK_FAR. A vendored change to the fade line
+     * leaves the town's fade, and `inkFar` in stats() says so. */
+    this.inkFar = this.ink.mat.fragmentShader.includes(INK_FADE);
+    if (this.inkFar) {
+      this.ink.mat.fragmentShader = this.ink.mat.fragmentShader.replace(INK_FADE, INK_FAR);
+      this.ink.mat.uniforms.uFadeStart.value = FAR_INK_START;
+      this.ink.mat.uniforms.uFadeEnd.value = FAR_INK_END;
       this.ink.mat.needsUpdate = true;
     }
     /* Stage F's manga layer, folded into the grade and the fxaa pass the
@@ -1878,6 +1914,7 @@ export async function buildMap(shell, onProgress, options) {
       pipelineScale: pipeline.scale,
       pipelineSize: { x: pipeline.size.x, y: pipeline.size.y },
       inkPlanar: pipeline.inkPlanar,
+      inkFar: pipeline.inkFar,
       /* Whether Stage F's edit found its lines: see src/render/manga.js. */
       manga: { lines: pipeline.manga.ok, tone: pipeline.manga.tone },
       buildMs,

@@ -238,7 +238,7 @@ function drawValley(kit, T, trees, low) {
     }
     const [x, y, z] = worldAt(c.px, c.py, c.h);
     kit.begin(0, 0, 0, 0, cellOf(c, x, z));
-    kit.cone(c.m, [x, y, z], c.r, c.height, c.seg);
+    kit.crownCone(c.m, [x, y, z], c.r, c.height, c.seg);
   }
   for (const f of T.frusta) {
     if (low && f.fine) {

@@ -222,7 +222,7 @@ function drawTown(kit, T, low) {
     }
     const [x, y, z] = worldAt(c.px, c.py, c.h);
     kit.begin(0, 0, 0, 0, cellOf(c, x, z));
-    kit.cone(c.m, [x, y, z], c.r, c.height, c.seg);
+    kit.crownCone(c.m, [x, y, z], c.r, c.height, c.seg);
   }
   /* A ring: its frame's z along its axis, which is the plan's (nx, ny) on
    * edge or straight up when both are 0, so a torus drawn in its x y plane

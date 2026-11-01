@@ -375,7 +375,7 @@ function shrine(T) {
       K.box('rxStone', p[0] - 0.4, h, p[2] - 0.4, p[0] + 0.4, h + 0.25, p[2] + 0.4);
       K.box('rxStone', p[0] - 0.34, h + 1.1, p[2] - 0.34, p[0] + 0.34, h + 1.55, p[2] + 0.34);
       K.box('lampGlow', p[0] - 0.2, h + 1.2, p[2] - 0.35, p[0] + 0.2, h + 1.45, p[2] + 0.35);
-      K.cone('rxStoneDark', [p[0], h + 1.55, p[2]], 0.6, 0.45, 4);
+      K.crownCone('rxStoneDark', [p[0], h + 1.55, p[2]], 0.6, 0.45, 4);
       K.ball('rxStone', [p[0], h + 2.05, p[2]], 0.12);
     });
   }
@@ -408,7 +408,7 @@ function scarecrow(T, px, py, h, k) {
       K.cyl('rxTimberPale', [p[0] - 0.7, h + 1.25, p[2]], [p[0] + 0.7, h + 1.25, p[2]], 0.035, 4);
       K.box(k % 2 ? 'rxCanvasBlue' : 'rxIndigo', p[0] - 0.32, h + 0.7, p[2] - 0.14, p[0] + 0.32, h + 1.35, p[2] + 0.14);
       K.blob('rxStraw', [p[0], h + 1.55, p[2]], 0.17, 0.2, [0, k, 0]);
-      K.cone('rxStraw', [p[0], h + 1.68, p[2]], 0.42, 0.24, 8);
+      K.crownCone('rxStraw', [p[0], h + 1.68, p[2]], 0.42, 0.24, 8);
     });
   });
 }
@@ -423,7 +423,7 @@ function jizo(T, px, py) {
         K.box('rxStone', p[0] - 0.25, 0, p[2] - 0.2, p[0] + 0.25, 0.25, p[2] + 0.2);
         K.cyl('rxStone', [p[0], 0.25, p[2]], [p[0], 0.75, p[2]], 0.17, 8, 0.14);
         K.ball('rxStone', [p[0], 0.88, p[2]], 0.14);
-        K.cone('rxBib', [p[0], 0.5, p[2]], 0.22, 0.25, 8);
+        K.crownCone('rxBib', [p[0], 0.5, p[2]], 0.22, 0.25, 8);
         K.cyl('rxBib', [p[0], 0.96, p[2]], [p[0], 1.04, p[2]], 0.13, 8);
       }
       const r = w(px + 0.6, py - 0.1, 1.15);

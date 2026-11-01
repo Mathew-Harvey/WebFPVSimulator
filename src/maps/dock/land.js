@@ -215,11 +215,14 @@ function gate(T) {
 function office(T) {
   const O = OFFICE;
   T.box('wallBlue', O.x0, O.y0, 0, O.x1, O.y1, O.h, { name: 'office' });
-  T.box('concreteMid', O.x0 - 0.2, O.y0 - 0.2, O.h, O.x1 + 0.2, O.y1 + 0.2, O.h + 1.0, { solid: false });
-  T.hidden(O.x0 - 0.2, O.y0 - 0.2, O.h, O.x1 + 0.2, O.y1 + 0.2, O.h + 0.25, 'wall', 'office roof');
-  /* The parapet round the roof, solid, a third of a metre thick. */
+  /* The roof slab and the parapet round it, a third of a metre thick, each
+   * drawn as it is solid. The roof was drawn as one block a metre deep
+   * over a solid a quarter of that, so a craft set down on it sank three
+   * quarters of a metre into the drawing (found in the owner's sweep of
+   * 2026-11-01, "collide with every solid"). */
+  T.box('concreteMid', O.x0 - 0.2, O.y0 - 0.2, O.h, O.x1 + 0.2, O.y1 + 0.2, O.h + 0.25, { kind: 'wall', name: 'office roof' });
   for (const [x0, y0, x1, y1] of [[O.x0 - 0.2, O.y0 - 0.2, O.x1 + 0.2, O.y0 + 0.15], [O.x0 - 0.2, O.y1 - 0.15, O.x1 + 0.2, O.y1 + 0.2], [O.x0 - 0.2, O.y0 - 0.2, O.x0 + 0.15, O.y1 + 0.2], [O.x1 - 0.15, O.y0 - 0.2, O.x1 + 0.2, O.y1 + 0.2]]) {
-    T.hidden(x0, y0, O.h + 0.25, x1, y1, O.h + 1.0, 'wall', 'parapet');
+    T.box('concreteMid', x0, y0, O.h + 0.25, x1, y1, O.h + 1.0, { kind: 'wall', name: 'parapet' });
   }
   T.wide(() => T.dress(() => {
     for (let f = 0; f < 3; f += 1) {

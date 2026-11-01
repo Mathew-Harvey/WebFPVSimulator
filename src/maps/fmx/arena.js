@@ -370,7 +370,23 @@ function stands(P) {
     if (S.roof) {
       for (const x of ROOF.colX) {
         ppost(P, 'fxSteel', x, ROOF.back, 0, ROOF.sheet, 0.28, { draw: false, kind: 'pole', name: 'roof column' });
-        pbox(P, 'fxSteel', x - 0.3, ROOF.front, ROOF.chordLo, x + 0.3, ROOF.back, ROOF.chordHi, { draw: false, name: 'roof truss' });
+        /* The truss, solid as ./dress.js draws it: its two chords, its web
+         * and its nose, so the triangles of its web are open (the owner's
+         * rule of 2026-11-01, "every gap i can see i should be able to fly
+         * through"). It was one box round the whole truss. */
+        const o = { draw: false, kind: 'pole', name: 'roof truss' };
+        const lo = ROOF.chordLo + 0.1;
+        const hi = ROOF.chordHi - 0.1;
+        pcap(P, 'fxSteel', x, ROOF.front, hi, x, ROOF.back, hi, 0.14, o);
+        pcap(P, 'fxSteel', x, ROOF.front + 1, lo, x, ROOF.back, lo, 0.12, o);
+        pcap(P, 'fxSteel', x, ROOF.front, hi, x, ROOF.front + 1, lo, 0.1, o);
+        const n = 8;
+        for (let i = 0; i < n; i += 1) {
+          const ya = ROOF.front + 1 + ((ROOF.back - ROOF.front - 1) * i) / n;
+          const yb = ROOF.front + 1 + ((ROOF.back - ROOF.front - 1) * (i + 1)) / n;
+          pcap(P, 'fxSteel', x, ya, lo, x, yb, hi, 0.05, o);
+          pcap(P, 'fxSteel', x, yb, lo, x, yb, hi, 0.05, o);
+        }
       }
       pbox(P, 'fxRoofSheet', x0 - 1, ROOF.front - 0.5, ROOF.sheet, x1 + 1, ROOF.back + 0.6, ROOF.sheet + ROOF.sheetT, { draw: false, name: 'stand roof' });
     }

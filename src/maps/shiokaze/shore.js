@@ -66,12 +66,15 @@ function promenade(T, r) {
       T.paint('skStain', x, P.y0 + 0.5, SHELF + 0.02, x + 0.05, P.y1 - 0.3, SHELF + 0.03);
     }
   }));
-  /* The rail: posts and two bars, solid as one thin wall. */
-  T.box('skRail', P.x0, P.rail - 0.04, SHELF, P.x1, P.rail + 0.04, SHELF + 1.1, { draw: false, kind: 'pole', name: 'promenade rail' });
-  T.deco('skMint', P.x0, P.rail - 0.05, SHELF + 1.02, P.x1, P.rail + 0.05, SHELF + 1.1);
-  T.deco('skMint', P.x0, P.rail - 0.03, SHELF + 0.5, P.x1, P.rail + 0.03, SHELF + 0.56);
+  /* The rail: posts and two bars, each solid as drawn, so the openings
+   * between them are open (the owner's rule of 2026-11-01, "every gap i
+   * can see i should be able to fly through"). It was one thin solid wall
+   * the rail's length and height. */
+  const rail = { kind: 'pole', name: 'promenade rail' };
+  T.box('skMint', P.x0, P.rail - 0.05, SHELF + 1.02, P.x1, P.rail + 0.05, SHELF + 1.1, rail);
+  T.box('skMint', P.x0, P.rail - 0.03, SHELF + 0.5, P.x1, P.rail + 0.03, SHELF + 0.56, rail);
   for (let x = P.x0; x <= P.x1; x += 2.0) {
-    T.deco('skMint', x - 0.04, P.rail - 0.04, SHELF, x + 0.04, P.rail + 0.04, SHELF + 1.02);
+    T.box('skMint', x - 0.04, P.rail - 0.04, SHELF, x + 0.04, P.rail + 0.04, SHELF + 1.02, rail);
   }
   /* The lamps every twenty metres, their globes long dark. */
   for (let x = P.x0 + 8; x < P.x1; x += 20) {

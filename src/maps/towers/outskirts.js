@@ -30,8 +30,10 @@ function building(T, x0, y0, x1, y1, h, style, seed) {
   const r = { x0, y0, x1, y1 };
   T.block(style, r, 0, h, seed, 'outskirt');
   T.box(seed % 3 ? 'twRoof' : 'twRoofDark', x0, y0, h, x1, y1, h + 0.5, { name: 'outskirt roof' });
-  T.box('twParapet', x0, y0, h + 0.5, x1, y0 + 0.4, h + 1.4, { solid: false });
-  T.box('twParapet', x0, y1 - 0.4, h + 0.5, x1, y1, h + 1.4, { solid: false });
+  /* The parapets, solid as drawn (the owner, 2026-11-01: "collide with
+   * every solid"). */
+  T.box('twParapet', x0, y0, h + 0.5, x1, y0 + 0.4, h + 1.4, { kind: 'wall', name: 'outskirt parapet' });
+  T.box('twParapet', x0, y1 - 0.4, h + 0.5, x1, y1, h + 1.4, { kind: 'wall', name: 'outskirt parapet' });
 }
 
 /* A row of blocks along one side, between a and b along it, `o0` to `o1`

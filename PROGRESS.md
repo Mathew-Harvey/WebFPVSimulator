@@ -73787,3 +73787,7 @@ Follow-up 2, same day, Mat 11:54Z: "if i select freestyle, i should not see the 
 - Drift Matsuri and Ridgeline MX stay in Freestyle. Flown from there they have no viewfinder and no filming score: `filmFrame` in src/main.js shows and feeds the HUD only while a Drift round is the running fight game. The "You are the camera" launch line likewise only in the round. Before, plain Freestyle on those two maps ran the film scoring.
 - Reading I took: "mini game maps" are the two that exist only as a game (goats, ball). If drift and MX should also leave the Freestyle list while staying flyable some other way, say so.
 - Checked: syntax only. Not run: minigames-check, shots, verify. Latency: removes a HUD and the per frame film drain from plain freestyle on two maps, adds nothing; not measured.
+
+## 2026-11-01 | ship | Title cover, Fly solo pickers and Freestyle filtering to main
+
+Mat, 2026-11-01 12:04Z: "push to main". PR 211 fast-forwarded onto main, which had not moved (31b4574). Not flown before the push, and only syntax checked: no shots, minigames-check or verify were run. He flies it now.

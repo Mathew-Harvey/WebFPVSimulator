@@ -80,53 +80,177 @@ function lipTop(x0, x1, y) {
 
 const GORGE_END = W + 20;
 
-function gorge(B) {
-  const lo = GORGE.floor - 1;
+/* How far a gorge face's ledges stand out from its solid, at most, and the
+ * length its outline is cut in. */
+const JAG = 0.8;
+const FACE_STEP = 2;
+const RIM = 4.4;
+
+/* One side's outline, west to east along its lip, jogs included: plan
+ * points [x, y], cut in FACE_STEP lengths. */
+function faceOutline(side) {
+  const pts = [];
+  const add = (x, y) => {
+    const q = pts[pts.length - 1];
+    if (!q || q[0] !== x || q[1] !== y) {
+      pts.push([x, y]);
+    }
+  };
   for (let sx = GORGE_X0; sx < GORGE_END; sx += 8) {
-    const [a, b] = lipsAt(sx);
-    const tS = lipTop(sx, sx + 8, a);
-    const tN = lipTop(sx, sx + 8, b);
-    B.box('tgRock', sx, a - 6, lo, sx + 8, a, tS, { name: 'gorge wall' });
-    B.box('tgRock', sx, b, lo, sx + 8, b + 6, tN, { name: 'gorge wall' });
-    /* A band of darker strata a third of the way down each face. */
-    B.paint('tgRockDark', sx, a - 0.02, GORGE.floor + 5.2, sx + 8, a + 0.02, GORGE.floor + 6.4);
-    B.paint('tgRockDark', sx, b - 0.02, GORGE.floor + 9.6, sx + 8, b + 0.02, GORGE.floor + 10.3);
+    const f = lipsAt(sx)[side];
+    add(sx, f);
+    add(Math.min(sx + 8, GORGE_END), f);
   }
-  /* THE LEDGES (the manga pass of 2026-11-01). Each wall was a run of
-   * eight metre boxes, a sheer face stepped at every seam: the blocky look
-   * the owner asked to lose. Over each face now stand three to five
-   * strata, slabs pushed out by a different amount each and running past
-   * the seams by a random metre or two, so the face reads as a drawn rock
-   * of ledges and every ledge is an ink line, as Shiokaze's cliffs are
-   * (../shiokaze/terrain.js). Drawn only: the boxes stay the solid, and a
-   * slab stands at most 0.9 m proud of them, so the rock a pilot sees is
-   * never further in than the rock that stops them. In the materials the
-   * walls already use, so no batch and no draw call is added. */
-  const rs = rng(7177);
-  for (let sx = GORGE_X0; sx < GORGE_END; sx += 8) {
-    const [a, b] = lipsAt(sx);
-    const prev = lipsAt(sx - 8);
-    const next = lipsAt(sx + 8);
-    for (const [face, sign, i] of [[a, 1, 0], [b, -1, 1]]) {
-      /* Past a seam only where the next face is in line with this one: at
-       * a jog the slab would be a fin standing in the air. */
-      const runW = sx > GORGE_X0 && prev[i] === face ? 1.6 : 0;
-      const runE = next[i] === face ? 1.6 : 0;
-      const top = lipTop(sx, sx + 8, face) - 0.4;
-      let z = GORGE.floor - 0.5;
-      let k = 0;
-      while (z < top - 1.2) {
-        const ht = Math.min(top - z, rs.range(2.2, 4.4));
-        const out = rs.range(0.25, 0.9);
-        const x0 = sx - rs.range(0, runW);
-        const x1 = Math.min(GORGE_END, sx + 8 + rs.range(0, runE));
-        const y0 = sign > 0 ? face - 0.1 : face - out;
-        const y1 = sign > 0 ? face + out : face + 0.1;
-        B.deco(k % 2 ? 'tgRockDark' : 'tgRock', x0, y0, z, x1, y1, z + ht);
-        z += ht;
-        k += 1;
+  const out = [];
+  for (let i = 0; i + 1 < pts.length; i += 1) {
+    const [x0, y0] = pts[i];
+    const [x1, y1] = pts[i + 1];
+    const len = Math.abs(x1 - x0) + Math.abs(y1 - y0);
+    const m = Math.max(1, Math.round(len / FACE_STEP));
+    for (let k = 0; k < m; k += 1) {
+      out.push([x0 + ((x1 - x0) * k) / m, y0 + ((y1 - y0) * k) / m]);
+    }
+  }
+  out.push(pts[pts.length - 1]);
+  return out;
+}
+
+/* A gorge face: rows from the lip's ground down under the river bed, each
+ * point pushed into the gorge along its normal. */
+function gorgeFace(B, side, r) {
+  const { fine } = ground();
+  const pts = faceOutline(side);
+  /* Each edge's normal into the gorge: left of the walk east on the south
+   * face, right of it on the north. The outline runs along x or along y,
+   * so these are unit already. */
+  const s = side === 0 ? 1 : -1;
+  const en = [];
+  for (let i = 0; i + 1 < pts.length; i += 1) {
+    const dx = Math.sign(pts[i + 1][0] - pts[i][0]);
+    const dy = Math.sign(pts[i + 1][1] - pts[i][1]);
+    en.push([-dy * s, dx * s]);
+  }
+  const nrm = pts.map((_, i) => {
+    const a = en[Math.max(0, i - 1)];
+    const b = en[Math.min(en.length - 1, i)];
+    const nx = a[0] + b[0];
+    const ny = a[1] + b[1];
+    const l = Math.sqrt(nx * nx + ny * ny) || 1;
+    return [nx / l, ny / l];
+  });
+  /* The top at each point: the ground on the rock side of the lip. */
+  const top = pts.map(([x, y], i) => sampleGrid(fine, x - nrm[i][0] * 0.5, y - nrm[i][1] * 0.5) + 0.06);
+  const bottom = GORGE.floor - 0.4;
+  let mean = 0;
+  for (const t of top) {
+    mean += t;
+  }
+  mean /= top.length;
+  const n = Math.max(2, Math.round((mean - bottom) / 3));
+  /* Each row's push along the face: a walk, so a ledge runs a few metres
+   * and breaks. The lip's row is not pushed, so the face meets the ground. */
+  const push = [];
+  for (let k = 0; k <= n; k += 1) {
+    const row = [];
+    let v = r.range(0.2, JAG);
+    for (let i = 0; i < pts.length; i += 1) {
+      v = Math.min(JAG, Math.max(0.1, v + r.range(-0.22, 0.22)));
+      row.push(k === 0 ? 0 : v);
+    }
+    push.push(row);
+  }
+  const at = (i, k) => {
+    const h = top[i] - ((top[i] - bottom) * k) / n;
+    const d = push[k][i];
+    return [pts[i][0] + nrm[i][0] * d, pts[i][1] + nrm[i][1] * d, h];
+  };
+  const tris = new Map();
+  for (let k = 0; k < n; k += 1) {
+    const m = k === n - 1 || (k + side) % 3 === 1 ? 'tgRockDark' : 'tgRock';
+    if (!tris.has(m)) {
+      tris.set(m, []);
+    }
+    const list = tris.get(m);
+    for (let i = 0; i + 1 < pts.length; i += 1) {
+      const a = at(i, k);
+      const b = at(i + 1, k);
+      const c = at(i + 1, k + 1);
+      const d = at(i, k + 1);
+      /* Facing into the gorge: the plan normal of (b - a) x (d - a), whose
+       * horizontal part must point along the edge's normal. */
+      const ux = b[0] - a[0];
+      const uy = b[1] - a[1];
+      const uh = b[2] - a[2];
+      const vx = d[0] - a[0];
+      const vy = d[1] - a[1];
+      const vh = d[2] - a[2];
+      const cx = uy * vh - uh * vy;
+      const cy = uh * vx - ux * vh;
+      if (cx * en[i][0] + cy * en[i][1] > 0) {
+        list.push(a, b, c, a, c, d);
+      } else {
+        list.push(a, d, c, a, c, b);
       }
     }
+  }
+  /* THE RIM: a strip of bare rock along the lip, RIM metres into the
+   * rock side and a few centimetres over the ground. The north lip is off
+   * the ground's 4 m grid, and the ground leaves out every triangle with
+   * a corner in the gorge (./index.js drawMountain), so behind the lip it
+   * stops up to a cell short; the drawn boxes' tops used to cover that. */
+  const rim = tris.get('tgRock');
+  for (let i = 0; i + 1 < pts.length; i += 1) {
+    const back = (j) => {
+      const x = pts[j][0] - nrm[j][0] * RIM;
+      const y = pts[j][1] - nrm[j][1] * RIM;
+      return [x, y, sampleGrid(fine, x, y) + 0.06];
+    };
+    /* Not where the road crosses the lip onto a bridge. */
+    const mx = (pts[i][0] + pts[i + 1][0]) / 2 - nrm[i][0] * RIM * 0.5;
+    const my = (pts[i][1] + pts[i + 1][1]) / 2 - nrm[i][1] * RIM * 0.5;
+    const road = nearest(mx, my, 16);
+    if (road && road.d < HALF + RIM) {
+      continue;
+    }
+    const a = at(i, 0);
+    const b = at(i + 1, 0);
+    const c = back(i + 1);
+    const d = back(i);
+    /* Facing up: the plan normal's h part, (b - a) x (d - a), positive. */
+    const up = (b[0] - a[0]) * (d[1] - a[1]) - (b[1] - a[1]) * (d[0] - a[0]);
+    if (up > 0) {
+      rim.push(a, b, c, a, c, d);
+    } else {
+      rim.push(a, d, c, a, c, b);
+    }
+  }
+  for (const [m, list] of tris) {
+    B.face(m, list);
+  }
+}
+
+function gorge(B) {
+  const lo = GORGE.floor - 1;
+  /* The walls' solid: a box each side a segment, never drawn. */
+  for (let sx = GORGE_X0; sx < GORGE_END; sx += 8) {
+    const [a, b] = lipsAt(sx);
+    B.box('tgRock', sx, a - 6, lo, sx + 8, a, lipTop(sx, sx + 8, a), { name: 'gorge wall', draw: false });
+    B.box('tgRock', sx, b, lo, sx + 8, b + 6, lipTop(sx, sx + 8, b), { name: 'gorge wall', draw: false });
+  }
+  /* THE FACES (pass 4 of 2026-11-01). The walls were drawn as the boxes
+   * themselves with slabs stood on them: eight metre blocks stepped four
+   * metres in and out at every seam, which read as stacked boxes from
+   * anywhere above the gorge. Each side is now one face drawn along its
+   * whole outline, jogs included, as Shiokaze's cliffs are
+   * (../shiokaze/terrain.js cliff): cut in rows about three metres high,
+   * each row pushed into the gorge by a walk along the face so its ledges
+   * run on and break, and the corners of the jogs bevelled by the averaged
+   * normal. Every ledge is a crease the ink pass inks. The rows are pushed
+   * out at most JAG from the solid, under the 0.9 m the slabs stood. It is
+   * fewer triangles than the boxes, paint and slabs it replaces. */
+  const rf = rng(7177);
+  for (const side of [0, 1]) {
+    gorgeFace(B, side, rf);
   }
   /* The head of the gorge, where the river falls in. */
   const [a0, b0] = lipsAt(GORGE_X0);
@@ -137,7 +261,9 @@ function gorge(B) {
   const r = rng(7031);
   const keep = [[120, 10], [310, 10], [210, 5]];
   for (let k = 0; k < 70; k += 1) {
-    const x = r.range(GORGE_X0 + 10, GORGE_END - 4);
+    /* Held inside the plot's edge: past it a boulder is filed in the far
+     * chunk, where with the gorge's slabs gone it was a draw call alone. */
+    const x = Math.min(W + 6, r.range(GORGE_X0 + 10, GORGE_END - 4));
     if (keep.some(([c, w]) => Math.abs(x - c) < w)) {
       continue;
     }

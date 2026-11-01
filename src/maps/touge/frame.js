@@ -157,6 +157,7 @@ export class Build {
     this.wires = [];
     this.signs = [];
     this.rails = [];
+    this.faces = [];
     this.small = false;
   }
 
@@ -196,6 +197,14 @@ export class Build {
   /* Drawn, not solid. */
   deco(m, x0, y0, h0, x1, y1, h1, fine = false) {
     return this.box(m, x0, y0, h0, x1, y1, h1, { solid: false, fine });
+  }
+
+  /* Drawn, not solid, on every preset: triangles as a flat list of plan
+   * points [x, y, h], three a triangle, each facing the way its winding
+   * says (counter clockwise seen from in front). ./index.js files them by
+   * cull chunk. */
+  face(m, tris) {
+    this.faces.push({ m, tris });
   }
 
   /* Solid, not drawn. */

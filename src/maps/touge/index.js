@@ -113,7 +113,7 @@ function addGrid(bins, g, skip, chunkFor, pick) {
   const put = (a, b, c) => {
     const cx = (a[0] + b[0] + c[0]) / 3;
     const cy = (a[1] + b[1] + c[1]) / 3;
-    if (skip(cx, cy)) {
+    if (skip(cx, cy, a, b, c)) {
       return;
     }
     /* The face's normal, in the plan frame with h up, for its slope. */
@@ -165,7 +165,13 @@ function drawMountain(kit, low) {
   const { fine, far } = ground();
   const bins = new Map();
   const pick = low ? (m) => LOW_GROUND[m] ?? m : (m) => m;
-  addGrid(bins, fine, (x, y) => inGorge(x, y), chunkOf, pick);
+  /* A ground triangle with any corner inside the gorge is left out, not
+   * only one whose middle is: the north lip is off the 4 m grid, and a
+   * triangle across it stood out over the face as a green tooth. The gap
+   * this leaves behind the lip is under the faces' rock rim
+   * (./places.js gorgeFace). */
+  const cut = (x, y, a, b, c) => inGorge(x, y) || inGorge(a[0], a[1]) || inGorge(b[0], b[1]) || inGorge(c[0], c[1]);
+  addGrid(bins, fine, cut, chunkOf, pick);
   const inside = (x, y) => x > FINE.x0 + 8 && x < FINE.x1 - 8 && y > FINE.y0 + 8 && y < FINE.y1 - 8;
   addGrid(bins, far, inside, () => 'tgFar', pick);
   for (const b of bins.values()) {
@@ -202,6 +208,45 @@ function mergeVertices(g) {
 }
 
 /* The gorge: its river bed, the river, and the fall at its head. */
+/* The places' drawn faces (./frame.js face): each triangle filed under the
+ * chunk of its middle, one geometry a chunk and colour, flat shaded so
+ * every ledge is a crease. Plan (x, y, h) is the world's (x, h, -y),
+ * which keeps handedness, so the winding carries over. */
+function drawFaces(kit, faces) {
+  const bins = new Map();
+  for (const f of faces) {
+    const t = f.tris;
+    for (let i = 0; i + 2 < t.length; i += 3) {
+      const mx = (t[i][0] + t[i + 1][0] + t[i + 2][0]) / 3;
+      const my = (t[i][1] + t[i + 1][1] + t[i + 2][1]) / 3;
+      /* Held inside the plot's chunks: the gorge runs 20 m past the plot's
+       * edge, and filed in the far chunk a face there cost a draw call. */
+      const ch = chunkOf(wx(Math.min(W + 7, Math.max(-7, mx))), wz(Math.min(D + 7, Math.max(-7, my))));
+      const key = `${ch}|${f.m}`;
+      let b = bins.get(key);
+      if (!b) {
+        b = { ch, m: f.m, pos: [] };
+        bins.set(key, b);
+      }
+      for (const p of [t[i], t[i + 1], t[i + 2]]) {
+        b.pos.push(wx(p[0]), p[2], wz(p[1]));
+      }
+    }
+  }
+  for (const b of bins.values()) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(b.pos, 3));
+    g.computeVertexNormals();
+    /* Indexed, one index a corner, so the faces share the chunk's shadow
+     * proxy with the rest of its casters (../built/index.js proxyCasters
+     * buckets by whether a geometry is indexed): unindexed, they were a
+     * shadow draw call more a chunk. */
+    g.setIndex([...Array(b.pos.length / 3).keys()]);
+    kit.begin(0, 0, 0, 0, b.ch);
+    kit.add(b.m, g);
+  }
+}
+
 function drawGorge(kit) {
   const bed = new Map();
   const water = new Map();
@@ -548,6 +593,7 @@ export async function buildMap(shell, onProgress, options) {
     draw: (kit) => {
       drawMountain(kit, low);
       drawGorge(kit);
+      drawFaces(kit, B.faces);
       drawRoad(kit, low);
       drawRails(kit, B.rails);
       drawTurned(kit, B.turned, low);

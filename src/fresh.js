@@ -211,6 +211,7 @@
     'src/maps/built/place.js',
     'src/maps/built/road.js',
     'src/maps/built/roadmesh.js',
+    'src/maps/built/sea.js',
     'src/maps/built/showpiece.js',
     'src/maps/built/starter.js',
     'src/maps/built/traffic.js',

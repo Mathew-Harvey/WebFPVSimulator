@@ -47,6 +47,7 @@
  */
 
 import { buildMap as buildBuilt } from '../built/index.js';
+import { meadowTone } from '../built/ground.js';
 import { uploadTraffic } from '../built/traffic.js';
 import { warmPrograms } from '../../render/warm.js';
 import { mergeProps } from '../sunny/palette.js';
@@ -79,7 +80,11 @@ export async function buildMap(shell, onProgress, options) {
   const markSpots = [{
     slug: 'konexdrone', key: 'fmx#konexdrone~hidden', p: KONEX.p, n: KONEX.n, up: KONEX.up, w: KONEX.w, chunk: CHUNK_ARENA,
   }];
-  const map = await buildBuilt(shell, onProgress, { ...(options || {}), inkFacets: false, document: doc, extra, markSpots });
+  const map = await buildBuilt(shell, onProgress, {
+    /* Dry and lush patches on the ground itself, no cost (../built/ground.js). */
+    plotTone: meadowTone(0xf3a2),
+    ...(options || {}), inkFacets: false, document: doc, extra, markSpots,
+  });
   map.id = 'fmx';
   map.source = 'fmx';
 

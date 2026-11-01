@@ -73884,3 +73884,7 @@ The sanatorium's grounds were one even lawn. `meadowTone(seed, keep, cell)` in `
 What went wrong first: the dry patches never showed. A probe of the plot in the page found every vertex colour capped at exactly 1. The shell's look pass, `toneGeometry` in `src/render/look.js`, clamps every vertex colour to [0, 1] after the map is built, so a tone above 1 is thrown away (the plot's own base variation has been losing its bright half the same way, unnoticed). A tone can only take away: dry is now yellower by losing blue, and the festival's light bands are 1 rather than 1.06, which changes nothing on screen because the 1.06 was being clamped already.
 
 Cost: none. Sanatorium census identical to the parent in all four views (87/96/98/99 calls, 656,626 to 659,198 triangles). `npm run check:sana` all passed, `check:fest` 17 passed, `lint:quality` 71 of 71. Not flown.
+
+### 2026-11-01: the meadow tone on Suginomori, the FMX stadium's grounds and the park (pass 4, batch 9)
+
+`meadowTone` (batch 8) passed as `plotTone` by `src/maps/cedar/index.js`, `src/maps/fmx/index.js` and `src/maps/park/index.js`, each with its own seed. Tried on the alps and Hotaru too and taken back off: their own terrain covers the plot, so it changed nothing a pilot sees. Census identical to the parent in all four views on all three maps (calls and triangles to the unit). `check:cedar`, `check:fmx`, `check:park` passed, `lint:quality` 71 of 71. Subtle from the air, invisible to a census. Not flown.

@@ -49,6 +49,7 @@
 
 import * as THREE from 'three';
 import { buildMap as buildBuilt } from '../built/index.js';
+import { meadowTone } from '../built/ground.js';
 import { warmPrograms } from '../../render/warm.js';
 import { qualityFor } from '../../render/quality.js';
 import {
@@ -346,6 +347,8 @@ export async function buildMap(shell, onProgress, options) {
   };
   const doc = cedarDocument();
   const map = await buildBuilt(shell, onProgress, {
+    /* Dry and lush patches on the ground itself, no cost (../built/ground.js). */
+    plotTone: meadowTone(0x3c1d),
     ...(options || {}), inkFacets: false, document: doc, extra, sponsorMarks: false, markSpots: cedarMarkSpots(),
   });
   /* Its own world: the shell keys the world, the results and the board's

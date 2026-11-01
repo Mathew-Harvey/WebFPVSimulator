@@ -65,6 +65,22 @@ export function street(T) {
   cars(T, r);
 }
 
+/* A flat quad lying face up at h: centred on plan (px, py), `len` along
+ * the plan direction (ux, uy) and `wid` across it. Paint that only ever
+ * shows its top, two triangles where a paint box is twelve. */
+function flat(T, m, px, py, ux, uy, len, wid, h) {
+  const l = Math.sqrt(ux * ux + uy * uy) || 1;
+  const dx = (ux / l) * (len / 2);
+  const dy = (uy / l) * (len / 2);
+  const nx = (-uy / l) * (wid / 2);
+  const ny = (ux / l) * (wid / 2);
+  const a = [px - dx - nx, py - dy - ny, h];
+  const b = [px + dx - nx, py + dy - ny, h];
+  const c = [px + dx + nx, py + dy + ny, h];
+  const d = [px - dx + nx, py - dy + ny, h];
+  T.mesh(m, [a, b, c, a, c, d]);
+}
+
 /* The paint: the forecourt's asphalt and its bays, the lane, the cracks
  * with weed in them. */
 function ground(T, r) {
@@ -84,12 +100,27 @@ function ground(T, r) {
     for (let x = LANE.x0 + 4; x < LANE.x1 - 4; x += 6) {
       T.paint('skLine', x, (LANE.y0 + LANE.y1) / 2 - 0.06, TOP + 0.02, x + 3, (LANE.y0 + LANE.y1) / 2 + 0.06, TOP + 0.03);
     }
+    /* Patches (pass 4 of 2026-11-01): squares of newer, darker asphalt
+     * where the surface was cut and relaid, the hotels' car park mended a
+     * piece at a time. The start looks down over it, and it was one tone
+     * over 260 by 34 metres. Their own rng, so the cracks after them fall
+     * where they did. A patch and a crack are each one flat quad, two
+     * triangles (flat): the cracks were thin boxes of twelve, so the
+     * cracks' change pays for the patches. */
+    const rp = rng(4411);
+    for (let q = 0; q < 26; q += 1) {
+      const w = rp.range(2.5, 7.5);
+      const d = rp.range(2.5, 6);
+      const px = rp.range(F.x0 + 2, F.x1 - 2 - w);
+      const py = rp.range(F.y0 + 1.5, F.y1 - 1.5 - d);
+      flat(T, 'skPatch', px + w / 2, py + d / 2, 1, 0, w, d, TOP + 0.022);
+    }
     /* Cracks and the weed in them, and drifts of leaves at the edges. */
     for (let q = 0; q < 70; q += 1) {
       const px = r.range(F.x0 + 1, F.x1 - 1);
       const py = r.range(F.y0 + 1, LANE.y1);
       const len = r.range(1.2, 4.5);
-      T.obox('skStain', px, py, r.range(-1, 1), r.range(-1, 1), len, 0.08, TOP + 0.02, TOP + 0.03);
+      flat(T, 'skCrack', px, py, r.range(-1, 1), r.range(-1, 1), len, 0.08, TOP + 0.026);
       if (r.chance(0.5)) {
         T.bead('skWeed', px, py, TOP + 0.1, r.range(0.15, 0.35));
       }

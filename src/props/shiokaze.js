@@ -70,6 +70,8 @@ export const MATERIALS = {
   /* the ground: paving, the lines, the asphalt, the grass, the moss */
   skPave: { c: 0xdcd8e2, tint: 0x847c9c },
   skAsphalt: { c: 0x8e8a9c, tint: 0x5e587e },
+  skPatch: { c: 0x7a7689, tint: 0x534d72, noCast: true },
+  skCrack: { c: 0xa8a0a2, tint: TD, noCast: true },
   skLine: { f: 0xf4f2f6, noCast: true },
   skYellow: { c: 0xf0c341, tint: 0x8c7050 },
   skMoss: { c: 0x7d9c74, tint: 0x4e6670 },

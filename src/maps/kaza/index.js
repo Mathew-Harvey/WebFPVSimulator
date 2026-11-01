@@ -485,6 +485,12 @@ function buildTurbines(T, fogColor) {
   };
 }
 
+/* The board card's shot, world frame (pass 4 of 2026-11-01): low over
+ * the launch field's west side with the tethered balloons in front. The
+ * default orbit of a plot this long was taken from so far out that the
+ * card was fog over the farm. */
+const CARD_LENS = { eye: [-105, 36, 730], at: [10, 14, 570] };
+
 export async function buildMap(shell, onProgress, options) {
   const qid = qualityFor(options && options.quality).id;
   const low = qid === 'low';
@@ -501,6 +507,7 @@ export async function buildMap(shell, onProgress, options) {
   });
   map.id = 'kaza';
   map.source = 'kaza';
+  map.cardLens = CARD_LENS;
   const props = map.scene.getObjectByName('props');
   /* The dressing casts no shadow, as Sunnyfield's does not. */
   if (props) {

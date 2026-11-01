@@ -54,10 +54,10 @@ import { MATERIALS } from '../../props/rally.js';
 import { cel } from '../city/vendored/core/toon.js';
 import { mergeProps } from '../sunny/palette.js';
 import {
-  Place, w, chunkOf, nearOf,
+  Place, w, chunkOf, nearOf, hash,
 } from './frame.js';
 import {
-  circuitParts, KONEX, TRACK_WIDTH, LANE_OFFSETS,
+  circuitParts, KONEX, TRACK_WIDTH, LANE_OFFSETS, bendAt,
 } from './circuit.js';
 import { hillParts, hillStanding, standingSolids } from './hill.js';
 import { paddockParts } from './paddock.js';
@@ -84,7 +84,9 @@ function strip(line, s0, s1, offA, offB, h, step) {
   const n = Math.max(1, Math.ceil((s1 - s0) / step));
   for (let k = 0; k <= n; k += 1) {
     const p = pointAt(line, s0 + ((s1 - s0) * k) / n);
-    for (const off of [offA, offB]) {
+    /* An offset may be a function of how far along the strip, 0 to 1. */
+    const at = (o) => (typeof o === 'function' ? o(k / n) : o);
+    for (const off of [at(offA), at(offB)]) {
       const q = w(p.x - p.ty * off, p.y + p.tx * off, h);
       pos.push(q[0], q[1], q[2]);
     }
@@ -175,6 +177,14 @@ function drawTrack(kit, Lay, low) {
       }
     }
   }
+  /* The apexes the cars have cut: on the inside of every bend the grass
+   * is worn back to earth, widest at the apex and thinning to nothing at
+   * either end, its edge ragged. Gravel on a gravel bend, the paler sand
+   * on a tarmac one, both materials the chunk already draws, so it adds
+   * no batch. Fine: Low keeps the grass. */
+  if (!low) {
+    wornApexes(kit, Lay, half);
+  }
   /* The gravel traps on the outside of the bends, from the track's edge
    * out to the tyre wall. */
   for (const b of barriers) {
@@ -192,6 +202,73 @@ function drawTrack(kit, Lay, low) {
     const c = w(k.x, k.y);
     kit.begin(c[0], 0, c[2], Math.atan2(k.ty, k.tx), chunkOf(c[0], c[2]));
     kit.box(k.red ? 'rxKerbRed' : 'rxKerbWhite', -k.len / 2, 0, -0.45, k.len / 2, 0.09, 0.45);
+  }
+}
+
+/* The runs of the main line where it bends one way for long enough to
+ * cut, and on each a lens of worn ground on the inside, kept clear of any
+ * other stretch of track. */
+function wornApexes(kit, Lay, half) {
+  const { line, surfaceAt, clearOf } = Lay;
+  const L = line.length;
+  const STEP = 2;
+  const runs = [];
+  let run = null;
+  for (let s = 0; s < L; s += STEP) {
+    const b = bendAt(line, s, 8, 1.2e-2);
+    if (run && b === run.side) {
+      run.s1 = s;
+    } else {
+      if (run) {
+        runs.push(run);
+      }
+      run = b ? { side: b, s0: s, s1: s } : null;
+    }
+  }
+  if (run) {
+    runs.push(run);
+  }
+  let i = 0;
+  for (const r of runs) {
+    i += 1;
+    const len = r.s1 - r.s0;
+    if (len < 14) {
+      continue;
+    }
+    const tar = surfaceAt((r.s0 + r.s1) / 2) === 'tarmac';
+    /* Gravel bends already have a shoulder to 1.1 m: the wear starts there. */
+    const inner = half + (tar ? 0.5 : 1.1);
+    const wmax = Math.min(4.2, 1.6 + len * 0.05) * (0.8 + 0.4 * hash(i, 61));
+    const room = (t) => {
+      const q = pointAt(line, r.s0 + len * t);
+      let o = inner + wmax;
+      for (; o > inner; o -= 0.4) {
+        const x = q.x - q.ty * r.side * o;
+        const y = q.y + q.tx * r.side * o;
+        if (clearOf(x, y) >= o - 0.05 && x > 2 && y > 2) {
+          break;
+        }
+      }
+      return o;
+    };
+    const outer = (t) => {
+      const lens = 4 * t * (1 - t);
+      const rag = 0.75 + 0.5 * hash(Math.round(t * len) + i * 997, 62);
+      return Math.max(inner + 0.02, Math.min(room(t), inner + wmax * lens * rag));
+    };
+    const pieces = Math.max(1, Math.round(len / 40));
+    for (let k = 0; k < pieces; k += 1) {
+      const a = r.s0 + (len * k) / pieces;
+      const b = r.s0 + (len * (k + 1)) / pieces;
+      const m = pointAt(line, (a + b) / 2);
+      const c = w(m.x, m.y);
+      const t0 = k / pieces;
+      const t1 = (k + 1) / pieces;
+      kit.begin(0, 0, 0, 0, chunkOf(c[0], c[2]));
+      kit.add(tar ? 'rxGravel' : 'rxGravelDark', strip(
+        line, a, b, r.side * inner, (t) => r.side * outer(t0 + (t1 - t0) * t), 0.031, STEP,
+      ));
+    }
   }
 }
 

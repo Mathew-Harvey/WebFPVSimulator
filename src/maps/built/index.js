@@ -1537,6 +1537,18 @@ export async function buildMap(shell, onProgress, options) {
     /* Drawn with no two colours in one plane, so no wall shimmers between
      * them (../../props/coplanar.js). The solids were placed from the plan's
      * own parts in addExtra, and this moves only what is drawn. */
+    /* A box whose bottom is on or under the floor at its four corners and
+     * its middle is drawn without its bottom face (../../props/kit.js
+     * floorBox): nobody sees it from under the ground. The floor is the
+     * map's own where it has one, 0 where it does not. */
+    const floorAt = typeof extra.floor === 'function' ? extra.floor : () => 0;
+    kit.onFloor = (p) => {
+      const y = p.lo[1] - 0.02;
+      const [x0, , z0] = p.lo;
+      const [x1, , z1] = p.hi;
+      return y <= floorAt(x0, z0) && y <= floorAt(x1, z0) && y <= floorAt(x0, z1) && y <= floorAt(x1, z1)
+        && y <= floorAt((x0 + x1) / 2, (z0 + z1) / 2);
+    };
     for (const p of separateCoplanar(extra.parts).parts) {
       /* The part rides along, so a map may file some of its parts by more
        * than where they stand (Sunnyfield's set dressing, ../sunny/index.js). */
@@ -1547,6 +1559,7 @@ export async function buildMap(shell, onProgress, options) {
       }
       kit.part(p);
     }
+    kit.onFloor = null;
     if (extra.draw) {
       extra.draw(kit);
     }

@@ -497,6 +497,26 @@ export function lookedTownMaterial(m, look) {
   return d;
 }
 
+/*
+ * A unit box with no bottom face, for a box that stands on the floor
+ * (pass 4 of 2026-11-01): its bottom is pressed to the ground, which no
+ * camera goes under, so its two triangles were drawn every frame into a
+ * depth that was already the ground's. A sixth fewer triangles a box.
+ * BoxGeometry writes its faces +x, -x, +y, -y, +z, -z, six indices each,
+ * and the bottom is -y. Its shadow is the same where it shows: the shadow
+ * pass draws back faces, and with the bottom gone a ray from the sun that
+ * would have left through it falls on the ground under the box, which the
+ * box itself covers.
+ */
+function floorBox() {
+  const g = new THREE.BoxGeometry(1, 1, 1);
+  const idx = Array.from(g.index.array);
+  const keep = [...idx.slice(0, 18), ...idx.slice(24)];
+  g.setIndex(keep);
+  g.clearGroups();
+  return g;
+}
+
 /* ------------------------------------------------------------------ *
  * Shared geometry: unit shapes scaled by a matrix, so the batches clone
  * one small buffer each time rather than building a new one.
@@ -504,6 +524,7 @@ export function lookedTownMaterial(m, look) {
 
 const UNIT = {
   box: new THREE.BoxGeometry(1, 1, 1),
+  floorBox: floorBox(),
   ball: roundSphere(new THREE.IcosahedronGeometry(1, 1)),
   blob: new THREE.IcosahedronGeometry(1, 0),
   leaf: roundBlob(),
@@ -943,7 +964,7 @@ export class PropKit {
 
   /* ---- the vocabulary a draw() speaks ---- */
 
-  box(mat, x0, y0, z0, x1, y1, z1) {
+  box(mat, x0, y0, z0, x1, y1, z1, unit = UNIT.box) {
     const w = Math.abs(x1 - x0);
     const h = Math.abs(y1 - y0);
     const d = Math.abs(z1 - z0);
@@ -953,7 +974,7 @@ export class PropKit {
     _v.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
     _s.set(w, h, d);
     _q.identity();
-    this.add(mat, UNIT.box, new THREE.Matrix4().compose(_v, _q, _s));
+    this.add(mat, unit, new THREE.Matrix4().compose(_v, _q, _s));
   }
 
   cyl(mat, a, b, r, seg = 8, rTop = null) {
@@ -1391,6 +1412,10 @@ export class PropKit {
     }
     this.counts.parts += 1;
     if (p.t === 'box') {
+      if (this.onFloor && this.onFloor(p)) {
+        this.box(p.m, p.lo[0], p.lo[1], p.lo[2], p.hi[0], p.hi[1], p.hi[2], UNIT.floorBox);
+        return;
+      }
       this.box(p.m, p.lo[0], p.lo[1], p.lo[2], p.hi[0], p.hi[1], p.hi[2]);
     } else if (p.look === 'capsule') {
       this.capsule(p.m, p.a, p.b, p.r, p.seg);

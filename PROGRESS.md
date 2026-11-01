@@ -73670,3 +73670,7 @@ The bug hunt thread saw together-shots' ribbon check "a bot cuts somebody's ribb
 - Went wrong: the first cap (64vh) made Large and a fourth option, Huge, identical on a 390 px high phone, so Huge was dropped and the cap raised to 76vh. A `pkill` of my scratch server also killed my own shell once.
 - Checks run: plate widths measured in headless Chromium with touch at 844x390, 740x360 and 390x844 for all three sizes (Normal 234/216/117 as before; Large 293/270/146; Small 187/173/94; both plates inside the screen). Not run: `lint:input` and `npm run verify` (no physics, plant, ABI or build change), and the Settings row itself was not screenshotted.
 - Latency: no per-frame work added. The size is a CSS variable written on a settings change; the sample and paint paths are untouched. Checked by reading the diff; a proxy only.
+
+## 2026-11-01 | release | Thumb stick size to main on the owner's word
+
+- The owner, 2026-11-01 02:00Z: "push to main", for the Thumb stick size setting (PR 209). Fast forward from the current main; no merge was needed. No latency rise, so no extra word was owed.

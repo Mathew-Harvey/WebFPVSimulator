@@ -73630,3 +73630,8 @@ The bug hunt thread saw together-shots' ribbon check "a bot cuts somebody's ribb
 - `lint:preload` fails on the base and on the branch alike (src/fresh.js stale since main's map merges); regenerating it gives the same file either way, so this change does not touch it, and it was not regenerated here.
 - Not run: `npm run verify` (no physics, plant, ABI or build change: the room's walls and the house's furniture are world geometry the shell hands the plant, as X and the wall pin were). Not flown.
 - What went wrong: the room check first held every piece to 1.5 m of floor, which failed on the course's own banner hung on the wall; the rule is the piece's centre and the floor is for the pieces that grew the room. The bed check first missed the slots on the base, because the headboard covering one corner of the side zeroed the whole side; it samples along the side now. Its drop first stood on the shell's raised ground plane, which is the mattress, and could not fail.
+
+## 2026-11-01 | release | The bug board run's three fixes to main on the owner's word
+
+- The owner, 2026-11-01 00:45Z: "Push to main all fixes", for 985d1ec (bug-b5a946be the Steady Laps wording, bug-dcc2264f the room that holds its course, bug-243d42f7 the beds and the furniture beside them). Main had not moved from f369a06, so main fast forwards to the branch. No board change, and no ticket was closed: that was not asked.
+- Checks on the pushed tree, this turn: `check:roomfit` 21 of 21, `check:bedslot` 6 of 6, `check:career` 179 of 179. The rest as recorded in the entry above. Not run: `npm run verify` (no physics, plant, ABI or build change). Not flown.

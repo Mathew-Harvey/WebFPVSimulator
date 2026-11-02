@@ -74129,3 +74129,18 @@ Clips for the owner: /mnt/project-files/motor-sound/2026-11-02-real-quad-match/l
 Checks this turn: `node scripts/music-selftest.js` all passed; `node --check` on the three files; the probe renders above. `npm run lint:shell` prints gate card findings that are the bug sweep's known leftovers and do not touch audio. Not run: `npm run verify` (no physics, plant, ABI or build change; the audio bed check would see only the node count, 49 against 64). Nobody has listened.
 
 Latency: no change on the input or flight path. Per frame the update adds two setTargetAtTime calls, four Math.pow and one Math.exp, no allocation (P13 times it). The audio thread runs four more nodes (49 against a budget of 64). At attach, two buffers are built once (6 s wander, 4 s prop noise, about 10 s of samples, a few ms). Checked by reading the diff and the probe's node count; these are proxies.
+
+#### No hiss and no beat (same thread, PR 218)
+
+Mat 2026-11-02 11:38Z, after the first cut's clips: "remove the hiss and the wha wha wha cycle in the background".
+- Measured first, on a steady 12,200 rpm render with the motors alone (envelope modulation 0.3 to 12 Hz): the first cut read 52 percent at 1.4 to 5.2 Hz. Taking out the fixed spread and the wander left 57 percent, and taking out the noise too left 65: the beat between four oscillators at four speeds was the cycle, and in the live sim the plant's own motor differences would make it whatever the fixed spread was. The compressor added about 1 point.
+- So the voice is ONE oscillator at the mean speed of the turning motors (a stopped motor drops out and the voice is three quarters as loud), with the reference's harmonic stack and brightness law kept. The wander (and its 6 s buffer) and the prop noise layer (and its 4 s buffer) are gone. Envelope modulation now 0.0 to 0.1 percent at 8,700, 12,200 and 25,600 rpm.
+- Level: motor stem -27.8 dBFS at hover (main -27.7), -26.8 at 12,200, -23.9 wide open (main -53.6). Full mix on the `plant` trace -26.0 dBFS, true peak -15.0 dBTP, no sample at full scale. Whoop wide open -27.3 dBFS.
+- A1 is met again: 22.67 dB on the `plant` trace (needs 12). The hiss was what failed it.
+- Harmonics without the noise floor: at the recording's cruise pitch H2..H8 -15.6 -23.4 -32.0 -37.3 -41.1 -45.2 -47.8, wide open -13.3 -20.8 -27.9 -30.8 -32.1 -34.3 -35.5. Darker than the recording's figures above H3, which had its broadband floor in them, and darker by the camera step, which is kept because it is what the owner heard and he did not object to the tone.
+- Nodes: 31, against 45 on main and 49 in the first cut.
+- Clips: /mnt/project-files/motor-sound/2026-11-02-real-quad-match/lap-after-v2.mp3 and steady-cruise-v2.mp3. The lap trace swells every 3.7 s by design (it is a scripted punch cycle, not the sim); the steady clip has no throttle movement.
+
+Checks this turn: `node scripts/music-selftest.js` all passed, `node --check`, the probe renders above. Not run: `npm run verify` (no physics, plant, ABI or build change). Nobody has listened to this version.
+
+Latency: lower. Per frame the update now schedules three parameters for the motor voice instead of twelve plus two, with one Math.pow and no exp, no allocation. The audio thread runs 31 nodes instead of 45 on main. Two fewer buffers built at attach. Checked by reading the diff and the probe's node count; proxies.

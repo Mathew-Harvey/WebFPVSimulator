@@ -1,19 +1,21 @@
 /*
  * audio.js: motor noise as a flight instrument, and a mix around it.
  *
- * Pilots fly quads by ear as much as by eye: the blade pass tone tells you
- * what the throttle is doing before the picture does, and the beat between
- * four slightly different motor speeds is what makes a quad sound like a
- * quad instead of a drone. So this is per motor, driven by that motor's own
- * RPM, not a single throttle-scaled loop.
+ * Pilots fly quads by ear as much as by eye: the motor tone tells you what
+ * the throttle is doing before the picture does. So this is driven by the
+ * RPM the module reports for the motors, not a single throttle-scaled loop.
+ * It was one voice per motor so their speeds would beat; the owner heard
+ * that beat as a "wha wha wha" and it is one voice at their mean speed now.
  *
  * THE MOTOR VOICE IS COPIED FROM A REAL QUAD (2026-11-02). Everything the
  * next three paragraphs say about the blade pass as the fundamental and the
  * capped lowpass is history now: the fundamental is the motor's rotation
- * rate, the harmonic stack, the throttle brightness law, the prop noise
- * floor and the camera's band are all fitted to a measured recording of a
- * 6S five inch on its onboard camera. The constants below say which number
- * each one came from, and PROGRESS.md has the comparison.
+ * rate, and the harmonic stack, the throttle brightness law and the
+ * camera's band are fitted to a measured recording of a 6S five inch on its
+ * onboard camera. Its hiss and the beating between its four motors were
+ * copied too and then taken out again at the owner's word, so the voice is
+ * one steady tone: see ONE STEADY VOICE below. The constants say which
+ * number each one came from, and PROGRESS.md has the comparison.
  *
  * THE MOTOR REGISTER, and why it is low. An earlier round's graph put the
  * oscillators in the kilohertz range with square partials to 8 kHz, and the
@@ -166,14 +168,15 @@ const CAM_STEP_DB = -10;
 const MOTOR_COMP_THRESHOLD = -30;
 const MOTOR_COMP_TRIM = 1.0;
 /*
- * Per motor loudness: flat to within a few dB, because the reference is.
- * Its RMS moved 1.5 dB from idle to wide open (an onboard camera's level
- * control, which is also what every FPV video a pilot has heard does), and
- * the throttle is carried by brightness instead. A 2.5 dB span is kept so a
- * punch still swells.
+ * Loudness: close to flat, because the reference is. Its RMS moved 1.5 dB
+ * from idle to wide open (an onboard camera's level control, which is also
+ * what every FPV video a pilot has heard does), and the throttle is carried
+ * by brightness instead. The gain rises from MOTOR_VOICE_FLOOR to 1 across
+ * the throttle, which with the brightness measures -27.8 dBFS at hover and
+ * -23.9 wide open on the motor stem, so a punch still swells.
  */
-const MOTOR_VOICE_GAIN = 0.2;
-const MOTOR_VOICE_FLOOR = 1.4;
+const MOTOR_VOICE_GAIN = 0.38;
+const MOTOR_VOICE_FLOOR = 0.8;
 /*
  * Below this the motor stem is silent. A stationary quad was not quiet: with
  * the oscillator floored at 20 Hz and a 0.119 idle gain, the title screen
@@ -183,36 +186,21 @@ const MOTOR_VOICE_FLOOR = 1.4;
  */
 const MOTOR_MUTE_RPM = 600;
 /*
- * Texture, from the same reference. Four motors are never at exactly one
- * speed, and the reference's beats between them run 2 to 5.7 Hz at the
- * fundamental (median 3.4). These fixed offsets, in cents, give pairwise
- * beats of 1.3 to 4.1 Hz at hover and more as the pitch rises; the plant's
- * own per motor differences ride on top. The shared wander is band limited
- * noise centred near the reference's 3.6 Hz, normalised so the constant is
- * its standard deviation in cents. The reference measured 40 cents with the
- * pilot's thumbs in it; the plant's controller supplies real variation of
- * its own, so the synthetic part is less than half that.
+ * ONE STEADY VOICE, NO BEATS AND NO HISS (the owner, 2026-11-02 11:38Z:
+ * "remove the hiss and the wha wha wha cycle in the background").
+ *
+ * The reference has both: four motors a few Hz apart beat against each other
+ * (it measured 57 percent amplitude wobble at 1 to 6 Hz), its pitch wanders
+ * 40 cents at 3.6 Hz, and a broadband floor rises with throttle. The first
+ * cut of this voice copied all three, with four oscillators spread across
+ * the stereo field, a shared wander, and a prop noise layer. Measured on a
+ * steady 12,200 rpm render that was 52 percent amplitude modulation peaking
+ * at 1.4 to 5.2 Hz, which is the wha wha wha, and the noise was the hiss.
+ * So there is one oscillator now, at the mean of the four motors' speeds:
+ * four tones a few Hz apart cannot beat if there is only one of them. Its
+ * harmonic stack and brightness law are still the reference's. Eleven
+ * fewer audio nodes than the first cut, and two fewer buffers to build.
  */
-const MOTOR_SPREAD_CENTS = [-24, -8, 9, 25];
-const MOTOR_WANDER_CENTS = 16;
-/*
- * The broadband layer under the tones: prop and air noise that the reference
- * shows rising with throttle (floor 14 dB under the fundamental's peak at
- * cruise, 7.7 dB wide open, sloping -6.1 and -4.4 dB per octave). One noise
- * buffer pre-tilted to about -6 dB per octave above 400 Hz and cut below
- * 150 Hz, one lowpass whose corner opens with throttle, one gain, all on the
- * motor bus so the Motors setting, the camera shelf and the compressor treat
- * it as part of the motor. PROP_NOISE_GAIN is its level at the reference's
- * cruise throttle (0.42), and it rises PROP_NOISE_DB_PER_THR dB per unit of
- * throttle either side, which is what puts the floor 14 dB under the tone at
- * cruise and 7.7 dB under it wide open.
- */
-const PROP_NOISE_GAIN = 0.24;
-const PROP_NOISE_DB_PER_THR = 30;
-const PROP_NOISE_LOWCUT_HZ = 150;
-const PROP_NOISE_LP_LO = 800;
-const PROP_NOISE_LP_HI = 7000;
-const PROP_NOISE_TILT_HZ = 2500;
 
 /*
  * The binaural focus tone. 6 Hz is in the theta band, 4 to 8 Hz, and 220 Hz
@@ -289,8 +277,7 @@ export class MotorAudio {
     this.enabled = false;
     this.master = null;
     this.noiseGain = null;
-    this.propGain = null;
-    this.propLp = null;
+    this.voice = null;
     this.fullRpm = DEFAULT_FULL_RPM;
     this.level = 0.5; /* mix level, driven by the volume setting */
     /* Per stem, each 0 to 1, driven by their own settings rows. These
@@ -580,8 +567,8 @@ export class MotorAudio {
      * bass in the motor sounds with a little compression"). One shared node,
      * none per motor, run by the browser's audio thread, so nothing on the
      * main thread and nothing per frame. Low ratio, soft knee and a slow
-     * release: it settles the beating between the four motors and the
-     * throttle swell into one fatter body instead of squashing anything.
+     * release: it settles the throttle swell into one fatter body instead of
+     * squashing anything.
      */
     const camComp = keep(ctx.createDynamicsCompressor());
     camComp.threshold.value = MOTOR_COMP_THRESHOLD;
@@ -614,52 +601,6 @@ export class MotorAudio {
     focusBus.connect(shaper);
     this.focusBus = focusBus;
 
-    /*
-     * One wander source feeding every motor's detune, so the tone moves the
-     * way a real motor's does instead of sitting on an exact frequency. One
-     * buffer and one gain rather than one per motor: the wobble is common in
-     * CENTS across the four, and since each motor runs at its own RPM the
-     * frequency deviation still differs. Two one pole lowpasses subtracted
-     * make a band about 1.5 to 7 Hz wide around the reference's 3.6 Hz, and
-     * the buffer is normalised to unit standard deviation so the gain IS the
-     * wander in cents. Built once, here.
-     */
-    const dLen = Math.floor(ctx.sampleRate * 6);
-    const dBuf = ctx.createBuffer(1, dLen, ctx.sampleRate);
-    const dCh = dBuf.getChannelData(0);
-    let ds = 24680;
-    let dFast = 0;
-    let dSlow = 0;
-    const aFast = 1 - Math.exp(-2 * Math.PI * 7 / ctx.sampleRate);
-    const aSlow = 1 - Math.exp(-2 * Math.PI * 1.5 / ctx.sampleRate);
-    let dSq = 0;
-    for (let i = 0; i < dLen; i += 1) {
-      ds = (ds * 1103515245 + 12345) & 0x7fffffff;
-      const w = (ds / 0x3fffffff) - 1.0;
-      dFast += aFast * (w - dFast);
-      dSlow += aSlow * (w - dSlow);
-      dCh[i] = dFast - dSlow;
-      dSq += dCh[i] * dCh[i];
-    }
-    const dNorm = dSq > 0 ? 1 / Math.sqrt(dSq / dLen) : 0;
-    for (let i = 0; i < dLen; i += 1) {
-      dCh[i] *= dNorm;
-    }
-    /* Seam: the last 50 ms fade into the first so the loop point is not a
-     * jump in pitch. */
-    const dSeam = Math.floor(ctx.sampleRate * 0.05);
-    for (let i = 0; i < dSeam; i += 1) {
-      const k = i / dSeam;
-      dCh[i] = dCh[i] * k + dCh[dLen - dSeam + i] * (1 - k);
-    }
-    const detuneSrc = keep(ctx.createBufferSource());
-    detuneSrc.buffer = dBuf;
-    detuneSrc.loop = true;
-    const detuneGain = keep(ctx.createGain());
-    detuneGain.gain.value = MOTOR_WANDER_CENTS;
-    detuneSrc.connect(detuneGain);
-    detuneSrc.start();
-
     const hN = MOTOR_HARMONIC_DB.length + 1;
     const wReal = new Float32Array(hN);
     const wImag = new Float32Array(hN);
@@ -669,88 +610,28 @@ export class MotorAudio {
       wImag[k] = mag * Math.sin(MOTOR_HARMONIC_PHASE[k - 1]);
     }
     const motorWave = ctx.createPeriodicWave(wReal, wImag);
+    /* The one motor voice: oscillator, the brightness law's lowpass (its
+     * corner rides the fundamental and the throttle, set in update()), and
+     * a gain. Centred, the way an onboard camera's mono track is. */
+    const osc = keep(ctx.createOscillator());
+    osc.setPeriodicWave(motorWave);
+    osc.frequency.value = 120;
+    const lp1 = keep(ctx.createBiquadFilter());
+    lp1.type = 'lowpass';
+    lp1.frequency.value = 600;
+    lp1.Q.value = MOTOR_LP_Q;
+    const voiceGain = keep(ctx.createGain());
+    voiceGain.gain.value = 0.0;
+    osc.connect(lp1);
+    lp1.connect(voiceGain);
+    voiceGain.connect(motorBus);
+    osc.start();
+    this.voice = { osc, lp1, gain: voiceGain };
+    /* `motors` stays a four entry list for anything that counts motors; all
+     * four are the one voice. */
     for (let m = 0; m < 4; m += 1) {
-      const osc = keep(ctx.createOscillator());
-      osc.setPeriodicWave(motorWave);
-      osc.frequency.value = 120;
-      /* The fixed spread: this motor's own offset, under the shared wander. */
-      osc.detune.value = MOTOR_SPREAD_CENTS[m];
-      detuneGain.connect(osc.detune);
-      /* The brightness law's lowpass: its corner rides the fundamental and
-       * the throttle, set in update(). */
-      const lp1 = keep(ctx.createBiquadFilter());
-      lp1.type = 'lowpass';
-      lp1.frequency.value = 600;
-      lp1.Q.value = MOTOR_LP_Q;
-      const gain = keep(ctx.createGain());
-      gain.gain.value = 0.0;
-      /* Spread the four motors across the stereo field so the beating
-       * between them is audible, the way it is behind real goggles. */
-      const pan = ctx.createStereoPanner ? keep(ctx.createStereoPanner()) : null;
-      if (pan) {
-        pan.pan.value = [0.45, 0.32, -0.45, -0.32][m];
-      }
-      osc.connect(lp1);
-      lp1.connect(gain);
-      if (pan) {
-        gain.connect(pan);
-        pan.connect(motorBus);
-      } else {
-        gain.connect(motorBus);
-      }
-      osc.start();
-      this.motors.push({ osc, lp1, gain });
+      this.motors.push(this.voice);
     }
-
-    /*
-     * The prop noise layer. White noise through a one pole lowpass at 250 Hz
-     * is about -6 dB per octave above it, the reference's cruise slope, and
-     * the moving lowpass in update() opens it toward the flatter wide open
-     * slope. Four seconds so it has no rhythm, a 20 ms seam crossfade, built
-     * once here.
-     */
-    const pLen = Math.floor(ctx.sampleRate * 4);
-    const pBuf = ctx.createBuffer(1, pLen, ctx.sampleRate);
-    const pCh = pBuf.getChannelData(0);
-    let ps = 55555;
-    let py = 0;
-    let pLow = 0;
-    const aTilt = 1 - Math.exp(-2 * Math.PI * PROP_NOISE_TILT_HZ / ctx.sampleRate);
-    const aCut = 1 - Math.exp(-2 * Math.PI * PROP_NOISE_LOWCUT_HZ / ctx.sampleRate);
-    let pSq = 0;
-    for (let i = 0; i < pLen; i += 1) {
-      ps = (ps * 1103515245 + 12345) & 0x7fffffff;
-      py += aTilt * (((ps / 0x3fffffff) - 1.0) - py);
-      /* Take out what is under the low cut: the reference's prop noise has
-       * almost nothing below 100 Hz, and that band belongs to the bass. */
-      pLow += aCut * (py - pLow);
-      pCh[i] = py - pLow;
-      pSq += pCh[i] * pCh[i];
-    }
-    const pNorm = pSq > 0 ? 0.35 / Math.sqrt(pSq / pLen) : 0;
-    const pSeam = Math.floor(ctx.sampleRate * 0.02);
-    for (let i = 0; i < pLen; i += 1) {
-      pCh[i] *= pNorm;
-    }
-    for (let i = 0; i < pSeam; i += 1) {
-      const k = i / pSeam;
-      pCh[i] = pCh[i] * k + pCh[pLen - pSeam + i] * (1 - k);
-    }
-    const propSrc = keep(ctx.createBufferSource());
-    propSrc.buffer = pBuf;
-    propSrc.loop = true;
-    const propLp = keep(ctx.createBiquadFilter());
-    propLp.type = 'lowpass';
-    propLp.frequency.value = PROP_NOISE_LP_LO;
-    propLp.Q.value = BAND_Q;
-    const propGain = keep(ctx.createGain());
-    propGain.gain.value = 0;
-    propSrc.connect(propLp);
-    propLp.connect(propGain);
-    propGain.connect(motorBus);
-    propSrc.start();
-    this.propLp = propLp;
-    this.propGain = propGain;
 
     /* Air rush: one second of deterministic noise, looped. Lowpassed, not
      * bandpassed: a bandpass on noise is a whistle, and what a pilot hears
@@ -1150,61 +1031,55 @@ export class MotorAudio {
     }
     /* `loudest` keeps its old meaning for the wind's prop wash term, RPM
      * over 35 percent of full and saturating there, so the wind bed is
-     * exactly what it was. `hot` is the hardest working motor's place on the
-     * throttle scale, for the prop noise layer. */
+     * exactly what it was. The voice takes the MEAN speed of the motors that
+     * are turning: one pitch, so nothing beats. */
     let loudest = 0;
-    let hot = 0;
-    const full = this.fullRpm;
-    const idle = 0.1 * full;
+    let sum = 0;
+    let turning = 0;
     for (let m = 0; m < 4; m += 1) {
       const r = Math.max(0, rpm[m]);
-      const node = this.motors[m];
-      /*
-       * A stopped motor is silent. Below MOTOR_MUTE_RPM the stem is faded out
-       * rather than floored at 20 Hz, which is what put a -21.5 dBFS subsonic
-       * drone under the title screen and on top of the bass line during every
-       * spool down.
-       */
       if (r < MOTOR_MUTE_RPM) {
-        node.gain.gain.setTargetAtTime(0, t, 0.06);
         continue;
       }
-      /* THE fundamental: this motor's rotation rate, straight from the RPM
-       * the module reports, with no register correction and no scale. The
-       * blade pass is the third harmonic of it, in the wave. */
-      const hz = r * ROTATION_HZ_PER_RPM;
-      /* setTargetAtTime, not linearRamp: the ear hears a step in
-       * frequency as a click, and the motors change fast. The 12 ms is the
-       * whole of the smoothing. The reference's pitch took 280 ms to swing
-       * on a punch, but that is its pilot's thumb plus its motors, and the
-       * plant already models the motors: lagging the sound behind the
-       * physics would be latency, and it is not added. */
-      node.osc.frequency.setTargetAtTime(hz, t, 0.012);
-      let thr = (r - idle) / (full - idle);
-      thr = thr < 0 ? 0 : thr > 1 ? 1 : thr;
-      const corner = Math.min(MOTOR_LP_CAP, hz * BRIGHT_LO * Math.pow(BRIGHT_HI / BRIGHT_LO, thr * thr));
-      node.lp1.frequency.setTargetAtTime(corner, t, 0.03);
-      node.gain.gain.setTargetAtTime(
-        MOTOR_VOICE_GAIN * (MOTOR_VOICE_FLOOR + (1 - MOTOR_VOICE_FLOOR) * thr), t, 0.03);
-      if (thr > hot) {
-        hot = thr;
-      }
-      const wash = Math.min(1, r / (0.35 * full));
+      sum += r;
+      turning += 1;
+      const wash = Math.min(1, r / (0.35 * this.fullRpm));
       if (wash > loudest) {
         loudest = wash;
       }
     }
+    const v = this.voice;
     /*
-     * The prop noise layer follows the hardest working motor: quiet and dark
-     * at idle, louder and open wide open, which is the reference's floor
-     * coming up from 14 to 7.7 dB under the tone. Silent with the motors.
-     * One exp per frame, on the main thread's audio scheduling, which P13
-     * already times.
+     * A stopped motor is silent. Below MOTOR_MUTE_RPM a motor is left out,
+     * and with none turning the stem is faded out rather than floored at
+     * 20 Hz, which is what put a -21.5 dBFS subsonic drone under the title
+     * screen and on top of the bass line during every spool down. A voice
+     * for four motors with one stopped is three quarters as loud.
      */
-    const pg = loudest > 0 ? PROP_NOISE_GAIN * Math.exp((hot - 0.42) * PROP_NOISE_DB_PER_THR * 0.11512925) : 0;
-    this.propGain.gain.setTargetAtTime(pg, t, 0.03);
-    this.propLp.frequency.setTargetAtTime(
-      PROP_NOISE_LP_LO + (PROP_NOISE_LP_HI - PROP_NOISE_LP_LO) * hot, t, 0.03);
+    if (turning === 0) {
+      v.gain.gain.setTargetAtTime(0, t, 0.06);
+    } else {
+      const r = sum / turning;
+      const full = this.fullRpm;
+      const idle = 0.1 * full;
+      /* THE fundamental: the rotation rate, straight from the RPM the module
+       * reports, with no register correction and no scale. The blade pass is
+       * the third harmonic of it, in the wave. */
+      const hz = r * ROTATION_HZ_PER_RPM;
+      /* setTargetAtTime, not linearRamp: the ear hears a step in frequency
+       * as a click, and the motors change fast. The 12 ms is the whole of
+       * the smoothing. The reference's pitch took 280 ms to swing on a
+       * punch, but that is its pilot's thumb plus its motors, and the plant
+       * already models the motors: lagging the sound behind the physics
+       * would be latency, and it is not added. */
+      v.osc.frequency.setTargetAtTime(hz, t, 0.012);
+      let thr = (r - idle) / (full - idle);
+      thr = thr < 0 ? 0 : thr > 1 ? 1 : thr;
+      const corner = Math.min(MOTOR_LP_CAP, hz * BRIGHT_LO * Math.pow(BRIGHT_HI / BRIGHT_LO, thr * thr));
+      v.lp1.frequency.setTargetAtTime(corner, t, 0.03);
+      v.gain.gain.setTargetAtTime(
+        MOTOR_VOICE_GAIN * (turning / 4) * (MOTOR_VOICE_FLOOR + (1 - MOTOR_VOICE_FLOOR) * thr), t, 0.03);
+    }
     /*
      * The wind, scaled by 1.41, which is 3.0 dB up.
      *

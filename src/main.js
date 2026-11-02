@@ -8504,6 +8504,11 @@ export async function boot({ loading, bootStart, mapId }) {
         if (typeof sim.e.sim_set_airframe === 'function') {
           sim.e.sim_set_airframe(simIdFor(runAirframe));
         }
+        /* The motor voice places each motor on its own airframe's throttle
+         * scale; a scalar, written once per airframe change. */
+        if (typeof audio.setFullRpm === 'function') {
+          audio.setFullRpm(plantFacts(runAirframe).fullRpm);
+        }
         /*
          * The plant changed under a module that is already initialised, so
          * everything the shell derived from the OLD plant has to follow: the

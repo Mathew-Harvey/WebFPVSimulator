@@ -74097,3 +74097,35 @@ Mat 2026-11-02 09:36Z: "landing and take off is a boop bop sound, lets make a de
 Latency: none on the input or flight path. The compressor runs on the browser's audio thread and costs nothing on the main thread; nothing per frame. Checked by reading the diff and the offline render's node count, which is a proxy.
 
 - The owner, 2026-11-02 09:40Z, in the thread "Soften sounds for ASMR listening": "push to main". It covers PR 217 (the deep thock for landing and take off, and the motor shelf and light compressor) and this record; nothing else. Main had not moved, so it fast forwards. Not flown yet.
+
+### 2026-11-02: The motor voice copied from a real quad recording (thread "Soften sounds for ASMR listening")
+
+Mat 2026-11-02 10:35Z asked how grok should present "the math that characterises the drone sound" so it could be copied, and at 11:05Z sent grok's report, its data (time series, spectra, three clips, scripts) and the whole flight as a mono FLAC: Mr Steele's "FPV + Aggression", a 6S 613 g five inch on the HD Dead Cat frame, 20 to 222 s, onboard camera mic (about 75 percent sure), no stick overlay (throttle inferred from pitch), camera level control flattening loudness, a 41.75 Hz camera hum not to copy.
+
+What our motors were, measured the same way on the CURRENT plant (hover 8,700 rpm, wide open 25,600; the probe's old traces are from a plant three and a half times slower and hid this): one near pure tone at the blade pass (3 x rpm / 60), every harmonic and all noise 30 to 75 dB down, -27.7 dBFS at hover and -53.6 dBFS wide open, because a 1.3 kHz tone sat under the 430 Hz per motor cap and the 800 Hz bus lowpass. The motors got QUIETER as the throttle went up.
+
+What the recording is: the lowest line is the rotation rate (285 Hz cruise, 529 Hz wide open), a full integer stack above it (H2 -15.6 to H8 -36.7 dB at cruise, -11.1 to -23.4 wide open), brightness carrying the throttle (centroid 391 to 913 Hz, 95 percent roll off 1.2 to 3.8 kHz), a broadband floor 14 dB under the tone at cruise and 7.7 wide open, a camera step of -9.8 dB across 1.5 kHz and a roll off at 7 kHz, beats of 2 to 5.7 Hz between the motors, 40 cents of pitch wander at 3.6 Hz, and loudness flat to 1.5 dB.
+
+Changed, `src/render/audio.js`:
+- Fundamental is rpm / 60 (was 3 x rpm / 60). The plant's own RPM, untouched.
+- Wave is the recording's wide open harmonic stack, H1 to H8, phases scattered. A per motor low Q lowpass (Q -12 dB, poles split to 0.27 and 3.7 times the corner, so a 6 dB per octave tilt) darkens it toward the cruise stack as the throttle falls: corner 2.2 x f0 at idle to 60 x f0 wide open, geometric in throttle squared.
+- Prop noise layer on the motor bus (3 nodes): noise flat to 2.5 kHz then -6 dB per octave, cut below 150 Hz, a lowpass opening 800 Hz to 7 kHz with throttle, level rising 30 dB per unit throttle around the cruise point.
+- Camera band on the motor bus: high shelf -10 dB at 1.5 kHz (1 node), lowpass 7 kHz (was 800 Hz). Low shelf +2 dB at 160 Hz (was +5 at 200, the fundamental is an octave and a half lower now). Compressor kept, trim 0.5 to 1.0.
+- Texture: fixed per motor spread of -24, -8, +9, +25 cents (pairwise beats 1.3 to 4.1 Hz at hover), shared wander band limited 1.5 to 7 Hz, 16 cents SD (was under 1). The plant's own motor differences ride on top.
+- Throttle placement per airframe: `setFullRpm`, fed from PLANT_FACTS in `src/main.js` when the airframe changes, so a whoop is on its own scale.
+- NOT copied: the recording's 280 ms pitch slew. That is its pilot's thumb plus its motors, the plant already models the motors, and smoothing the sound behind the physics would be latency. The 41.75 Hz hum and the 133 Hz bump are not copied.
+
+At the recording's own pitch and throttle (`--fullrpm=35770`, 17,100 and 31,770 rpm), reference then ours:
+- Cruise: H2..H8 -15.6 -20.8 -27.6 -32.1 -31.1 -34.9 -36.7 against -15.1 -21.1 -24.3 -26.8 -30.9 -34.3 -37.0. Centroid 391 against 391 Hz. Roll off 1,219 against 1,002 Hz. Bands under 100, 100 to 400, 400 to 1k, 1 to 3k, 3 to 8k, over 8k: -17.1 -2.3 -4.9 -12.8 -17.6 -39.5 against -25.0 -0.6 -11.2 -13.3 -24.4 -50.3.
+- Wide open: H2..H8 -11.1 -15.1 -19.6 -21.1 -21.5 -22.9 -23.4 against -9.7 -17.2 -19.1 -20.7 -25.2 -26.9 -28.3. Centroid 913 against 978 Hz. Roll off 3,779 against 3,012 Hz. Bands -10.6 -6.9 -2.7 -9.7 -11.5 -33.6 against -17.7 -7.4 -3.3 -5.6 -13.0 -32.5.
+- Where it still differs: the recording has more 400 Hz to 1 kHz broadband at cruise and more under 100 Hz (its camera hum and frame bump), and its H4 and H5 at cruise are 3 to 5 dB weaker. Its IQRs are 7 to 20 dB, so these are inside its own spread.
+- On the plant: motor stem -27.4 dBFS at hover (was -27.7), -26.3 at the 12,200 rpm cruise, -21.1 wide open (was -53.6). Whoop at 30,000 and 72,800 rpm: -28.3 and -21.6 dBFS, no sample at full scale.
+- Full mix on the new `plant` trace: -25.2 dBFS RMS, true peak -10.4 dBTP (main on the same trace -28.8 and -16.9). No sample at full scale.
+
+A1, argued rather than met. The probe's loop bar asks the fundamental's third octave to stand 12 dB over the 2 to 8 kHz scream band. On the plant trace the new voice reads 3.95 dB at the fundamental (`--blades=1`, now the probe's default because the fundamental is the rotation rate). The recording itself, measured the same way over its 202 s of flight, reads 4.9 dB, and -2.8 dB on its wide open clip: a real quad on a camera fails A1. The bar was written against a kilohertz synth the owner called screaming; this is the owner's own reference. Threshold left as it is; whether brighter-than-A1 is right is the owner's ear. The one knob if it is too bright: BRIGHT_HI (wide open brightness) and PROP_NOISE_DB_PER_THR (how fast the hiss rises).
+
+Clips for the owner: /mnt/project-files/motor-sound/2026-11-02-real-quad-match/lap-before.mp3 and lap-after.mp3, the `plant` trace through the full mix, rendered offline.
+
+Checks this turn: `node scripts/music-selftest.js` all passed; `node --check` on the three files; the probe renders above. `npm run lint:shell` prints gate card findings that are the bug sweep's known leftovers and do not touch audio. Not run: `npm run verify` (no physics, plant, ABI or build change; the audio bed check would see only the node count, 49 against 64). Nobody has listened.
+
+Latency: no change on the input or flight path. Per frame the update adds two setTargetAtTime calls, four Math.pow and one Math.exp, no allocation (P13 times it). The audio thread runs four more nodes (49 against a budget of 64). At attach, two buffers are built once (6 s wander, 4 s prop noise, about 10 s of samples, a few ms). Checked by reading the diff and the probe's node count; these are proxies.

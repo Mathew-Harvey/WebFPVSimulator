@@ -34,11 +34,11 @@
  *
  * Usage:
  *   node scripts/audio-probe.js [--trace=NAME] [--seconds=20] [--rate=48000]
- *        [--level=0.6] [--blades=3] [--f0=HZ] [--scream=2000,8000]
+ *        [--level=0.6] [--blades=1] [--f0=HZ] [--scream=2000,8000]
  *        [--carrier=80,600] [--beat=6] [--seam=SEC] [--tones=LO,HI]
  *        [--json=PATH]
  *
- * Traces: hover, full, flight, steady:RPM, idle.
+ * Traces: hover, full, flight, plant, steady:RPM, idle.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -98,6 +98,18 @@ function traceFn(name) {
     return (t) => {
       const k = Math.min(1, t / 2);
       return { rpm: 900 + 8100 * k, speed: 32 * Math.min(1, t / 4) };
+    };
+  }
+  /* plant: the same lap on the five inch plant as it is now, hover 8,700
+   * rpm and 25,600 wide open, which is what the shell feeds update(). The
+   * flight trace above is from a plant that turned three and a half times
+   * slower and is kept for the records that cite it. */
+  if (name === 'plant') {
+    return (t) => {
+      const a = 0.5 + 0.5 * Math.sin(t * 1.7);
+      const b = 0.5 + 0.5 * Math.sin(t * 0.41 + 1.1);
+      const punch = a * a * b;
+      return { rpm: 7000 + 18600 * punch, speed: 6 + 22 * (0.4 + 0.6 * b) };
     };
   }
   /* flight: what a lap actually does. Punches out of corners, coasts
@@ -814,6 +826,11 @@ const DRIVER = `async (spec) => {
   if (typeof a.setFocusEnabled === 'function') {
     a.setFocusEnabled(spec.focus === 1);
   }
+  /* --fullrpm places the motors on another airframe's throttle scale, the
+   * way the shell does from PLANT_FACTS. */
+  if (spec.fullRpm > 0 && typeof a.setFullRpm === 'function') {
+    a.setFullRpm(spec.fullRpm);
+  }
   a.setEnabled(true);
   const rpm = [0, 0, 0, 0];
   /* Cues are scheduled through the real event() at the real time, from inside
@@ -958,7 +975,10 @@ async function main() {
     /* 0.6 is what the shell actually runs at: ui.js defaults volume to 6 and
      * main.js divides by 10. Rendering at 0.5 put every published loudness
      * figure 1.58 dB below what a player hears. */
-    trace: 'flight', seconds: 20, rate: 48000, level: 0.6, blades: 3,
+    /* blades 1 since 2026-11-02: the motor voice's fundamental is the
+     * rotation rate, so the fundamental band A1 reads is rpm / 60. Pass
+     * --blades=3 to read the blade pass, which is now the third harmonic. */
+    trace: 'flight', seconds: 20, rate: 48000, level: 0.6, blades: 1,
     scream: '2000,8000', carrier: '', beat: 0, seam: 0, f0: 0, json: '', wav: '',
     /*
      * Which stems to render. A1 is a property of the MOTOR model, and A8
@@ -999,6 +1019,9 @@ async function main() {
      * a stem muted to attribute a peak to a stem.
      */
     tones: '',
+    /* The flying airframe's wide open RPM, as the shell passes it to
+     * setFullRpm. 0 keeps the motor voice's own default, the five inch. */
+    fullrpm: 0,
   };
   for (const a of process.argv.slice(2)) {
     const m = a.match(/^--([a-z0-9]+)=(.*)$/);
@@ -1029,6 +1052,7 @@ async function main() {
     music: Number(opts.music),
     focus: Number(opts.focus),
     track: String(opts.track),
+    fullRpm: Number(opts.fullrpm) || 0,
   };
   const { meta, channels } = await renderGraph(spec);
 

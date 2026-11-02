@@ -119,8 +119,10 @@ const MOTOR_LP_FLOOR = 150;
  * merely quieter. Two nodes on the bus, none per motor, nothing per frame.
  */
 const CAM_SHELF_HZ = 200;
-const CAM_SHELF_DB = 2.5;
+const CAM_SHELF_DB = 5;
 const CAM_LP_HZ = 800;
+const MOTOR_COMP_THRESHOLD = -30;
+const MOTOR_COMP_TRIM = 0.5;
 /*
  * Below this the motor stem is silent. A stationary quad was not quiet: with
  * the oscillator floored at 20 Hz and a 0.119 idle gain, the title screen
@@ -499,8 +501,30 @@ export class MotorAudio {
     camLp.Q.value = 0.5;
     motorBus.connect(motorHp);
     motorHp.connect(camShelf);
+    /*
+     * A LIGHT COMPRESSOR on the motor bus (the owner, 2026-11-02: "a touch more
+     * bass in the motor sounds with a little compression"). One shared node,
+     * none per motor, run by the browser's audio thread, so nothing on the
+     * main thread and nothing per frame. Low ratio, soft knee and a slow
+     * release: it settles the beating between the four motors and the
+     * throttle swell into one fatter body instead of squashing anything.
+     */
+    const camComp = keep(ctx.createDynamicsCompressor());
+    camComp.threshold.value = MOTOR_COMP_THRESHOLD;
+    camComp.knee.value = 12;
+    camComp.ratio.value = 3;
+    camComp.attack.value = 0.02;
+    camComp.release.value = 0.25;
     camShelf.connect(camLp);
-    camLp.connect(flightDuck);
+    camLp.connect(camComp);
+    /* The compressor's automatic make up gain is about 6 dB at these settings,
+     * which would have been a loud motor and not "a touch more bass", so it is
+     * trimmed back here, after the compressor, where it cannot change what the
+     * compressor does. Measured on the flight trace, see PROGRESS.md. */
+    const camTrim = keep(ctx.createGain());
+    camTrim.gain.value = MOTOR_COMP_TRIM;
+    camComp.connect(camTrim);
+    camTrim.connect(flightDuck);
     this.motorBus = motorBus;
     const windBus = keep(ctx.createGain());
     windBus.gain.value = this.mix.wind * FLIGHT_STEM;
@@ -823,24 +847,50 @@ export class MotorAudio {
       this.music.duckNow(t, gate ? 0.5 : 0.45, gate ? 0.25 : 0.3);
       return;
     }
-    /* The blips. A landing is a low settle, a takeoff is a rising pair. */
-    let hz = 560;
-    let dur = 0.26;
-    if (kind === 'land') {
-      hz = 330;
-      dur = 0.34;
+    /*
+     * THE THOCK. A landing and a take off used to be a pair of pitched blips,
+     * which the owner heard as "boop bop" (2026-11-02) and asked to have a deep
+     * thock. A thock is a knock on something heavy and hollow: a sine that
+     * falls fast through a low octave, with a short dull knuckle of noise on
+     * the front of it and no pitch to hum along to. The landing is the deepest,
+     * the take off a size lighter and quicker, and 'select' (the career pick)
+     * a small one. Same two pooled voices as every other cue, nothing created.
+     * The noise is the crash chain's, opened to a few hundred Hz only.
+     */
+    let hz = 190;
+    let hzEnd = 60;
+    let dur = 0.3;
+    let peak = 0.85;
+    if (kind === 'takeoff') {
+      hz = 230;
+      hzEnd = 85;
+      dur = 0.22;
+      peak = 0.7;
+    } else if (kind !== 'land') {
+      hz = 300;
+      hzEnd = 130;
+      dur = 0.14;
+      peak = 0.5;
     }
     const f = this.cueOsc.frequency;
     f.cancelScheduledValues(t);
     f.setValueAtTime(hz, t);
-    if (kind === 'takeoff') {
-      f.exponentialRampToValueAtTime(hz * 1.5, t + dur);
-    }
+    f.exponentialRampToValueAtTime(hzEnd, t + dur * 0.55);
     const g = this.cueGain.gain;
     g.cancelScheduledValues(t);
     g.setValueAtTime(0.0001, t);
-    g.exponentialRampToValueAtTime(0.45 * fx, t + 0.018);
+    g.exponentialRampToValueAtTime(peak * fx, t + 0.007);
     g.exponentialRampToValueAtTime(0.0001, t + dur);
+    const nf = this.crashLp.frequency;
+    nf.cancelScheduledValues(t);
+    nf.setValueAtTime(420, t);
+    this.crashLp.Q.cancelScheduledValues(t);
+    this.crashLp.Q.setValueAtTime(0.7, t);
+    const ng = this.crashGain.gain;
+    ng.cancelScheduledValues(t);
+    ng.setValueAtTime(0.0001, t);
+    ng.exponentialRampToValueAtTime(0.5 * peak * fx, t + 0.006);
+    ng.exponentialRampToValueAtTime(0.0001, t + 0.05);
     this.duckFlight(t, 0.66, 0.26);
     this.music.duckNow(t, 0.6, 0.3);
   }

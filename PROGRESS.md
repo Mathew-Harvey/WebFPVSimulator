@@ -74028,3 +74028,13 @@ Changed, all constants and envelopes on the voices that already existed:
 Measured offline with `scripts/audio-probe.js` (proxies, nobody has listened): cue true peaks before and after, gate -6.3 to -6.4, graze -7.3 to -7.4, crash -5.8 to -6.2, land -7.6 to -9.7, take off -7.7 to -9.2 dBTP. Flight trace RMS -30.25 to -29.73 dBFS, A1 margin 16.6 to 20.4 dB (needs 12). Not run: `npm run verify` (no physics, plant, ABI or build change); no browser run.
 
 Latency: none. No node added, no per frame work, the only new allocation is one 4 s buffer at attach time (about 770 kB, built once). Checked by reading the diff and the probe's node count.
+
+#### Second pass, measured against two freely licensed recordings (same thread)
+
+Mat 2026-11-02 02:19Z: map real ASMR recordings' waveforms and compare to our work. YouTube refused audio downloads from the container (bot check), so, at Mat's "find other sources online" (02:22Z), the references are archive.org items: "Japanese and Chinese Tea Cup ASMR" (CC BY-SA 3.0, first 2.5 minutes, 50 taps and clinks) and "Household Air Conditioner 1" (public domain, a steady air bed). Two clips are a thin sample, a miked ceramic cup and a vent are not a quad, and an mp3 rolls off its own highs; the figures below are a direction, not a target.
+
+Reference against our first pass: tap attack (-20 dB to peak) median 25 ms against our 7; tap decay (-20 dB) median 90 ms, p90 655 ms, against our 24 to 47; tap spectral centroid 184 Hz against the gate's 506; energy above 3 kHz 24 to 30 dB down against our gate 19 down; air bed centroid 271 Hz against our wind's 495.
+Changed to follow: gate noise corner 2600 to 1800 Hz, tick 900 to 520 Hz, attack 5 and 6 to 9 and 10 ms, tails 70 and 130 to 120 and 220 ms; frame graze corner 600 Hz, tail to 0.2 and 0.24 s; crash attack 30 ms, tail 0.8 s; landing and take off 0.26 and 0.34 s with an 18 ms attack; menu tap attacks 6 and 8 ms; wind lowpass 700 to 560 Hz.
+After: gate energy above 3 kHz 26 to 37 dB down, tail 37 ms to -20 dB, crash tail 182 ms; cue true peaks still -6.1 to -9.6 dBTP, so loudness is level with before.
+Cost of the slower gate: a duller, longer tock reads less sharply than a click through full throttle motors. The duck is unchanged and the tick is still at 520 to 900 Hz; Mat's ear on that is the check.
+Latency: none, same as above (constants only).

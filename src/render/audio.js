@@ -617,7 +617,7 @@ export class MotorAudio {
     noise.loop = true;
     const nf = keep(ctx.createBiquadFilter());
     nf.type = 'lowpass';
-    nf.frequency.value = 700;
+    nf.frequency.value = 560;
     nf.Q.value = 0.5;
     const ng = keep(ctx.createGain());
     ng.gain.value = 0.0;
@@ -755,8 +755,8 @@ export class MotorAudio {
        * level itself. The soft clip and MASTER_CEILING bound what this can do
        * to the true peak.
        */
-      g.exponentialRampToValueAtTime(2.3 * lv * fx, t + 0.024);
-      g.exponentialRampToValueAtTime(0.0001, t + 0.6);
+      g.exponentialRampToValueAtTime(2.3 * lv * fx, t + 0.03);
+      g.exponentialRampToValueAtTime(0.0001, t + 0.8);
       const f = this.crashLp.frequency;
       f.cancelScheduledValues(t);
       /* A thud, not a smack: the noise starts under 600 Hz and falls to 70, so
@@ -764,7 +764,7 @@ export class MotorAudio {
        * still opens the filter further and rings longer. The body is the
        * pooled cue oscillator dropped from 110 to 45 Hz, which is the weight. */
       f.setValueAtTime(240 + 200 * lv, t);
-      f.exponentialRampToValueAtTime(65, t + 0.5);
+      f.exponentialRampToValueAtTime(65, t + 0.65);
       const bf = this.cueOsc.frequency;
       bf.cancelScheduledValues(t);
       bf.setValueAtTime(110, t);
@@ -772,8 +772,8 @@ export class MotorAudio {
       const bg = this.cueGain.gain;
       bg.cancelScheduledValues(t);
       bg.setValueAtTime(0.0001, t);
-      bg.exponentialRampToValueAtTime(0.9 * lv * fx, t + 0.014);
-      bg.exponentialRampToValueAtTime(0.0001, t + 0.42);
+      bg.exponentialRampToValueAtTime(0.9 * lv * fx, t + 0.02);
+      bg.exponentialRampToValueAtTime(0.0001, t + 0.55);
       /* The click cues lean on this filter's Q, so a crash states its own
        * rather than inheriting whatever the last click left. */
       this.crashLp.Q.cancelScheduledValues(t);
@@ -795,40 +795,40 @@ export class MotorAudio {
        * unmistakably not the reward.
        *
        * The click energy sits between 1 and 3 kHz, softened from 2 to 5 kHz, where the motors (capped
-       * at 1 kHz) and the wind (lowpassed at 700 Hz) have nothing, which is
+       * at 1 kHz) and the wind (lowpassed at 560 Hz) have nothing, which is
        * why it reads through a full throttle mix with a LIGHTER duck than
        * the old blip needed.
        */
       const gate = kind === 'gate';
       const nf = this.crashLp.frequency;
       nf.cancelScheduledValues(t);
-      nf.setValueAtTime(gate ? 2600 : 700, t);
+      nf.setValueAtTime(gate ? 1800 : 600, t);
       this.crashLp.Q.cancelScheduledValues(t);
       this.crashLp.Q.setValueAtTime(gate ? 0.9 : 0.7, t);
       const ng = this.crashGain.gain;
       ng.cancelScheduledValues(t);
       ng.setValueAtTime(0.0001, t);
-      ng.exponentialRampToValueAtTime((gate ? 0.9 : 0.8) * (gate ? 1 : lv) * fx, t + 0.005);
-      ng.exponentialRampToValueAtTime(0.0001, t + (gate ? 0.07 : 0.13));
+      ng.exponentialRampToValueAtTime((gate ? 0.9 : 0.8) * (gate ? 1 : lv) * fx, t + 0.009);
+      ng.exponentialRampToValueAtTime(0.0001, t + (gate ? 0.12 : 0.2));
       const f = this.cueOsc.frequency;
       f.cancelScheduledValues(t);
-      f.setValueAtTime(gate ? 1100 : 260, t);
-      f.exponentialRampToValueAtTime(gate ? 560 : 150, t + (gate ? 0.04 : 0.07));
+      f.setValueAtTime(gate ? 900 : 240, t);
+      f.exponentialRampToValueAtTime(gate ? 520 : 150, t + (gate ? 0.06 : 0.09));
       const g = this.cueGain.gain;
       g.cancelScheduledValues(t);
       g.setValueAtTime(0.0001, t);
-      g.exponentialRampToValueAtTime((gate ? 0.55 : 0.5) * (gate ? 1 : lv) * fx, t + 0.006);
-      g.exponentialRampToValueAtTime(0.0001, t + (gate ? 0.13 : 0.15));
+      g.exponentialRampToValueAtTime((gate ? 0.55 : 0.5) * (gate ? 1 : lv) * fx, t + 0.01);
+      g.exponentialRampToValueAtTime(0.0001, t + (gate ? 0.22 : 0.24));
       this.duckFlight(t, gate ? 0.55 : 0.5, gate ? 0.22 : 0.3);
       this.music.duckNow(t, gate ? 0.5 : 0.45, gate ? 0.25 : 0.3);
       return;
     }
     /* The blips. A landing is a low settle, a takeoff is a rising pair. */
     let hz = 560;
-    let dur = 0.2;
+    let dur = 0.26;
     if (kind === 'land') {
       hz = 330;
-      dur = 0.24;
+      dur = 0.34;
     }
     const f = this.cueOsc.frequency;
     f.cancelScheduledValues(t);
@@ -839,7 +839,7 @@ export class MotorAudio {
     const g = this.cueGain.gain;
     g.cancelScheduledValues(t);
     g.setValueAtTime(0.0001, t);
-    g.exponentialRampToValueAtTime(0.45 * fx, t + 0.014);
+    g.exponentialRampToValueAtTime(0.45 * fx, t + 0.018);
     g.exponentialRampToValueAtTime(0.0001, t + dur);
     this.duckFlight(t, 0.66, 0.26);
     this.music.duckNow(t, 0.6, 0.3);
@@ -895,7 +895,7 @@ export class MotorAudio {
     const ng = this.crashGain.gain;
     ng.cancelScheduledValues(t);
     ng.setValueAtTime(0.0001, t);
-    ng.exponentialRampToValueAtTime(nPeak * fx, t + 0.004);
+    ng.exponentialRampToValueAtTime(nPeak * fx, t + 0.006);
     ng.exponentialRampToValueAtTime(0.0001, t + nDur);
     const f = this.cueOsc.frequency;
     f.cancelScheduledValues(t);
@@ -906,7 +906,7 @@ export class MotorAudio {
     const g = this.cueGain.gain;
     g.cancelScheduledValues(t);
     g.setValueAtTime(0.0001, t);
-    g.exponentialRampToValueAtTime(oscPeak * fx, t + 0.005);
+    g.exponentialRampToValueAtTime(oscPeak * fx, t + 0.008);
     g.exponentialRampToValueAtTime(0.0001, t + oscDur);
   }
 

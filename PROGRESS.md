@@ -74065,3 +74065,10 @@ Latency: none, same as above (constants only).
 - Tried first and dropped: rock strata as every third 14 m band in `tgRockDark`. The ground is one flat colour a triangle, 16 m on the far grid, so the bands came out as a camouflage patchwork rather than beds.
 - Cost: no new colour. The six survey views on High: triangles identical, draw calls identical on five and five fewer on the sixth (a chunk lost its rock colour).
 - Checks this turn: `check:touge` all passed, `lint:quality` 71 of 71. Not run: `npm run verify`. Not flown.
+
+## 2026-11-02 | maps | Arctic: no more pixel patches on the hillside
+
+- Same words ("Please keep going through all the maps"). A fresh survey of all 22 maps from 6 to 55 m on High put the arctic hillside's dark patches first: rock chosen a triangle at a time on the 3 m grid, so every patch on the open snow had stepped half square edges and read as pixels.
+- `drawLand` in `src/maps/arctic/index.js`: ground between the gullies' snow slope and the crag's (normal y 0.42 to 0.66) that the snow streaks miss is now `arSnowDirty`, wind scoured snow, rather than `arRock`. The patches are still there as a pale grey; their steps are not. The dark rock keeps to ground steeper than that. A first cut at 0.5 left half the patches dark.
+- Cost: no new colour in the land (dirty snow was already drawn along the shore). Three survey views on High: draw calls and triangles identical.
+- Checks this turn: `check:arctic` all passed. Not run: `npm run verify`. Not flown.

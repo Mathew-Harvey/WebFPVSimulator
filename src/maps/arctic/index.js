@@ -144,7 +144,15 @@ function drawLand(kit) {
          * gullies, streaks of it down a rock face as a mountain is drawn. */
         const snow = fy >= SNOW_NY
           || (fy >= 0.42 && noise((p[0] + q[0] + s[0]) / 3, (p[2] + q[2] + s[2]) / 3, 5, 77) > 0.5 - (fy - 0.42));
-        const B = bin(chunk, snow ? (p[1] < 3.2 && q[1] < 3.2 && s[1] < 3.2 ? 'arSnowDirty' : 'arSnow') : 'arRock');
+        /* Between the snow's slope and the crag's, ground the gullies'
+         * snow does not cover is wind scoured: the snow thin and grey
+         * over the rock, not the rock itself. Drawn as the dark rock, the
+         * 3 m grid's half squares stepped round every patch on an open
+         * hillside and read as pixels; in the scoured tone the patch is
+         * still there and its steps are not. The dark rock keeps to the
+         * crags, steep enough that the cliff shapes carry the edges. */
+        const scoured = !snow && fy >= 0.42;
+        const B = bin(chunk, snow ? (p[1] < 3.2 && q[1] < 3.2 && s[1] < 3.2 ? 'arSnowDirty' : 'arSnow') : scoured ? 'arSnowDirty' : 'arRock');
         B.pos.push(...p, ...q, ...s);
         if (snow) {
           B.nor.push(...normalAt(...ip), ...normalAt(...iq), ...normalAt(...is));

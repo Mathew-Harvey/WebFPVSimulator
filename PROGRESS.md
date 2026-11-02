@@ -74072,3 +74072,10 @@ Latency: none, same as above (constants only).
 - `drawLand` in `src/maps/arctic/index.js`: ground between the gullies' snow slope and the crag's (normal y 0.42 to 0.66) that the snow streaks miss is now `arSnowDirty`, wind scoured snow, rather than `arRock`. The patches are still there as a pale grey; their steps are not. The dark rock keeps to ground steeper than that. A first cut at 0.5 left half the patches dark.
 - Cost: no new colour in the land (dirty snow was already drawn along the shore). Three survey views on High: draw calls and triangles identical.
 - Checks this turn: `check:arctic` all passed. Not run: `npm run verify`. Not flown.
+
+## 2026-11-02 | maps | Kaza: the grassland in patches
+
+- Same words. The balloon grassland's plot was one green from edge to edge, the emptiest view in the survey.
+- `plotTone: meadowTone(0x4b2a)` in `src/maps/kaza/index.js`, the same dry and lush patches as the sanatorium, cedar, FMX and park plots.
+- Cost: vertex colour on the plot. Three survey views on High: draw calls and triangles identical.
+- Checks this turn: `check:kaza` all passed. Not run: `npm run verify`. Not flown.

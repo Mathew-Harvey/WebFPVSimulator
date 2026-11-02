@@ -66,6 +66,7 @@ import { nearOf } from './frame.js';
 import { drawEnvelope, ENVELOPE_H } from './envelope.js';
 import { TURBINE_YAW } from './far.js';
 import { MATERIALS } from '../../props/kaza.js';
+import { meadowTone } from '../built/ground.js';
 
 const cellOf = (thing, x, z) => (thing && thing.near ? nearOf(x, z) : chunkOf(x, z));
 const at = (px, py, thing) => cellOf(thing, px - W / 2, D / 2 - py);
@@ -504,6 +505,11 @@ export async function buildMap(shell, onProgress, options) {
   const doc = kazaDocument();
   const map = await buildBuilt(shell, onProgress, {
     ...(options || {}), inkFacets: false, document: doc, extra, sponsorMarks: false, markSpots: kazaMarkSpots(),
+    /* The plain in patches, dry and lush, as the sanatorium's lawn and the
+     * park's: a grassland over a river plain is never one green, and
+     * from a balloon's height the patches are what the eye reads. Vertex
+     * colour on the plot, nothing per frame. */
+    plotTone: meadowTone(0x4b2a),
   });
   map.id = 'kaza';
   map.source = 'kaza';

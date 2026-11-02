@@ -43,11 +43,96 @@
  */
 
 import { block as plotBlock } from './streets.js';
+import { rng } from './frame.js';
 
 /* A plan rectangle. */
 const R = (x0, y0, x1, y1) => ({ x0, y0, x1, y1 });
 
 /* ---- the roofs, the same furniture on every tower ---- */
+
+/* What a big flat roof carries besides its main plant, scattered on a grid
+ * of cells so it reads as a roof somebody uses and not a slab: rows of
+ * condensers with their fans on top, vent stacks, a stair hut with its
+ * door, a run of duct, a skylight, an FRP water tank. Every piece is a
+ * solid as drawn (the owner, 2026-11-01: "collide with every solid"), and
+ * every piece stands inside its own cell with at least 2 m to the next,
+ * so the gaps a pilot sees between them are gaps a quad goes through.
+ * The fan rings and the hut's door are flat paint on a solid, so they
+ * add nothing to collide with. The materials are ones every roof already
+ * draws, so the palette merge keeps the draw calls where they were.
+ * `keep` is a list of plan rectangles to stay 1 m clear of: the main
+ * plant, a helipad, a tower standing on the roof. */
+export function roofClutter(T, r, h, seed, keep = [], dens = 1, cell = 7) {
+  const g = rng(seed * 7919 + 101);
+  const pad = 2.0;
+  const x0 = r.x0 + pad;
+  const y0 = r.y0 + pad;
+  const nx = Math.floor((r.x1 - pad - x0) / cell);
+  const ny = Math.floor((r.y1 - pad - y0) / cell);
+  const clear = (a0, b0, a1, b1) => keep.every((k) => a1 < k.x0 - 1 || a0 > k.x1 + 1 || b1 < k.y0 - 1 || b0 > k.y1 + 1);
+  let hut = false;
+  for (let j = 0; j < ny; j += 1) {
+    for (let i = 0; i < nx; i += 1) {
+      const roll = g.next();
+      if (roll > 0.5 * dens) {
+        continue;
+      }
+      const cx = x0 + (i + 0.5) * cell;
+      const cy = y0 + (j + 0.5) * cell;
+      const half = cell / 2 - 1;
+      if (!clear(cx - half, cy - half, cx + half, cy + half)) {
+        continue;
+      }
+      const kind = !hut && cell >= 6 ? 'hut' : g.pick(['units', 'units', 'units', 'vents', 'duct', 'skylight', 'tank']);
+      const along = g.chance(0.5);
+      if (kind === 'hut') {
+        /* The stair hut: where the stair comes out, a box a storey tall
+         * with its steel door on the side facing the middle. */
+        hut = true;
+        T.box('twRoofDark', cx - 1.6, cy - 1.9, h, cx + 1.6, cy + 1.9, h + 2.9, { name: 'stair hut' });
+        T.dress(() => T.wide(() => T.paint('metalDark', cx - 0.5, cy - 1.92, h, cx + 0.5, cy - 1.9, h + 2.1)));
+      } else if (kind === 'units') {
+        /* A row of condensers on one plinth, a fan ring on top of each. */
+        const n = g.int(2, 4);
+        const L = n * 1.15;
+        const [ax0, ay0, ax1, ay1] = along ? [cx - L / 2, cy - 0.45, cx + L / 2, cy + 0.45] : [cx - 0.45, cy - L / 2, cx + 0.45, cy + L / 2];
+        T.box('acUnit', ax0, ay0, h, ax1, ay1, h + 1.0, { name: 'roof units' });
+        T.dress(() => T.wide(() => {
+          for (let k = 0; k < n; k += 1) {
+            const t = -L / 2 + 0.575 + k * 1.15;
+            T.disc('metalDark', along ? cx + t : cx, along ? cy : cy + t, 0.36, h + 1.0, h + 1.02, 10, true);
+          }
+        }));
+      } else if (kind === 'vents') {
+        /* Two or three square vent stacks, each with its cowl: boxes, not
+         * round, which is half the triangles of a post and reads the same. */
+        const n = g.int(2, 3);
+        for (let k = 0; k < n; k += 1) {
+          const vx = cx + (k - (n - 1) / 2) * 1.6 * (along ? 1 : 0);
+          const vy = cy + (k - (n - 1) / 2) * 1.6 * (along ? 0 : 1);
+          const vh = g.range(1.0, 1.8);
+          T.box('metal', vx - 0.2, vy - 0.2, h, vx + 0.2, vy + 0.2, h + vh, { name: 'vent stack' });
+          T.box('metalDark', vx - 0.32, vy - 0.32, h + vh, vx + 0.32, vy + 0.32, h + vh + 0.14, { name: 'vent cowl' });
+        }
+      } else if (kind === 'duct') {
+        /* A run of duct along the roof, low enough to skim over. */
+        const L = g.range(3.5, cell - 1.6) / 2;
+        if (along) {
+          T.box('metal', cx - L, cy - 0.35, h, cx + L, cy + 0.35, h + 0.7, { name: 'roof duct' });
+        } else {
+          T.box('metal', cx - 0.35, cy - L, h, cx + 0.35, cy + L, h + 0.7, { name: 'roof duct' });
+        }
+      } else if (kind === 'skylight') {
+        T.box('twRoofDark', cx - 1.4, cy - 1.0, h, cx + 1.4, cy + 1.0, h + 0.3, { name: 'skylight curb' });
+        T.dress(() => T.wide(() => T.paint('twGlassRoof', cx - 1.2, cy - 0.8, h + 0.3, cx + 1.2, cy + 0.8, h + 0.32)));
+      } else {
+        /* The FRP water tank, a panelled box on a low steel frame. */
+        T.box('tank', cx - 1.3, cy - 1.0, h + 0.3, cx + 1.3, cy + 1.0, h + 2.2, { name: 'water tank' });
+        T.box('metalDark', cx - 1.4, cy - 1.1, h, cx + 1.4, cy + 1.1, h + 0.3, { name: 'tank frame' });
+      }
+    }
+  }
+}
 
 /* A tower's roof: the slab, its parapet (solid, so a pilot can perch on
  * it), and the plant a roof carries: boxed units, a cooling tower or two,
@@ -65,6 +150,15 @@ function roof(T, r, h, seed, opts = {}) {
   const cy = (y0 + y1) / 2;
   const w = x1 - x0;
   const d = y1 - y0;
+  /* The gondola rail runs 1 m inside the long edges; the clutter keeps
+   * 2 m in from every edge, so the rig parks clear of it. */
+  const gondola = R(x0 + w * (0.25 + (seed % 5) * 0.1) - 1.6, y0 - 3, x0 + w * (0.25 + (seed % 5) * 0.1) + 1.6, y0 + 2.4);
+  if (opts.heli) {
+    const s0 = Math.min(w, d) * 0.36;
+    roofClutter(T, r, h + 0.4, seed, [R(cx - s0, cy - s0, cx + s0, cy + s0), gondola, ...(opts.keep || [])]);
+  } else {
+    roofClutter(T, r, h + 0.4, seed, [R(cx - w * 0.32, cy - d * 0.32, cx + w * 0.34, cy + d * 0.36), gondola, ...(opts.keep || [])]);
+  }
   if (opts.heli) {
     /* A helipad: the raised square deck, its yellow ring and its H. The
      * deck is solid, and the best place on the district to start a dive. */
@@ -186,9 +280,12 @@ function hall(T) {
     }
     T.box('twHedge', x - 3, H.podium.y0 + 4, H.podiumH + 0.4, x + 3, H.podium.y0 + 6, H.podiumH + 1.3, { name: 'roof garden hedge' });
   }
+  /* The rest of the podium roof, behind the garden and either side of
+   * the body: the hall's plant deck. */
+  roofClutter(T, H.podium, H.podiumH + 0.4, 17, [R(H.podium.x0, H.podium.y0, H.podium.x1, H.podium.y0 + 8), H.body]);
   /* The body to 160 m. */
   tower(T, 'granite', H.body, 0, H.bodyH, 23, 'hall body');
-  roof(T, H.body, H.bodyH, 4);
+  roof(T, H.body, H.bodyH, 4, { keep: [H.west, H.east] });
   /* The twin towers, each with a setback, a crown and its own roof: the
    * west one a helipad, the east one the masts. */
   for (const [r, heli, s] of [[H.west, true, 31], [H.east, false, 37]]) {
@@ -335,7 +432,9 @@ function hotel(T) {
   tower(T, 'ribbon', H.slab, 0, H.h, 71, 'hotel');
   roof(T, H.slab, H.h, 7);
   tower(T, 'ribbon', H.wing, 0, H.wingH, 73, 'hotel wing');
-  roof(T, H.wing, H.wingH, 3);
+  /* The wing's roof carries a billboard toward its east end, its face
+   * 4 m in from the south parapet (../plan.js): the clutter stays off it. */
+  roof(T, H.wing, H.wingH, 3, { keep: [R(H.wing.x1 - 19, H.wing.y0, H.wing.x1 - 9, H.wing.y0 + 9)] });
   /* The porte cochere: a flat canopy on four columns over the drive. */
   const cx = (H.slab.x0 + H.slab.x1) / 2 + 18;
   T.box('twParapet', cx - 9, H.slab.y0 - 9, 5.2, cx + 9, H.slab.y0, 5.9, { name: 'porte cochere' });

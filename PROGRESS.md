@@ -74079,3 +74079,10 @@ Latency: none, same as above (constants only).
 - `plotTone: meadowTone(0x4b2a)` in `src/maps/kaza/index.js`, the same dry and lush patches as the sanatorium, cedar, FMX and park plots.
 - Cost: vertex colour on the plot. Three survey views on High: draw calls and triangles identical.
 - Checks this turn: `check:kaza` all passed. Not run: `npm run verify`. Not flown.
+
+## 2026-11-02 | maps | Rally: the infield in patches; the factory yard left
+
+- The owner, 2026-11-02 08:16Z: "Keep going ,". A ground level pass: every map shot at 3 m in four directions on High.
+- Rally: the infield was one green to the fence at a pilot's height. `plotTone: meadowTone(0x7a11)` in `src/maps/rally/index.js`, as on the other grass plots. Five views on High against main: triangles identical where the moving cars allow, calls the same or fewer.
+- Tried and dropped, the factory yard weathered with damp and bleached patches (a `weatherTone`). The concrete plot is one quad with no vertex grid, so the tone needed the 4 m grid built for it: +9.3k triangles on High for patches that barely showed under the slab texture. Not kept.
+- Checks this turn: `check:rally` all passed. Not run: `npm run verify`. Not flown.

@@ -45,6 +45,7 @@
 
 import * as THREE from 'three';
 import { buildMap as buildBuilt } from '../built/index.js';
+import { meadowTone } from '../built/ground.js';
 import { buildCars } from '../built/cars.js';
 import { uploadTraffic } from '../built/traffic.js';
 import { pointAt } from '../built/road.js';
@@ -428,6 +429,10 @@ export async function buildMap(shell, onProgress, options) {
   const doc = rallyDocument();
   const map = await buildBuilt(shell, onProgress, {
     ...(options || {}), inkFacets: false, document: doc, extra, markSpots, sponsorMarks: false,
+    /* The infield in dry and lush patches, the sanatorium's and the park's
+     * meadow: at a pilot's height between the stages the infield was one
+     * green to the fence. Vertex colour on the plot, nothing per frame. */
+    plotTone: meadowTone(0x7a11),
   });
   map.id = 'rally';
   map.source = 'rally';

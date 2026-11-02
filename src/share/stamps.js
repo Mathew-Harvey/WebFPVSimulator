@@ -52,6 +52,7 @@ import { TOUGE_DOC_ID } from '../maps/registry.js';
 import { ARCTIC_DOC_ID } from '../maps/registry.js';
 import { HAYATE_DOC_ID } from '../maps/registry.js';
 import { PARK_DOC_ID, YUME_DOC_ID } from '../maps/registry.js';
+import { CONCERT_DOC_ID } from '../maps/registry.js';
 
 export const STAMPS_KEY = 'webfpv.stf.stamps.v1';
 
@@ -256,6 +257,9 @@ export function stampKeyForMap(mapId) {
   }
   if (mapId === 'hayate') {
     return `built:${HAYATE_DOC_ID}`;
+  }
+  if (mapId === 'concert') {
+    return `built:${CONCERT_DOC_ID}`;
   }
   if (mapId !== 'built') {
     return null;

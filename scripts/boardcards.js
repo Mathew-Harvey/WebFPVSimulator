@@ -409,6 +409,9 @@ const WORLDS = [
   /* Hayate Circuit, added 31 October 2026, picked by eye from three: the
    * sky wheel in front, the pits, the stands and the tower behind. */
   { id: 'hayate', file: 'hayate.jpg', name: 'Hayate Circuit', shot: { tp: 0.45, tr: 0.7, ta: 1.57 } },
+  /* Hanabi Sound, added 2 November 2026: the crowd, the stage and the
+   * fireworks over it, from behind the desk. */
+  { id: 'concert', file: 'concert.jpg', name: 'Hanabi Sound', shot: { tp: 0.22, tr: 0.6, ta: 3.14 } },
 ];
 
 async function drawWorlds(opts) {

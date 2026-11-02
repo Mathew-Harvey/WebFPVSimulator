@@ -35,6 +35,7 @@
     "check:ekimae": "node scripts/ekimae-check.js",
     "check:arctic": "node scripts/arctic-check.js",
     "check:fest": "node scripts/fest-check.js",
+    "check:concert": "node scripts/concert-check.js",
     "check:alps": "node scripts/alps-check.js",
     "check:rally": "node scripts/rally-check.js",
     "check:dome": "node scripts/dome-check.js",

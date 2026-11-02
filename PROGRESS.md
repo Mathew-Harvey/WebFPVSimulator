@@ -74159,3 +74159,14 @@ Clips: lap-after-v3.mp3 (the lap) and punch-and-hold-v3.mp3 (two second spool up
 Checks this turn: `node scripts/music-selftest.js`, `node --check`, the renders above. Not run: `npm run verify`. Nobody has listened.
 
 Latency: no change on the input or flight path; nothing per frame. Two more nodes on the audio thread (33, main 45) and a longer one time build at attach (about 900k samples of a one pole filter, a few ms, at the first gesture). Checked by reading the diff and the probe; proxies.
+
+#### The messy background was the wind bed (same thread, PR 218)
+
+Mat 2026-11-02 12:07Z: "still got that messy background, can you clean it up". Rendered the `plant` lap as stems and measured the motor stem's energy off its harmonics against the energy on them, frame by frame at the trace's known pitch: median -43.5 dB (-47.2 on a steady render), so the motor is clean and the background was the wind bed, 10 dB under the motors, with a 0.085 floor and a 0.17 prop wash term that kept it running at a hover and through every slow corner.
+- Wind is now airspeed only: gain 0.355 x (speed / 32 m/s) squared (was 0.085 + 0.71 x that + 0.17 x prop wash), through a Butterworth lowpass at 450 Hz (was 560 Hz with a slight resonant bump). Silent at a hover. On the lap the wind stem reads -49.2 dBFS (was -36.7), 22.6 dB under the motors. `WIND_RUSH_GAIN` and `WIND_LP_HZ` are the knobs; the player's Wind setting still scales it.
+- Full mix on the lap -26.6 dBFS, true peak -17.6 dBTP, A1 24.5 dB, 33 nodes.
+- Clips: lap-after-v4.mp3 and lap-motors-only-v4.mp3 in /mnt/project-files/motor-sound/2026-11-02-real-quad-match/.
+
+Checks: `node scripts/music-selftest.js` passed, `node --check`, the renders above. Not run: `npm run verify`. Nobody has listened.
+
+Latency: none. One gain law per frame, simpler than before; no node or allocation change. Checked by reading the diff.

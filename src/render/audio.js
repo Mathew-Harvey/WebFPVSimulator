@@ -157,6 +157,13 @@ const BAND_Q = -3;
  * owner's "a touch more bass" of 2026-11-02, smaller now that the
  * fundamental itself sits an octave and a half lower.
  */
+/*
+ * The wind: heard only with airspeed, its gain the square of airspeed over
+ * 32 m/s times this, through a plain Butterworth lowpass with no resonant
+ * bump to make it gurgle. See the note in update().
+ */
+const WIND_RUSH_GAIN = 0.355;
+const WIND_LP_HZ = 450;
 const CAM_SHELF_HZ = 160;
 const CAM_SHELF_DB = 2;
 const CAM_LP_HZ = 7000;
@@ -696,8 +703,8 @@ export class MotorAudio {
     const noise3 = windLoop(24601, 7.9);
     const nf = keep(ctx.createBiquadFilter());
     nf.type = 'lowpass';
-    nf.frequency.value = 560;
-    nf.Q.value = 0.5;
+    nf.frequency.value = WIND_LP_HZ;
+    nf.Q.value = BAND_Q;
     const ng = keep(ctx.createGain());
     ng.gain.value = 0.0;
     noise.connect(nf);
@@ -1054,11 +1061,8 @@ export class MotorAudio {
       this.music.pause();
       return;
     }
-    /* `loudest` keeps its old meaning for the wind's prop wash term, RPM
-     * over 35 percent of full and saturating there, so the wind bed is
-     * exactly what it was. The voice takes the MEAN speed of the motors that
-     * are turning: one pitch, so nothing beats. */
-    let loudest = 0;
+    /* The voice takes the MEAN speed of the motors that are turning: one
+     * pitch, so nothing beats. */
     let sum = 0;
     let turning = 0;
     for (let m = 0; m < 4; m += 1) {
@@ -1068,10 +1072,6 @@ export class MotorAudio {
       }
       sum += r;
       turning += 1;
-      const wash = Math.min(1, r / (0.35 * this.fullRpm));
-      if (wash > loudest) {
-        loudest = wash;
-      }
     }
     const v = this.voice;
     /*
@@ -1140,8 +1140,17 @@ export class MotorAudio {
      * either. The 0.06 tau takes it down over about 200 ms rather than
      * cutting, the same way the motor stem goes.
      */
-    const bed = loudest > 0 || rush > 0 ? 0.085 : 0;
-    this.noiseGain.gain.setTargetAtTime(bed + 0.71 * rush * rush + 0.17 * loudest, t, 0.06);
+    /*
+     * AIRSPEED ONLY NOW, AND HALF AS LOUD (the owner, 2026-11-02 12:07Z,
+     * "still got that messy background, can you clean it up"). With the
+     * motor stem measured clean (energy off its harmonics 43 dB under the
+     * energy on them over the lap), the only background left was this noise
+     * bed, and its 0.085 floor and 0.17 prop wash term kept it running at a
+     * hover and through every slow corner. Both are gone: the air is heard
+     * when the quad is moving through it, rising with the square of
+     * airspeed, at 0.355 where it was 0.71.
+     */
+    this.noiseGain.gain.setTargetAtTime(WIND_RUSH_GAIN * rush * rush, t, 0.06);
     /* The bed. Ticked from here so a paused element is restarted while
      * the mix is live, and so the probe still exercises the same update. */
     this.music.tick(t);

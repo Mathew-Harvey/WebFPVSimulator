@@ -74095,3 +74095,5 @@ Mat 2026-11-02 09:36Z: "landing and take off is a boop bop sound, lets make a de
 - Not run: `npm run verify` (no physics, plant, ABI or build change), no browser run. Nobody has listened.
 
 Latency: none on the input or flight path. The compressor runs on the browser's audio thread and costs nothing on the main thread; nothing per frame. Checked by reading the diff and the offline render's node count, which is a proxy.
+
+- The owner, 2026-11-02 09:40Z, in the thread "Soften sounds for ASMR listening": "push to main". It covers PR 217 (the deep thock for landing and take off, and the motor shelf and light compressor) and this record; nothing else. Main had not moved, so it fast forwards. Not flown yet.

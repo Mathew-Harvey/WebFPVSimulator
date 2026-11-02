@@ -23,6 +23,7 @@
  */
 
 import { W, D, rng } from './frame.js';
+import { roofClutter } from './towers.js';
 
 const STYLES = ['glass', 'dark', 'granite', 'grid', 'ribbon', 'flats', 'flats', 'grid'];
 
@@ -34,6 +35,9 @@ function building(T, x0, y0, x1, y1, h, style, seed) {
    * every solid"). */
   T.box('twParapet', x0, y0, h + 0.5, x1, y0 + 0.4, h + 1.4, { kind: 'wall', name: 'outskirt parapet' });
   T.box('twParapet', x0, y1 - 0.4, h + 0.5, x1, y1, h + 1.4, { kind: 'wall', name: 'outskirt parapet' });
+  /* What a roof carries, thinner than the district's own: a stair hut and
+   * a few units, which is what the skyline reads from 240 m. */
+  roofClutter(T, r, h + 0.5, seed, [], 0.4, 9);
 }
 
 /* A row of blocks along one side, between a and b along it, `o0` to `o1`

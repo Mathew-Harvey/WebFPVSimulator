@@ -91,7 +91,15 @@ function groundMaterial(px, py, h, ny) {
     return 'tgVerge';
   }
   if (ny < 0.74) {
-    return d < 30 ? 'tgCut' : 'tgRock';
+    if (d < 30) {
+      return 'tgCut';
+    }
+    /* Away from the road a slope this steep on a Japanese pass is
+     * still wooded: the cedars and maples hold on to 50 degrees. Only
+     * the steepest ground is bare rock. A slope of one flat beige tone
+     * read as a plane of sand from the road; the forest's colour reads
+     * as the woods going on up into the haze. No new colour. */
+    return ny < 0.55 ? 'tgRock' : 'tgForest';
   }
   if (px > FIELDS.x0 && px < FIELDS.x1 && py > FIELDS.y0 && py < FIELDS.y1) {
     return 'tgField';

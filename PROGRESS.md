@@ -74057,3 +74057,11 @@ Latency: none, same as above (constants only).
 - `paintAt` in `src/maps/alps/index.js` now lays a darker bed (`rockBed`) every 44 m of height on bare rock, tilted along the range and wobbled by the low noise. The first cut at 26 m with thin beds aliased into a dotted pattern on the 8 m lattice; at 44 m with beds about 18 m deep they read as layered stone.
 - Cost: vertex colours only, computed at load. The six survey views on High give identical draw calls and triangles to main. Nothing per frame.
 - Checks this turn: `check:alps` all passed. Not run: `npm run verify` (no physics, plant, ABI or build change). Not flown.
+
+## 2026-11-02 | maps | Momiji Pass: the far slopes wooded, not beige
+
+- Same words as the entry above ("Please keep going through all the maps").
+- The mountain's ground away from the road took `tgRock` on anything steeper than ny 0.74, so every far slope was one flat beige plane into the haze, which read as sand. A Japanese pass is wooded up to about 50 degrees, so `groundMaterial` in `src/maps/touge/index.js` now gives forest down to ny 0.55 and keeps bare rock for the steepest ground only. The cut walls by the road (`tgCut`, within 30 m) are unchanged.
+- Tried first and dropped: rock strata as every third 14 m band in `tgRockDark`. The ground is one flat colour a triangle, 16 m on the far grid, so the bands came out as a camouflage patchwork rather than beds.
+- Cost: no new colour. The six survey views on High: triangles identical, draw calls identical on five and five fewer on the sixth (a chunk lost its rock colour).
+- Checks this turn: `check:touge` all passed, `lint:quality` 71 of 71. Not run: `npm run verify`. Not flown.

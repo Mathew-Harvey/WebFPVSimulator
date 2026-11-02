@@ -622,6 +622,24 @@ export const MAPS = [
     buildMs: MAP_BUILD_MS.park,
     load: () => import('./park/index.js'),
   },
+  /*
+   * HANABI SOUND, on the owner's ask of 2 November 2026 ("a concert map,
+   * massive DJ set with fireworks and crowds, sound desk and all the
+   * things you'd find at a concert"): an open air dance festival at dusk,
+   * in the town's manga look: the main stage and its LED wall, the DJ on
+   * the riser, thousands in front of it, the sound desk, the delay towers,
+   * the ferris wheel, and fireworks over the stage (src/maps/concert/).
+   * Built by the built map's pipeline and flown on the five inch at life
+   * size; off the board like the houses.
+   */
+  {
+    id: 'concert',
+    name: 'Hanabi Sound',
+    mode: 'freestyle',
+    note: 'A dance festival at dusk. The DJ on the riser, the LED wall, thousands in the crowd, the sound desk in the middle, the delay towers, the ferris wheel and fireworks over the stage.',
+    buildMs: MAP_BUILD_MS.concert,
+    load: () => import('./concert/index.js'),
+  },
 ];
 
 /* The house's document id (src/maps/house/yard.js), here so the stamps can
@@ -702,3 +720,5 @@ export const FEST_DOC_ID = 'trk-70b0f357';
 export const HAYATE_DOC_ID = 'trk-4a7a7e01';
 /* Hinode Park's (src/maps/park/yard.js), the same way. */
 export const PARK_DOC_ID = 'trk-b0e7a1c5';
+/* Hanabi Sound's (src/maps/concert/yard.js), the same way. */
+export const CONCERT_DOC_ID = 'trk-c0dce7a1';

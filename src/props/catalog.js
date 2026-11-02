@@ -57,6 +57,7 @@ import * as RALLY from './rally.js';
 import * as AIRFIELD from './airfield.js';
 import * as HOTARU from './hotaru.js';
 import * as FEST from './fest.js';
+import * as CONCERT from './concert.js';
 import * as HAIKYO from './haikyo.js';
 import { buildingLayout, buildingDraw, bandoLayout, bandoDraw } from './buildings.js';
 import {
@@ -167,6 +168,7 @@ const FAMILIES = {
   fest: FEST,
   haikyo: HAIKYO,
   park: PARK,
+  concert: CONCERT,
 };
 export const FAMILY_MATERIALS = {};
 export const FAMILY_PAINTERS = {};

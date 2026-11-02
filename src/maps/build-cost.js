@@ -160,4 +160,7 @@ export const MAP_BUILD_MS = {
   /* Hayate Circuit (src/maps/hayate/): a circuit, its pits, stands and
    * park, and a few hundred trees. An estimate until it is measured. */
   hayate: 3000,
+  /* Hanabi Sound (src/maps/concert/): the stage, the desk, the towers, the
+   * wheel and a crowd of instances. An estimate until it is measured. */
+  concert: 2400,
 };

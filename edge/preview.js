@@ -125,6 +125,7 @@ const WORLDS = {
   fest: { name: 'Tonbo Fest', thumb: 'fest' },
   haikyo: { name: 'Tsukimi Danchi', thumb: 'haikyo' },
   hayate: { name: 'Hayate Circuit', thumb: 'hayate' },
+  concert: { name: 'Hanabi Sound', thumb: 'concert' },
   built: { name: 'Hibari Yard', thumb: 'yard' },
 };
 

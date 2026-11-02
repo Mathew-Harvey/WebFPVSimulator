@@ -437,3 +437,79 @@ export function readVehicles(sim, out) {
   }
   return out;
 }
+
+/* src/native/sim_abi.h SIM_VEHICLE_CONTACT_DOUBLES, and src/native/world.c
+ * WORLD_MAX_CONTACTS, the most contacts one step can keep. */
+const VEHICLE_CONTACT_DOUBLES = 12;
+const VEHICLE_CONTACTS_MAX = 96;
+
+/* Per module instance, the scratch the contacts are read into, as POSES. */
+const CONTACTS = new WeakMap();
+
+/*
+ * A ROAD CAR'S FACE, MOVING, for the shell's crash bounce (dullBounce's surf
+ * in src/game/collide.js), bug-3e12c7a9.
+ *
+ * Car m's surface velocity where the craft touched it in the step just
+ * taken, in the PLANT frame, into `out` (three doubles), which is returned;
+ * null when the craft touched nothing of car m in that step. It is the mean
+ * of the module's own surface velocity over every contact on that car
+ * (sim_world_vehicle_contacts, its [8..10]: the car's velocity and the rate
+ * its box turns, at the point), so a drift car's swinging tail is met at the
+ * speed the tail moves and not the speed the car does. The contacts are in
+ * the module's world frame, SI, which is the plant's own units, so only the
+ * plant frame's yaw is taken out, with (c, s), the cosine and sine the
+ * shell's frameTurn has from src/props/trig.js, as moverVelocityInPlant
+ * does. Read only, and allocates nothing after the first call on a module.
+ *
+ * Without it a car was a still wall to the bounce: the craft was sent off
+ * its bonnet at a walking pace and the car drove into it again on the next
+ * step, every step, each one a crash that took the spin off, so the craft
+ * rode the car's front at the car's speed and could not be flown off it.
+ * scripts/cartrap-check.js flies that.
+ */
+export function vehicleSurfaceInPlant(sim, m, c, s, out) {
+  need(sim, 'sim_world_vehicle_contacts');
+  let slot = CONTACTS.get(sim.e);
+  if (!slot) {
+    const ptr = sim.e.malloc(VEHICLE_CONTACTS_MAX * VEHICLE_CONTACT_DOUBLES * 8);
+    if (!ptr) {
+      throw new Error('sim_world_vehicle_contacts: malloc failed');
+    }
+    slot = { ptr, view: null };
+    CONTACTS.set(sim.e, slot);
+  }
+  const all = sim.e.sim_world_vehicle_contacts(slot.ptr, VEHICLE_CONTACTS_MAX);
+  if (!(all > 0)) {
+    return null;
+  }
+  if (!slot.view || slot.view.buffer !== sim.e.memory.buffer) {
+    slot.view = new Float64Array(sim.e.memory.buffer, slot.ptr, VEHICLE_CONTACTS_MAX * VEHICLE_CONTACT_DOUBLES);
+  }
+  const f = slot.view;
+  const n = all < VEHICLE_CONTACTS_MAX ? all : VEHICLE_CONTACTS_MAX;
+  let vx = 0;
+  let vy = 0;
+  let vz = 0;
+  let k = 0;
+  for (let i = 0; i < n; i += 1) {
+    const b = i * VEHICLE_CONTACT_DOUBLES;
+    if (f[b] !== m) {
+      continue;
+    }
+    vx += f[b + 8];
+    vy += f[b + 9];
+    vz += f[b + 10];
+    k += 1;
+  }
+  if (k === 0) {
+    return null;
+  }
+  vx /= k;
+  vy /= k;
+  vz /= k;
+  out[0] = c * vx + s * vy;
+  out[1] = c * vy - s * vx;
+  out[2] = vz;
+  return out;
+}

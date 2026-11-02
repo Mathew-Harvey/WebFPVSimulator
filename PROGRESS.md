@@ -74097,3 +74097,114 @@ Mat 2026-11-02 09:36Z: "landing and take off is a boop bop sound, lets make a de
 Latency: none on the input or flight path. The compressor runs on the browser's audio thread and costs nothing on the main thread; nothing per frame. Checked by reading the diff and the offline render's node count, which is a proxy.
 
 - The owner, 2026-11-02 09:40Z, in the thread "Soften sounds for ASMR listening": "push to main". It covers PR 217 (the deep thock for landing and take off, and the motor shelf and light compressor) and this record; nothing else. Main had not moved, so it fast forwards. Not flown yet.
+
+### 2026-11-02: The motor voice copied from a real quad recording (thread "Soften sounds for ASMR listening")
+
+Mat 2026-11-02 10:35Z asked how grok should present "the math that characterises the drone sound" so it could be copied, and at 11:05Z sent grok's report, its data (time series, spectra, three clips, scripts) and the whole flight as a mono FLAC: Mr Steele's "FPV + Aggression", a 6S 613 g five inch on the HD Dead Cat frame, 20 to 222 s, onboard camera mic (about 75 percent sure), no stick overlay (throttle inferred from pitch), camera level control flattening loudness, a 41.75 Hz camera hum not to copy.
+
+What our motors were, measured the same way on the CURRENT plant (hover 8,700 rpm, wide open 25,600; the probe's old traces are from a plant three and a half times slower and hid this): one near pure tone at the blade pass (3 x rpm / 60), every harmonic and all noise 30 to 75 dB down, -27.7 dBFS at hover and -53.6 dBFS wide open, because a 1.3 kHz tone sat under the 430 Hz per motor cap and the 800 Hz bus lowpass. The motors got QUIETER as the throttle went up.
+
+What the recording is: the lowest line is the rotation rate (285 Hz cruise, 529 Hz wide open), a full integer stack above it (H2 -15.6 to H8 -36.7 dB at cruise, -11.1 to -23.4 wide open), brightness carrying the throttle (centroid 391 to 913 Hz, 95 percent roll off 1.2 to 3.8 kHz), a broadband floor 14 dB under the tone at cruise and 7.7 wide open, a camera step of -9.8 dB across 1.5 kHz and a roll off at 7 kHz, beats of 2 to 5.7 Hz between the motors, 40 cents of pitch wander at 3.6 Hz, and loudness flat to 1.5 dB.
+
+Changed, `src/render/audio.js`:
+- Fundamental is rpm / 60 (was 3 x rpm / 60). The plant's own RPM, untouched.
+- Wave is the recording's wide open harmonic stack, H1 to H8, phases scattered. A per motor low Q lowpass (Q -12 dB, poles split to 0.27 and 3.7 times the corner, so a 6 dB per octave tilt) darkens it toward the cruise stack as the throttle falls: corner 2.2 x f0 at idle to 60 x f0 wide open, geometric in throttle squared.
+- Prop noise layer on the motor bus (3 nodes): noise flat to 2.5 kHz then -6 dB per octave, cut below 150 Hz, a lowpass opening 800 Hz to 7 kHz with throttle, level rising 30 dB per unit throttle around the cruise point.
+- Camera band on the motor bus: high shelf -10 dB at 1.5 kHz (1 node), lowpass 7 kHz (was 800 Hz). Low shelf +2 dB at 160 Hz (was +5 at 200, the fundamental is an octave and a half lower now). Compressor kept, trim 0.5 to 1.0.
+- Texture: fixed per motor spread of -24, -8, +9, +25 cents (pairwise beats 1.3 to 4.1 Hz at hover), shared wander band limited 1.5 to 7 Hz, 16 cents SD (was under 1). The plant's own motor differences ride on top.
+- Throttle placement per airframe: `setFullRpm`, fed from PLANT_FACTS in `src/main.js` when the airframe changes, so a whoop is on its own scale.
+- NOT copied: the recording's 280 ms pitch slew. That is its pilot's thumb plus its motors, the plant already models the motors, and smoothing the sound behind the physics would be latency. The 41.75 Hz hum and the 133 Hz bump are not copied.
+
+At the recording's own pitch and throttle (`--fullrpm=35770`, 17,100 and 31,770 rpm), reference then ours:
+- Cruise: H2..H8 -15.6 -20.8 -27.6 -32.1 -31.1 -34.9 -36.7 against -15.1 -21.1 -24.3 -26.8 -30.9 -34.3 -37.0. Centroid 391 against 391 Hz. Roll off 1,219 against 1,002 Hz. Bands under 100, 100 to 400, 400 to 1k, 1 to 3k, 3 to 8k, over 8k: -17.1 -2.3 -4.9 -12.8 -17.6 -39.5 against -25.0 -0.6 -11.2 -13.3 -24.4 -50.3.
+- Wide open: H2..H8 -11.1 -15.1 -19.6 -21.1 -21.5 -22.9 -23.4 against -9.7 -17.2 -19.1 -20.7 -25.2 -26.9 -28.3. Centroid 913 against 978 Hz. Roll off 3,779 against 3,012 Hz. Bands -10.6 -6.9 -2.7 -9.7 -11.5 -33.6 against -17.7 -7.4 -3.3 -5.6 -13.0 -32.5.
+- Where it still differs: the recording has more 400 Hz to 1 kHz broadband at cruise and more under 100 Hz (its camera hum and frame bump), and its H4 and H5 at cruise are 3 to 5 dB weaker. Its IQRs are 7 to 20 dB, so these are inside its own spread.
+- On the plant: motor stem -27.4 dBFS at hover (was -27.7), -26.3 at the 12,200 rpm cruise, -21.1 wide open (was -53.6). Whoop at 30,000 and 72,800 rpm: -28.3 and -21.6 dBFS, no sample at full scale.
+- Full mix on the new `plant` trace: -25.2 dBFS RMS, true peak -10.4 dBTP (main on the same trace -28.8 and -16.9). No sample at full scale.
+
+A1, argued rather than met. The probe's loop bar asks the fundamental's third octave to stand 12 dB over the 2 to 8 kHz scream band. On the plant trace the new voice reads 3.95 dB at the fundamental (`--blades=1`, now the probe's default because the fundamental is the rotation rate). The recording itself, measured the same way over its 202 s of flight, reads 4.9 dB, and -2.8 dB on its wide open clip: a real quad on a camera fails A1. The bar was written against a kilohertz synth the owner called screaming; this is the owner's own reference. Threshold left as it is; whether brighter-than-A1 is right is the owner's ear. The one knob if it is too bright: BRIGHT_HI (wide open brightness) and PROP_NOISE_DB_PER_THR (how fast the hiss rises).
+
+Clips for the owner: /mnt/project-files/motor-sound/2026-11-02-real-quad-match/lap-before.mp3 and lap-after.mp3, the `plant` trace through the full mix, rendered offline.
+
+Checks this turn: `node scripts/music-selftest.js` all passed; `node --check` on the three files; the probe renders above. `npm run lint:shell` prints gate card findings that are the bug sweep's known leftovers and do not touch audio. Not run: `npm run verify` (no physics, plant, ABI or build change; the audio bed check would see only the node count, 49 against 64). Nobody has listened.
+
+Latency: no change on the input or flight path. Per frame the update adds two setTargetAtTime calls, four Math.pow and one Math.exp, no allocation (P13 times it). The audio thread runs four more nodes (49 against a budget of 64). At attach, two buffers are built once (6 s wander, 4 s prop noise, about 10 s of samples, a few ms). Checked by reading the diff and the probe's node count; these are proxies.
+
+#### No hiss and no beat (same thread, PR 218)
+
+Mat 2026-11-02 11:38Z, after the first cut's clips: "remove the hiss and the wha wha wha cycle in the background".
+- Measured first, on a steady 12,200 rpm render with the motors alone (envelope modulation 0.3 to 12 Hz): the first cut read 52 percent at 1.4 to 5.2 Hz. Taking out the fixed spread and the wander left 57 percent, and taking out the noise too left 65: the beat between four oscillators at four speeds was the cycle, and in the live sim the plant's own motor differences would make it whatever the fixed spread was. The compressor added about 1 point.
+- So the voice is ONE oscillator at the mean speed of the turning motors (a stopped motor drops out and the voice is three quarters as loud), with the reference's harmonic stack and brightness law kept. The wander (and its 6 s buffer) and the prop noise layer (and its 4 s buffer) are gone. Envelope modulation now 0.0 to 0.1 percent at 8,700, 12,200 and 25,600 rpm.
+- Level: motor stem -27.8 dBFS at hover (main -27.7), -26.8 at 12,200, -23.9 wide open (main -53.6). Full mix on the `plant` trace -26.0 dBFS, true peak -15.0 dBTP, no sample at full scale. Whoop wide open -27.3 dBFS.
+- A1 is met again: 22.67 dB on the `plant` trace (needs 12). The hiss was what failed it.
+- Harmonics without the noise floor: at the recording's cruise pitch H2..H8 -15.6 -23.4 -32.0 -37.3 -41.1 -45.2 -47.8, wide open -13.3 -20.8 -27.9 -30.8 -32.1 -34.3 -35.5. Darker than the recording's figures above H3, which had its broadband floor in them, and darker by the camera step, which is kept because it is what the owner heard and he did not object to the tone.
+- Nodes: 31, against 45 on main and 49 in the first cut.
+- Clips: /mnt/project-files/motor-sound/2026-11-02-real-quad-match/lap-after-v2.mp3 and steady-cruise-v2.mp3. The lap trace swells every 3.7 s by design (it is a scripted punch cycle, not the sim); the steady clip has no throttle movement.
+
+Checks this turn: `node scripts/music-selftest.js` all passed, `node --check`, the probe renders above. Not run: `npm run verify` (no physics, plant, ABI or build change). Nobody has listened to this version.
+
+Latency: lower. Per frame the update now schedules three parameters for the motor voice instead of twelve plus two, with one Math.pow and no exp, no allocation. The audio thread runs 31 nodes instead of 45 on main. Two fewer buffers built at attach. Checked by reading the diff and the probe's node count; proxies.
+
+#### The cycle left in the lap was the wind loop (same thread, PR 218)
+
+Mat 2026-11-02 11:50Z: "in the lap after there is still a cyclical sound can you see it?". Split the 20 s `plant` lap into motors alone and wind alone and looked for repetition two ways, the envelope's modulation spectrum and the waveform's correlation with itself at long lags.
+- Wind: correlation 0.951 at 4.0 s and 0.968 at 8.0 s. The wind bed was one 4 s loop (the buffer this thread's first pass made, 2026-11-02, from a 1 s one), so the same whoosh came back every 4 s, in the sim as well as in the clip. Its seam crossfade was also wrong: the head was blended with the tail but the tail was still played, so the loop jumped from the last sample to one 20 ms short of it, a small step every 4 s.
+- Motors: no repetition (correlation under 0.08 at every lag). Their envelope does swell every 3.8 s, which is the `plant` trace's scripted punch, not the sim.
+- Fix: three wind loops of 4.7, 6.1 and 7.9 s summed at equal level (scale 1/sqrt 3), each built 20 ms long with the head crossfaded into the extra tail and the tail dropped, so every loop point is continuous. Wind alone now correlates at most 0.32 with itself at any lag from 1 to 12 s. Wind level -36.57 dBFS on the lap (was -36.07). Two more nodes (33). About 3.6 MB of samples built once at attach.
+- The `plant` trace's punch phase now wanders (1.3 rad at 0.37 rad/s) so the clip's punches do not land on a strict beat.
+- Full mix on the lap -26.0 dBFS, true peak -15.0 dBTP, A1 22.0 dB.
+
+Clips: lap-after-v3.mp3 (the lap) and punch-and-hold-v3.mp3 (two second spool up then held wide open) in /mnt/project-files/motor-sound/2026-11-02-real-quad-match/.
+
+Checks this turn: `node scripts/music-selftest.js`, `node --check`, the renders above. Not run: `npm run verify`. Nobody has listened.
+
+Latency: no change on the input or flight path; nothing per frame. Two more nodes on the audio thread (33, main 45) and a longer one time build at attach (about 900k samples of a one pole filter, a few ms, at the first gesture). Checked by reading the diff and the probe; proxies.
+
+#### The messy background was the wind bed (same thread, PR 218)
+
+Mat 2026-11-02 12:07Z: "still got that messy background, can you clean it up". Rendered the `plant` lap as stems and measured the motor stem's energy off its harmonics against the energy on them, frame by frame at the trace's known pitch: median -43.5 dB (-47.2 on a steady render), so the motor is clean and the background was the wind bed, 10 dB under the motors, with a 0.085 floor and a 0.17 prop wash term that kept it running at a hover and through every slow corner.
+- Wind is now airspeed only: gain 0.355 x (speed / 32 m/s) squared (was 0.085 + 0.71 x that + 0.17 x prop wash), through a Butterworth lowpass at 450 Hz (was 560 Hz with a slight resonant bump). Silent at a hover. On the lap the wind stem reads -49.2 dBFS (was -36.7), 22.6 dB under the motors. `WIND_RUSH_GAIN` and `WIND_LP_HZ` are the knobs; the player's Wind setting still scales it.
+- Full mix on the lap -26.6 dBFS, true peak -17.6 dBTP, A1 24.5 dB, 33 nodes.
+- Clips: lap-after-v4.mp3 and lap-motors-only-v4.mp3 in /mnt/project-files/motor-sound/2026-11-02-real-quad-match/.
+
+Checks: `node scripts/music-selftest.js` passed, `node --check`, the renders above. Not run: `npm run verify`. Nobody has listened.
+
+Latency: none. One gain law per frame, simpler than before; no node or allocation change. Checked by reading the diff.
+
+#### Back to the drawing board: main's voice, compressed more, with range (same thread, PR 218)
+
+Mat 2026-11-02 13:40Z: "Let's go back to the drawing board , take what we have compress it a little more give it a little more range , forget the grok prompt". Read as: drop the voice rebuilt from the real quad report (rotation rate fundamental, measured harmonic stack, camera step, brightness law), go back to the blade pass voice on main, keep what this PR fixed on the way at his word (one voice instead of four beating, the three seamless wind loops, wind only with airspeed), then compress the motor bus a little more and give the sound range across the throttle. Told him that reading in the thread.
+
+Measured main first, motors alone on steady renders: -27.7 dBFS at 3,000 rpm, -28.2 at hover (8,700), -35.9 at 15,000 and -53.8 wide open (25,600). The per motor lowpass was capped at 430 Hz, right on the 435 Hz hover blade pass, and the bus had a fixed 800 Hz muffle, so everything above hover was filtered away: a punch went quiet. That is the range that was missing.
+
+What changed in `src/render/audio.js`:
+- Fundamental back to the blade pass, rpm / 60 x 3, and main's five harmonic wave. One oscillator at the mean speed of the turning motors, no detune wander (main's wander was a 4 s looped buffer, a cycle of its own, and two nodes).
+- Range: the voice lowpass corner rides the fundamental the whole way up, 1.2 times it at idle to 1.5 times wide open (`MOTOR_LP_TRACK_LO`, `MOTOR_LP_TRACK_HI`), cap 2,400 Hz. The bus muffle moves from 800 to 1,400 Hz (Q 0.5 as before), which still takes the upper harmonics away at every throttle but leaves the wide open fundamental standing. The 200 Hz +5 dB bass shelf is unchanged.
+- Loudness law on the throttle scale (idle a tenth of the airframe's full rpm, from `setFullRpm`): gain 0.55 x (0.2 + 0.8 x throttle).
+- Compressor: threshold -34 dB, ratio 4 (was -30 and 3), knee, attack, release and the 0.5 trim unchanged. On the same voice that takes the swing from idle to wide open from 7.8 dB (main's settings) to 5.1 dB; with no compressor it is 9.8 dB.
+- Probe default `--blades` back to 3. The `plant` trace and `--fullrpm` stay.
+
+Measured after, motors alone: 3,000 rpm -29.5 dBFS, 6,000 -29.3, hover -28.0 (main -28.2), 12,200 -26.8, 15,000 -26.0, 20,000 -24.9, wide open -24.4 (main -53.8). Centroid 152 Hz at idle, 456 at hover, 1,289 wide open: the pitch and the brightness carry the throttle, the level swells 3.7 dB from hover to full. Short term loudness range on the `plant` lap 3.6 dB (main 11.8, almost all of it the fade). Envelope modulation on the lap 12 percent at 0.5 Hz, which is the trace's punches; no beat.
+- Full mix on the `plant` lap: -27.2 dBFS RMS, true peak -19.0 dBTP, no sample at full scale (main -28.6 and -17.2). A1 16.2 dB (needs 12): the first try, with the corner at twice the fundamental and the muffle at 1,600 Hz, read 11.3 dB, failed, and was pulled back to the values above rather than argued.
+- Whoop (`--fullrpm=74800`): -27.9 dBFS at 30,000 rpm, -44.5 at 72,800. On main it was -59.7 and -90.1, inaudible. A whoop's top is still muffled, its 3.6 kHz blade pass sits above the 1,400 Hz bus roll off.
+- Nodes: 32 (main 45, the last round 33).
+
+Clips: /mnt/project-files/motor-sound/2026-11-02-redraw/lap.mp3, lap-motors-only.mp3, punch-and-hold.mp3, and lap-main-today.mp3 (main on the same trace, for comparison).
+
+Checks this turn: `node scripts/music-selftest.js` all passed, `node --check` on both changed files, the probe renders above. Not run: `npm run verify` (no physics, plant, ABI or build change). Nobody has listened.
+
+Latency: lower than main, level with the last round. Per frame the update schedules three parameters for one voice (main: twelve for four), no allocation, no added smoothing on pitch. 32 nodes on the audio thread against main's 45. Checked by reading the diff and the probe's node count; proxies.
+
+#### More bass, high pass, more compression (same thread, PR 218)
+
+Mat 2026-11-02 14:01Z, after the redraw clips: "Better, add more bass to it high pass compression more".
+- Bass: at hover the blade pass is 435 Hz, so the 200 Hz shelf had nothing to lift except the idle tone. Added the once per turn tone a real motor makes from prop and bell imbalance: a sine at exactly a third of the blade pass (145 Hz at hover, 427 Hz wide open), set in the same call with the same 12 ms smoothing so the two stay locked and cannot beat, at 0.9 of the blade pass tone's level, through the voice's own lowpass and gain (`MOTOR_SUB_GAIN`). Two nodes (34).
+- High pass: the motor bus high pass stays at 60 Hz, now `MOTOR_HP_HZ`, so the new bass is body and nothing under it is rumble. At hover the new tone is 145 Hz, well above it; at idle (3,000 rpm, 50 Hz) it is mostly taken out, which keeps the ground idle from droning.
+- Compression: threshold -40 dB, ratio 6 (was -34 and 4), knee, attack, release and trim unchanged. Idle to wide open on steady renders: 10.2 dB with no compressor, 1.6 dB with it (last round 5.1).
+- Measured, motors alone: 3,000 rpm -26.7 dBFS, hover -25.8 (last round -28.0), wide open -25.1. Centroid at hover 227 Hz (last round 456), wide open 844 (1,289). On the `plant` lap the loudest third octave is now 126 Hz. Short term loudness range on the lap 1.0 dB (last round 3.6). Envelope modulation 2.7 percent at 0.5 Hz, which is the trace's punches; no beat.
+- Full mix on the lap -25.8 dBFS RMS, true peak -19.2 dBTP, no sample at full scale, A1 16.3 dB (needs 12). Whoop -26.8 dBFS at 30,000 rpm and -24.5 at 72,800.
+- Clips: /mnt/project-files/motor-sound/2026-11-02-more-bass/lap.mp3, lap-motors-only.mp3, punch-and-hold.mp3.
+
+Checks: `node scripts/music-selftest.js` all passed, `node --check`, the probe renders above. Not run: `npm run verify` (no physics, plant, ABI or build change). Nobody has listened.
+
+Latency: one more setTargetAtTime per frame, no allocation, no added pitch smoothing; two more nodes on the audio thread (34, main 45). Checked by reading the diff and the probe's node count; proxies.

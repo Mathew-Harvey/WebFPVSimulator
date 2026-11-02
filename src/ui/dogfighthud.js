@@ -103,12 +103,24 @@ const CSS = `
  * own size from index.html (.touch-plate, landscape and portrait), and the
  * plate stands max(16px, safe area) in from the edge. They were at a fixed
  * right: 200px, which is on top of a 234 px plate, so a thumb landing on
- * the plate's left half fired instead of steering (2026-10-29). */
-.df-touch { --df-plate: clamp(200px, 60vmin, 300px); --df-in: calc(max(16px, env(safe-area-inset-right)) + var(--df-plate) + 14px); }
+ * the plate's left half fired instead of steering (2026-10-29).
+ * --touch-size is the plate as drawn, Thumb stick size included (index.html,
+ * set on #ui): the fixed clamp here kept the buttons where a Normal plate
+ * ends, so a Large plate's left edge sat under GUN and MISSILE again
+ * (2026-11-01). The clamp stays as the fallback for a page without it. */
+.df-touch { --df-plate: var(--touch-size, clamp(200px, 60vmin, 300px)); --df-in: calc(max(16px, env(safe-area-inset-right)) + var(--df-plate) + 14px); }
 .df-fire.is-gun { right: var(--df-in); bottom: 130px; width: 80px; height: 80px; background: ${AMBER}; }
 .df-fire.is-missile { right: calc(var(--df-in) + 7px); bottom: 36px; width: 66px; height: 66px; background: ${BAIL}; font-size: 10px; }
-@media (orientation: portrait) { .df-touch { --df-plate: clamp(112px, 30vmin, 168px); } .df-fire.is-gun { bottom: calc(clamp(112px, 30vmin, 168px) + 40px); right: max(16px, env(safe-area-inset-right)); } .df-fire.is-missile { bottom: calc(clamp(112px, 30vmin, 168px) + 40px); right: calc(max(16px, env(safe-area-inset-right)) + 96px); } }
+@media (orientation: portrait) { .df-touch { --df-plate: var(--touch-size, clamp(112px, 30vmin, 168px)); } .df-fire.is-gun { bottom: calc(var(--df-plate) + 40px); right: max(16px, env(safe-area-inset-right)); } .df-fire.is-missile { bottom: calc(var(--df-plate) + 40px); right: calc(max(16px, env(safe-area-inset-right)) + 96px); } }
 .df-fire.is-down { transform: translate(2px, 3px); box-shadow: 1px 1px 0 ${INK}; }
+/* On the ground the gun and the missile do nothing (main.js fightStep fires
+ * only while the plant flies), and there the buttons sat on the take off
+ * words and on the Weight and Camera angle sliders, which on a sideways
+ * phone at Large thumb sticks they cover outright (2026-11-01). So they
+ * fade out on the ground and back in the air, the slider's own rule turned
+ * round (index.html .osd-air.is-aloft), and a faded button takes no thumb. */
+.df-touch .df-fire { transition: opacity .25s ease, visibility 0s linear 0s; }
+.df-touch.is-grounded .df-fire { opacity: 0; visibility: hidden; transition: opacity .25s ease, visibility 0s linear .25s; }
 @media (max-width: 700px) { .df-me-panel { transform: scale(.8); transform-origin: left bottom; left: 10px; bottom: auto; top: 54px; } .df-feed { top: 60px; transform: scale(.85); transform-origin: right top; } }
 `;
 
@@ -300,8 +312,18 @@ export class DogfightHud {
     }
   }
 
-  setVisible(on, { touch = false } = {}) {
+  setVisible(on, { touch = false, aloft = true } = {}) {
     this.touch.classList.toggle('is-off', !(on && touch));
+    if (aloft !== this.aloft) {
+      this.aloft = aloft;
+      this.touch.classList.toggle('is-grounded', !aloft);
+      /* A thumb held on GUN as the quad lands lets go of it. */
+      if (!aloft) {
+        if (this.input) this.input.touchGun = false;
+        this.gunBtn.classList.remove('is-down');
+        this.missileBtn.classList.remove('is-down');
+      }
+    }
     if (on === this.visible) {
       return;
     }

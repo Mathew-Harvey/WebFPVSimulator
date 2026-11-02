@@ -51,7 +51,10 @@ const TRAIL_SPEED = 20;
 const TRAIL_EVERY_MS = 55;
 
 function ballGeometry() {
-  const g = new THREE.IcosahedronGeometry(1, 2).toNonIndexed();
+  /* A polyhedron is built without an index already, so this is the
+   * triangle soup the panels are painted on. toNonIndexed() here only
+   * printed a warning on every Quad Ball load. */
+  const g = new THREE.IcosahedronGeometry(1, 2);
   const n = g.attributes.position.count;
   const col = new Float32Array(n * 3);
   const c = new THREE.Color();

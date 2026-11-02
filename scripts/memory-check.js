@@ -182,6 +182,10 @@ const BORROWS = {
     ],
   },
 };
+/* Since 2026-11-01 (bc017782) Your map's parked cars take their decal
+ * colours from Sunnyfield's palette merge, src/maps/built/cars.js. One
+ * module, which imports only three. */
+BORROWS.built.sunny = ['palette.js'];
 /* Nick Burns' house is built by Your map's pipeline (src/maps/house/index.js
  * calls src/maps/built/index.js), so it takes all of Your map and what Your
  * map takes from the town, and nothing else. */
@@ -223,6 +227,9 @@ BORROWS.kaza = { ...BORROWS.house, sunny: ['palette.js'] };
 /* And Shiokaze Point (src/maps/shiokaze/index.js), which merges its colours
  * with Sunnyfield's palette merge. */
 BORROWS.shiokaze = { ...BORROWS.house, sunny: ['palette.js'] };
+/* Since 2026-11-01 (3bf61089) Shiokaze and Hyoura Island draw one inked sea,
+ * Your map's src/maps/built/sea.js, which takes only the town's toon.js. */
+BORROWS.shiokaze.built = [...BORROWS.house.built, 'sea.js'];
 /* And Kazami Airfield (src/maps/airfield/index.js), which borrows the same. */
 BORROWS.airfield = BORROWS.house;
 /* And Hotaru Valley (src/maps/hotaru/index.js), which merges its batches
@@ -231,6 +238,7 @@ BORROWS.hotaru = { ...BORROWS.house, sunny: ['palette.js'] };
 /* And Hyoura Island (src/maps/arctic/index.js), which folds its batches
  * with Sunnyfield's palette merge. */
 BORROWS.arctic = { ...BORROWS.house, sunny: ['palette.js'] };
+BORROWS.arctic.built = [...BORROWS.house.built, 'sea.js'];
 /* And Tsukimi Danchi (src/maps/haikyo/index.js), which folds its batches
  * with Sunnyfield's palette. */
 BORROWS.haikyo = { ...BORROWS.house, sunny: ['palette.js'] };

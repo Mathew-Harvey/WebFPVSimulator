@@ -32,6 +32,7 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { answerQuadPicker, openPage } from '../tests/lib/page.js';
+import { SETTINGS_KEY } from '../src/ui/ui.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const only = new Set((process.argv.find((a) => a.startsWith('--only=')) || '--only=').slice(7).split(',').filter(Boolean));
@@ -239,18 +240,33 @@ async function sceneScale() {
 /* A fight on a map that has its own game: the goat map's herd, and Drift
  * Matsuri's take. The fight is the game being played, so the map's HUD
  * steps aside while it lasts and comes back when it ends. */
-async function sceneMapGame(map, hud) {
+/* Drift Matsuri's take is the mini game's alone since 2026-11-01 (the
+ * owner: plain Freestyle on the drift map is just flying it, main.js
+ * filmFrame), so flown here its HUD is off before, during and after a
+ * fight, and `own` is false for it. */
+async function sceneMapGame(map, hud, own = true) {
   console.log(`${map}: a fight on a map with its own game`);
   const { page, ev, until } = await flying(map);
+  const off = `return document.querySelector('.${hud}').classList.contains('is-off')`;
   try {
-    check(`the map's own HUD is up before the fight (${hud})`, await until(`return !document.querySelector('.${hud}').classList.contains('is-off')`, 10000));
+    if (own) {
+      check(`the map's own HUD is up before the fight (${hud})`, await until(`return !document.querySelector('.${hud}').classList.contains('is-off')`, 10000));
+    } else {
+      await sleep(1500);
+      check(`plain Freestyle shows no ${hud}`, await ev(off));
+    }
     await ev("window.__ui.dogfight = { bots: 1, skill: 'rookie', round: '3m', hits: 'arcade' }; return 1;");
     await until('return Boolean(window.__dogfight())', 20000);
     check('and steps aside while the fight is on', await until(`return document.querySelector('.${hud}').classList.contains('is-off')`, 5000));
     check('the fight marks the layer, so the first flights\' tips sit under its score', await ev("return document.querySelector('.df-hud').parentNode.classList.contains('df-on')"));
     await ev("window.__ui.act('pause'); window.__ui.act('fight-leave'); return 1;");
     await until('return window.__dogfight() === null', 5000);
-    check('and comes back when the fight ends', await until(`return !document.querySelector('.${hud}').classList.contains('is-off')`, 5000));
+    if (own) {
+      check('and comes back when the fight ends', await until(`return !document.querySelector('.${hud}').classList.contains('is-off')`, 5000));
+    } else {
+      await sleep(1500);
+      check(`and still none when the fight ends (${hud})`, await ev(off));
+    }
     check('the layer is unmarked', await ev("return !document.querySelector('.df-hud').parentNode.classList.contains('df-on')"));
     const errs = pageErrors(page);
     check('no errors on the page', errs.length === 0, errs.slice(0, 3).join(' | '));
@@ -436,10 +452,17 @@ async function sceneYard() {
  * takes no touches (pointer-events none), so only the buttons are held to
  * this.
  */
+/*
+ * At Normal and at Large Thumb stick size (2026-11-01): the setting grew the
+ * plate and the buttons were still placed off the Normal plate's width, so
+ * a Large plate ran under GUN and MISSILE. Small only shrinks the plate, so
+ * it cannot cross anything Normal clears.
+ */
 async function sceneTouch() {
-  for (const [w, h] of [[844, 390], [390, 844], [1024, 768]]) {
-    console.log(`touch: a dogfight on the glass at ${w} by ${h}`);
-    const page = await openPage({ root: ROOT, width: w, height: h, touch: true, url: '/index.html?map=city&fly=1' });
+  for (const [w, h, size] of [[844, 390, 'normal'], [390, 844, 'normal'], [1024, 768, 'normal'], [844, 390, 'large'], [390, 844, 'large'], [1024, 768, 'large']]) {
+    console.log(`touch: a dogfight on the glass at ${w} by ${h}, ${size} thumb sticks`);
+    const seed = [`try { const k = ${JSON.stringify(SETTINGS_KEY)}; const s = JSON.parse(localStorage.getItem(k) || '{}'); s.touchSize = ${JSON.stringify(size)}; localStorage.setItem(k, JSON.stringify(s)); } catch (e) { /* refused */ }`];
+    const page = await openPage({ root: ROOT, width: w, height: h, touch: true, url: '/index.html?map=city&fly=1', seed });
     const ev = async (body) => {
       const r = await page.cdp.send('Runtime.evaluate', { expression: `(async()=>{${body}})()`, awaitPromise: true, returnByValue: true }, page.sessionId);
       if (r.exceptionDetails) {
@@ -474,6 +497,12 @@ async function sceneTouch() {
         return JSON.stringify({ plates: plates.length, mine: mine.length, over: mine.filter(([, e]) => plates.some((p) => hit(R(e), p))).map(([q]) => q), off });`);
       const cr = JSON.parse(crossing);
       check(`the fire buttons are clear of both thumb plates, and on the glass`, cr.plates === 2 && cr.mine === 2 && cr.over.length === 0 && cr.off.length === 0, crossing);
+      /* On the stand they fire nothing, and they covered the take off words
+       * and the Weight slider, so there they are faded and take no thumb. */
+      const ground = await ev(`const s = window.__craftState(); const g = document.querySelector('.df-fire.is-gun');
+        return JSON.stringify({ landed: Boolean(s.landed), vis: getComputedStyle(g).visibility });`);
+      const gr = JSON.parse(ground);
+      check('on the ground the fire buttons are put away', !gr.landed || gr.vis === 'hidden', ground);
       const errs = pageErrors(page);
       check('no errors on the page', errs.length === 0, errs.slice(0, 3).join(' | '));
     } finally {
@@ -607,7 +636,7 @@ try {
   if (wanted('herd')) await sceneHerd();
   if (wanted('driftbots')) await sceneDriftBots();
   if (wanted('goats')) await sceneMapGame('goats', 'goat-hud');
-  if (wanted('drift')) await sceneMapGame('drift', 'film-hud');
+  if (wanted('drift')) await sceneMapGame('drift', 'film-hud', false);
   if (wanted('dogfight')) await sceneDogfight();
   if (wanted('ribbon')) await sceneRibbon();
   if (wanted('scale')) await sceneScale();

@@ -73938,3 +73938,27 @@ The strip's mown bands were flat `afMown` and `afMownDark` paint, the first thin
 Why the first try (batch 12) showed nothing: it did reach the plot (a test tone of [0.3, 0.3, 1] turned it blue), but the light, the toon bands and the fog compress a vertex colour hard, so 0.78 against 1 read as about a tenth, and a tone could only darken, because `toneGeometry` in `src/render/look.js` clamps every vertex colour to 1. A mown strip is lighter than the rough, so the ceiling is lifted to 1.6 for a geometry flagged `userData.brightTone`, which `plotGeometry` sets only when a map passes a tone; every other mesh keeps the old ceiling. The airfield's and Suginomori's `openGround` now carry the plot's `userData` across when they rebuild it. Side effect, on the six toned plots only (airfield, festival, sanatorium, Suginomori, FMX, park): the ground's own slow noise keeps its bright half, up to 8 percent, that the clamp used to cut.
 
 Cost, High, against the parent: same calls, triangles down 188 in every view (the paint bands are gone). `check:airfield`, `check:fest`, `check:sana`, `check:cedar`, `check:fmx`, `check:park` passed, `lint:quality` 71 of 71. The bands are soft edged (four metre vertices). Not flown.
+
+### 2026-11-02: Full bug check across the sim (thread "Full bug check across the sim")
+
+Mat 2026-11-01 23:17Z: "Spin up a full bug check, any bugs found, both technical and user experience and graphical glitches, find root cause and fix, do no remove existing functionality or regress anything".
+
+What was run on main b905af6: 35 node checks and selftests, 45 map and world checks, every map loaded in the real shell through `__setMap` in one tab (34 maps, console errors, warnings, three.js memory before and after), and 23 browser checks one at a time. The sweep found no console error on any map, and geometries came back to 45 after visiting all 34 (textures 19 to 20).
+
+Fixed:
+- Mini game fire buttons under Large thumb sticks. `src/ui/dogfighthud.js` placed GUN and MISSILE off the Normal plate's width, a fixed clamp, so the Thumb stick size setting of fcc4cfd grew the right plate under both buttons (`minigames-check --only=touch` at Large: 3 of 3 sizes over the plate on main, clear on this branch). They now read `--touch-size`, the plate as drawn.
+- The same buttons covered the take off words and the Weight and Camera angle sliders on the stand, outright at Large on a sideways phone, while firing nothing there (`fightStep` fires only while the plant flies). They fade out on the ground and back in the air (`.is-grounded`, set from `fightMe.flying`), the sliders' own rule turned round. A new line in the touch scene holds it.
+- Quad Ball printed a three.js warning on every load: `toNonIndexed()` on an icosahedron, which has no index. Dropped; the geometry is the same.
+
+Checks that had fallen behind the product, each confirmed against the commit that moved it, none a threshold:
+- `support:selftest` crashed since the prompt became a manga panel (48663327, `prepend` and `createElementNS` missing from its DOM stub) and still asked for two buttons after Wishlist on Steam (1b5d08f9).
+- `check:house` asked the house to draw every colour in `src/props/homes.js`, which since 2026-10-29 also holds Quad Ball's, Ridgeline MX's, the dunes', Bakuon Dome's and Hayate's.
+- `check:balldoor` opened Quad Ball from the Freestyle shelf, which stopped listing it on 2026-11-01 (83a10e84); it now comes in by the Mini games route.
+- `check:minigames` expected Drift Matsuri's film HUD in plain Freestyle; since 83a10e84 there is none there, and the check now holds that.
+- `lint:memory`: Your map's cars take Sunnyfield's palette (bc017782) and Shiokaze and Hyoura Island share Your map's inked sea (3bf61089). Both borrows declared.
+
+Board (its own branch, deploys first): the board refused `support_prompt_shown` with a 400 on every exit since 2026-10-30. Mat's pick 2026-11-01 23:35Z, "Count it on the board".
+
+Left: `check:firstflight` C fails on main too (base run here) and passed on this branch, the flake recorded 2026-10-29. The dogfight health panel still draws over the left plate's top corner on a sideways phone; it takes no touches. Hayate's `hyFuji` and `hyFujiSnow` are in `homes.js` and drawn by nothing. `check:builder` passed 786 lines and ran past a 15 minute cap.
+
+Latency: none. The HUD toggles one class when the craft lands or lifts, nothing per frame. Checked by reading the frame path. Not flown.

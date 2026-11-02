@@ -63,7 +63,7 @@ async function phone(w, h) {
   };
   try {
     await puntil("return Boolean(window.__ui && window.__ui.screen === 'title')", 120000);
-    await pev("window.__ui.pickerShelfChosen('maps'); return 1;");
+    await pev("/* Quad Ball is listed only on the Mini games route since 2026-11-01. */ window.__ui.mapGamePick = true; window.__ui.pickerShelfChosen('maps'); return 1;");
     await puntil('return Boolean(window.__ui.pickerLib)', 60000);
     await sleep(500);
     await pev("const u = window.__ui; u.pickerAction('fly', u.pickerEntries().find((e) => e.item && e.item.action === 'map:ball')); return 1;");
@@ -111,7 +111,7 @@ const click = (sel) => ev(`document.querySelector('${sel}').click(); return 1`);
 const calls = () => ev('return window.__calls.map((c) => c.join(":")).join(" | ")');
 try {
   await until("return Boolean(window.__ui && window.__ui.screen === 'title')", 120000);
-  await ev("window.__ui.pickerShelfChosen('maps'); return 1;");
+  await ev("/* Quad Ball is listed only on the Mini games route since 2026-11-01. */ window.__ui.mapGamePick = true; window.__ui.pickerShelfChosen('maps'); return 1;");
   await until('return Boolean(window.__ui.pickerLib)', 60000);
   await sleep(500);
   await ev(`window.__calls = []; const u = window.__ui;
@@ -164,7 +164,7 @@ try {
   /* The second visit: back on the map cards, Quad Ball asks again. */
   await ev("window.__ui.act('pause'); return 1;");
   await sleep(300);
-  await ev("window.__ui.pickerShelfChosen('maps'); return 1;");
+  await ev("/* Quad Ball is listed only on the Mini games route since 2026-11-01. */ window.__ui.mapGamePick = true; window.__ui.pickerShelfChosen('maps'); return 1;");
   await until("return Boolean(window.__ui.pickerEntries && window.__ui.pickerEntries().length)", 20000);
   await sleep(500);
   await ev("window.__e = window.__ui.pickerEntries().find((e) => e.item && e.item.action === 'map:ball'); return 1;");

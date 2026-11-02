@@ -3209,7 +3209,9 @@ export async function boot({ loading, bootStart, mapId }) {
     } catch (e) {
       touch = false;
     }
-    fightHud.setVisible(on, { touch: touch && ui.screen === 'flight' });
+    /* The fire buttons only while the plant flies, which is the only time
+     * fightStep lets them fire (dogfighthud.js .is-grounded). */
+    fightHud.setVisible(on, { touch: touch && ui.screen === 'flight', aloft: Boolean(fightMe.flying) });
     fightExtra.best = fightBest;
     fightExtra.newBest = fightNewBest;
     fightExtra.nextMs = g.over ? Math.max(0, RESULT_MS - g.sinceOverMs()) : 0;

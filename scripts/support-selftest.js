@@ -116,14 +116,18 @@ globalThis.localStorage = { getItem: (k) => (store.has(k) ? store.get(k) : null)
 const node = (tag) => {
   const n = { tag, children: [], attrs: {}, listeners: {}, removed: false };
   n.append = (...c) => n.children.push(...c);
+  n.prepend = (...c) => n.children.unshift(...c);
   n.setAttribute = (k, v) => { n.attrs[k] = v; };
   n.addEventListener = (k, f) => { n.listeners[k] = f; };
   n.remove = () => { n.removed = true; };
   return n;
 };
 const docBody = node('body');
-globalThis.document = { body: docBody, createElement: node };
+globalThis.document = { body: docBody, createElement: node, createElementNS: (ns, tag) => node(tag) };
 const textOf = (n) => [n.textContent || '', ...n.children.map(textOf)].join(' ');
+/* A button's words are in a span beside its mark, so read them as a browser's
+ * textContent would: the node's own text and every child's, run together. */
+const wordsOf = (n) => (typeof n === 'string' ? n : [n.textContent || '', ...n.children.map(wordsOf)].join(''));
 const links = (n) => (n.tag === 'a' ? [n] : []).concat(...n.children.map(links));
 nav.sendBeacon = (url, blob) => beacons.push({ url, blob }) > 0;
 delete nav.globalPrivacyControl;
@@ -139,7 +143,9 @@ check('prompt: one beacon a show, source sim-exit',
 check('prompt: the message is the agreed words',
   textOf(first).includes('I build WebFPV in my spare time. If you\'re enjoying it, buy me a $1 coffee on Patreon or a one-off battery to help keep it free.'), '');
 const ls = links(first);
-check('prompt: the two buttons', ls.map((l) => l.textContent).join('|') === 'Buy Mat a coffee $1/mo|One-off $5', ls.map((l) => l.textContent).join('|'));
+/* The third is Wishlist on Steam, added to the prompt on 2026-10-30
+ * (1b5d08f9); the selftest kept asking for two until 2026-11-01. */
+check('prompt: the three buttons', ls.map(wordsOf).join('|') === 'Buy Mat a coffee $1/mo|One-off $5|Wishlist on Steam', ls.map(wordsOf).join('|'));
 check('prompt: the coffee button is the coffee tier, tagged',
   ls[0].href === 'https://www.patreon.com/checkout/webfpv?rid=29846312&utm_source=sim-prompt&ref=sim-prompt', ls[0].href);
 check('prompt: the tip link is the tip URL, tagged exit',

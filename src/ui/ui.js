@@ -1006,7 +1006,7 @@ function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
     || mapId === 'hotaru' || mapId === 'dunes' || mapId === 'fest' || mapId === 'arctic'
     || mapId === 'haikyo'
     || mapId === 'ekimae'
-    || mapId === 'hayate' || mapId === 'park';
+    || mapId === 'hayate' || mapId === 'park' || mapId === 'yume';
   const where = mapId === 'house' ? "Nick's house"
     : mapId === 'heads' ? "Heads' house"
       : mapId === 'bardwell' ? "Joshua's house"
@@ -1015,6 +1015,7 @@ function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
           : mapId === 'goats' ? "Heads' street"
           : mapId === 'sunny' ? 'Sunnyfield'
           : mapId === 'park' ? 'Hinode Park'
+          : mapId === 'yume' ? 'Yumeboshi Land'
           : mapId === 'arctic' ? 'Hyoura Island'
           : mapId === 'dock' ? 'Kamome Wharf'
           : mapId === 'factory' ? 'Hamakaze Works'
@@ -1090,6 +1091,9 @@ const SUNNY_OFF_BOARD = 'The board keeps no runs for Sunnyfield, so a run flown 
 
 /* Hinode Park, the same way. */
 const PARK_OFF_BOARD = 'The board keeps no runs for Hinode Park, so a run flown there stays here.'
+  + ' Fly the town for a run that can go up.';
+/* Yumeboshi Land, the same way. */
+const YUME_OFF_BOARD = 'The board keeps no runs for Yumeboshi Land, so a run flown there stays here.'
   + ' Fly the town for a run that can go up.';
 /* Hamakaze Works, the same way. */
 const FACTORY_OFF_BOARD = 'The board keeps no runs for Hamakaze Works, so a run flown there stays here.'
@@ -11573,7 +11577,7 @@ export class Ui {
           || this.settings.map === 'arctic'
           || this.settings.map === 'haikyo'
           || this.settings.map === 'ekimae'
-          || this.settings.map === 'hayate' || this.settings.map === 'park';
+          || this.settings.map === 'hayate' || this.settings.map === 'park' || this.settings.map === 'yume';
         return [
           { label: 'Fly again', action: 'restart', primary: true },
           this.runPosted
@@ -11606,6 +11610,7 @@ export class Ui {
                       : this.settings.map === 'goats' ? GOATS_OFF_BOARD
                         : this.settings.map === 'sunny' ? SUNNY_OFF_BOARD
                         : this.settings.map === 'park' ? PARK_OFF_BOARD
+                        : this.settings.map === 'yume' ? YUME_OFF_BOARD
                         : this.settings.map === 'dock' ? DOCK_OFF_BOARD
                         : this.settings.map === 'factory' ? FACTORY_OFF_BOARD
                         : this.settings.map === 'shiokaze' ? SHIOKAZE_OFF_BOARD

@@ -51,7 +51,7 @@ import { DUNES_DOC_ID } from '../maps/registry.js';
 import { TOUGE_DOC_ID } from '../maps/registry.js';
 import { ARCTIC_DOC_ID } from '../maps/registry.js';
 import { HAYATE_DOC_ID } from '../maps/registry.js';
-import { PARK_DOC_ID } from '../maps/registry.js';
+import { PARK_DOC_ID, YUME_DOC_ID } from '../maps/registry.js';
 
 export const STAMPS_KEY = 'webfpv.stf.stamps.v1';
 
@@ -181,6 +181,9 @@ export function stampKeyForMap(mapId) {
   }
   if (mapId === 'park') {
     return `built:${PARK_DOC_ID}`;
+  }
+  if (mapId === 'yume') {
+    return `built:${YUME_DOC_ID}`;
   }
   if (mapId === 'factory') {
     return `built:${FACTORY_DOC_ID}`;

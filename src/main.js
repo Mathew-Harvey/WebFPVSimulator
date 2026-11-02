@@ -522,6 +522,7 @@ const MAP_MODULE_PREFIX = {
   goats: '/src/maps/goats/',
   sunny: '/src/maps/sunny/',
   park: '/src/maps/park/',
+  yume: '/src/maps/yume/',
   factory: '/src/maps/factory/',
   drift: '/src/maps/drift/',
   dunes: '/src/maps/dunes/',
@@ -9416,6 +9417,14 @@ export async function boot({ loading, bootStart, mapId }) {
     if (view.id === 'park') {
       notice = {
         text: 'The board keeps no runs for Hinode Park, so its runs stay here.',
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
+    /* Nor for Yumeboshi Land: YUME_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'yume') {
+      notice = {
+        text: 'The board keeps no runs for Yumeboshi Land, so its runs stay here.',
         untilMs: performance.now() + 4200,
       };
       return;

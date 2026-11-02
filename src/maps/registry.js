@@ -622,6 +622,23 @@ export const MAPS = [
     buildMs: MAP_BUILD_MS.park,
     load: () => import('./park/index.js'),
   },
+  /*
+   * YUMEBOSHI LAND, on the owner's ask of 2 November 2026, "a theme park
+   * with rides, and a roller coaster to fly the tracks": a theme park in
+   * the town's manga look, a coaster with a loop, a lift and a dragon's
+   * tunnel, a big wheel, a carousel, a drop tower, teacups, a swing ride,
+   * a swinging ship, a castle and a lake (src/maps/yume/). The rides move
+   * and are solid where they are, every step. Off the board like the
+   * houses.
+   */
+  {
+    id: 'yume',
+    name: 'Yumeboshi Land',
+    mode: 'freestyle',
+    note: 'A theme park at golden hour. Chase the Ryusei coaster up its lift, through the loop and into the dragon\'s mouth, thread the big wheel\'s spokes, race the drop tower down, and fly the castle gate and the haunted house.',
+    buildMs: MAP_BUILD_MS.yume,
+    load: () => import('./yume/index.js'),
+  },
 ];
 
 /* The house's document id (src/maps/house/yard.js), here so the stamps can
@@ -702,3 +719,5 @@ export const FEST_DOC_ID = 'trk-70b0f357';
 export const HAYATE_DOC_ID = 'trk-4a7a7e01';
 /* Hinode Park's (src/maps/park/yard.js), the same way. */
 export const PARK_DOC_ID = 'trk-b0e7a1c5';
+/* Yumeboshi Land's (src/maps/yume/yard.js), the same way. */
+export const YUME_DOC_ID = 'trk-7e3e0b51';

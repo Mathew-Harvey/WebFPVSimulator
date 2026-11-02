@@ -38,6 +38,7 @@
     "check:alps": "node scripts/alps-check.js",
     "check:rally": "node scripts/rally-check.js",
     "check:dome": "node scripts/dome-check.js",
+    "check:yume": "node scripts/yume-check.js",
     "check:shiokaze": "node scripts/shiokaze-check.js",
     "check:fmx": "node scripts/fmx-check.js",
     "check:hayate": "node scripts/hayate-check.js",

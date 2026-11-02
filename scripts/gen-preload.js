@@ -100,6 +100,7 @@ const MAP_ROOTS = {
   ball: 'src/maps/ball/index.js',
   moto: 'src/maps/moto/index.js',
   park: 'src/maps/park/index.js',
+  yume: 'src/maps/yume/index.js',
   ekimae: 'src/maps/ekimae/index.js',
   arctic: 'src/maps/arctic/index.js',
   dunes: 'src/maps/dunes/index.js',

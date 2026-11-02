@@ -358,6 +358,8 @@ const WORLDS = [
   { id: 'moto', file: 'moto.jpg', name: 'Ridgeline MX' },
   /* Hinode Park, added 31 October 2026. */
   { id: 'park', file: 'park.jpg', name: 'Hinode Park' },
+  /* Yumeboshi Land, added 2 November 2026. */
+  { id: 'yume', file: 'yume.jpg', name: 'Yumeboshi Land' },
   /* Ekimae Drift, added 31 October 2026, from its default orbit. */
   { id: 'ekimae', file: 'ekimae.jpg', name: 'Ekimae Drift' },
   /* Hyoura Island, added 31 October 2026: the hamlet and its harbour from

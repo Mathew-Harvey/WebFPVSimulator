@@ -113,6 +113,7 @@ const WORLDS = {
   drift: { name: 'Drift Matsuri', thumb: 'drift' },
   ball: { name: 'Quad Ball', thumb: 'ball' },
   park: { name: 'Hinode Park', thumb: 'park' },
+  yume: { name: 'Yumeboshi Land', thumb: 'yume' },
   arctic: { name: 'Hyoura Island', thumb: 'arctic' },
   towers: { name: 'Kumoi Towers', thumb: 'towers' },
   shiokaze: { name: 'Shiokaze Point', thumb: 'shiokaze' },

@@ -58,6 +58,7 @@ import * as AIRFIELD from './airfield.js';
 import * as HOTARU from './hotaru.js';
 import * as FEST from './fest.js';
 import * as HAIKYO from './haikyo.js';
+import * as YUME from './yume.js';
 import { buildingLayout, buildingDraw, bandoLayout, bandoDraw } from './buildings.js';
 import {
   craneLayout, craneDraw, waterLayout, waterDraw, mastLayout, mastDraw, chimneyLayout, chimneyDraw,
@@ -166,6 +167,7 @@ const FAMILIES = {
   arctic: ARCTIC,
   fest: FEST,
   haikyo: HAIKYO,
+  yume: YUME,
   park: PARK,
 };
 export const FAMILY_MATERIALS = {};

@@ -99,6 +99,10 @@ export const MAP_BUILD_MS = {
   /* Hinode Park (src/maps/park/): Sunnyfield's pipeline on a smaller plot
    * with fewer parts. An estimate until it is measured. */
   park: 1900,
+  /* Yumeboshi Land (src/maps/yume/): the pipeline on a theme park's
+   * plot, the coaster's tubes and the rides. An estimate until it is
+   * measured. */
+  yume: 2600,
   /* Ekimae Drift (src/maps/ekimae/): a city of the town's buildings round
    * a street course. An estimate until it is measured. */
   ekimae: 3600,

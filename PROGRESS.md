@@ -74170,3 +74170,27 @@ Mat 2026-11-02 12:07Z: "still got that messy background, can you clean it up". R
 Checks: `node scripts/music-selftest.js` passed, `node --check`, the renders above. Not run: `npm run verify`. Nobody has listened.
 
 Latency: none. One gain law per frame, simpler than before; no node or allocation change. Checked by reading the diff.
+
+#### Back to the drawing board: main's voice, compressed more, with range (same thread, PR 218)
+
+Mat 2026-11-02 13:40Z: "Let's go back to the drawing board , take what we have compress it a little more give it a little more range , forget the grok prompt". Read as: drop the voice rebuilt from the real quad report (rotation rate fundamental, measured harmonic stack, camera step, brightness law), go back to the blade pass voice on main, keep what this PR fixed on the way at his word (one voice instead of four beating, the three seamless wind loops, wind only with airspeed), then compress the motor bus a little more and give the sound range across the throttle. Told him that reading in the thread.
+
+Measured main first, motors alone on steady renders: -27.7 dBFS at 3,000 rpm, -28.2 at hover (8,700), -35.9 at 15,000 and -53.8 wide open (25,600). The per motor lowpass was capped at 430 Hz, right on the 435 Hz hover blade pass, and the bus had a fixed 800 Hz muffle, so everything above hover was filtered away: a punch went quiet. That is the range that was missing.
+
+What changed in `src/render/audio.js`:
+- Fundamental back to the blade pass, rpm / 60 x 3, and main's five harmonic wave. One oscillator at the mean speed of the turning motors, no detune wander (main's wander was a 4 s looped buffer, a cycle of its own, and two nodes).
+- Range: the voice lowpass corner rides the fundamental the whole way up, 1.2 times it at idle to 1.5 times wide open (`MOTOR_LP_TRACK_LO`, `MOTOR_LP_TRACK_HI`), cap 2,400 Hz. The bus muffle moves from 800 to 1,400 Hz (Q 0.5 as before), which still takes the upper harmonics away at every throttle but leaves the wide open fundamental standing. The 200 Hz +5 dB bass shelf is unchanged.
+- Loudness law on the throttle scale (idle a tenth of the airframe's full rpm, from `setFullRpm`): gain 0.55 x (0.2 + 0.8 x throttle).
+- Compressor: threshold -34 dB, ratio 4 (was -30 and 3), knee, attack, release and the 0.5 trim unchanged. On the same voice that takes the swing from idle to wide open from 7.8 dB (main's settings) to 5.1 dB; with no compressor it is 9.8 dB.
+- Probe default `--blades` back to 3. The `plant` trace and `--fullrpm` stay.
+
+Measured after, motors alone: 3,000 rpm -29.5 dBFS, 6,000 -29.3, hover -28.0 (main -28.2), 12,200 -26.8, 15,000 -26.0, 20,000 -24.9, wide open -24.4 (main -53.8). Centroid 152 Hz at idle, 456 at hover, 1,289 wide open: the pitch and the brightness carry the throttle, the level swells 3.7 dB from hover to full. Short term loudness range on the `plant` lap 3.6 dB (main 11.8, almost all of it the fade). Envelope modulation on the lap 12 percent at 0.5 Hz, which is the trace's punches; no beat.
+- Full mix on the `plant` lap: -27.2 dBFS RMS, true peak -19.0 dBTP, no sample at full scale (main -28.6 and -17.2). A1 16.2 dB (needs 12): the first try, with the corner at twice the fundamental and the muffle at 1,600 Hz, read 11.3 dB, failed, and was pulled back to the values above rather than argued.
+- Whoop (`--fullrpm=74800`): -27.9 dBFS at 30,000 rpm, -44.5 at 72,800. On main it was -59.7 and -90.1, inaudible. A whoop's top is still muffled, its 3.6 kHz blade pass sits above the 1,400 Hz bus roll off.
+- Nodes: 32 (main 45, the last round 33).
+
+Clips: /mnt/project-files/motor-sound/2026-11-02-redraw/lap.mp3, lap-motors-only.mp3, punch-and-hold.mp3, and lap-main-today.mp3 (main on the same trace, for comparison).
+
+Checks this turn: `node scripts/music-selftest.js` all passed, `node --check` on both changed files, the probe renders above. Not run: `npm run verify` (no physics, plant, ABI or build change). Nobody has listened.
+
+Latency: lower than main, level with the last round. Per frame the update schedules three parameters for one voice (main: twelve for four), no allocation, no added smoothing on pitch. 32 nodes on the audio thread against main's 45. Checked by reading the diff and the probe's node count; proxies.

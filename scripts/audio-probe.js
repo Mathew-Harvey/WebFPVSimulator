@@ -34,7 +34,7 @@
  *
  * Usage:
  *   node scripts/audio-probe.js [--trace=NAME] [--seconds=20] [--rate=48000]
- *        [--level=0.6] [--blades=1] [--f0=HZ] [--scream=2000,8000]
+ *        [--level=0.6] [--blades=3] [--f0=HZ] [--scream=2000,8000]
  *        [--carrier=80,600] [--beat=6] [--seam=SEC] [--tones=LO,HI]
  *        [--json=PATH]
  *
@@ -977,10 +977,7 @@ async function main() {
     /* 0.6 is what the shell actually runs at: ui.js defaults volume to 6 and
      * main.js divides by 10. Rendering at 0.5 put every published loudness
      * figure 1.58 dB below what a player hears. */
-    /* blades 1 since 2026-11-02: the motor voice's fundamental is the
-     * rotation rate, so the fundamental band A1 reads is rpm / 60. Pass
-     * --blades=3 to read the blade pass, which is now the third harmonic. */
-    trace: 'flight', seconds: 20, rate: 48000, level: 0.6, blades: 1,
+    trace: 'flight', seconds: 20, rate: 48000, level: 0.6, blades: 3,
     scream: '2000,8000', carrier: '', beat: 0, seam: 0, f0: 0, json: '', wav: '',
     /*
      * Which stems to render. A1 is a property of the MOTOR model, and A8

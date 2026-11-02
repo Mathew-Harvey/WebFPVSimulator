@@ -7,15 +7,15 @@
  * It was one voice per motor so their speeds would beat; the owner heard
  * that beat as a "wha wha wha" and it is one voice at their mean speed now.
  *
- * THE MOTOR VOICE IS COPIED FROM A REAL QUAD (2026-11-02). Everything the
- * next three paragraphs say about the blade pass as the fundamental and the
- * capped lowpass is history now: the fundamental is the motor's rotation
- * rate, and the harmonic stack, the throttle brightness law and the
- * camera's band are fitted to a measured recording of a 6S five inch on its
- * onboard camera. Its hiss and the beating between its four motors were
- * copied too and then taken out again at the owner's word, so the voice is
- * one steady tone: see ONE STEADY VOICE below. The constants say which
- * number each one came from, and PROGRESS.md has the comparison.
+ * THE RANGE AND THE COMPRESSOR (2026-11-02). The blade pass is still the
+ * fundamental, as the next paragraphs say, but its lowpass no longer stops
+ * at 430 Hz under an 800 Hz muffle: it rides the fundamental the whole way
+ * up the throttle, so a punch climbs and opens up instead of going quiet,
+ * and a firmer compressor on the motor bus keeps the body even while it
+ * does. A round that rebuilt the voice from a measured recording of a real
+ * quad was set aside at the owner's word ("forget the grok prompt"); what
+ * it fixed on the way (one voice instead of four beating, wind loops that
+ * do not repeat, wind only with airspeed) is kept. See THE RANGE below.
  *
  * THE MOTOR REGISTER, and why it is low. An earlier round's graph put the
  * oscillators in the kilohertz range with square partials to 8 kHz, and the
@@ -98,92 +98,70 @@
 import { Music } from './music.js';
 
 /*
- * THE MOTOR VOICE IS THE ROTATION TONE NOW, and the reason is a measurement
- * of a real quad. The owner (2026-11-02) supplied a characterisation of a
- * 6S five inch flown through 202 s of freestyle and recorded on its onboard
- * camera: the lowest line of the harmonic stack runs 285 Hz in the cruise
- * cluster and 529 Hz wide open, which is the motor's ROTATION rate (17,100
- * and 31,800 rpm), not the blade pass. A frame mounted mic hears the 1x
- * imbalance tone loudest and every integer multiple above it, the blade pass
- * included as the third. This file used to put the blade pass at the
- * fundamental and lowpass everything above it, which on the current plant
- * (hover 8,700 rpm, wide open 25,600) measured as a near pure sine at three
- * times the right pitch that faded to -53.6 dBFS at full throttle under its
- * own 430 Hz cap. PROGRESS.md has the numbers either side.
- *
- * So the fundamental is rpm / 60, and the plant's RPM goes in untouched: the
- * pitch the pilot flies on still comes from the module's own motor speed.
+ * Three blades, because the prop this plant is built around is a 5 x 4.3 x 3,
+ * and the blade pass frequency is what a quad's fundamental IS: each blade
+ * passing a fixed point pushes one pressure pulse, so a three blade prop at
+ * N revolutions per minute radiates at 3N/60 Hz.
  */
-const ROTATION_HZ_PER_RPM = 1 / 60;
+const BLADES = 3;
 /*
- * The plant's wide open RPM, used only to place a motor on a 0 to 1 throttle
- * scale for the brightness and loudness laws. The shell sets it per airframe
- * from PLANT_FACTS through setFullRpm, so a whoop's 74,800 is not heard as a
- * five inch three times past full. Idle is taken as a tenth of it.
+ * The plant's wide open RPM, used only to place the motors on a 0 to 1
+ * throttle scale for the brightness and loudness laws. The shell sets it per
+ * airframe from PLANT_FACTS through setFullRpm, so a whoop's 74,800 is not
+ * heard as a five inch three times past full. Idle is taken as a tenth of it.
  */
 const DEFAULT_FULL_RPM = 25600;
 /*
- * The harmonic stack, measured. Magnitudes are the reference's WIDE OPEN
- * column, H1 to H8 relative to H1: 0, -11.1, -15.1, -19.6, -21.1, -21.5,
- * -22.9, -23.4 dB. That is the brightest the motor ever is, so the wave is
- * written at full throttle and the per motor lowpass below darkens it
- * toward the cruise column (-15.6 at H2 down to -36.7 at H8) as the throttle
- * falls. Phases are scattered so the waveform has no sawtooth edge.
+ * THE RANGE (the owner, 2026-11-02 13:40Z: "take what we have compress it a
+ * little more give it a little more range").
+ *
+ * The motor lowpass tracks the fundamental so the timbre holds across the
+ * throttle. It used to be capped at 430 Hz, under a fixed 800 Hz muffle on
+ * the bus, and on the plant as it is now (hover 8,700 rpm, a 435 Hz blade
+ * pass; wide open 25,600, 1,280 Hz) that cap sat right on the hover tone, so
+ * everything above hover was filtered away: measured, the motors fell from
+ * -28.2 dBFS at hover to -35.9 at 15,000 rpm and -53.8 wide open. A punch
+ * went quiet. Now the corner rides the fundamental the whole way up, a
+ * little over it at idle and twice it wide open, so the tone climbs and
+ * opens up as the throttle does instead of vanishing. The cap is only there
+ * so a whoop's 3 kHz blade pass is not given its full top.
  */
-const MOTOR_HARMONIC_DB = [0, -11.1, -15.1, -19.6, -21.1, -21.5, -22.9, -23.4];
-const MOTOR_HARMONIC_PHASE = [0, 1.9, 4.1, 0.7, 3.3, 5.6, 2.4, 4.9];
+const MOTOR_LP_TRACK_LO = 1.2;
+const MOTOR_LP_TRACK_HI = 1.5;
+const MOTOR_LP_CAP = 2400;
+const MOTOR_LP_FLOOR = 150;
 /*
- * The per motor brightness law. The reference's cruise column sits under
- * its wide open one by a nearly steady 4.4 dB per octave, which is a FIRST
- * order slope, and a Web Audio lowpass is second order. A biquad lowpass
- * with a very low Q (-12 dB, linear 0.25) splits its two poles to 0.27 and
- * 3.7 times its corner, so between them it falls at 6 dB per octave: a first
- * order tilt that can still be moved. The corner is BRIGHT_LO times the
- * fundamental at idle and BRIGHT_HI times it wide open, geometric in the
- * square of throttle. Fitted offline against the reference's cruise and
- * wide open columns; PROGRESS.md has both sets of numbers. BAND_Q is the
- * Butterworth -3 dB the plain band limits use.
+ * THE ACTION CAMERA REGISTER. The owner (2026-10-17) found the motors a
+ * little too high pitched and asked for the sound of old GoPro Session 5
+ * footage with its wind filter on: bassy, muffled, the highs gone. That is
+ * a body shelf and a roll off, not a different pitch, so the blade pass
+ * frequency is untouched and still what the pilot flies on. The low shelf
+ * is the thump of the wind screen and "a touch more bass" (2026-11-02). The
+ * roll off was a fixed 800 Hz, which is the other half of why a punch went
+ * quiet; at 1,600 Hz it still takes the upper harmonics away at every
+ * throttle but leaves the wide open fundamental standing.
  */
-const BRIGHT_LO = 2.2;
-const BRIGHT_HI = 60;
-const MOTOR_LP_CAP = 16000;
-const MOTOR_LP_Q = -12;
-const BAND_Q = -3;
+const CAM_SHELF_HZ = 200;
+const CAM_SHELF_DB = 5;
+const CAM_LP_HZ = 1400;
 /*
- * The camera's band limit and the bass. The reference rolls off steeply
- * above about 7 kHz, which is the camera's processing and is what real FPV
- * footage sounds like, so the motor bus ends in a lowpass there instead of
- * the 800 Hz muffle the blade pass voice needed. The low shelf is the
- * owner's "a touch more bass" of 2026-11-02, smaller now that the
- * fundamental itself sits an octave and a half lower.
+ * A FIRMER COMPRESSOR on the motor bus ("compress it a little more"). It was
+ * a 3 to 1 above -30 dB; the threshold and ratio below hold the swing from
+ * idle to wide open to about half of what goes in, so the body stays even
+ * and only the pitch and the brightness tell the throttle. The trim after it
+ * takes off the make up gain the browser adds, measured, see PROGRESS.md.
  */
+const MOTOR_COMP_THRESHOLD = -34;
+const MOTOR_COMP_RATIO = 4;
+const MOTOR_COMP_TRIM = 0.5;
 /*
- * The wind: heard only with airspeed, its gain the square of airspeed over
- * 32 m/s times this, through a plain Butterworth lowpass with no resonant
- * bump to make it gurgle. See the note in update().
+ * The voice's gain rises from MOTOR_VOICE_FLOOR at idle to 1 wide open, on
+ * the throttle scale above, and the compressor then takes most of that swing
+ * back out. What survives is a punch that swells a few dB, not a punch that
+ * shouts.
  */
-const WIND_RUSH_GAIN = 0.355;
-const WIND_LP_HZ = 450;
-const CAM_SHELF_HZ = 160;
-const CAM_SHELF_DB = 2;
-const CAM_LP_HZ = 7000;
-/* The camera's step: the reference falls 9.8 dB across 1.5 kHz and stays
- * there to its 7 kHz roll off, which is an action camera's processing and
- * part of what FPV footage sounds like. A high shelf, on the motor bus. */
-const CAM_STEP_HZ = 1500;
-const CAM_STEP_DB = -10;
-const MOTOR_COMP_THRESHOLD = -30;
-const MOTOR_COMP_TRIM = 1.0;
-/*
- * Loudness: close to flat, because the reference is. Its RMS moved 1.5 dB
- * from idle to wide open (an onboard camera's level control, which is also
- * what every FPV video a pilot has heard does), and the throttle is carried
- * by brightness instead. The gain rises from MOTOR_VOICE_FLOOR to 1 across
- * the throttle, which with the brightness measures -27.8 dBFS at hover and
- * -23.9 wide open on the motor stem, so a punch still swells.
- */
-const MOTOR_VOICE_GAIN = 0.38;
-const MOTOR_VOICE_FLOOR = 0.8;
+const MOTOR_VOICE_GAIN = 0.55;
+const MOTOR_VOICE_FLOOR = 0.2;
 /*
  * Below this the motor stem is silent. A stationary quad was not quiet: with
  * the oscillator floored at 20 Hz and a 0.119 idle gain, the title screen
@@ -193,21 +171,35 @@ const MOTOR_VOICE_FLOOR = 0.8;
  */
 const MOTOR_MUTE_RPM = 600;
 /*
- * ONE STEADY VOICE, NO BEATS AND NO HISS (the owner, 2026-11-02 11:38Z:
- * "remove the hiss and the wha wha wha cycle in the background").
+ * The motor voice as a chosen spectrum rather than a filtered sawtooth.
  *
- * The reference has both: four motors a few Hz apart beat against each other
- * (it measured 57 percent amplitude wobble at 1 to 6 Hz), its pitch wanders
- * 40 cents at 3.6 Hz, and a broadband floor rises with throttle. The first
- * cut of this voice copied all three, with four oscillators spread across
- * the stereo field, a shared wander, and a prop noise layer. Measured on a
- * steady 12,200 rpm render that was 52 percent amplitude modulation peaking
- * at 1.4 to 5.2 Hz, which is the wha wha wha, and the noise was the hiss.
- * So there is one oscillator now, at the mean of the four motors' speeds:
- * four tones a few Hz apart cannot beat if there is only one of them. Its
- * harmonic stack and brightness law are still the reference's. Eleven
- * fewer audio nodes than the first cut, and two fewer buffers to build.
+ * A sawtooth through two lowpasses gave harmonics at exact integer multiples
+ * with the first three within 7.5 dB of each other and nothing modulating
+ * them, which a reviewer correctly called a nasal synth buzz rather than air
+ * being moved. These are the amplitudes a blade pass tone actually wants, with
+ * the phases scrambled across real and imaginary so the waveform is not a
+ * sawtooth's sharp ramp. Magnitudes come out at 1.0, 0.50, 0.28, 0.10, 0.04.
  */
+const MOTOR_WAVE_REAL = [0, 0.0, 0.35, -0.10, 0.06, -0.02];
+const MOTOR_WAVE_IMAG = [0, 1.0, -0.36, 0.26, -0.08, 0.03];
+/*
+ * ONE STEADY VOICE, NO BEATS (the owner, 2026-11-02 11:38Z: "remove the hiss
+ * and the wha wha wha cycle in the background"). Four oscillators a few Hz
+ * apart beat against each other, and a steady 12,200 rpm render of four
+ * measured 52 percent amplitude modulation at 1.4 to 5.2 Hz, which is the
+ * wha wha wha. So there is one oscillator, at the mean of the four motors'
+ * speeds, and no slow pitch wander either: the wander was a 4 s looped
+ * buffer, a cycle of its own.
+ */
+/*
+ * The wind: heard only with airspeed, its gain the square of airspeed over
+ * 32 m/s times this, through a plain Butterworth lowpass with no resonant
+ * bump to make it gurgle. See the note in update(). BAND_Q is that
+ * Butterworth's -3 dB.
+ */
+const WIND_RUSH_GAIN = 0.355;
+const WIND_LP_HZ = 450;
+const BAND_Q = -3;
 
 /*
  * The binaural focus tone. 6 Hz is in the theta band, 4 to 8 Hz, and 220 Hz
@@ -566,29 +558,24 @@ export class MotorAudio {
     const camLp = keep(ctx.createBiquadFilter());
     camLp.type = 'lowpass';
     camLp.frequency.value = CAM_LP_HZ;
-    camLp.Q.value = BAND_Q;
+    camLp.Q.value = 0.5;
     motorBus.connect(motorHp);
     motorHp.connect(camShelf);
     /*
-     * A LIGHT COMPRESSOR on the motor bus (the owner, 2026-11-02: "a touch more
-     * bass in the motor sounds with a little compression"). One shared node,
-     * none per motor, run by the browser's audio thread, so nothing on the
-     * main thread and nothing per frame. Low ratio, soft knee and a slow
-     * release: it settles the throttle swell into one fatter body instead of
-     * squashing anything.
+     * THE COMPRESSOR on the motor bus (the owner, 2026-11-02: "a touch more
+     * bass in the motor sounds with a little compression", then "compress it
+     * a little more"). One shared node, run by the browser's audio thread, so
+     * nothing on the main thread and nothing per frame. Soft knee and a slow
+     * release: it settles the throttle swell into one even body instead of
+     * pumping on every stick move.
      */
     const camComp = keep(ctx.createDynamicsCompressor());
     camComp.threshold.value = MOTOR_COMP_THRESHOLD;
     camComp.knee.value = 12;
-    camComp.ratio.value = 3;
+    camComp.ratio.value = MOTOR_COMP_RATIO;
     camComp.attack.value = 0.02;
     camComp.release.value = 0.25;
-    const camStep = keep(ctx.createBiquadFilter());
-    camStep.type = 'highshelf';
-    camStep.frequency.value = CAM_STEP_HZ;
-    camStep.gain.value = CAM_STEP_DB;
-    camShelf.connect(camStep);
-    camStep.connect(camLp);
+    camShelf.connect(camLp);
     camLp.connect(camComp);
     /* The compressor's automatic make up gain is about 6 dB at these settings,
      * which would have been a loud motor and not "a touch more bass", so it is
@@ -608,25 +595,20 @@ export class MotorAudio {
     focusBus.connect(shaper);
     this.focusBus = focusBus;
 
-    const hN = MOTOR_HARMONIC_DB.length + 1;
-    const wReal = new Float32Array(hN);
-    const wImag = new Float32Array(hN);
-    for (let k = 1; k < hN; k += 1) {
-      const mag = Math.pow(10, MOTOR_HARMONIC_DB[k - 1] / 20);
-      wReal[k] = mag * Math.cos(MOTOR_HARMONIC_PHASE[k - 1]);
-      wImag[k] = mag * Math.sin(MOTOR_HARMONIC_PHASE[k - 1]);
-    }
-    const motorWave = ctx.createPeriodicWave(wReal, wImag);
-    /* The one motor voice: oscillator, the brightness law's lowpass (its
-     * corner rides the fundamental and the throttle, set in update()), and
-     * a gain. Centred, the way an onboard camera's mono track is. */
+    const motorWave = ctx.createPeriodicWave(
+      new Float32Array(MOTOR_WAVE_REAL),
+      new Float32Array(MOTOR_WAVE_IMAG),
+    );
+    /* The one motor voice: oscillator, the lowpass whose corner rides the
+     * fundamental and the throttle (set in update()), and a gain. Centred,
+     * the way an onboard camera's mono track is. */
     const osc = keep(ctx.createOscillator());
     osc.setPeriodicWave(motorWave);
     osc.frequency.value = 120;
     const lp1 = keep(ctx.createBiquadFilter());
     lp1.type = 'lowpass';
     lp1.frequency.value = 600;
-    lp1.Q.value = MOTOR_LP_Q;
+    lp1.Q.value = 0.7;
     const voiceGain = keep(ctx.createGain());
     voiceGain.gain.value = 0.0;
     osc.connect(lp1);
@@ -1087,20 +1069,19 @@ export class MotorAudio {
       const r = sum / turning;
       const full = this.fullRpm;
       const idle = 0.1 * full;
-      /* THE fundamental: the rotation rate, straight from the RPM the module
-       * reports, with no register correction and no scale. The blade pass is
-       * the third harmonic of it, in the wave. */
-      const hz = r * ROTATION_HZ_PER_RPM;
+      /* THE fundamental. No register correction, no scale factor: this is
+       * the blade pass frequency, and A2 asserts it against the RPM the
+       * module reports to within one percent. */
+      const hz = (r / 60) * BLADES;
       /* setTargetAtTime, not linearRamp: the ear hears a step in frequency
        * as a click, and the motors change fast. The 12 ms is the whole of
-       * the smoothing. The reference's pitch took 280 ms to swing on a
-       * punch, but that is its pilot's thumb plus its motors, and the plant
-       * already models the motors: lagging the sound behind the physics
-       * would be latency, and it is not added. */
+       * the smoothing; lagging the sound behind the physics would be
+       * latency, and it is not added. */
       v.osc.frequency.setTargetAtTime(hz, t, 0.012);
       let thr = (r - idle) / (full - idle);
       thr = thr < 0 ? 0 : thr > 1 ? 1 : thr;
-      const corner = Math.min(MOTOR_LP_CAP, hz * BRIGHT_LO * Math.pow(BRIGHT_HI / BRIGHT_LO, thr * thr));
+      const track = MOTOR_LP_TRACK_LO + (MOTOR_LP_TRACK_HI - MOTOR_LP_TRACK_LO) * thr;
+      const corner = Math.min(MOTOR_LP_CAP, Math.max(MOTOR_LP_FLOOR, hz * track));
       v.lp1.frequency.setTargetAtTime(corner, t, 0.03);
       v.gain.gain.setTargetAtTime(
         MOTOR_VOICE_GAIN * (turning / 4) * (MOTOR_VOICE_FLOOR + (1 - MOTOR_VOICE_FLOOR) * thr), t, 0.03);

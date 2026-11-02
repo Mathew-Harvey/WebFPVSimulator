@@ -151,8 +151,8 @@ const CAM_LP_HZ = 1400;
  * and only the pitch and the brightness tell the throttle. The trim after it
  * takes off the make up gain the browser adds, measured, see PROGRESS.md.
  */
-const MOTOR_COMP_THRESHOLD = -34;
-const MOTOR_COMP_RATIO = 4;
+const MOTOR_COMP_THRESHOLD = -40;
+const MOTOR_COMP_RATIO = 6;
 const MOTOR_COMP_TRIM = 0.5;
 /*
  * The voice's gain rises from MOTOR_VOICE_FLOOR at idle to 1 wide open, on
@@ -182,6 +182,21 @@ const MOTOR_MUTE_RPM = 600;
  */
 const MOTOR_WAVE_REAL = [0, 0.0, 0.35, -0.10, 0.06, -0.02];
 const MOTOR_WAVE_IMAG = [0, 1.0, -0.36, 0.26, -0.08, 0.03];
+/*
+ * THE BASS (the owner, 2026-11-02 14:01Z: "add more bass to it high pass
+ * compression more"). At hover the blade pass is 435 Hz, so the voice had
+ * nothing under it for a bass shelf to lift: the shelf at 200 Hz only ever
+ * touched the idle tone. A motor also sounds once per turn, from the
+ * imbalance every real prop and bell has, at a third of the blade pass on a
+ * three blade prop: 145 Hz at hover, 427 Hz wide open. This is that tone, a
+ * plain sine at exactly a third of the voice's frequency, set in the same
+ * call with the same smoothing, so the two stay locked and cannot beat. It
+ * goes through the voice's own lowpass and gain, and the bus high pass
+ * under it keeps anything below MOTOR_HP_HZ out, so the bass is body and
+ * not rumble.
+ */
+const MOTOR_SUB_GAIN = 0.9;
+const MOTOR_HP_HZ = 60;
 /*
  * ONE STEADY VOICE, NO BEATS (the owner, 2026-11-02 11:38Z: "remove the hiss
  * and the wha wha wha cycle in the background"). Four oscillators a few Hz
@@ -549,7 +564,7 @@ export class MotorAudio {
      * exactly the band the bass line needs. */
     const motorHp = keep(ctx.createBiquadFilter());
     motorHp.type = 'highpass';
-    motorHp.frequency.value = 60;
+    motorHp.frequency.value = MOTOR_HP_HZ;
     motorHp.Q.value = 0.7;
     const camShelf = keep(ctx.createBiquadFilter());
     camShelf.type = 'lowshelf';
@@ -611,11 +626,21 @@ export class MotorAudio {
     lp1.Q.value = 0.7;
     const voiceGain = keep(ctx.createGain());
     voiceGain.gain.value = 0.0;
+    /* The once per turn tone, see THE BASS: a sine and its level, into the
+     * same lowpass, so the voice is still one gain to move. */
+    const sub = keep(ctx.createOscillator());
+    sub.type = 'sine';
+    sub.frequency.value = 40;
+    const subGain = keep(ctx.createGain());
+    subGain.gain.value = MOTOR_SUB_GAIN;
+    sub.connect(subGain);
+    subGain.connect(lp1);
     osc.connect(lp1);
     lp1.connect(voiceGain);
     voiceGain.connect(motorBus);
     osc.start();
-    this.voice = { osc, lp1, gain: voiceGain };
+    sub.start();
+    this.voice = { osc, sub, lp1, gain: voiceGain };
     /* `motors` stays a four entry list for anything that counts motors; all
      * four are the one voice. */
     for (let m = 0; m < 4; m += 1) {
@@ -1078,6 +1103,7 @@ export class MotorAudio {
        * the smoothing; lagging the sound behind the physics would be
        * latency, and it is not added. */
       v.osc.frequency.setTargetAtTime(hz, t, 0.012);
+      v.sub.frequency.setTargetAtTime(hz / BLADES, t, 0.012);
       let thr = (r - idle) / (full - idle);
       thr = thr < 0 ? 0 : thr > 1 ? 1 : thr;
       const track = MOTOR_LP_TRACK_LO + (MOTOR_LP_TRACK_HI - MOTOR_LP_TRACK_LO) * thr;

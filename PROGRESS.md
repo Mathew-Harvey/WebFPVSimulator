@@ -74194,3 +74194,17 @@ Clips: /mnt/project-files/motor-sound/2026-11-02-redraw/lap.mp3, lap-motors-only
 Checks this turn: `node scripts/music-selftest.js` all passed, `node --check` on both changed files, the probe renders above. Not run: `npm run verify` (no physics, plant, ABI or build change). Nobody has listened.
 
 Latency: lower than main, level with the last round. Per frame the update schedules three parameters for one voice (main: twelve for four), no allocation, no added smoothing on pitch. 32 nodes on the audio thread against main's 45. Checked by reading the diff and the probe's node count; proxies.
+
+#### More bass, high pass, more compression (same thread, PR 218)
+
+Mat 2026-11-02 14:01Z, after the redraw clips: "Better, add more bass to it high pass compression more".
+- Bass: at hover the blade pass is 435 Hz, so the 200 Hz shelf had nothing to lift except the idle tone. Added the once per turn tone a real motor makes from prop and bell imbalance: a sine at exactly a third of the blade pass (145 Hz at hover, 427 Hz wide open), set in the same call with the same 12 ms smoothing so the two stay locked and cannot beat, at 0.9 of the blade pass tone's level, through the voice's own lowpass and gain (`MOTOR_SUB_GAIN`). Two nodes (34).
+- High pass: the motor bus high pass stays at 60 Hz, now `MOTOR_HP_HZ`, so the new bass is body and nothing under it is rumble. At hover the new tone is 145 Hz, well above it; at idle (3,000 rpm, 50 Hz) it is mostly taken out, which keeps the ground idle from droning.
+- Compression: threshold -40 dB, ratio 6 (was -34 and 4), knee, attack, release and trim unchanged. Idle to wide open on steady renders: 10.2 dB with no compressor, 1.6 dB with it (last round 5.1).
+- Measured, motors alone: 3,000 rpm -26.7 dBFS, hover -25.8 (last round -28.0), wide open -25.1. Centroid at hover 227 Hz (last round 456), wide open 844 (1,289). On the `plant` lap the loudest third octave is now 126 Hz. Short term loudness range on the lap 1.0 dB (last round 3.6). Envelope modulation 2.7 percent at 0.5 Hz, which is the trace's punches; no beat.
+- Full mix on the lap -25.8 dBFS RMS, true peak -19.2 dBTP, no sample at full scale, A1 16.3 dB (needs 12). Whoop -26.8 dBFS at 30,000 rpm and -24.5 at 72,800.
+- Clips: /mnt/project-files/motor-sound/2026-11-02-more-bass/lap.mp3, lap-motors-only.mp3, punch-and-hold.mp3.
+
+Checks: `node scripts/music-selftest.js` all passed, `node --check`, the probe renders above. Not run: `npm run verify` (no physics, plant, ABI or build change). Nobody has listened.
+
+Latency: one more setTargetAtTime per frame, no allocation, no added pitch smoothing; two more nodes on the audio thread (34, main 45). Checked by reading the diff and the probe's node count; proxies.

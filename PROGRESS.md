@@ -74049,3 +74049,11 @@ Latency: none, same as above (constants only).
 - Checks this turn: `check:towers` all passed, `lint:quality` 71 of 71. Not run: `npm run verify` (no physics, plant, ABI or build change). Not flown.
 
 - The owner, 2026-11-02 04:43Z, in the thread "Soften sounds for ASMR listening": "Push to main". It covers the two commits of PR 216 (softer synthesised sounds, then the retune against the archive.org references) and the merge of main; no other change. Not flown yet by anyone but the owner from here.
+
+## 2026-11-02 | maps | Alps: the rock drawn in strata
+
+- The owner, 2026-11-02 07:47Z and 07:48Z, in the manga maps thread: "Push to main and keep going" and "Please keep going through all the maps". The rooftops (2511824) were already on main.
+- Survey of the mountain maps on High from 30 to 80 m: Hotaru reads well; the Alps' rock was one smooth grey wash on every face, the backdrop walls included; Momiji's far slopes are flat beige planes (next).
+- `paintAt` in `src/maps/alps/index.js` now lays a darker bed (`rockBed`) every 44 m of height on bare rock, tilted along the range and wobbled by the low noise. The first cut at 26 m with thin beds aliased into a dotted pattern on the 8 m lattice; at 44 m with beds about 18 m deep they read as layered stone.
+- Cost: vertex colours only, computed at load. The six survey views on High give identical draw calls and triangles to main. Nothing per frame.
+- Checks this turn: `check:alps` all passed. Not run: `npm run verify` (no physics, plant, ABI or build change). Not flown.

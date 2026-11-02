@@ -87,6 +87,7 @@ const PAINT = {
   scree: 0xc6c0c8,
   rock: 0xb4aeb6,
   rockDark: 0x9a93a5,
+  rockBed: 0x8a839b,
   snow: 0xf4f6fb,
   bed: 0x9ab3a8,
   shore: 0xd2c9b8,
@@ -140,6 +141,16 @@ function paintAt(out, h, ny, nz, x, z) {
   /* Rock where it is steep, and along the crest. */
   const rocky = Math.max(band(0.8, 0.7, ny), crest > 0.88 && up > 250 ? band(0.95, 0.88, ny) : 0);
   out.lerp(_b.setHex(ny < 0.55 ? PAINT.rockDark : PAINT.rock), rocky);
+  /* The strata: on bare rock, a darker bed every 44 m of height, tilted
+   * a little along the range and wobbled by the low noise, so a face
+   * reads as layered stone drawn in bands and not one grey plane. A
+   * bed is about 18 m deep, four or more lattice rows on a steep face,
+   * so it reads as a shape and not as a dotted line of vertices. Vertex colour only: nothing per frame. */
+  if (rocky > 0.3) {
+    const f = (h + x * 0.09 + n1 * 20) / 44;
+    const bed = band(0.45, 0.62, f - Math.floor(f)) * band(1.0, 0.85, f - Math.floor(f));
+    out.lerp(_b.setHex(PAINT.rockBed), bed * band(0.3, 0.7, rocky));
+  }
   /* The summer snow: the highest ground, and the north facing hollows
    * higher up, in patches. */
   const north = band(-0.1, -0.35, nz);

@@ -74144,3 +74144,18 @@ Mat 2026-11-02 11:38Z, after the first cut's clips: "remove the hiss and the wha
 Checks this turn: `node scripts/music-selftest.js` all passed, `node --check`, the probe renders above. Not run: `npm run verify` (no physics, plant, ABI or build change). Nobody has listened to this version.
 
 Latency: lower. Per frame the update now schedules three parameters for the motor voice instead of twelve plus two, with one Math.pow and no exp, no allocation. The audio thread runs 31 nodes instead of 45 on main. Two fewer buffers built at attach. Checked by reading the diff and the probe's node count; proxies.
+
+#### The cycle left in the lap was the wind loop (same thread, PR 218)
+
+Mat 2026-11-02 11:50Z: "in the lap after there is still a cyclical sound can you see it?". Split the 20 s `plant` lap into motors alone and wind alone and looked for repetition two ways, the envelope's modulation spectrum and the waveform's correlation with itself at long lags.
+- Wind: correlation 0.951 at 4.0 s and 0.968 at 8.0 s. The wind bed was one 4 s loop (the buffer this thread's first pass made, 2026-11-02, from a 1 s one), so the same whoosh came back every 4 s, in the sim as well as in the clip. Its seam crossfade was also wrong: the head was blended with the tail but the tail was still played, so the loop jumped from the last sample to one 20 ms short of it, a small step every 4 s.
+- Motors: no repetition (correlation under 0.08 at every lag). Their envelope does swell every 3.8 s, which is the `plant` trace's scripted punch, not the sim.
+- Fix: three wind loops of 4.7, 6.1 and 7.9 s summed at equal level (scale 1/sqrt 3), each built 20 ms long with the head crossfaded into the extra tail and the tail dropped, so every loop point is continuous. Wind alone now correlates at most 0.32 with itself at any lag from 1 to 12 s. Wind level -36.57 dBFS on the lap (was -36.07). Two more nodes (33). About 3.6 MB of samples built once at attach.
+- The `plant` trace's punch phase now wanders (1.3 rad at 0.37 rad/s) so the clip's punches do not land on a strict beat.
+- Full mix on the lap -26.0 dBFS, true peak -15.0 dBTP, A1 22.0 dB.
+
+Clips: lap-after-v3.mp3 (the lap) and punch-and-hold-v3.mp3 (two second spool up then held wide open) in /mnt/project-files/motor-sound/2026-11-02-real-quad-match/.
+
+Checks this turn: `node scripts/music-selftest.js`, `node --check`, the renders above. Not run: `npm run verify`. Nobody has listened.
+
+Latency: no change on the input or flight path; nothing per frame. Two more nodes on the audio thread (33, main 45) and a longer one time build at attach (about 900k samples of a one pole filter, a few ms, at the first gesture). Checked by reading the diff and the probe; proxies.

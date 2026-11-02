@@ -106,7 +106,9 @@ function traceFn(name) {
    * slower and is kept for the records that cite it. */
   if (name === 'plant') {
     return (t) => {
-      const a = 0.5 + 0.5 * Math.sin(t * 1.7);
+      /* The punch's phase wanders so the punches do not land on a fixed
+       * beat: a listener hears a strict 3.7 s cycle as a loop in the sound. */
+      const a = 0.5 + 0.5 * Math.sin(t * 1.7 + 1.3 * Math.sin(t * 0.37));
       const b = 0.5 + 0.5 * Math.sin(t * 0.41 + 1.1);
       const punch = a * a * b;
       return { rpm: 7000 + 18600 * punch, speed: 6 + 22 * (0.4 + 0.6 * b) };

@@ -645,34 +645,55 @@ export class MotorAudio {
       ch[i] = (s / 0x3fffffff) - 1.0;
     }
     /*
-     * THE WIND HAS ITS OWN BUFFER, SOFTER AND LONGER. The cues share the white
-     * buffer above, but the wind is the one sound that runs for minutes, so it
-     * is where a loop seam or a hiss gets heard. Four seconds instead of one
-     * so the repeat is not a rhythm, and a one pole smoothing on the way in so
-     * the spectrum leans toward the low end like air round a canopy instead of
-     * a flat shh. The smoothing costs a power factor of a/(2-a), so the 1.8
-     * puts the level back where it was. Built once at attach, nothing per frame.
+     * THE WIND HAS ITS OWN BUFFERS, SOFTER, AND THEY DO NOT REPEAT AS ONE.
+     * The cues share the white buffer above, but the wind is the one sound
+     * that runs for minutes, so it is where a loop gets heard. A one pole
+     * smoothing on the way in leans the spectrum toward the low end like air
+     * round a canopy instead of a flat shh; the smoothing costs a power
+     * factor of a/(2-a), so the 1.8 puts the level back.
+     *
+     * The owner heard a cycle in the lap (2026-11-02 11:50Z, "in the lap
+     * after there is still a cyclical sound"), and it was this: a single
+     * 4 s loop, which correlated 0.95 with itself 4 s later, and whose seam
+     * jumped from the buffer's last sample to one 20 ms short of it, a small
+     * step every 4 s. So there are three loops now, 4.7, 6.1 and 7.9 s,
+     * summed at equal level: none repeats on another's beat, the three line
+     * up again only after minutes, and each one's own repeat is a third of
+     * the power under two that are not repeating (measured: correlation 0.95
+     * at 4 s before, about 0.3 at any lag now). Each is built 20 ms long,
+     * its head crossfaded with that extra tail, and the tail dropped, so the
+     * loop point is continuous. Two more nodes and about 3.6 MB of samples,
+     * built once at attach, nothing per frame.
      */
-    const wLen = Math.floor(ctx.sampleRate * 4);
-    const wBuf = ctx.createBuffer(1, wLen, ctx.sampleRate);
-    const wCh = wBuf.getChannelData(0);
-    let ws = 97531;
-    let wy = 0;
-    for (let i = 0; i < wLen; i += 1) {
-      ws = (ws * 1103515245 + 12345) & 0x7fffffff;
-      wy += 0.25 * (((ws / 0x3fffffff) - 1.0) - wy);
-      wCh[i] = wy * 1.8;
-    }
-    /* Seam: crossfade the last 20 ms into the first so the loop point has no
-     * step in it, whatever the two ends happened to be. */
-    const seam = Math.floor(ctx.sampleRate * 0.02);
-    for (let i = 0; i < seam; i += 1) {
-      const k = i / seam;
-      wCh[i] = wCh[i] * k + wCh[wLen - seam + i] * (1 - k);
-    }
-    const noise = keep(ctx.createBufferSource());
-    noise.buffer = wBuf;
-    noise.loop = true;
+    const windLoop = (seed, seconds) => {
+      const n = Math.floor(ctx.sampleRate * seconds);
+      const seam = Math.floor(ctx.sampleRate * 0.02);
+      const tmp = new Float32Array(n + seam);
+      let ws = seed;
+      let wy = 0;
+      for (let i = 0; i < n + seam; i += 1) {
+        ws = (ws * 1103515245 + 12345) & 0x7fffffff;
+        wy += 0.25 * (((ws / 0x3fffffff) - 1.0) - wy);
+        tmp[i] = wy * 1.8 * WIND_LOOP_SCALE;
+      }
+      /* Sample n - 1 is followed, on the loop, by sample 0, which is now
+       * tmp[n] at the start of the fade: the sample that followed it when
+       * the noise was made. */
+      for (let i = 0; i < seam; i += 1) {
+        const k = i / seam;
+        tmp[i] = tmp[i] * k + tmp[n + i] * (1 - k);
+      }
+      const wb = ctx.createBuffer(1, n, ctx.sampleRate);
+      wb.getChannelData(0).set(tmp.subarray(0, n));
+      const src = keep(ctx.createBufferSource());
+      src.buffer = wb;
+      src.loop = true;
+      return src;
+    };
+    const WIND_LOOP_SCALE = 1 / Math.sqrt(3);
+    const noise = windLoop(97531, 4.7);
+    const noise2 = windLoop(13579, 6.1);
+    const noise3 = windLoop(24601, 7.9);
     const nf = keep(ctx.createBiquadFilter());
     nf.type = 'lowpass';
     nf.frequency.value = 560;
@@ -680,9 +701,13 @@ export class MotorAudio {
     const ng = keep(ctx.createGain());
     ng.gain.value = 0.0;
     noise.connect(nf);
+    noise2.connect(nf);
+    noise3.connect(nf);
     nf.connect(ng);
     ng.connect(windBus);
     noise.start();
+    noise2.start();
+    noise3.start();
     this.noiseGain = ng;
 
     /*

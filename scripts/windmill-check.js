@@ -522,7 +522,7 @@ function pushSails(sim, sails, f, step, st, boxes, used) {
 }
 
 /*
- * src/main.js sailVelocity, restated: the velocity pushSails seated on the
+ * src/main.js moverSurface for a sail, restated: the velocity pushSails seated on the
  * mover the report names, in the plant frame, for the crash bounce's surf.
  */
 const SURF = new Float64Array(3);

@@ -108,6 +108,72 @@ const BAR_THICK_MAX = 0.8;
 const BAR_CLEAR_MIN = 1.5;
 
 /*
+ * A DECK IS A BAR TOO, and leaving it out is why a powerloop under a bridge
+ * never counted.
+ *
+ * The pilot of bug-99b6fad9, 2026-11-01, on Hibari Yard: "if I powerloop
+ * under the crane it works, but the road bridge doesn't". Flown in Node
+ * through the real plant and the yard's own solids, the same loop is a
+ * Powerloop round the crane's counter jib and a 3/4 Flip round the
+ * footbridge, with no contact in either. The jib is a lattice of thin bars.
+ * The footbridge's deck is one box 20 m long, 0.75 m deep and 3 m across,
+ * and a bar has to be thin both ways across its length, so the deck was not
+ * an obstacle at all and there was nothing to wind around. The rule was
+ * never argued against decks: it was written for rails and railings, and the
+ * census in src/main.js (__colliderShapes) was brought into line with it on
+ * 2026-09-02 because its first draft miscounted a deck as thin.
+ *
+ * What makes something a powerloop object is that the craft can go all the
+ * way round it, and a deck with air under it is the commonest such thing in
+ * FPV. Winding is topological: a craft cannot pass through a slab, so a lap
+ * round its centre line is a lap round all of it, however wide it is, and
+ * a slab that is part of a building cannot be wound round at all. So a deck
+ * is a bar along its length that may be wider than a bar, up to
+ * DECK_WIDTH_MAX, which is the builder's widest bridge (the bridge's width
+ * limit in src/props/types.js); wider than that it is a floor or a roof.
+ * Its depth is held to a bar's, so a block is still a block.
+ */
+const DECK_WIDTH_MAX = 20;
+/*
+ * WHERE THE AIR UNDER A DECK IS ASKED, and why it is not where a bar's is.
+ *
+ * Both height functions a map hands this file (src/maps/built/place.js
+ * groundUnder, through PLATFORM_REACH, and the town's heightAt) answer with
+ * the highest top within 0.55 m OVER the height they are asked from, because
+ * that is a craft's step. Asked from a slab's own base, as a bar is, a slab
+ * thinner than that is its own ground: the builder's road bridge deck is
+ * 0.3 m, and it measured no air under itself at all. So a deck is asked from
+ * one step under its base, which is the highest top at or under the base,
+ * with a millimetre for a support whose top is exactly the base.
+ *
+ * And it is asked at nine points over the slab, not at its middle. A bridge
+ * stands on its piers and girders, and the middle of a bridge with one pier,
+ * or with an odd number of girders, is exactly over one of them: measured on
+ * the builder's road bridges, a 24 m span on one pier read no air at its
+ * middle at every width. Air under any of the nine is air a craft can fly
+ * under, and whether it then flew round is the winding's to say.
+ */
+const HEIGHT_STEP = 0.55;
+const DECK_TIE = 0.001;
+const DECK_SAMPLES = [0.25, 0.5, 0.75];
+
+/* Is there BAR_CLEAR_MIN of air under this slab anywhere over its plan? */
+function deckDaylight(groundAt, x0, z0, x1, z1, base) {
+  if (!groundAt) {
+    return base >= BAR_CLEAR_MIN;
+  }
+  for (const fx of DECK_SAMPLES) {
+    for (const fz of DECK_SAMPLES) {
+      const under = groundAt(x0 + (x1 - x0) * fx, z0 + (z1 - z0) * fz, base - HEIGHT_STEP + DECK_TIE);
+      if (base - under >= BAR_CLEAR_MIN) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/*
  * How far from the axis still counts as flying THIS obstacle.
  *
  * MEASURED, not guessed. A powerloop flown on the real aircraft at a
@@ -172,7 +238,7 @@ const SAME_LINE_DIST = 0.75;
 
 /* One obstacle: a line segment with a kind. Plain fields, built once. */
 class Obstacle {
-  constructor(kind, cx, cy, cz, dx, dy, dz, half, id) {
+  constructor(kind, cx, cy, cz, dx, dy, dz, half, id, wide = 0) {
     this.kind = kind;
     /* Centre of the axis. */
     this.cx = cx;
@@ -185,6 +251,13 @@ class Obstacle {
     /* Half length along the axis. */
     this.half = half;
     this.id = id;
+    /*
+     * Half its width across the axis: 0 for a pole or a bar, which are
+     * lines, and half the slab for a deck. The reach is measured from the
+     * deck's edge, so a craft beside a 20 m bridge is engaged as far out
+     * as one beside a rail is.
+     */
+    this.wide = wide;
   }
 }
 
@@ -202,8 +275,8 @@ export class ObstacleField {
     this.grid = null;
   }
 
-  add(kind, cx, cy, cz, dx, dy, dz, half) {
-    this.items.push(new Obstacle(kind, cx, cy, cz, dx, dy, dz, half, this.items.length));
+  add(kind, cx, cy, cz, dx, dy, dz, half, wide = 0) {
+    this.items.push(new Obstacle(kind, cx, cy, cz, dx, dy, dz, half, this.items.length, wide));
     return this;
   }
 
@@ -227,8 +300,8 @@ export class ObstacleField {
     for (const o of this.items) {
       /* The footprint is the reach, widened along whichever way the axis
        * lies: a 17 m rail has to be findable from either end of itself. */
-      const rx = REACH[o.kind] + Math.abs(o.dx) * o.half;
-      const rz = REACH[o.kind] + Math.abs(o.dz) * o.half;
+      const rx = REACH[o.kind] + o.wide + Math.abs(o.dx) * o.half;
+      const rz = REACH[o.kind] + o.wide + Math.abs(o.dz) * o.half;
       const x0 = Math.floor((o.cx - rx) / this.cell);
       const x1 = Math.floor((o.cx + rx) / this.cell);
       const z0 = Math.floor((o.cz - rz) / this.cell);
@@ -297,7 +370,7 @@ export class ObstacleField {
       const py = ry - o.dy * along;
       const pz = rz - o.dz * along;
       const d2 = px * px + py * py + pz * pz;
-      const reach = REACH[o.kind];
+      const reach = REACH[o.kind] + o.wide;
       if (d2 > reach * reach) {
         continue;
       }
@@ -350,7 +423,7 @@ export class ObstacleField {
       const py = ry - o.dy * along;
       const pz = rz - o.dz * along;
       const d2 = px * px + py * py + pz * pz;
-      const reach = REACH[o.kind];
+      const reach = REACH[o.kind] + o.wide;
       if (d2 > reach * reach) {
         continue;
       }
@@ -554,12 +627,35 @@ export function deriveObstacles(colliders, groundAt) {
     const y0 = Math.max(colliders.fay[i], ground);
     const y1 = colliders.fby[i];
     const h = y1 - y0;
+    const foot = w > d ? w : d;
+    const thin = w > d ? d : w;
+
+    /*
+     * A deck: long one way, wider than a bar the other, as shallow as a bar,
+     * with air under it. See DECK_WIDTH_MAX. Its sizes are the box's own and
+     * not the clamped ones, because the clamp is for walls that reach
+     * underground and a slab with air under it does not. Ahead of the clamp's
+     * `continue` for the same reason: a deck thinner than a step is its own
+     * ground from its base, so h above reads about nothing for every one.
+     *
+     * It cannot be a pole (it is 2 m long) or a bar (it is wider than one),
+     * so every box either test took before is taken exactly as it was.
+     */
+    const slab = y1 - colliders.fay[i];
+    if (foot >= BAR_LEN_MIN && thin > BAR_THICK_MAX && thin <= DECK_WIDTH_MAX
+      && slab <= BAR_THICK_MAX
+      && deckDaylight(groundAt, x0, z0, x1, z1, colliders.fay[i])) {
+      const alongX = w > d;
+      field.add(
+        OB_BAR, cx, (colliders.fay[i] + y1) * 0.5, cz,
+        alongX ? 1 : 0, 0, alongX ? 0 : 1,
+        foot * 0.5, thin * 0.5,
+      );
+      continue;
+    }
     if (h <= 0) {
       continue;
     }
-
-    const foot = w > d ? w : d;
-    const thin = w > d ? d : w;
 
     /* A pole: thin footprint, tall, standing on the ground. */
     if (foot <= POLE_FOOT_MAX && h >= POLE_HEIGHT_MIN) {

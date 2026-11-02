@@ -84,7 +84,7 @@ import { buildGhostCraft } from './render/ghostcraft.js';
 import { buildPropView } from './render/propview.js';
 import { warmPrograms } from './render/warm.js';
 import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './share/ghostdata.js';
-import { uploadWorld, setWorldFrame, setMover, setBoxHeight, kindOf, setVehicleClock, readVehicles, makeVehiclePoses, moverVelocityInPlant } from './game/plantworld.js';
+import { uploadWorld, setWorldFrame, setMover, setBoxHeight, kindOf, setVehicleClock, readVehicles, makeVehiclePoses, moverVelocityInPlant, vehicleSurfaceInPlant } from './game/plantworld.js';
 import { Chase, CHASE_EVERY, pays } from './game/chase.js';
 import { sincos } from './props/trig.js';
 import { setCraftAirframe, CRAFT_R, CRAFT_WORLD_R, CRAFT_V_UP, CRAFT_V_DOWN, craftVerticalHalf, craftVerticalOffset, canPerch, heldStill, STUCK_SPEED, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, TURTLE_EXIT_UPZ, turtleClearance, findRestSpot, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, CLIP_SPAWN_GRACE_MS, CrashJudge, putDullBounce, emptyWorldReport, foldWorldReport } from './game/collide.js';
@@ -6698,26 +6698,40 @@ export async function boot({ loading, bootStart, mapId }) {
   /* The crash step's bounce, or a knock's: see above and putDullBounce.
    * Returns the state the step now leaves. */
   function applyDullBounce(kind, before, after, rep, knock) {
-    putDullBounce(sim, kind, before, after, rep, nSim.x, nSim.y, nSim.z, frameTurn.c, frameTurn.s, dullOut, knock, sailVelocity(rep[3]));
+    putDullBounce(sim, kind, before, after, rep, nSim.x, nSim.y, nSim.z, frameTurn.c, frameTurn.s, dullOut, knock, moverSurface(rep[3]));
     return readState();
   }
   /*
-   * A windmill's sail is met at its own speed (dullBounce's surf): the
-   * velocity pushSails seated on the mover the report names, -2 - m, in the
-   * plant frame, turned by frameTurn as the normal is. Null for anything
-   * that is not a sail seated this step.
+   * A FACE THAT MOVES IS MET AT ITS OWN SPEED (dullBounce's surf), for the
+   * mover the report names, -2 - m, in the plant frame, turned by frameTurn
+   * as the normal is. Null for a solid that stands still.
+   *
+   * A windmill's sail: the velocity pushSails seated on it this step.
+   *
+   * A road car, since bug-3e12c7a9 ("got hit by cars, and dragged along the
+   * road with no escape"): the module's own surface velocity where the craft
+   * touched it in the step just taken (vehicleSurfaceInPlant in
+   * src/game/plantworld.js). Without it a car was a still wall to the
+   * bounce, so the craft left its bonnet at a walking pace, the car drove
+   * into it again on the next step, and the next, each one a crash that took
+   * the spin off: the craft rode the car's front at the car's speed and could
+   * not be flown off it. scripts/cartrap-check.js flies it on Hibari Yard.
    */
   const sailSurf = new Float64Array(3);
-  function sailVelocity(idx) {
-    if (!sails || !(idx <= -2)) {
+  const carSurf = new Float64Array(3);
+  function moverSurface(idx) {
+    if (!(idx <= -2)) {
       return null;
     }
-    const k = -2 - idx - sails.base;
-    if (k < 0 || k >= sailsUsed) {
-      return null;
+    const m = -2 - idx;
+    if (sails) {
+      const k = m - sails.base;
+      if (k >= 0 && k < sailsUsed) {
+        const o = k * sails.doubles;
+        return moverVelocityInPlant(sailBoxes[o + 6], sailBoxes[o + 7], sailBoxes[o + 8], frameTurn.c, frameTurn.s, sailSurf);
+      }
     }
-    const o = k * sails.doubles;
-    return moverVelocityInPlant(sailBoxes[o + 6], sailBoxes[o + 7], sailBoxes[o + 8], frameTurn.c, frameTurn.s, sailSurf);
+    return trafficOn ? vehicleSurfaceInPlant(sim, m, frameTurn.c, frameTurn.s, carSurf) : null;
   }
   function crashBounceTick() {
     if (!crashSeen) {
@@ -14497,7 +14511,7 @@ export async function boot({ loading, bootStart, mapId }) {
   window.__colliderShapes = (opts = {}) => {
     const c = view.colliders;
     const out = {
-      total: 0, boxes: 0, capsules: 0, byKind: {}, poles: 0, bars: 0, near: [], barList: [],
+      total: 0, boxes: 0, capsules: 0, byKind: {}, poles: 0, bars: 0, decks: 0, near: [], barList: [],
     };
     if (!c || !c.fbox) {
       return out;
@@ -14516,6 +14530,7 @@ export async function boot({ loading, bootStart, mapId }) {
       let thick;
       let upright;
       let lowY;
+      let deckShaped = false;
       if (box) {
         /*
          * MIRRORS deriveObstacles' box branch exactly, and the first draft
@@ -14541,6 +14556,24 @@ export async function boot({ loading, bootStart, mapId }) {
           /* Both cross sections, not the smaller of them. */
           thick = thin > h ? thin : h;
           upright = 0;
+        }
+        /*
+         * A DECK, deriveObstacles' third shape (bug-99b6fad9, 2026-11-02): a
+         * slab up to 20 m across, as shallow as a bar, with 1.5 m of air
+         * under it at any of nine points over its plan, asked from a step
+         * under its base so a slab thinner than a step is not its own
+         * ground. Restated, as the two tests below are.
+         */
+        if (foot >= 2 && thin > 0.8 && thin <= 20 && h <= 0.8) {
+          for (const fx of [0.25, 0.5, 0.75]) {
+            for (const fz of [0.25, 0.5, 0.75]) {
+              const x = c.fax[i] + (c.fbx[i] - c.fax[i]) * fx;
+              const z = c.faz[i] + (c.fbz[i] - c.faz[i]) * fz;
+              if (lowY - view.height(x, z, lowY - 0.55 + 0.001) >= 1.5) {
+                deckShaped = true;
+              }
+            }
+          }
         }
       } else {
         const ex = c.fbx[i] - c.fax[i];
@@ -14578,6 +14611,8 @@ export async function boot({ loading, bootStart, mapId }) {
             r: +c.fr[i].toFixed(2),
           });
         }
+      } else if (deckShaped) {
+        out.decks += 1;
       } else if (out.near.length < limit && upright <= 0.3 && len >= 2) {
         /* Horizontal and long, so it wanted to be a bar. Say why it is not. */
         out.near.push({

@@ -586,13 +586,39 @@ export class MotorAudio {
       s = (s * 1103515245 + 12345) & 0x7fffffff;
       ch[i] = (s / 0x3fffffff) - 1.0;
     }
+    /*
+     * THE WIND HAS ITS OWN BUFFER, SOFTER AND LONGER. The cues share the white
+     * buffer above, but the wind is the one sound that runs for minutes, so it
+     * is where a loop seam or a hiss gets heard. Four seconds instead of one
+     * so the repeat is not a rhythm, and a one pole smoothing on the way in so
+     * the spectrum leans toward the low end like air round a canopy instead of
+     * a flat shh. The smoothing costs a power factor of a/(2-a), so the 1.8
+     * puts the level back where it was. Built once at attach, nothing per frame.
+     */
+    const wLen = Math.floor(ctx.sampleRate * 4);
+    const wBuf = ctx.createBuffer(1, wLen, ctx.sampleRate);
+    const wCh = wBuf.getChannelData(0);
+    let ws = 97531;
+    let wy = 0;
+    for (let i = 0; i < wLen; i += 1) {
+      ws = (ws * 1103515245 + 12345) & 0x7fffffff;
+      wy += 0.25 * (((ws / 0x3fffffff) - 1.0) - wy);
+      wCh[i] = wy * 1.8;
+    }
+    /* Seam: crossfade the last 20 ms into the first so the loop point has no
+     * step in it, whatever the two ends happened to be. */
+    const seam = Math.floor(ctx.sampleRate * 0.02);
+    for (let i = 0; i < seam; i += 1) {
+      const k = i / seam;
+      wCh[i] = wCh[i] * k + wCh[wLen - seam + i] * (1 - k);
+    }
     const noise = keep(ctx.createBufferSource());
-    noise.buffer = buf;
+    noise.buffer = wBuf;
     noise.loop = true;
     const nf = keep(ctx.createBiquadFilter());
     nf.type = 'lowpass';
-    nf.frequency.value = 900;
-    nf.Q.value = 0.6;
+    nf.frequency.value = 700;
+    nf.Q.value = 0.5;
     const ng = keep(ctx.createGain());
     ng.gain.value = 0.0;
     noise.connect(nf);
@@ -640,7 +666,7 @@ export class MotorAudio {
      * a cue the player has turned down is a cue that costs them a race.
      */
     const cueOsc = keep(ctx.createOscillator());
-    cueOsc.type = 'triangle';
+    cueOsc.type = 'sine';
     cueOsc.frequency.value = 880;
     const cueGain = keep(ctx.createGain());
     cueGain.gain.value = 0;
@@ -729,16 +755,16 @@ export class MotorAudio {
        * level itself. The soft clip and MASTER_CEILING bound what this can do
        * to the true peak.
        */
-      g.exponentialRampToValueAtTime(3.0 * lv * fx, t + 0.012);
-      g.exponentialRampToValueAtTime(0.0001, t + 0.45);
+      g.exponentialRampToValueAtTime(2.3 * lv * fx, t + 0.024);
+      g.exponentialRampToValueAtTime(0.0001, t + 0.6);
       const f = this.crashLp.frequency;
       f.cancelScheduledValues(t);
       /* A thud, not a smack: the noise starts under 600 Hz and falls to 70, so
        * nothing above the motors' own band reaches the ear, and a harder hit
        * still opens the filter further and rings longer. The body is the
        * pooled cue oscillator dropped from 110 to 45 Hz, which is the weight. */
-      f.setValueAtTime(320 + 280 * lv, t);
-      f.exponentialRampToValueAtTime(70, t + 0.4);
+      f.setValueAtTime(240 + 200 * lv, t);
+      f.exponentialRampToValueAtTime(65, t + 0.5);
       const bf = this.cueOsc.frequency;
       bf.cancelScheduledValues(t);
       bf.setValueAtTime(110, t);
@@ -746,8 +772,8 @@ export class MotorAudio {
       const bg = this.cueGain.gain;
       bg.cancelScheduledValues(t);
       bg.setValueAtTime(0.0001, t);
-      bg.exponentialRampToValueAtTime(1.1 * lv * fx, t + 0.008);
-      bg.exponentialRampToValueAtTime(0.0001, t + 0.34);
+      bg.exponentialRampToValueAtTime(0.9 * lv * fx, t + 0.014);
+      bg.exponentialRampToValueAtTime(0.0001, t + 0.42);
       /* The click cues lean on this filter's Q, so a crash states its own
        * rather than inheriting whatever the last click left. */
       this.crashLp.Q.cancelScheduledValues(t);
@@ -768,52 +794,52 @@ export class MotorAudio {
        * a half down with a duller filter: unmistakably the same family,
        * unmistakably not the reward.
        *
-       * The click's energy sits between 2 and 5 kHz where the motors (capped
-       * at 1 kHz) and the wind (lowpassed at 900 Hz) have nothing, which is
+       * The click energy sits between 1 and 3 kHz, softened from 2 to 5 kHz, where the motors (capped
+       * at 1 kHz) and the wind (lowpassed at 700 Hz) have nothing, which is
        * why it reads through a full throttle mix with a LIGHTER duck than
        * the old blip needed.
        */
       const gate = kind === 'gate';
       const nf = this.crashLp.frequency;
       nf.cancelScheduledValues(t);
-      nf.setValueAtTime(gate ? 4200 : 900, t);
+      nf.setValueAtTime(gate ? 2600 : 700, t);
       this.crashLp.Q.cancelScheduledValues(t);
-      this.crashLp.Q.setValueAtTime(gate ? 1.6 : 0.8, t);
+      this.crashLp.Q.setValueAtTime(gate ? 0.9 : 0.7, t);
       const ng = this.crashGain.gain;
       ng.cancelScheduledValues(t);
       ng.setValueAtTime(0.0001, t);
-      ng.exponentialRampToValueAtTime((gate ? 1.35 : 1.1) * (gate ? 1 : lv) * fx, t + 0.002);
-      ng.exponentialRampToValueAtTime(0.0001, t + (gate ? 0.045 : 0.11));
+      ng.exponentialRampToValueAtTime((gate ? 0.9 : 0.8) * (gate ? 1 : lv) * fx, t + 0.005);
+      ng.exponentialRampToValueAtTime(0.0001, t + (gate ? 0.07 : 0.13));
       const f = this.cueOsc.frequency;
       f.cancelScheduledValues(t);
-      f.setValueAtTime(gate ? 1500 : 300, t);
-      f.exponentialRampToValueAtTime(gate ? 720 : 170, t + (gate ? 0.03 : 0.06));
+      f.setValueAtTime(gate ? 1100 : 260, t);
+      f.exponentialRampToValueAtTime(gate ? 560 : 150, t + (gate ? 0.04 : 0.07));
       const g = this.cueGain.gain;
       g.cancelScheduledValues(t);
       g.setValueAtTime(0.0001, t);
-      g.exponentialRampToValueAtTime((gate ? 0.75 : 0.6) * (gate ? 1 : lv) * fx, t + 0.003);
-      g.exponentialRampToValueAtTime(0.0001, t + (gate ? 0.075 : 0.12));
+      g.exponentialRampToValueAtTime((gate ? 0.55 : 0.5) * (gate ? 1 : lv) * fx, t + 0.006);
+      g.exponentialRampToValueAtTime(0.0001, t + (gate ? 0.13 : 0.15));
       this.duckFlight(t, gate ? 0.55 : 0.5, gate ? 0.22 : 0.3);
       this.music.duckNow(t, gate ? 0.5 : 0.45, gate ? 0.25 : 0.3);
       return;
     }
     /* The blips. A landing is a low settle, a takeoff is a rising pair. */
-    let hz = 620;
-    let dur = 0.14;
+    let hz = 560;
+    let dur = 0.2;
     if (kind === 'land') {
-      hz = 400;
-      dur = 0.16;
+      hz = 330;
+      dur = 0.24;
     }
     const f = this.cueOsc.frequency;
     f.cancelScheduledValues(t);
     f.setValueAtTime(hz, t);
     if (kind === 'takeoff') {
-      f.exponentialRampToValueAtTime(hz * 1.6, t + dur);
+      f.exponentialRampToValueAtTime(hz * 1.5, t + dur);
     }
     const g = this.cueGain.gain;
     g.cancelScheduledValues(t);
     g.setValueAtTime(0.0001, t);
-    g.exponentialRampToValueAtTime(0.62 * fx, t + 0.004);
+    g.exponentialRampToValueAtTime(0.45 * fx, t + 0.014);
     g.exponentialRampToValueAtTime(0.0001, t + dur);
     this.duckFlight(t, 0.66, 0.26);
     this.music.duckNow(t, 0.6, 0.3);
@@ -832,44 +858,44 @@ export class MotorAudio {
       return;
     }
     const t = this.ctx.currentTime;
-    let oscHz = 1900;
+    let oscHz = 1500;
     let oscTo = 0;
-    let oscPeak = 0.085;
-    let oscDur = 0.030;
-    let nHz = 5200;
-    let nPeak = 0.10;
-    let nDur = 0.016;
+    let oscPeak = 0.075;
+    let oscDur = 0.040;
+    let nHz = 3000;
+    let nPeak = 0.07;
+    let nDur = 0.022;
     if (kind === 'select') {
-      oscHz = 1350;
-      oscTo = 850;
-      oscPeak = 0.16;
-      oscDur = 0.055;
-      nHz = 4400;
-      nPeak = 0.18;
-      nDur = 0.028;
-    } else if (kind === 'adjust') {
-      oscHz = 2100;
-      oscPeak = 0.10;
-      oscDur = 0.035;
-      nPeak = 0.12;
-      nDur = 0.018;
-    } else if (kind === 'back') {
-      oscHz = 950;
+      oscHz = 1100;
       oscTo = 700;
-      oscPeak = 0.12;
-      oscDur = 0.05;
-      nHz = 3400;
-      nDur = 0.022;
+      oscPeak = 0.14;
+      oscDur = 0.07;
+      nHz = 2600;
+      nPeak = 0.11;
+      nDur = 0.034;
+    } else if (kind === 'adjust') {
+      oscHz = 1650;
+      oscPeak = 0.09;
+      oscDur = 0.045;
+      nPeak = 0.08;
+      nDur = 0.024;
+    } else if (kind === 'back') {
+      oscHz = 800;
+      oscTo = 600;
+      oscPeak = 0.10;
+      oscDur = 0.06;
+      nHz = 2200;
+      nDur = 0.028;
     }
     const nf = this.crashLp.frequency;
     nf.cancelScheduledValues(t);
     nf.setValueAtTime(nHz, t);
     this.crashLp.Q.cancelScheduledValues(t);
-    this.crashLp.Q.setValueAtTime(1.3, t);
+    this.crashLp.Q.setValueAtTime(0.8, t);
     const ng = this.crashGain.gain;
     ng.cancelScheduledValues(t);
     ng.setValueAtTime(0.0001, t);
-    ng.exponentialRampToValueAtTime(nPeak * fx, t + 0.0015);
+    ng.exponentialRampToValueAtTime(nPeak * fx, t + 0.004);
     ng.exponentialRampToValueAtTime(0.0001, t + nDur);
     const f = this.cueOsc.frequency;
     f.cancelScheduledValues(t);
@@ -880,7 +906,7 @@ export class MotorAudio {
     const g = this.cueGain.gain;
     g.cancelScheduledValues(t);
     g.setValueAtTime(0.0001, t);
-    g.exponentialRampToValueAtTime(oscPeak * fx, t + 0.002);
+    g.exponentialRampToValueAtTime(oscPeak * fx, t + 0.005);
     g.exponentialRampToValueAtTime(0.0001, t + oscDur);
   }
 

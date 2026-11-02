@@ -74011,3 +74011,20 @@ Left: `check:firstflight` C fails on main too (base run here) and passed on this
 Latency: none. The HUD toggles one class when the craft lands or lifts, nothing per frame. Checked by reading the frame path. Not flown.
 
 Mat, 2026-11-02 01:15Z: "Push all changes to main". Board (PR 65) went first as d39f60c, then this (PR 215), merged with main's 9fc70a02 and 798155ad; only PROGRESS.md met.
+
+### 2026-11-02: Softer, warmer synthesised sounds (thread "Make every sound ASMR pleasing")
+
+Mat 2026-11-02 01:36Z: "All sounds need to be optimised for asmr listening pleasure". Every synthesised sound lives in `src/render/audio.js`; the recorded music and the Bardwell and Nick voice clips are untouched.
+
+Changed, all constants and envelopes on the voices that already existed:
+- The pooled cue oscillator is a sine, not a triangle: no upper partials in a gate, a landing or a menu tap.
+- Gate click: noise corner 4200 to 2600 Hz, Q 1.6 to 0.9, tick 1500 to 1100 Hz falling, attack 2 to 5 ms, tail 45 to 70 ms. Frame graze the same family, duller and lower.
+- Crash: thump noise opens at 240 to 440 Hz (was 320 to 600), attack 12 to 24 ms, tail 0.45 to 0.6 s, peak 3.0 to 2.3. The weight is the same, the smack is gone.
+- Landing and take off: 400 and 620 Hz down to 330 and 560 Hz, attack 4 to 14 ms, longer and a little quieter (peak 0.62 to 0.45).
+- Menu taps: noise corners about 2 kHz lower, attacks 1.5 and 2 ms to 4 and 5 ms, so a tap is a soft tock and not a tick.
+- Wind: its own 4 s buffer (was the shared 1 s white one), one pole smoothed so it leans low, 20 ms seam crossfade, lowpass 900 to 700 Hz.
+- Motors untouched: blade pass pitch, per motor lowpass and the GoPro register are as set on 2026-10-17.
+
+Measured offline with `scripts/audio-probe.js` (proxies, nobody has listened): cue true peaks before and after, gate -6.3 to -6.4, graze -7.3 to -7.4, crash -5.8 to -6.2, land -7.6 to -9.7, take off -7.7 to -9.2 dBTP. Flight trace RMS -30.25 to -29.73 dBFS, A1 margin 16.6 to 20.4 dB (needs 12). Not run: `npm run verify` (no physics, plant, ABI or build change); no browser run.
+
+Latency: none. No node added, no per frame work, the only new allocation is one 4 s buffer at attach time (about 770 kB, built once). Checked by reading the diff and the probe's node count.

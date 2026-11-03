@@ -60,19 +60,81 @@ const WRAP = 600;
  * and teal and gold, denim, red, violet, grey. */
 const SHIRTS = [0x24222c, 0xf2efe8, 0xf0508c, 0x2ec4c0, 0xf2b632, 0x3f5f9a, 0xe0483c, 0x7a4cc8, 0x9a98a4]
   .map((c) => new THREE.Color(c));
-const SKIN = [new THREE.Color(0xebc6a2), new THREE.Color(0xd8a882), new THREE.Color(0xb98a68)];
+/* The skin, the lightest and the darkest of the crowd's: every person is
+ * somewhere between, by their own number, so the mix is per person and not
+ * per band. */
+const SKIN_LIGHT = new THREE.Color(0xf0cfae);
+const SKIN_DARK = new THREE.Color(0x9a6a4c);
 const HAIR = new THREE.Color(0x2a2430);
+const HAIR_BROWN = new THREE.Color(0x5e3c2c);
+const HAIR_FAIR = new THREE.Color(0xd9b46a);
+const HAIR_PINK = new THREE.Color(0xf27ab0);
+const HAIR_TEAL = new THREE.Color(0x3cc8c0);
 const LEGS = new THREE.Color(0x2f3446);
+const EYES = new THREE.Color(0x1a1620);
+const WHITE = new THREE.Color(1, 1, 1);
+
+/* How close a person is drawn in their near build, in metres from the
+ * camera to their feet. Inside it the crowd is the round one with faces
+ * and fists; outside it the far one, which from there is a few pixels and
+ * reads the same. */
+const NEAR_R = 16;
 
 /*
- * One person, facing +x, feet at the origin, as an indexed mesh with
- * smooth normals: a body lathed round an ellipse (legs, waist, shoulders,
- * neck), a head of two fans round one ring, the hair the top fan's colour,
- * and two arms raised in a V. aMask says what each vertex is: 0 legs, skin
- * or hair (kept), 1 shirt (tinted per person), 2 an arm (folded away for a
- * person whose arms are down).
+ * The three builds of one person, facing +x, feet at the origin, each an
+ * indexed mesh with smooth normals, in the manga's own proportions: short
+ * legs, a round body, a big round head, so a crowd of them reads as a page
+ * of a comic and not as a field of posts.
+ *
+ *   near  six sided, a head of three rings with hair over the crown and
+ *         two eyes, arms with fists. 100 triangles.
+ *   far   four sided, a head of two rings, flat arms. 40 triangles.
+ *   low   four sided, a head of one ring, no arms. 24 triangles.
+ *
+ * aMask says what each vertex is: 0 kept as drawn (legs, hair, eyes), 1 the
+ * shirt (tinted per person), 2 an arm (a sleeve below the elbow's height and
+ * skin above it, swung down to the side for a person whose arms are down),
+ * 3 skin (toned per person), 4 hair (black, brown, fair or dyed, per
+ * person).
  */
-function personGeometry(sides, arms = true) {
+const BUILDS = {
+  near: {
+    sides: 6,
+    legs: [[0.0, 0.09, 0.12], [0.74, 0.13, 0.17]],
+    shirt: [[0.74, 0.14, 0.18], [1.08, 0.16, 0.22], [1.26, 0.1, 0.15]],
+    chin: 1.3,
+    head: [[1.36, 0.12, 0.11, 'jaw'], [1.5, 0.17, 0.16, 'face'], [1.65, 0.145, 0.135, 'hair']],
+    crown: 1.75,
+    arm: { sides: 4, r: 0.05, fist: true },
+    eyes: true,
+  },
+  far: {
+    sides: 4,
+    legs: [[0.0, 0.1, 0.13], [0.74, 0.14, 0.18]],
+    shirt: [[0.74, 0.15, 0.19], [1.26, 0.12, 0.18]],
+    chin: 1.3,
+    head: [[1.44, 0.16, 0.15, 'face'], [1.62, 0.14, 0.13, 'hair']],
+    crown: 1.74,
+    arm: { sides: 2, r: 0.06, fist: false },
+    eyes: false,
+  },
+  low: {
+    sides: 4,
+    legs: [[0.0, 0.1, 0.13], [0.74, 0.14, 0.18]],
+    shirt: [[0.74, 0.15, 0.19], [1.26, 0.12, 0.18]],
+    chin: 1.3,
+    head: [[1.52, 0.16, 0.15, 'face']],
+    crown: 1.74,
+    arm: null,
+    eyes: false,
+  },
+};
+
+/* Where an arm starts and, raised, where its hand is. */
+const SHOULDER = [0, 1.22, 0.19];
+const HAND = [0.08, 1.9, 0.36];
+
+function personGeometry(B) {
   const pos = [];
   const col = [];
   const mask = [];
@@ -83,64 +145,110 @@ function personGeometry(sides, arms = true) {
     mask.push(m);
     return pos.length / 3 - 1;
   };
-  const shirt = new THREE.Color(1, 1, 1);
-  const ring = (y, rx, rz, c, m) => {
+  const n = B.sides;
+  /* Turned half a side, so a four sided body shows a corner to the stage
+   * and not a flat board. */
+  const turn = Math.PI / n;
+  const ring = (y, rx, rz, pick) => {
     const out = [];
-    for (let i = 0; i < sides; i += 1) {
-      const a = (i / sides) * Math.PI * 2;
+    for (let i = 0; i < n; i += 1) {
+      const a = turn + (i / n) * Math.PI * 2;
+      const [c, m] = pick(Math.cos(a));
       out.push(add(Math.cos(a) * rx, y, Math.sin(a) * rz, c, m));
     }
     return out;
   };
   const band = (a, b) => {
-    for (let i = 0; i < sides; i += 1) {
-      const j = (i + 1) % sides;
+    for (let i = 0; i < n; i += 1) {
+      const j = (i + 1) % n;
       idx.push(a[i], b[i], b[j], a[i], b[j], a[j]);
     }
   };
-  /* The legs, feet to hips; the shirt, hips to shoulders, on its own
-   * vertices so the colour changes at the belt without a band for it; the
-   * shoulders closed by a fan up to the neck. */
-  band(ring(0.0, 0.1, 0.13, LEGS, 0), ring(0.88, 0.12, 0.17, LEGS, 0));
-  const top = ring(1.38, 0.12, 0.22, shirt, 1);
-  band(ring(0.88, 0.12, 0.17, shirt, 1), top);
-  const neck = add(0, 1.5, 0, shirt, 1);
-  for (let i = 0; i < sides; i += 1) {
-    idx.push(neck, top[(i + 1) % sides], top[i]);
-  }
-  /* The head: a ring at the cheeks, the chin below, the crown above. */
-  const hs = sides;
-  const chin = add(0.01, 1.5, 0, SKIN[0], 0);
-  const crown = add(-0.01, 1.78, 0, HAIR, 0);
-  const cheeks = [];
-  for (let i = 0; i < hs; i += 1) {
-    const a = (i / hs) * Math.PI * 2;
-    /* The face side is skin, the back of the head hair. */
-    const c = Math.cos(a) > 0.2 ? SKIN[0] : HAIR;
-    cheeks.push(add(Math.cos(a) * 0.105, 1.66, Math.sin(a) * 0.1, c, 0));
-  }
-  for (let i = 0; i < hs; i += 1) {
-    const j = (i + 1) % hs;
-    idx.push(chin, cheeks[i], cheeks[j]);
-    idx.push(crown, cheeks[j], cheeks[i]);
-  }
-  /* The arms: each a three sided prism from the shoulder up and out. Low
-   * leaves them off: a raised arm is two pixels from a drone. */
-  for (const s of arms ? [-1, 1] : []) {
-    const a0 = [0, 1.36, s * 0.2];
-    const a1 = [0.08, 2.02, s * 0.36];
-    const ring0 = [];
-    const ring1 = [];
-    for (let i = 0; i < 3; i += 1) {
-      const t = (i / 3) * Math.PI * 2;
-      const ox = Math.cos(t) * 0.045;
-      const oz = Math.sin(t) * 0.045;
-      ring0.push(add(a0[0] + ox, a0[1], a0[2] + oz, shirt, 2));
-      ring1.push(add(a1[0] + ox, a1[1], a1[2] + oz, SKIN[0], 2));
+  const fan = (tip, r, up) => {
+    for (let i = 0; i < n; i += 1) {
+      const j = (i + 1) % n;
+      if (up) {
+        idx.push(tip, r[j], r[i]);
+      } else {
+        idx.push(tip, r[i], r[j]);
+      }
     }
-    for (let i = 0; i < 3; i += 1) {
-      const j = (i + 1) % 3;
-      idx.push(ring0[i], ring1[i], ring1[j], ring0[i], ring1[j], ring0[j]);
+  };
+  const legs = () => [LEGS, 0];
+  const shirt = () => [WHITE, 1];
+  /* The legs, feet to hips; the shirt on its own vertices from the hips,
+   * so the colour changes at the belt without a band for it. The head
+   * covers the shoulders' opening. */
+  let prev = null;
+  for (const [y, rx, rz] of B.legs) {
+    const r = ring(y, rx, rz, legs);
+    if (prev) {
+      band(prev, r);
+    }
+    prev = r;
+  }
+  prev = null;
+  for (const [y, rx, rz] of B.shirt) {
+    const r = ring(y, rx, rz, shirt);
+    if (prev) {
+      band(prev, r);
+    }
+    prev = r;
+  }
+  /* The head: the chin, the rings, the crown. The face is the front of it,
+   * skin; the back and the top are hair. */
+  const skinOr = (lim) => (c) => (c > lim ? [WHITE, 3] : [WHITE, 4]);
+  const pickOf = { jaw: skinOr(-0.6), face: skinOr(0.05), hair: skinOr(0.85) };
+  const chin = add(0.02, B.chin, 0, WHITE, 3);
+  const rings = B.head.map(([y, rx, rz, k]) => ring(y, rx, rz, pickOf[k]));
+  fan(chin, rings[0], false);
+  for (let i = 1; i < rings.length; i += 1) {
+    band(rings[i - 1], rings[i]);
+  }
+  const crown = add(-0.02, B.crown, 0, WHITE, 4);
+  fan(crown, rings[rings.length - 1], true);
+  /* The eyes: two dark drops on the face, proud of it by a centimetre. */
+  if (B.eyes) {
+    for (const s of [-1, 1]) {
+      const z = s * 0.07;
+      const a = add(0.168, 1.51, z - 0.016, EYES, 0);
+      const b = add(0.168, 1.51, z + 0.016, EYES, 0);
+      const c = add(0.158, 1.58, z, EYES, 0);
+      idx.push(a, c, b);
+    }
+  }
+  /* The arms, shoulder to hand, raised: the shader swings an arm that is
+   * down to the person's side. A fist closes a near arm; a far arm is a
+   * flat strip, which from behind, where a drone mostly sees the crowd,
+   * is the same shape. */
+  if (B.arm) {
+    const A = B.arm;
+    for (const s of [-1, 1]) {
+      const a0 = [SHOULDER[0], SHOULDER[1], s * SHOULDER[2]];
+      const a1 = [HAND[0], HAND[1], s * HAND[2]];
+      const rs = [];
+      const steps = A.fist ? [0, 0.86] : [0, 1];
+      for (const t of steps) {
+        const r = [];
+        const grow = t > 0.5 && A.fist ? 1.35 : 1;
+        for (let i = 0; i < A.sides; i += 1) {
+          const u = (i / A.sides) * Math.PI * 2;
+          const ox = Math.cos(u) * A.r * grow;
+          const oz = Math.sin(u) * A.r * grow;
+          r.push(add(a0[0] + (a1[0] - a0[0]) * t + ox, a0[1] + (a1[1] - a0[1]) * t, a0[2] + (a1[2] - a0[2]) * t + oz, WHITE, 2));
+        }
+        rs.push(r);
+      }
+      for (let i = 0; i < A.sides; i += 1) {
+        const j = (i + 1) % A.sides;
+        idx.push(rs[0][i], rs[1][i], rs[1][j], rs[0][i], rs[1][j], rs[0][j]);
+      }
+      if (A.fist) {
+        const tip = add(a1[0] + 0.01, a1[1] + 0.04, a1[2], WHITE, 2);
+        for (let i = 0; i < A.sides; i += 1) {
+          idx.push(tip, rs[1][(i + 1) % A.sides], rs[1][i]);
+        }
+      }
     }
   }
   const g = new THREE.BufferGeometry();
@@ -152,14 +260,27 @@ function personGeometry(sides, arms = true) {
   return g;
 }
 
-/* The crowd's material: the town's cel shading with the vertex colours,
- * the shirt tinted per person, the arms folded away where they are down,
- * and the jump on the beat, all in the vertex shader. Chained after the
- * cel material's own patch, which tints its shadow side. */
-function crowdMaterial(clock) {
+const glslColour = (c) => `vec3( ${c.r.toFixed(4)}, ${c.g.toFixed(4)}, ${c.b.toFixed(4)} )`;
+
+/*
+ * The crowd's material: the town's cel shading with the vertex colours,
+ * the shirt and the skin toned per person, the arms swung down where they
+ * are down and waved where they are up, the jump on the beat, all in the
+ * vertex shader. Chained after the cel material's own patch, which tints
+ * its shadow side.
+ *
+ * `cut` splits the crowd between its near and far builds by the distance
+ * from the camera to a person's feet, measured here on the GPU, so the
+ * frame never sorts five thousand people: 'far' draws only those at
+ * NEAR_R or more, 'near' only those closer, 'none' everybody (Low, which
+ * has one build). A person cut away is folded to a point, which draws
+ * nothing.
+ */
+function crowdMaterial(clock, cut) {
   const m = cel({ color: 0xffffff, vertexColors: true, tint: 0x6a5f8c, cache: false });
   const prev = m.onBeforeCompile;
   const prevKey = m.customProgramCacheKey ? m.customProgramCacheKey() : '';
+  const test = { far: 'dc < NEAR_R', near: 'dc >= NEAR_R', none: 'false' }[cut];
   m.onBeforeCompile = (sh, r) => {
     if (prev) {
       prev.call(m, sh, r);
@@ -169,64 +290,107 @@ function crowdMaterial(clock) {
       .replace('#include <common>', `#include <common>
 attribute float aMask;
 attribute vec3 aShirt;
-attribute vec2 aMove;
-uniform float uClock;`)
+attribute vec3 aMove;
+uniform float uClock;
+#define NEAR_R ${NEAR_R.toFixed(1)}`)
       .replace('#include <color_vertex>', `#include <color_vertex>
 #ifdef USE_COLOR
-  vColor.rgb *= mix( vec3( 1.0 ), aShirt, step( 0.5, aMask ) * step( aMask, 1.5 ) );
-  vColor.rgb *= mix( vec3( 1.0 ), aShirt, step( 1.5, aMask ) * step( position.y, 1.6 ) );
+  {
+    vec3 skin = mix( ${glslColour(SKIN_LIGHT)}, ${glslColour(SKIN_DARK)}, aMove.z );
+    float isShirt = step( 0.5, aMask ) * step( aMask, 1.5 );
+    float isArm = step( 1.5, aMask ) * step( aMask, 2.5 );
+    float isSkin = step( 2.5, aMask ) * step( aMask, 3.5 );
+    float isHair = step( 3.5, aMask );
+    float hk = fract( aMove.y * 3.7 + aMove.z * 5.3 );
+    vec3 hair = hk < 0.45 ? ${glslColour(HAIR)} : hk < 0.7 ? ${glslColour(HAIR_BROWN)} : hk < 0.86 ? ${glslColour(HAIR_FAIR)} : hk < 0.94 ? ${glslColour(HAIR_PINK)} : ${glslColour(HAIR_TEAL)};
+    vec3 arm = mix( skin, aShirt, step( position.y, 1.48 ) );
+    vec3 tone = isShirt * aShirt + isArm * arm + isSkin * skin + isHair * hair + ( 1.0 - isShirt - isArm - isSkin - isHair ) * vec3( 1.0 );
+    vColor.rgb *= tone;
+  }
 #endif`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
   float beat = uClock * ${BEAT_W.toFixed(6)} + aMove.y * 0.8;
   float hop = abs( sin( beat ) );
-  if ( aMask > 1.5 ) {
-    /* Arms down: fold the arm into the shoulder. Up: wave with the beat. */
-    transformed = mix( vec3( 0.0, 1.36, transformed.z > 0.0 ? 0.2 : -0.2 ), transformed, aMove.x );
-    transformed.z += sin( beat ) * 0.1 * max( 0.0, transformed.y - 1.4 );
+  if ( aMask > 1.5 && aMask < 2.5 ) {
+    /* Down: the arm turned about the shoulder, out and down to the side.
+     * Up: it waves with the beat. */
+    float sd = transformed.z > 0.0 ? 1.0 : -1.0;
+    vec3 sh0 = vec3( 0.0, ${SHOULDER[1].toFixed(3)}, sd * ${SHOULDER[2].toFixed(3)} );
+    vec3 d = transformed - sh0;
+    float dz = d.z * sd;
+    vec3 down = sh0 + vec3( d.x, d.y * -0.94 - dz * 0.342, sd * ( d.y * 0.342 - dz * 0.94 ) + sd * 0.06 );
+    transformed = mix( down, transformed, aMove.x );
+    transformed.z += sin( beat ) * 0.1 * max( 0.0, transformed.y - 1.4 ) * aMove.x;
   }
-  transformed.y += hop * hop * ( 0.05 + 0.11 * aMove.x );`);
+  transformed.y += hop * hop * ( 0.05 + 0.11 * aMove.x );
+#ifdef USE_INSTANCING
+  {
+    vec3 org = ( modelMatrix * instanceMatrix * vec4( 0.0, 0.0, 0.0, 1.0 ) ).xyz;
+    float dc = distance( org, cameraPosition );
+    if ( ${test} ) {
+      transformed = vec3( 0.0 );
+    }
+  }
+#endif`);
   };
-  m.customProgramCacheKey = () => `${prevKey}|concertCrowd`;
+  m.customProgramCacheKey = () => `${prevKey}|concertCrowd|${cut}`;
   return m;
 }
 
-/* The crowd in three bands, front to back, each one instanced mesh. */
+/* Every person's matrix and colours, set once. */
+function personMatrix(f, m) {
+  const [x, , z] = w(f.x, f.y);
+  _p.set(x, 0, z);
+  /* The person's +x is their face; the plan's heading turns it. */
+  _q.setFromAxisAngle(_up, (f.face * Math.PI) / 180);
+  _s.set(f.s, f.s, f.s);
+  return m.compose(_p, _q, _s);
+}
+const _p = new THREE.Vector3();
+const _q = new THREE.Quaternion();
+const _s = new THREE.Vector3();
+const _up = new THREE.Vector3(0, 1, 0);
+const _m = new THREE.Matrix4();
+
+function personColours(f, shirt, move, i) {
+  const c = SHIRTS[f.shirt % SHIRTS.length];
+  shirt[i * 3] = c.r;
+  shirt[i * 3 + 1] = c.g;
+  shirt[i * 3 + 2] = c.b;
+  move[i * 3] = f.arms;
+  move[i * 3 + 1] = f.phase;
+  /* The skin by a hash of where they stand: anything from light to dark. */
+  move[i * 3 + 2] = hash(Math.round(f.x * 100), Math.round(f.y * 100));
+}
+
+/*
+ * The crowd. Everybody is in the far build, in three bands front to back,
+ * each one instanced mesh, set once. On Medium and High the people near the
+ * camera are drawn again in the near build by one more instanced mesh,
+ * whose list is refilled only when the camera has moved a few metres: it
+ * holds everybody within NEAR_R plus that slack, and the GPU's cut makes
+ * the two builds meet exactly at NEAR_R.
+ */
 function crowdMeshes(people, clock, low) {
-  const geo = personGeometry(low ? 4 : 5, !low);
-  const mat = crowdMaterial(clock);
+  const far = personGeometry(low ? BUILDS.low : BUILDS.far);
+  const farMat = crowdMaterial(clock, low ? 'none' : 'far');
   const bands = [[0, 150], [150, 172], [172, 999]];
   const out = [];
-  const m = new THREE.Matrix4();
-  const q = new THREE.Quaternion();
-  const s = new THREE.Vector3();
-  const p = new THREE.Vector3();
-  const up = new THREE.Vector3(0, 1, 0);
   for (const [x0, x1] of bands) {
     const list = people.filter((f) => f.x >= x0 && f.x < x1);
     if (!list.length) {
       continue;
     }
-    const g = geo.clone();
+    const g = far.clone();
     const shirt = new Float32Array(list.length * 3);
-    const move = new Float32Array(list.length * 2);
-    const inst = new THREE.InstancedMesh(g, mat, list.length);
+    const move = new Float32Array(list.length * 3);
+    const inst = new THREE.InstancedMesh(g, farMat, list.length);
     list.forEach((f, i) => {
-      const [x, , z] = w(f.x, f.y);
-      p.set(x, 0, z);
-      /* The person's +x is their face; the plan's heading turns it. */
-      q.setFromAxisAngle(up, (f.face * Math.PI) / 180);
-      s.set(f.s, f.s, f.s);
-      m.compose(p, q, s);
-      inst.setMatrixAt(i, m);
-      const c = SHIRTS[f.shirt % SHIRTS.length];
-      shirt[i * 3] = c.r;
-      shirt[i * 3 + 1] = c.g;
-      shirt[i * 3 + 2] = c.b;
-      move[i * 2] = f.arms;
-      move[i * 2 + 1] = f.phase;
+      inst.setMatrixAt(i, personMatrix(f, _m));
+      personColours(f, shirt, move, i);
     });
     g.setAttribute('aShirt', new THREE.InstancedBufferAttribute(shirt, 3));
-    g.setAttribute('aMove', new THREE.InstancedBufferAttribute(move, 2));
+    g.setAttribute('aMove', new THREE.InstancedBufferAttribute(move, 3));
     inst.instanceMatrix.needsUpdate = true;
     inst.computeBoundingSphere();
     /* The jump lifts a head 16 cm: the bounds take it in. */
@@ -236,21 +400,96 @@ function crowdMeshes(people, clock, low) {
     inst.name = `concert crowd ${x0}`;
     out.push(inst);
   }
-  /* The skin tones, folded into the shared geometry's colour by person is
-   * not possible without a third attribute; the three tones are spread
-   * across the bands instead, which from a drone reads as a mixed crowd. */
-  out.forEach((inst, i) => {
-    const col = inst.geometry.attributes.color;
-    const tone = SKIN[i % SKIN.length];
-    const mk = inst.geometry.attributes.aMask;
-    for (let v = 0; v < col.count; v += 1) {
-      const isSkin = Math.abs(col.getX(v) - SKIN[0].r) < 1e-4 && Math.abs(col.getY(v) - SKIN[0].g) < 1e-4;
-      if (isSkin && mk.getX(v) !== 1) {
-        col.setXYZ(v, tone.r, tone.g, tone.b);
-      }
-    }
+  far.dispose();
+  if (low) {
+    return { meshes: out, near: null };
+  }
+  return { meshes: out, near: nearCrowd(people, clock) };
+}
+
+/* The slack the near list is filled with, and how far the camera may move
+ * before it is filled again: SLACK > MOVE, so the list always holds
+ * everybody the GPU's cut will draw. */
+const SLACK = 4;
+const MOVE = 3;
+
+function nearCrowd(people, clock) {
+  const cap = Math.min(people.length, Math.ceil(Math.PI * (NEAR_R + SLACK) ** 2 * 1.5));
+  const g = personGeometry(BUILDS.near);
+  const shirt = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3);
+  const move = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3);
+  g.setAttribute('aShirt', shirt);
+  g.setAttribute('aMove', move);
+  const inst = new THREE.InstancedMesh(g, crowdMaterial(clock, 'near'), cap);
+  inst.count = 0;
+  inst.castShadow = false;
+  inst.receiveShadow = true;
+  inst.name = 'concert crowd near';
+  /* Its bounds are wherever its list is: the whole crowd, which is never
+   * wrong, and the list is small enough that culling it buys nothing. */
+  inst.frustumCulled = false;
+  /* Every person's feet in the world, and their own colours, once. */
+  const fx = new Float32Array(people.length);
+  const fz = new Float32Array(people.length);
+  const mats = new Float32Array(people.length * 16);
+  const sh = new Float32Array(people.length * 3);
+  const mv = new Float32Array(people.length * 3);
+  people.forEach((f, i) => {
+    const [x, , z] = w(f.x, f.y);
+    fx[i] = x;
+    fz[i] = z;
+    personMatrix(f, _m).toArray(mats, i * 16);
+    personColours(f, sh, mv, i);
   });
-  return out;
+  let cx = 1e9;
+  let cy = 1e9;
+  let cz = 1e9;
+  const reach = (NEAR_R + SLACK) ** 2;
+  return {
+    mesh: inst,
+    /* The camera's world position: refill the list if it has moved. */
+    update(cam) {
+      const dx = cam.x - cx;
+      const dy = cam.y - cy;
+      const dz = cam.z - cz;
+      if (dx * dx + dy * dy + dz * dz < MOVE * MOVE) {
+        return;
+      }
+      cx = cam.x;
+      cy = cam.y;
+      cz = cam.z;
+      let k = 0;
+      /* High over the crowd nobody is near: the list stays empty. */
+      if (cy < NEAR_R + SLACK) {
+        const flat = reach - cy * cy;
+        const im = inst.instanceMatrix.array;
+        for (let i = 0; i < fx.length && k < cap; i += 1) {
+          const ex = fx[i] - cx;
+          const ez = fz[i] - cz;
+          if (ex * ex + ez * ez > flat) {
+            continue;
+          }
+          im.set(mats.subarray(i * 16, i * 16 + 16), k * 16);
+          shirt.array[k * 3] = sh[i * 3];
+          shirt.array[k * 3 + 1] = sh[i * 3 + 1];
+          shirt.array[k * 3 + 2] = sh[i * 3 + 2];
+          move.array[k * 3] = mv[i * 3];
+          move.array[k * 3 + 1] = mv[i * 3 + 1];
+          move.array[k * 3 + 2] = mv[i * 3 + 2];
+          k += 1;
+        }
+      }
+      inst.count = k;
+      if (k > 0) {
+        for (const a of [inst.instanceMatrix, shirt, move]) {
+          a.clearUpdateRanges();
+          a.addUpdateRange(0, k * a.itemSize);
+          a.needsUpdate = true;
+        }
+      }
+    },
+    stats: () => ({ cap, count: inst.count }),
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -606,28 +845,40 @@ export function buildShow(layout, low) {
   const viewH = { value: 720 };
   const group = new THREE.Group();
   group.name = 'concert show';
-  for (const m of crowdMeshes(layout.crowd, clock, low)) {
+  const crowd = crowdMeshes(layout.crowd, clock, low);
+  for (const m of crowd.meshes) {
     group.add(m);
+  }
+  if (crowd.near) {
+    group.add(crowd.near.mesh);
   }
   group.add(fireworks(clock, viewH, low));
   group.add(lasers(clock, low));
   group.add(screens(clock));
   let people = 0;
   let tris = 0;
-  group.traverse((o) => {
-    if (o.isInstancedMesh) {
-      people += o.count;
-      tris += o.count * (o.geometry.index.count / 3);
-    }
-  });
+  for (const o of crowd.meshes) {
+    people += o.count;
+    tris += o.count * (o.geometry.index.count / 3);
+  }
+  const nearTris = crowd.near ? crowd.near.mesh.geometry.index.count / 3 : 0;
   return {
     group,
-    tick(seconds, height) {
+    /* `cam` is the camera's world position, which picks the near crowd. */
+    tick(seconds, height, cam) {
       clock.value = seconds % WRAP;
       if (height > 0) {
         viewH.value = height;
       }
+      if (crowd.near && cam) {
+        crowd.near.update(cam);
+      }
     },
-    stats: () => ({ people, crowdTris: tris, draws: group.children.length }),
+    stats: () => ({
+      people,
+      farTris: tris,
+      near: crowd.near ? { ...crowd.near.stats(), tris: crowd.near.stats().count * nearTris } : null,
+      draws: group.children.length,
+    }),
   };
 }

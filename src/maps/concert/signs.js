@@ -140,6 +140,11 @@ function wordmark(g, wd, ht, bg) {
  * whatever size the venue gives it; the cell's shape is chosen to match.
  */
 const SIGNS = {
+  /* The speakers' fronts: a line array's box (two cones and the horn), a
+   * sub's one big cone, a delay's column of three. */
+  arrayFace: [256, 122, (g, wd, ht) => speakerFace(g, wd, ht, [[0.22, 0.5, 0.36], [0.78, 0.5, 0.36]], true)],
+  subFace: [192, 166, (g, wd, ht) => speakerFace(g, wd, ht, [[0.5, 0.5, 0.42]])],
+  delayFace: [128, 300, (g, wd, ht) => speakerFace(g, wd, ht, [[0.5, 0.2, 0.36], [0.5, 0.5, 0.36], [0.5, 0.8, 0.36]])],
   stageHead: [1536, 100, (g, wd, ht) => wordmark(g, wd, ht, NIGHT)],
   entrance: [1024, 96, (g, wd, ht) => {
     panel(g, wd, ht, NIGHT, null);
@@ -202,6 +207,59 @@ TRUCKS.forEach((t, i) => {
     words(g, t.en, wd * 0.74, ht / 2 + 1, wd * 0.42, ht * 0.56, INK, HEAVY);
   }];
 });
+
+/* A speaker's front as the manga draws one: the dark cloth, each driver a
+ * ring of surround, the cone, the dust cap with a crescent of light on it,
+ * and the ink round them; a line array's box has its horn's slot between. */
+function speakerFace(g, wd, ht, cones, horn = false) {
+  g.fillStyle = '#2a2832';
+  g.fillRect(0, 0, wd, ht);
+  g.strokeStyle = 'rgba(255,255,255,0.05)';
+  g.lineWidth = 1;
+  for (let y = 3; y < ht; y += 4) {
+    g.beginPath();
+    g.moveTo(0, y);
+    g.lineTo(wd, y);
+    g.stroke();
+  }
+  for (const [fx, fy, fr] of cones) {
+    const x = fx * wd;
+    const y = fy * ht;
+    const r = fr * Math.min(wd, ht);
+    g.fillStyle = '#4a4656';
+    g.beginPath();
+    g.arc(x, y, r, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = '#18161e';
+    g.beginPath();
+    g.arc(x, y, r * 0.8, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = '#5c5868';
+    g.beginPath();
+    g.arc(x, y, r * 0.3, 0, Math.PI * 2);
+    g.fill();
+    g.strokeStyle = 'rgba(246,239,220,0.55)';
+    g.lineWidth = Math.max(1.5, r * 0.07);
+    g.beginPath();
+    g.arc(x, y, r * 0.62, Math.PI * 1.05, Math.PI * 1.45);
+    g.stroke();
+    g.strokeStyle = INK;
+    g.lineWidth = Math.max(1.5, r * 0.06);
+    g.beginPath();
+    g.arc(x, y, r, 0, Math.PI * 2);
+    g.stroke();
+  }
+  if (horn) {
+    g.fillStyle = '#101016';
+    g.fillRect(wd * 0.44, ht * 0.16, wd * 0.12, ht * 0.68);
+    g.strokeStyle = '#4a4656';
+    g.lineWidth = 2;
+    g.strokeRect(wd * 0.44, ht * 0.16, wd * 0.12, ht * 0.68);
+  }
+  g.strokeStyle = INK;
+  g.lineWidth = 3;
+  g.strokeRect(1.5, 1.5, wd - 3, ht - 3);
+}
 
 /* ---- the atlas ---- */
 

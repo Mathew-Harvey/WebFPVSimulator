@@ -74293,6 +74293,18 @@ The owner, 03:33Z: "Push to main". That covers PR 222: night races with LED gate
 
 - The owner, 2026-11-03 07:30Z, in this thread: "Push to main". Main had not moved from 1bbe7d1, so main fast forwards to this branch. No verification scale named beyond the checks above. Not flown.
 
+## 2026-11-03 | look | Hanabi Sound, more cartoon and cheaper
+
+- The owner, 2026-11-03 12:21Z, on Hanabi Sound and the theme park: "do a pass to increase the model accuracy, more cartoon, less minecraft, make the maps look amazing while improving their performance". This is the Hanabi Sound half.
+- Measured first (headless, High): the crowd was 251k triangles, the 80 builder trees 167k of the props' 250k and 1750 of the map's 2432 colliders, and the shadow pass drew 235k.
+- The crowd (src/maps/concert/show.js) is drawn in manga proportions: short legs, a round body, a big round head with hair over the crown in one of five colours, the skin toned per person (it was per band), and arms that hang at the sides when down instead of folding away. Three builds: near (100 triangles, six sided, three ring head, eyes, fists) within 16 m of the camera on Medium and High, far (40, four sided, two ring head, flat arms) everywhere else, Low (24, no arms; it was 28). The near and far builds are cut by the camera's distance to each person's feet on the GPU, so they meet exactly; the near mesh's list is refilled on the CPU only when the camera has moved 3 m, with 4 m of slack, and only holds the people within reach. One more draw call on Medium and High.
+- The trees round the fence (src/maps/concert/venue.js `tree`) are the venue's own now, out of the document: a short trunk under three to five big round puffs in the builder's canopy tones, or three stacked whorls for a pine. Two rows deep, 142 trees (was 80) and 791 tree colliders (was about 1750), solid as drawn the builder's way (a trunk capsule, a ball inside each puff or cone).
+- The ferris wheel's cabins are round pods (a capsule across the wheel, solid as drawn) with lit windows and a hanger, the ticket hut has a roof, and the speakers' fronts are painted cones and horns from the sign atlas where they were flat grey boards (cxGrille is gone).
+- Cost, same six views and rig as on 2026-11-02, `__renderStats()`: High draw calls 117/81/78/89/51/103 (were 119/81/78/90/53/105), triangles 559k/596k/500k/575k/253k/543k (were 708k/603k/503k/660k/343k/694k). Low calls 101/59/56/67/31/84 (were 103/60/57/69/33/86), triangles 268k/218k/167k/232k/81k/249k (were 314k/253k/193k/271k/92k/297k). Every view flat or lower on both presets.
+- Checks: `check:concert` 20 of 20, `lint:preload` up to date, `lint:fc` 33 of 33, headless load 0 console errors. `lint:catalog` cannot run in this container (no vendored Betaflight sources), on main as well. verify not run: no physics, plant, ABI or build change. Not flown.
+- What went wrong: a first push was typed with a force flag out of habit and refused; the branch fast-forwards from main, so it went up without one.
+- Shots: /mnt/project-files/hanabi-sound/pass2/.
+- 2026-11-03 12:45Z the owner, on sim PR 224 and board PR 69: "To main". Board fast-forwarded first, then the simulator. Not flown before the push.
 ## 2026-11-03: Yumeboshi Land, more cartoon and cheaper to draw
 
 The owner, 2026-11-03 12:21Z, of the two new maps: "they are ok, do a pass to increase the model accuracy, more cartoon, less minecraft, make the maps look amazing while improving their performance". This entry is Yumeboshi Land's half.

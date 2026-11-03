@@ -3,7 +3,7 @@
  * Fest's. The place's own structures (the stage, the desk, the towers, the
  * crowd, the wheel) come from ./venue.js as one structure; this is what the
  * built map's document already says well: the plot, the time of day and
- * the ground, the trees round the fence, the light towers on the walks,
+ * the ground, the light towers on the walks,
  * the backstage containers and vans, every named gap, and where the pilot
  * starts.
  *
@@ -28,28 +28,11 @@
  */
 
 import { CONCERT_DOC_ID } from '../registry.js';
-import { FIELD_W, FIELD_D, FENCE, SPAWN, hash } from './venue.js';
+import { FIELD_W, FIELD_D, SPAWN } from './venue.js';
 
 export const CONCERT_NAME = 'Hanabi Sound';
 
 const DEG = Math.PI / 180;
-
-/* The trees: a belt of them outside the fence, cherries to the west and
- * north where the town would be, pines behind the stage. */
-function trees() {
-  const out = [];
-  let i = 0;
-  for (let x = 4; x < FIELD_W - 4; x += 9) {
-    i += 1;
-    out.push({ style: x > 200 ? 'pine' : 'sakura', x: x + hash(i, 1) * 3, y: FENCE.y1 + 6 + hash(i, 2) * 8, size: 0.95 + hash(i, 3) * 0.35 });
-    out.push({ style: i % 3 ? 'street' : 'pine', x: x + hash(i, 4) * 3, y: FENCE.y0 - 6 - hash(i, 5) * 8, size: 0.9 + hash(i, 6) * 0.3 });
-  }
-  for (let y = 26; y < FIELD_D - 20; y += 10) {
-    i += 1;
-    out.push({ style: 'pine', x: FENCE.x1 + 5 + hash(i, 7) * 4, y: y + hash(i, 8) * 3, size: 1.0 + hash(i, 9) * 0.35 });
-  }
-  return out;
-}
 
 /* The light towers along the walks and round the back of the crowd: lit at
  * dusk, which is when this map is flown. */
@@ -84,9 +67,6 @@ function rows() {
   /* The drinks machines by the toilets and the entrance. */
   out.push({ type: 'vending', x: 58, y: 25, yaw: 90 * DEG, dims: { count: 3, variant: 2 } });
   out.push({ type: 'vending', x: 22, y: 136, yaw: 0, dims: { count: 2, variant: 4 } });
-  for (const t of trees()) {
-    out.push({ type: 'tree', style: t.style, x: t.x, y: t.y, yaw: hash(Math.round(t.x * 10), Math.round(t.y)) * 6.28, dims: { size: t.size, variant: 1 + Math.floor(hash(Math.round(t.y * 10), Math.round(t.x)) * 9) } });
-  }
   return out;
 }
 

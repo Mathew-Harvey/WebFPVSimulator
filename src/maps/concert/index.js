@@ -271,6 +271,26 @@ function drawOp(kit, o, low) {
       kit.cyl('drTyre', [p[0], 0.42, p[2] - 0.12], [p[0], 0.42, p[2] + 0.12], 0.42, 10);
       break;
     }
+    case 'crown': {
+      /* A background tree's puffs, in the builder's canopy tones, so they
+       * ink as one shape and clump on Medium and High as the town's do. */
+      const tones = o.style === 'sakura' ? ['blossom0', 'blossom1', 'blossom2'] : ['stGrove0', 'stGrove1', 'stGrove2'];
+      const p = w(...o.blobs[0].c);
+      kit.begin(0, 0, 0, 0, cellAt(o, p[0], p[2]));
+      o.blobs.forEach((b, i) => {
+        kit.leaf(tones[b.tone], w(...b.c), b.r, b.r * 0.86, [o.spin + i, o.spin * 0.5 + i * 2, 0]);
+      });
+      break;
+    }
+    case 'pine': {
+      const p = w(o.x, o.y);
+      kit.begin(0, 0, 0, 0, cellAt(o, p[0], p[2]));
+      const tones = ['stCedar0', 'stCedar1', 'stCedar2'];
+      for (const t of o.tiers) {
+        kit.crownCone(tones[t.tone], [p[0], t.h0, p[2]], t.r, t.ht, 7);
+      }
+      break;
+    }
     default:
       break;
   }
@@ -423,9 +443,9 @@ export async function buildMap(shell, onProgress, options) {
   const wind = map.updateWind;
   map.updateWind = (t, focus, wash) => {
     wind.call(map, t, focus, wash);
-    show.tick(t, rt ? rt.height : 0);
+    show.tick(t, rt ? rt.height : 0, shell.camera.position);
   };
-  show.tick(0, rt ? rt.height : 0);
+  show.tick(0, rt ? rt.height : 0, shell.camera.position);
   map.stats = () => ({ ...(stats ? stats() : {}), palette, near: near ? near.stats() : null, show: show.stats() });
   /* The signs, one mesh on one picture, and the wires, one set of lines. */
   const atlas = paintSigns(L.signs);

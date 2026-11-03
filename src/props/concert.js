@@ -41,7 +41,6 @@ export const MATERIALS = {
   cxDeck: { c: 0x3a3642, tint: 0x24202e, noCast: true },
   cxScaffold: { c: 0xa9aeb6, tint: 0x5e5a80 },
   cxSpeaker: { c: 0x1f1e24, tint: 0x18161f },
-  cxGrille: { c: 0x3c3a44, tint: 0x24222e },
   /* The barrier's and the fences' galvanised steel. */
   cxSteel: { c: 0xb8bcc2, tint: 0x66628a },
   /* The field: trodden grass in front of the stage, the trackway's panels,

@@ -456,7 +456,7 @@ function stage(V) {
       const lean = Math.max(0, (6 - i) * 0.06);
       const h0 = HANG.h0 + i * step;
       V.deco('cxSpeaker', HANG.x0 - lean, g.y0, h0 + 0.03, HANG.x1 - lean, g.y1, h0 + step - 0.03);
-      V.deco('cxGrille', HANG.x0 - lean - 0.02, g.y0 + 0.08, h0 + 0.1, HANG.x0 - lean, g.y1 - 0.08, h0 + step - 0.1, { fine: true, cast: false });
+      V.sign('arrayFace', HANG.x0 - lean, (g.y0 + g.y1) / 2, h0 + step / 2, 'w', g.y1 - g.y0 - 0.16, step - 0.2, 0.02, { fine: true });
     }
     for (const y of [g.y0 + 0.2, g.y1 - 0.2]) {
       V.wire([HANG.x0 + 0.6, y, HANG.h1], [HANG.x0 + 0.6, y, top - S.beam / 2], 0);
@@ -474,8 +474,8 @@ function stage(V) {
   /* The sub stacks under the lip, in blocks with a gap between. */
   for (let y = S.my0 + 1; y + 3 <= S.my1 - 1 + 1e-9; y += 4.5) {
     V.box('cxSpeaker', 197.6, y, 0, S.x0, y + 3, 1.3, { name: 'sub stack' });
-    V.deco('cxGrille', 197.58, y + 0.15, 0.1, 197.6, y + 1.42, 1.2, { cast: false, fine: true });
-    V.deco('cxGrille', 197.58, y + 1.58, 0.1, 197.6, y + 2.85, 1.2, { cast: false, fine: true });
+    V.sign('subFace', 197.6, y + 0.785, 0.65, 'w', 1.27, 1.1, 0.02, { fine: true });
+    V.sign('subFace', 197.6, y + 2.215, 0.65, 'w', 1.27, 1.1, 0.02, { fine: true });
   }
   /* The flame posts along the lip. */
   for (const y of [95, 101, 119, 125]) {
@@ -712,7 +712,7 @@ function crowd(V) {
     /* The speakers on a bar out the back, facing the people behind. */
     V.cap('cxScaffold', [x0 + 0.1, d.y, DELAY.top + 0.9], [x0 - 1.2, d.y, DELAY.top + 0.9], 0.06, { name: 'delay bar' });
     V.box('cxSpeaker', x0 - 1.6, d.y - 1.3, 9.2, x0 - 0.6, d.y + 1.3, DELAY.top + 0.5, { name: 'delay speakers' });
-    V.deco('cxGrille', x0 - 1.62, d.y - 1.2, 9.3, x0 - 1.6, d.y + 1.2, DELAY.top + 0.4, { cast: false, fine: true });
+    V.sign('delayFace', x0 - 1.6, d.y, (9.3 + DELAY.top + 0.4) / 2, 'w', 2.4, DELAY.top + 0.4 - 9.3, 0.02, { fine: true });
     V.glow(x1 - 0.1, d.y, DELAY.top + 1.3, 0.2, 'lampRed');
     barrier(V, x0 - 2.4, y0 - 1.6, x1 + 1.4, y0 - 1.1);
     barrier(V, x0 - 2.4, y1 + 1.1, x1 + 1.4, y1 + 1.6);
@@ -915,9 +915,13 @@ function wheel(V) {
     const eh = Wh.hub + SC.s * (Wh.r - 0.1);
     const cab = ['cxCabinA', 'cxCabinB', 'cxCabinC'][i % 3];
     V.cap('cxSteel', [ex, Wh.y - 0.7, eh], [ex, Wh.y + 0.7, eh], 0.06, { name: 'cabin pin' });
-    V.box(cab, ex - 0.8, Wh.y - 0.7, eh - 2.3, ex + 0.8, Wh.y + 0.7, eh - 0.6, { name: 'cabin' });
-    V.box('white', ex - 0.9, Wh.y - 0.8, eh - 0.6, ex + 0.9, Wh.y + 0.8, eh - 0.4, { name: 'cabin roof' });
-    V.deco('glassLit', ex - 0.6, Wh.y - 0.72, eh - 1.7, ex + 0.6, Wh.y + 0.72, eh - 0.9, { cast: false, fine: true });
+    /* A round pod, as a comic's ferris wheel has: a capsule across the
+     * wheel, solid as drawn, a lit window band each side and a knob on top
+     * where it hangs. */
+    V.cap(cab, [ex, Wh.y - 0.45, eh - 1.45], [ex, Wh.y + 0.45, eh - 1.45], 0.85, { name: 'cabin', look: 'capsule', seg: 10 });
+    V.post('white', ex, Wh.y, eh - 0.75, eh - 0.35, 0.16, { name: 'cabin hanger' });
+    V.deco('glassLit', ex - 0.87, Wh.y - 0.42, eh - 1.75, ex - 0.84, Wh.y + 0.42, eh - 1.2, { cast: false, fine: true });
+    V.deco('glassLit', ex + 0.84, Wh.y - 0.42, eh - 1.75, ex + 0.87, Wh.y + 0.42, eh - 1.2, { cast: false, fine: true });
   }
   V.cap('cxWheel', [Wh.x, Wh.y - Wh.half, Wh.hub], [Wh.x, Wh.y + Wh.half, Wh.hub], 0.6, { name: 'axle', look: 'capsule', seg: 10 });
   V.cap('cxGold', [Wh.x, Wh.y - 0.4, Wh.hub], [Wh.x, Wh.y + 0.4, Wh.hub], 1.4, { name: 'hub', seg: 12 });
@@ -930,6 +934,8 @@ function wheel(V) {
   /* The platform cabins are boarded from, and its little ticket hut. */
   V.box('cxCream', Wh.x - 4, Wh.y - 3.4, 0, Wh.x + 4, Wh.y + 3.4, 0.5, { name: 'wheel platform' });
   V.box('cxPink', Wh.x + 5, Wh.y - 6, 0, Wh.x + 7, Wh.y - 4, 2.4, { name: 'wheel hut' });
+  V.op({ t: 'pyr', m: 'white', x0: Wh.x + 4.7, y0: Wh.y - 6.3, x1: Wh.x + 7.3, y1: Wh.y - 3.7, h0: 2.4, h1: 3.3 });
+  V.hidden(Wh.x + 5.4, Wh.y - 5.6, 2.4, Wh.x + 6.6, Wh.y - 4.4, 2.9, 'wheel hut roof');
   /* The windows: the sectors level with the hub, either side, in the
    * wheel's plane, flown along its axle. */
   const rIn = 6.25;
@@ -1026,6 +1032,73 @@ export function laserBeams(n) {
   return out;
 }
 
+/*
+ * The trees round the outside of the fence, drawn the way the manga draws
+ * a tree in the background of a panel: a short trunk under three to five
+ * big round puffs (cherries to the west and north where the town would be,
+ * greens to the south), and the pines behind the stage as three stacked
+ * whorls. The builder's own trees are a cherry of twenty blobs and a dozen
+ * limbs, two thousand triangles each; these are a fifth of that, so the
+ * belt can be two deep for what one row cost. Solid as drawn, as the
+ * builder's are: the trunk a tapered capsule, each puff a ball inside it.
+ */
+function tree(V, x, y, style, S, k) {
+  if (style === 'pine') {
+    const top = 9.4 * S;
+    V.cap('stCedarWood', [x, y, 0], [x, y, top * 0.7], 0.2 * S, { name: 'trunk', kind: 'tree', seg: 6 });
+    const tiers = [];
+    for (let i = 0; i < 3; i += 1) {
+      const h0 = (2.0 + i * 2.3) * S;
+      const r = (2.5 - i * 0.62) * S * (0.92 + hash(k, 40 + i) * 0.16);
+      const ht = (3.6 - i * 0.3) * S;
+      tiers.push({ h0, r, ht, tone: i === 2 ? 0 : i === 1 ? 1 : 2 });
+      /* The largest ball the cone holds, sitting on its base. */
+      const sinA = r / Math.hypot(r, ht);
+      const rin = (ht * sinA) / (1 + sinA);
+      V.P.cap('stCedar1', w(x, y, h0 + rin), w(x, y, h0 + rin), rin * 0.95, { draw: false, name: 'canopy', kind: 'canopy' });
+    }
+    V.op({ t: 'pine', x, y, tiers, spin: hash(k, 44) * 6.28 });
+    return;
+  }
+  const trunkH = (style === 'sakura' ? 2.3 : 2.9) * S;
+  const lean = (hash(k, 45) - 0.5) * 0.5 * S;
+  V.cap('trunk', [x, y, 0], [x + lean, y, trunkH], 0.21 * S, { name: 'trunk', kind: 'tree', seg: 6 });
+  const tx = x + lean;
+  const R = (style === 'sakura' ? 1.45 : 1.65) * S;
+  const blobs = [{ c: [tx, y, trunkH + R * 0.85], r: R, tone: 1 }];
+  const n = 3 + Math.floor(hash(k, 46) * 2);
+  const turn = hash(k, 47) * 360;
+  for (let i = 0; i < n; i += 1) {
+    sincos((turn + (i * 360) / n) * DEG, SC);
+    const rr = R * (0.62 + hash(k, 48 + i) * 0.18);
+    blobs.push({ c: [tx + SC.c * R * 0.85, y + SC.s * R * 0.85, trunkH + R * (0.45 + hash(k, 52 + i) * 0.5)], r: rr, tone: hash(k, 56 + i) > 0.5 ? 2 : 1 });
+  }
+  blobs.push({ c: [tx + (hash(k, 60) - 0.5) * R * 0.5, y + (hash(k, 61) - 0.5) * R * 0.5, trunkH + R * 1.75], r: R * 0.62, tone: 0 });
+  for (const b of blobs) {
+    V.P.cap('stGrove1', w(...b.c), w(...b.c), 0.78 * b.r * 0.86, { draw: false, name: 'canopy', kind: 'canopy' });
+  }
+  V.op({ t: 'crown', style, blobs, spin: hash(k, 62) * 6.28 });
+}
+
+function trees(V) {
+  let k = 0;
+  const S = (i) => 0.9 + hash(i, 63) * 0.35;
+  for (const row of [0, 1]) {
+    for (let x = 4 + row * 4.5; x < FIELD_W - 3; x += 9) {
+      k += 1;
+      /* North of the fence: cherries, pines behind the stage. */
+      tree(V, x + (hash(k, 1) - 0.5) * 3, FENCE.y1 + 6 + row * 6.5 + hash(k, 2) * 3, x > 200 ? 'pine' : 'sakura', S(k), k);
+      k += 1;
+      /* South: greens, a pine in every third. */
+      tree(V, x + (hash(k, 4) - 0.5) * 3, FENCE.y0 - 5.5 - row * 6.5 - hash(k, 5) * 2, k % 3 ? 'street' : 'pine', S(k), k);
+    }
+  }
+  for (let y = FENCE.y0 + 4; y < FENCE.y1 - 2; y += 9) {
+    k += 1;
+    tree(V, FENCE.x1 + 5 + hash(k, 7) * 3, y + hash(k, 8) * 3, 'pine', S(k), k);
+  }
+}
+
 export function venueLayout() {
   const V = new Venue();
   ground(V);
@@ -1040,6 +1113,7 @@ export function venueLayout() {
   fence(V);
   wheel(V);
   backstage(V);
+  trees(V);
   return {
     parts: V.P.list, ops: V.ops, signs: V.signs, gaps: V.gaps, wires: V.wires, fans: V.fans, crowd: V.crowd,
   };

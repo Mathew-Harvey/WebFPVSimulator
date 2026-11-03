@@ -203,7 +203,7 @@ export function yumeGaps() {
       name: 'FRONT GATE', px: GATE.px, py: (GATE.y0 + GATE.y1) / 2, deg: 90, w: GATE.open - 2 * M, h0: M, h1: GATE.h - M, points: 250,
     },
     {
-      name: 'CASTLE GATE', px: (CASTLE.x0 + CASTLE.x1) / 2, py: (CASTLE.y0 + CASTLE.y1) / 2, deg: 90, w: CASTLE.archW - 2 * M, h0: M, h1: CASTLE.arch - M, points: 500,
+      name: 'CASTLE GATE', px: (CASTLE.x0 + CASTLE.x1) / 2, py: (CASTLE.y0 + CASTLE.y1) / 2, deg: 90, w: CASTLE.archW - 2 * M, h0: M, h1: CASTLE.spring - M, points: 500,
     },
     {
       name: 'THROUGH THE STATION', px: STATION.track, py: (STATION.y0 + STATION.y1) / 2, deg: 90, w: STATION.x1 - STATION.x0 - 0.6 - 0.44 - 2 * M, h0: STATION.platform + M, h1: STATION.roof - M, points: 500,

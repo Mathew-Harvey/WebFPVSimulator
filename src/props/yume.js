@@ -98,7 +98,17 @@ export const MATERIALS = {
   ymDragon: { c: 0x4f9a6a, tint: 0x2f5a5a },
   ymDragonDark: { c: 0x3a7556, tint: 0x284a52 },
   ymTooth: { c: 0xfbf6ea, tint: 0x8a83a8 },
-  /* flowers in the beds, under the kit's trees */
+  /* the park's own trees: round puffs of leaf, a cherry's pink, a pine's
+   * stacked cones, and their bark */
+  ymLeaf: { c: 0x86b86c, tint: 0x4f6e7c, noReceive: true, foliage: true },
+  ymLeafDeep: { c: 0x6c9f5f, tint: 0x456478, noReceive: true, foliage: true },
+  ymLeafLight: { c: 0xa3cc78, tint: 0x5a7680, noReceive: true, foliage: true },
+  ymSakura: { c: 0xf4bccf, tint: 0xd8b2c6, noReceive: true, foliage: true },
+  ymSakuraDeep: { c: 0xec9fbc, tint: 0xc99cba, noReceive: true, foliage: true },
+  ymPine: { c: 0x5a9070, tint: 0x3f5a72 },
+  ymPineDeep: { c: 0x477c60, tint: 0x37506a },
+  ymBark: { c: 0x8a6a5a, tint: 0x55466a },
+  /* flowers in the beds, under the trees */
   ymFlowerPink: { c: 0xf39cbe, tint: 0x9a6a98, noReceive: true },
   ymFlowerYellow: { c: 0xf6d75a, tint: 0x8a7a50, noReceive: true },
   ymFlowerBlue: { c: 0x6f8fd8, tint: 0x45507a, noReceive: true },

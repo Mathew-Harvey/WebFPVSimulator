@@ -47,7 +47,7 @@ export function roundSolid(T, px, py, r, h0, h1, name, kind = 'wall') {
 
 /* A cone's solid from h0 (radius r0) to h1 (radius r1), in n round
  * tiers, each inside the cone. */
-function coneSolid(T, px, py, r0, h0, r1, h1, n, name) {
+export function coneSolid(T, px, py, r0, h0, r1, h1, n, name) {
   for (let k = 0; k < n; k += 1) {
     const f = (k + 1) / n;
     roundSolid(T, px, py, r0 + (r1 - r0) * f, h0 + ((h1 - h0) * k) / n, h0 + ((h1 - h0) * (k + 1)) / n, name);

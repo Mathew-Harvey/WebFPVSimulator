@@ -194,7 +194,7 @@ function layoutBlock() {
   const kinds = [...new Set(parts.filter((p) => p.solid).map((p) => p.kind))];
   const unknown = kinds.filter((k) => !KINDS.includes(k));
   check('every solid is a kind the colliders know', unknown.length === 0, unknown.join(', ') || kinds.join(', '));
-  const lists = [parts.filter((p) => p.draw), T.cyls, T.prisms, T.discs, T.balls, T.cones, T.tori, T.frusta, T.polys, T.wires];
+  const lists = [parts.filter((p) => p.draw), T.leaves, T.cyls, T.prisms, T.discs, T.balls, T.cones, T.tori, T.frusta, T.polys, T.wires];
   const colours = new Set(lists.flatMap((l) => l.map((x) => x.m)));
   /* The track (./track.js) and the hidden builder's concrete draw these
    * too, outside the lists. */
@@ -215,7 +215,7 @@ function layoutBlock() {
   const a = hashOf(L);
   const b = hashOf(yumeLayout());
   check('two builds are the same to the bit', a === b, a.slice(0, 16));
-  console.log(`        ${parts.filter((p) => p.solid).length} solids, ${parts.filter((p) => p.draw).length} drawn parts, ${T.scaled.length} trees, ${T.signs.length} signs`);
+  console.log(`        ${parts.filter((p) => p.solid).length} solids, ${parts.filter((p) => p.draw).length} drawn parts, ${T.leaves.length} canopy puffs, ${T.signs.length} signs`);
   return L;
 }
 

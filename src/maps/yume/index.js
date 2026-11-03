@@ -54,7 +54,12 @@ import { buildRides } from './drawrides.js';
 import { ridesSeat } from './rides.js';
 import { MOVER_SLOTS } from '../../game/plantworld.js';
 
-const cellOf = (thing, x, z) => (thing && thing.near ? nearOf(x, z) : chunkOf(x, z));
+/* The grove is the park's trees, every one in one cell of its own: filed
+ * by place, each chunk would draw the canopy look, the cone look and the
+ * trunk again, a dozen draws for what one draws (Hinode Park's finding,
+ * ../park/index.js). */
+const GROVE = 'ymGrove';
+const cellOf = (thing, x, z) => (thing && thing.grove ? GROVE : thing && thing.near ? nearOf(x, z) : chunkOf(x, z));
 const at = (px, py, thing) => cellOf(thing, px - W / 2, D / 2 - py);
 
 /* How near the set dressing is drawn, by preset; Low draws none of it. */
@@ -163,6 +168,7 @@ function nearCull(props, r) {
 }
 
 const BEAD_SPIN = [0, 0, 0];
+const LEAF_SPIN = [0, 0, 0];
 
 function drawLand(kit, T, low) {
   drawPrisms(kit, T.prisms, low);
@@ -248,6 +254,13 @@ function drawLand(kit, T, low) {
     const mid = curve.getPoint(0.5);
     kit.begin(0, 0, 0, 0, chunkOf(mid.x, mid.z));
     kit.add(w.m, new THREE.TubeGeometry(curve, WIRE_SEGMENTS, w.r, 3, false));
+  }
+  /* The park's trees' canopies, as the kit's leaf puffs. */
+  for (const l of T.leaves) {
+    const [x, y, z] = worldAt(l.px, l.py, l.h);
+    kit.begin(0, 0, 0, 0, GROVE);
+    LEAF_SPIN[1] = l.spin;
+    kit.leaf(l.m, [x, y, z], l.r, l.ry, LEAF_SPIN);
   }
   /* The town's own trees, all in one chunk of their own: each brings the
    * town's painted materials, and filed by place every chunk would draw

@@ -115,6 +115,8 @@ export class Land {
     this.tori = [];
     this.cones = [];
     this.balls = [];
+    this.leaves = [];
+    this.groving = false;
     this.signs = [];
     this.scaled = [];
     this.frusta = [];
@@ -217,7 +219,7 @@ export class Land {
   }
 
   cyl(m, a, b, r, seg = 8, rTop = null, fine = false) {
-    this.cyls.push({ m, a: worldAt(a[0], a[1], a[2]), b: worldAt(b[0], b[1], b[2]), r, seg, rTop, fine: fine || this.dressing, near: this.near });
+    this.cyls.push({ m, a: worldAt(a[0], a[1], a[2]), b: worldAt(b[0], b[1], b[2]), r, seg, rTop, fine: fine || this.dressing, near: this.near, grove: this.groving });
   }
 
   disc(m, px, py, r, h0, h1, seg = 24, fine = false) {
@@ -232,11 +234,30 @@ export class Land {
   }
 
   cone(m, px, py, h, r, height, seg = 10, fine = false) {
-    this.cones.push({ m, px, py, h, r, height, seg, fine: fine || this.dressing, near: this.near });
+    this.cones.push({ m, px, py, h, r, height, seg, fine: fine || this.dressing, near: this.near, grove: this.groving });
   }
 
   ball(m, px, py, h, r, fine = false) {
     this.balls.push({ m, px, py, h, r, fine: fine || this.dressing, near: this.near });
+  }
+
+  /* A canopy puff, the kit's leaf (src/props/kit.js leaf): a round blob
+   * squashed to ry, shaded round and inked as one shape, turned `spin`
+   * about the vertical so no two puffs show the same facets. Drawn only;
+   * the tree that wears it says what is solid. */
+  leaf(m, px, py, h, r, ry, spin = 0) {
+    this.leaves.push({ m, px, py, h, r, ry, spin, near: false, grove: true });
+  }
+
+  /* The trees' trunks and cones, filed in the grove's one cell, not by
+   * place: see ../yume/index.js drawLand. */
+  grove(fn) {
+    this.groving = true;
+    try {
+      fn();
+    } finally {
+      this.groving = false;
+    }
   }
 
   /* A ball of twenty faces, for what is small and many: a flower, a koi. */

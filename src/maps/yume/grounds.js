@@ -32,7 +32,7 @@
 
 import { W, D, rng } from './frame.js';
 import { sincos } from '../../props/trig.js';
-import { roundSolid } from './fair.js';
+import { roundSolid, coneSolid } from './fair.js';
 import {
   WHEEL, CAROUSEL, TOWER, TEACUPS, SWINGS, SHIP,
 } from './rides.js';
@@ -49,7 +49,7 @@ export const STREET = { x0: 166, x1: 194, y0: 31, y1: 90 };
 export const SHOP_ROWS = { west: [152, 166], east: [194, 208] };
 /* The hub, the castle, the lake. */
 export const HUB = { px: 180, py: 112, r: 26 };
-export const CASTLE = { x0: 162, x1: 198, y0: 157, y1: 179, wall: 12, arch: 9, archW: 9 };
+export const CASTLE = { x0: 162, x1: 198, y0: 157, y1: 179, wall: 12, arch: 11, spring: 9, archW: 9 };
 export const LAKE = [
   [112, 197], [150, 191], [200, 194], [236, 203], [246, 226], [234, 250],
   [198, 263], [150, 266], [117, 260], [108, 238], [109, 214],
@@ -143,28 +143,34 @@ function entrance(T) {
   const wx1 = G.px - G.open / 2;
   const ex0 = G.px + G.open / 2;
   const ex1 = G.px + G.open / 2 + G.tower;
+  /* The towers, round, a cream plinth and a gold band, the windows round
+   * topped. Solid as a ring of posts a hand inside the drawn wall, so the
+   * way in between them is as wide as it was. */
+  const R = G.tower / 2;
   for (const [a, b] of [[wx0, wx1], [ex0, ex1]]) {
-    T.box('ymWallPink', a, G.y0, 0, b, G.y1, G.towerH, { kind: 'wall', name: 'gate tower' });
-    T.paint('ymWallCream', a - 0.04, G.y0 - 0.04, 0, b + 0.04, G.y1 + 0.04, 1.2);
-    T.paint('ymGold', a - 0.06, G.y0 - 0.06, G.towerH - 0.5, b + 0.06, G.y1 + 0.06, G.towerH);
     const cx = (a + b) / 2;
     const cy = (G.y0 + G.y1) / 2;
-    T.cone('ymRoofBlue', cx, cy, G.towerH, 4.9, 6.5, 12);
-    T.frustumSolid({ x0: a, y0: G.y0, x1: b, y1: G.y1 }, G.towerH, { x0: cx - 1, y0: cy - 1, x1: cx + 1, y1: cy + 1 }, G.towerH + 5.5, 3, 'gate roof');
+    T.disc('ymWallPink', cx, cy, R, 0, G.towerH, 20);
+    roundSolid(T, cx, cy, R, 0, G.towerH, 'gate tower');
+    T.disc('ymWallCream', cx, cy, R + 0.12, 0, 1.3, 20);
+    T.torus('ymGold', cx, cy, G.towerH - 0.25, R + 0.05, 0.3, 0, 0, 5, 24);
+    T.torus('ymWhite', cx, cy, 1.3, R + 0.12, 0.16, 0, 0, 5, 24);
+    T.cone('ymRoofBlue', cx, cy, G.towerH, R + 1.4, 6.5, 16);
+    T.frustumSolid({ x0: cx - R, y0: cy - R, x1: cx + R, y1: cy + R }, G.towerH, { x0: cx - 1, y0: cy - 1, x1: cx + 1, y1: cy + 1 }, G.towerH + 5.5, 3, 'gate roof');
+    T.ball('ymGold', cx, cy, G.towerH + 6.6, 0.32);
     T.post('ymGold', cx, cy, G.towerH + 6.5, G.towerH + 8.2, 0.08, { kind: 'pole', name: 'gate flagpole' });
     T.deco('ymRed', cx + 0.1, cy - 0.04, G.towerH + 7.0, cx + 1.7, cy + 0.04, G.towerH + 8.0);
-    /* Windows, round topped by a ball each, on the south face. */
-    for (const h of [4, 8.5]) {
-      T.paint('ymGlass', cx - 1.0, G.y0 - 0.05, h, cx + 1.0, G.y0, h + 2.2);
-      T.ball('ymGold', cx, G.y0 - 0.1, h + 2.5, 0.22);
+    /* Windows, round topped, on the south face, sunk into the curve. */
+    for (const [h0, h1] of [[4, 6.7], [8.5, 11.2]]) {
+      arched(T, 'ymGlass', 'ymWhite', 'y', cy - R + 0.35, -1, cx - 0.9, cx + 0.9, h0, h1, 0.42);
     }
-    /* The ticket windows at the foot. */
-    T.paint('ymGlassDark', a + 0.8, G.y0 - 0.05, 1.3, b - 0.8, G.y0, 2.5);
-    T.deco('ymRed', a + 0.5, G.y0 - 0.9, 2.8, b - 0.5, G.y0, 3.0);
+    /* The ticket window at the foot, round topped, with its red hood. */
+    arched(T, 'ymGlassDark', 'ymWhite', 'y', cy - R + 0.6, -1, cx - 1.5, cx + 1.5, 1.4, 3.0, 0.7);
+    T.deco('ymRed', cx - 1.9, cy - R - 0.8, 3.2, cx + 1.9, cy - R + 0.6, 3.4);
   }
   /* The beam over the way in, the sign on it, and the star on top. */
-  T.box('ymWallCream', wx1, G.y0 + 0.5, G.h, ex0, G.y1 - 0.5, G.beam, { kind: 'wall', name: 'gate beam' });
-  T.paint('ymGold', wx1, G.y0 + 0.44, G.h - 0.25, ex0, G.y1 - 0.44, G.h);
+  T.box('ymWallCream', wx1 - G.tower / 2 + 0.6, G.y0 + 0.5, G.h, ex0 + G.tower / 2 - 0.6, G.y1 - 0.5, G.beam, { kind: 'wall', name: 'gate beam' });
+  T.paint('ymGold', wx1 - 0.4, G.y0 + 0.44, G.h - 0.25, ex0 + 0.4, G.y1 - 0.44, G.h);
   T.sign('ymParkName', G.px, G.y0 + 0.5, (G.h + G.beam) / 2, G.open - 0.6, G.beam - G.h - 0.6, 's');
   T.sign('ymParkName', G.px, G.y1 - 0.5, (G.h + G.beam) / 2, G.open - 0.6, G.beam - G.h - 0.6, 'n');
   T.prism('ymYellow', 'y', starProfile(G.px, G.beam + 2.4, 2.4), G.y0 + 2.9, G.y1 - 2.9);
@@ -302,36 +308,99 @@ function roofProp(T, kind, px, py, h) {
   }
 }
 
+/*
+ * THE CARTOON PIECES the fronts are built from, each a profile extruded
+ * through a hand's depth: a pane with a round top, and an awning of
+ * stripes with a scallop hanging under each. A handful of triangles each,
+ * and what turns a box with paint on it into a shop out of a picture book.
+ */
+/* A round topped opening's profile: a0 to a1 across, from h0 up to h1 at
+ * the crown. */
+function archProfile(a0, a1, h0, h1) {
+  const r = (a1 - a0) / 2;
+  const rv = Math.min(r, h1 - h0);
+  const m = (a0 + a1) / 2;
+  const spring = h1 - rv;
+  const out = [[a0, h0], [a1, h0]];
+  for (let k = 0; k <= 8; k += 1) {
+    sincos((Math.PI * k) / 8, SC);
+    out.push([m + r * SC.c, spring + rv * SC.s]);
+  }
+  return out;
+}
+
+/* A round topped pane on a face of plan axis `axis` ('x' for a face that
+ * looks east or west, 'y' for one that looks north or south), a0 to a1
+ * along the face, standing `d` proud of `at` toward `out` (more where it
+ * is sunk into a curved wall), framed by a hand's width of `frame`. Drawn only: it sits in the wall's solid. */
+function arched(T, m, frame, axis, at, out, a0, a1, h0, h1, d = 0.09) {
+  const lo = (k) => Math.min(at, at + out * k);
+  const hi = (k) => Math.max(at, at + out * k);
+  if (frame) {
+    T.prism(frame, axis, archProfile(a0 - 0.18, a1 + 0.18, h0 - 0.12, h1 + 0.18), lo(d - 0.04), hi(d - 0.04));
+  }
+  T.prism(m, axis, archProfile(a0, a1, h0, h1), lo(d), hi(d));
+}
+
+/* A striped awning along a face that looks east or west: from the wall at
+ * frontX, hIn up, out `depth` to hOut, from py y0 to y1, its stripes `a`
+ * and `b`, a scallop of the stripe's colour under each. Solid as two steps
+ * a little inside the slope. */
+function awning(T, frontX, out, y0, y1, hIn, hOut, depth, a, b, name) {
+  const xo = frontX + out * depth;
+  const n = Math.max(3, Math.round((y1 - y0) / 0.8));
+  const w = (y1 - y0) / n;
+  const t = 0.16;
+  for (let k = 0; k < n; k += 1) {
+    const m = k % 2 ? b : a;
+    const s0 = y0 + k * w;
+    T.prism(m, 'y', [[frontX, hIn], [xo, hOut], [xo, hOut - t], [frontX, hIn - t]], s0, s0 + w);
+    /* The scallop: a half round hanging from the outer edge. */
+    const prof = [];
+    for (let j = 0; j <= 6; j += 1) {
+      sincos(Math.PI + (Math.PI * j) / 6, SC);
+      prof.push([s0 + w / 2 + (w / 2) * SC.c, hOut - t + (w * 0.55) * SC.s]);
+    }
+    T.prism(m, 'x', prof, Math.min(xo, xo - out * 0.06), Math.max(xo, xo - out * 0.06));
+  }
+  const xm = frontX + out * depth * 0.5;
+  const hm = hIn + (hOut - hIn) * 0.5;
+  T.hidden(Math.min(frontX, xm), y0, hm - t, Math.max(frontX, xm), y1, hIn - 0.04, 'wall', name);
+  T.hidden(Math.min(xm, xo), y0, hOut - t, Math.max(xm, xo), y1, hm - 0.04, 'wall', name);
+}
+
 /* One shop: its body, roof, awning, board and windows, its front facing
  * the street (east for the west row, west for the east row). */
 function shop(T, s, x0, x1, y0, y1, frontX, east) {
   const o = { kind: 'wall', name: 'shop' };
   T.box(s.wall, x0, y0, 0, x1, y1, s.h, o);
-  /* The roof: a gable, ridge along the street. */
+  /* The roof: a gable, ridge along the street, with a fat white eave. */
   const mid = (x0 + x1) / 2;
-  T.prism(s.roof, 'y', [[x0 - 0.4, s.h], [mid, s.h + 2.6], [x1 + 0.4, s.h], [x1 + 0.4, s.h - 0.2], [x0 - 0.4, s.h - 0.2]], y0 - 0.3, y1 + 0.3);
+  T.prism(s.roof, 'y', [[x0 - 0.5, s.h - 0.1], [mid, s.h + 2.7], [x1 + 0.5, s.h - 0.1], [x1 + 0.5, s.h - 0.35], [mid, s.h + 2.4], [x0 - 0.5, s.h - 0.35]], y0 - 0.35, y1 + 0.35);
+  T.prism(s.wall, 'y', [[x0, s.h], [mid, s.h + 2.4], [x1, s.h]], y0 + 0.02, y1 - 0.02);
   for (let k = 0; k < 3; k += 1) {
     const f = (k + 1) / 4;
     const ix = (mid - x0 + 0.4) * (1 - f);
     T.box(s.roof, mid - ix, y0 - 0.3, s.h + 2.6 * f * 0.999 - 2.6 / 4, mid + ix, y1 + 0.3, s.h + 2.6 * f * 0.999, { draw: false, kind: 'wall', name: 'shop roof' });
   }
   const out = east ? 1 : -1;
-  /* The awning over the shop front, striped, and the board over it. */
-  const ax0 = Math.min(frontX, frontX + out * 1.6);
-  const ax1 = Math.max(frontX, frontX + out * 1.6);
-  T.box('ymRed', ax0, y0 + 0.4, 3.0, ax1, y1 - 0.4, 3.2, { kind: 'wall', name: 'awning' });
-  T.dress(() => {
-    for (let y = y0 + 0.9; y < y1 - 0.8; y += 1.2) {
-      T.paint('ymWhite', ax0, y, 3.2, ax1, y + 0.6, 3.22);
-    }
-  });
-  T.sign(s.sign, frontX + out * 0.02, (y0 + y1) / 2, 4.6, (y1 - y0) - 2.2, 1.8, east ? 'e' : 'w');
-  /* Windows and the door. */
-  T.paint('ymGlass', frontX - (east ? 0.05 : 0), y0 + 1.2, 0.6, frontX + (east ? 0.05 : 0), (y0 + y1) / 2 - 1.0, 2.6);
-  T.paint('ymGlass', frontX - (east ? 0.05 : 0), (y0 + y1) / 2 + 1.0, 0.6, frontX + (east ? 0.05 : 0), y1 - 1.2, 2.6);
-  T.paint('ymWoodDark', frontX - (east ? 0.05 : 0), (y0 + y1) / 2 - 0.7, 0, frontX + (east ? 0.05 : 0), (y0 + y1) / 2 + 0.7, 2.4);
-  for (const y of [y0 + 2, (y0 + y1) / 2, y1 - 2]) {
-    T.paint('ymGlass', frontX - (east ? 0.05 : 0), y - 0.6, 5.9, frontX + (east ? 0.05 : 0), y + 0.6, s.h - 0.7);
+  /* The corners, round white pilasters with a ball on each, and the white
+   * band where the walls meet the roof. */
+  for (const y of [y0 + 0.35, y1 - 0.35]) {
+    T.post('ymWhite', frontX, y, 0, s.h - 0.2, 0.32, { kind: 'pole', name: 'shop corner' });
+    T.ball('ymGold', frontX + out * 0.05, y, s.h + 0.3, 0.34);
+  }
+  T.paint('ymWhite', Math.min(frontX, frontX + out * 0.12), y0 + 0.3, s.h - 0.75, Math.max(frontX, frontX + out * 0.12), y1 - 0.3, s.h - 0.45);
+  /* The awning over the shop front, striped and scalloped. */
+  awning(T, frontX, out, y0 + 0.75, y1 - 0.75, 3.7, 2.95, 1.7, 'ymRed', 'ymWhite', 'awning');
+  T.sign(s.sign, frontX + out * 0.02, (y0 + y1) / 2, 4.6, (y1 - y0) - 2.6, 1.6, east ? 'e' : 'w');
+  /* The shop windows and the door, round topped, and the windows above. */
+  const c = (y0 + y1) / 2;
+  arched(T, 'ymGlass', 'ymWhite', 'x', frontX, out, y0 + 1.3, c - 1.25, 0.6, 2.6);
+  arched(T, 'ymGlass', 'ymWhite', 'x', frontX, out, c + 1.25, y1 - 1.3, 0.6, 2.6);
+  arched(T, 'ymWoodDark', 'ymWhite', 'x', frontX, out, c - 0.7, c + 0.7, 0, 2.5);
+  for (const y of [y0 + 2.2, c, y1 - 2.2]) {
+    arched(T, 'ymGlass', 'ymWhite', 'x', frontX, out, y - 0.55, y + 0.55, 5.7, s.h - 0.95);
   }
   roofProp(T, s.prop, mid, (y0 + y1) / 2, s.h);
 }
@@ -423,6 +492,40 @@ function castle(T) {
   T.paint('ymStone', a0, C.y0, C.arch - 0.02, a1, C.y1, C.arch);
   T.paint('ymStone', a0, C.y0 - 0.04, 0, a0 + 0.04, C.y1 + 0.04, C.arch);
   T.paint('ymStone', a1 - 0.04, C.y0 - 0.04, 0, a1, C.y1 + 0.04, C.arch);
+  /*
+   * The way through looks round topped from either side: a cream spandrel
+   * fills each upper corner under a low curve that springs at 9 m, where
+   * the flat top used to be, and meets the soffit 2 m higher at the
+   * middle, and a stone ring rides round it. The way through is as high
+   * at its sides as it was and higher in the middle; the corners are solid
+   * as two small steps inside the drawn fill.
+   */
+  const SPRING = C.spring;
+  const ring = (rx, ry, k) => {
+    sincos((Math.PI * k) / 12, SC);
+    return [mid + rx * SC.c, SPRING + ry * SC.s];
+  };
+  const left = [[a0, C.arch]];
+  const right = [[a1, C.arch]];
+  for (let k = 0; k <= 6; k += 1) {
+    left.push(ring(C.archW / 2, 2, 12 - k));
+    right.push(ring(C.archW / 2, 2, k));
+  }
+  const band = [];
+  for (let k = 0; k <= 12; k += 1) {
+    band.push(ring(C.archW / 2 + 0.55, 2.55, k));
+  }
+  for (let k = 12; k >= 0; k -= 1) {
+    band.push(ring(C.archW / 2, 2, k));
+  }
+  for (const [e0, e1, s0, s1] of [[C.y0 - 0.04, C.y0 + 0.5, C.y0 - 0.12, C.y0], [C.y1 - 0.5, C.y1 + 0.04, C.y1, C.y1 + 0.12]]) {
+    T.prism('ymWallCream', 'y', left, e0, e1);
+    T.prism('ymWallCream', 'y', right, e0, e1);
+    T.prism('ymStone', 'y', band, s0, s1);
+  }
+  for (const [x0, x1, h] of [[a0, a0 + 1.0, SPRING + 1.3], [a0 + 1.0, a0 + 2.0, SPRING + 1.7], [a1 - 1.0, a1, SPRING + 1.3], [a1 - 2.0, a1 - 1.0, SPRING + 1.7]]) {
+    T.hidden(x0, C.y0, h, x1, C.y1, C.arch, 'wall', 'castle arch');
+  }
   /* The parapet, solid, its merlons drawn on it. */
   T.box('ymWallCream', C.x0, C.y0, C.wall, C.x1, C.y0 + 0.7, C.wall + 1.0, o);
   T.box('ymWallCream', C.x0, C.y1 - 0.7, C.wall, C.x1, C.y1, C.wall + 1.0, o);
@@ -433,9 +536,9 @@ function castle(T) {
   T.paint('ymPink', C.x0 - 0.04, C.y0 - 0.04, 0, C.x1 + 0.04, C.y1 + 0.04, 1.4);
   /* Windows on both long faces, arched with a gold ball. */
   for (const x of [C.x0 + 4, C.x0 + 8, a1 + 3, a1 + 7]) {
-    for (const [y, d] of [[C.y0, -0.05], [C.y1, 0.05]]) {
-      T.paint('ymGlass', x - 0.7, Math.min(y, y + d), 5.5, x + 0.7, Math.max(y, y + d), 8.5);
-      T.ball('ymGold', x, y + d * 2, 8.9, 0.2);
+    for (const [y, d] of [[C.y0, -1], [C.y1, 1]]) {
+      arched(T, 'ymGlass', 'ymGold', 'y', y, d, x - 0.7, x + 0.7, 5.5, 8.7);
+      T.ball('ymGold', x, y + d * 0.2, 9.15, 0.24);
     }
   }
   /* The corner towers. */
@@ -447,7 +550,7 @@ function castle(T) {
     roundSolid(T, x, y, 3.6, 0, 19, 'castle tower');
     T.frustumSolid({ x0: x - 3.0, y0: y - 3.0, x1: x + 3.0, y1: y + 3.0 }, 19, { x0: x - 0.8, y0: y - 0.8, x1: x + 0.8, y1: y + 0.8 }, 25, 3, 'castle tower roof');
     for (const h of [8, 13]) {
-      T.paint('ymGlass', x - 0.6, y - 3.62, h, x + 0.6, y - 3.5, h + 2);
+      arched(T, 'ymGlass', 'ymWhite', 'y', y - 3.6 + 0.35, -1, x - 0.6, x + 0.6, h, h + 2.2, 0.42);
     }
   }
   /* The keep over the arch, its hipped roof, the spire and the star. */
@@ -464,7 +567,19 @@ function castle(T) {
   T.box('ymYellow', mid - 0.7, sy - 0.3, C.wall + 31, mid + 0.7, sy + 0.3, C.wall + 34.5, { draw: false, kind: 'wall', name: 'castle star' });
   T.sign('ymCastleName', mid, K.y0, C.wall + 6.5, 7, 2.2, 's');
   for (const x of [K.x0 + 3, K.x1 - 3]) {
-    T.paint('ymGlass', x - 0.9, K.y0 - 0.05, C.wall + 2.5, x + 0.9, K.y0, C.wall + 6);
+    arched(T, 'ymGlass', 'ymGold', 'y', K.y0, -1, x - 0.9, x + 0.9, C.wall + 2.3, C.wall + 6.2);
+    arched(T, 'ymGlass', 'ymGold', 'y', K.y1, 1, x - 0.9, x + 0.9, C.wall + 2.3, C.wall + 6.2);
+  }
+  /* A turret on each of the keep's corners, round, with a pointed hat,
+   * which is what makes a box a castle in a picture book. */
+  for (const [x, y] of [[K.x0, K.y0], [K.x1, K.y0], [K.x0, K.y1], [K.x1, K.y1]]) {
+    T.disc('ymWallCream', x, y, 1.5, C.wall, C.wall + 13, 14);
+    roundSolid(T, x, y, 1.5, C.wall, C.wall + 13, 'castle turret');
+    T.torus('ymGold', x, y, C.wall + 13, 1.52, 0.1, 0, 0, 4, 16);
+    T.cone('ymRoofPurple', x, y, C.wall + 13, 2.0, 5, 12);
+    coneSolid(T, x, y, 1.6, C.wall + 13, 0.5, C.wall + 16.5, 2, 'castle turret roof');
+    T.ball('ymGold', x, y, C.wall + 18.2, 0.22);
+    arched(T, 'ymGlass', 'ymWhite', 'y', y - 1.5 + 0.3, -1, x - 0.4, x + 0.4, C.wall + 8.5, C.wall + 10.3, 0.36);
   }
 }
 
@@ -637,13 +752,31 @@ function haunted(T) {
     const cy = (H.y0 + H.y1) / 2;
     T.box('ymRoofSlate', H.x0 - 0.6, cy - iy, H.h + 6 * f - 1.5, H.x1 + 0.6, cy + iy, H.h + 6 * f, { draw: false, kind: 'wall', name: 'haunted roof' });
   }
-  T.box('ymWallDark', H.x0 + 3, H.y1 - 9, H.h, H.x0 + 9, H.y1 - 3, H.h + 12, { kind: 'wall', name: 'haunted tower' });
-  T.cone('ymRoofPurple', H.x0 + 6, H.y1 - 6, H.h + 12, 4.4, 6, 4);
-  T.frustumSolid({ x0: H.x0 + 3, y0: H.y1 - 9, x1: H.x0 + 9, y1: H.y1 - 3 }, H.h + 12, { x0: H.x0 + 5.5, y0: H.y1 - 6.5, x1: H.x0 + 6.5, y1: H.y1 - 5.5 }, H.h + 17, 3, 'haunted tower roof');
-  /* Windows lit a sickly green, boarded. */
+  /* The tower, round, with a witch's hat leaning off true and a lit
+   * window under it. */
+  const tx = H.x0 + 6;
+  const ty = H.y1 - 6;
+  T.disc('ymWallDark', tx, ty, 3, H.h, H.h + 12, 16);
+  roundSolid(T, tx, ty, 3, H.h, H.h + 12, 'haunted tower');
+  T.torus('ymStoneDark', tx, ty, H.h + 12, 3.05, 0.2, 0, 0, 4, 16);
+  T.cone('ymRoofPurple', tx, ty, H.h + 12, 4.0, 4.5, 14);
+  T.cone('ymRoofPurple', tx + 0.5, ty - 0.3, H.h + 16.3, 1.3, 2.6, 10);
+  coneSolid(T, tx, ty, 3.4, H.h + 12, 1.0, H.h + 16, 3, 'haunted tower roof');
+  arched(T, 'ymMint', 'ymWood', 'y', ty - 3 + 0.35, -1, tx - 0.7, tx + 0.7, H.h + 6, H.h + 8.6, 0.42);
+  arched(T, 'ymMint', 'ymWood', 'x', tx + 3 - 0.35, 1, ty - 0.7, ty + 0.7, H.h + 6, H.h + 8.6, 0.42);
+  /* Windows lit a sickly green, round topped, boarded across. */
   for (const x of [52, 60, 70, 78, 86]) {
-    T.paint('ymMint', x - 1, H.y0 - 0.05, 4.8, x + 1, H.y0, 7.4);
-    T.deco('ymWood', x - 1.3, H.y0 - 0.14, 5.9, x + 1.3, H.y0 - 0.05, 6.2);
+    arched(T, 'ymMint', 'ymWood', 'y', H.y0, -1, x - 1, x + 1, 4.8, 7.6);
+    T.deco('ymWood', x - 1.3, H.y0 - 0.2, 5.9, x + 1.3, H.y0 - 0.09, 6.2);
+  }
+  /* The east face, the way in: the door framed in old wood under a round
+   * hood, and lit windows either side, up and down. */
+  T.paint('ymWood', H.x1, d0 - 0.5, 0, H.x1 + 0.08, d0, cor);
+  T.paint('ymWood', H.x1, d1, 0, H.x1 + 0.08, d1 + 0.5, cor);
+  arched(T, 'ymStoneDark', 'ymWood', 'x', H.x1, 1, d0, d1, cor, cor + 2.0, 0.08);
+  for (const y of [68, 75, 93, 99]) {
+    arched(T, 'ymMint', 'ymWood', 'x', H.x1, 1, y - 1, y + 1, 5.0, 7.8);
+    arched(T, 'ymMint', 'ymWood', 'x', H.x1, 1, y - 0.8, y + 0.8, 1.2, 3.4);
   }
   /* The big ghost looking over the roof, its face south, and its arms. */
   T.ball('ymGhost', 74, 86, H.h + 7.5, 3.0);
@@ -654,7 +787,7 @@ function haunted(T) {
   }
   T.ball('ymRose', 74, 83.1, H.h + 6.8, 0.5);
   T.post('ymGhost', 74, 86, H.h + 1.5, H.h + 9.2, 2.9, { draw: false, kind: 'wall', name: 'the ghost' });
-  T.sign('ymHauntName', (d0 + d1) / 2 > 0 ? H.x1 + 0.02 : H.x1, (d0 + d1) / 2, cor + 1.4, 6.5, 1.6, 'e');
+  T.sign('ymHauntName', H.x1 + 0.1, (d0 + d1) / 2, cor + 3.4, 6.5, 1.6, 'e');
   /* A crooked graveyard fence by the door, drawn and solid. */
   for (let y = H.y0 + 2; y < d0 - 2; y += 1.6) {
     T.post('ymWallDark', H.x1 + 2.5, y, 0, 1.3 + ((y * 7) % 3) * 0.12, 0.06, { kind: 'pole', name: 'haunted fence' });
@@ -674,8 +807,7 @@ function food(T) {
     T.post('ymWoodDark', x0 + 0.15, y0 + 0.15, 1.1, 2.6, 0.08, { kind: 'pole', name: 'stall post' });
     T.post('ymWoodDark', x0 + 0.15, y0 + 5.85, 1.1, 2.6, 0.08, { kind: 'pole', name: 'stall post' });
     T.box('ymWood', x1 - 0.3, y0, 1.1, x1, y0 + 6, 2.6, { kind: 'wall', name: 'stall back' });
-    T.prism(roof, 'y', [[x0 - 0.5, 2.6], [x1 + 0.2, 3.3], [x1 + 0.2, 3.1], [x0 - 0.5, 2.45]], y0 - 0.3, y0 + 6.3);
-    T.box(roof, x0 - 0.5, y0 - 0.3, 2.6, x1 + 0.2, y0 + 6.3, 3.0, { draw: false, kind: 'wall', name: 'stall roof' });
+    awning(T, x1 + 0.2, -1, y0 - 0.3, y0 + 6.3, 3.35, 2.78, x1 + 0.2 - (x0 - 0.5), roof, 'ymWhite', 'stall roof');
     T.sign(sign, x0 - 0.52, y0 + 3, 2.85, 4.2, 0.55, 'w');
     T.dress(() => {
       for (let i = 0; i < 4; i += 1) {
@@ -739,7 +871,73 @@ const KEEP = [
   [124, 88, 14], [180, 55, 32], [180, 14, 46], [18, 105, 26], [248, 110, 6], [300, 112, 5], [210, 112, 8],
 ];
 
+/*
+ * THE PARK'S OWN TREES, drawn in the comic's round hand rather than the
+ * town's: a broadleaf is a trunk and four puffs of leaf, a cherry a leaning
+ * trunk and five flat pink puffs, a pine three stacked cones. Each is a
+ * few hundred triangles where the town's tree was two and a half thousand,
+ * so the park's 250 trees cost a ninth of what they did, and their shadows
+ * the same. Solid as drawn, a little inside: the trunk, and one capsule
+ * through the middle of the canopy.
+ */
+function broadleaf(T, px, py, s, k, r) {
+  const a = r.range(0, 6.28);
+  const tones = ['ymLeaf', 'ymLeafDeep', 'ymLeafLight'];
+  const tone = (j) => tones[(k + j) % 3];
+  T.cyl('ymBark', [px, py, 0], [px, py, 3.0 * s], 0.24 * s, 7, 0.15 * s);
+  T.post('ymBark', px, py, 0, 2.4 * s, 0.18 * s, { draw: false, kind: 'tree', name: 'trunk' });
+  T.leaf(tone(0), px, py, 3.7 * s, 1.95 * s, 1.6 * s, a);
+  for (let j = 0; j < 3; j += 1) {
+    const sc = sincos(a + (j * 6.28) / 3, { s: 0, c: 1 });
+    T.leaf(tone(j + 1), px + 1.15 * s * sc.c, py + 1.15 * s * sc.s, 3.2 * s + 0.3 * s * (j % 2), 1.3 * s, 1.1 * s, a + j);
+  }
+  T.leaf(tone(2), px, py, 4.9 * s, 1.1 * s, 0.95 * s, a + 2);
+  T.post('ymLeaf', px, py, 3.3 * s, 4.1 * s, 1.45 * s, { draw: false, kind: 'canopy', name: 'canopy' });
+}
+
+function cherry(T, px, py, s, k, r) {
+  const a = r.range(0, 6.28);
+  const lean = sincos(a, { s: 0, c: 1 });
+  const tx = px + 0.5 * s * lean.c;
+  const ty = py + 0.5 * s * lean.s;
+  T.cyl('ymBark', [px, py, 0], [tx, ty, 2.7 * s], 0.22 * s, 7, 0.13 * s);
+  T.cap('ymBark', [px, py, 0], [tx, ty, 2.2 * s], 0.17 * s, { draw: false, kind: 'tree', name: 'trunk' });
+  T.leaf(k % 2 ? 'ymSakura' : 'ymSakuraDeep', tx, ty, 3.4 * s, 2.1 * s, 1.25 * s, a);
+  for (let j = 0; j < 4; j += 1) {
+    const sc = sincos(a + 0.8 + (j * 6.28) / 4, { s: 0, c: 1 });
+    T.leaf((k + j) % 2 ? 'ymSakuraDeep' : 'ymSakura', tx + 1.5 * s * sc.c, ty + 1.5 * s * sc.s, 3.0 * s + 0.25 * s * (j % 2), 1.35 * s, 0.9 * s, a + j);
+  }
+  T.post('ymSakura', tx, ty, 3.2 * s, 3.6 * s, 1.5 * s, { draw: false, kind: 'canopy', name: 'canopy' });
+}
+
+function pine(T, px, py, s, k) {
+  T.cyl('ymBark', [px, py, 0], [px, py, 1.4 * s], 0.2 * s, 6, 0.16 * s);
+  const tiers = [[1.0, 1.75, 2.5], [2.5, 1.35, 2.2], [3.8, 0.9, 1.9]];
+  tiers.forEach(([h, rr, ht], j) => {
+    T.cone((k + j) % 2 ? 'ymPine' : 'ymPineDeep', px, py, h * s, rr * s, ht * s, 8);
+  });
+  T.post('ymBark', px, py, 0, 1.0 * s, 0.17 * s, { draw: false, kind: 'tree', name: 'trunk' });
+  T.post('ymPine', px, py, 1.6 * s, 3.4 * s, 0.75 * s, { draw: false, kind: 'canopy', name: 'canopy' });
+  T.post('ymPine', px, py, 3.4 * s, 5.0 * s, 0.4 * s, { draw: false, kind: 'canopy', name: 'canopy' });
+}
+
+let TREE_K = 0;
+function tree(T, style, px, py, s, r) {
+  TREE_K += 1;
+  T.grove(() => {
+    if (style === 'pine') {
+      pine(T, px, py, s, TREE_K);
+    } else if (style === 'sakura') {
+      cherry(T, px, py, s, TREE_K, r);
+    } else {
+      broadleaf(T, px, py, s, TREE_K, r);
+    }
+  });
+  T.take(px, py, 1.6);
+}
+
 function trees(T) {
+  TREE_K = 0;
   const r = rng(9091);
   /* A belt round the wall, but not before the gate. */
   const ring = [];
@@ -756,7 +954,7 @@ function trees(T) {
       continue;
     }
     const style = r.chance(0.35) ? 'pine' : r.chance(0.5) ? 'sakura' : 'street';
-    T.asset({ type: 'tree', style, dims: { size: r.range(0.9, 1.2), variant: r.int(1, 99) } }, 1, x, y, 0, r.range(0, 6.28));
+    tree(T, style, x, y, r.range(0.9, 1.2), r);
   }
   /* Clumps in the coaster's infield, round the lake and in the east. */
   const clumps = [[40, 160, 10, 6], [92, 140, 9, 5], [100, 220, 8, 4], [44, 222, 7, 4], [150, 140, 9, 6], [214, 160, 9, 6],
@@ -769,14 +967,14 @@ function trees(T) {
         continue;
       }
       const style = r.chance(0.45) ? 'sakura' : r.chance(0.5) ? 'street' : 'pine';
-      T.asset({ type: 'tree', style, dims: { size: r.range(0.85, 1.15), variant: r.int(1, 99) } }, 1, x, y, 0, r.range(0, 6.28));
+      tree(T, style, x, y, r.range(0.85, 1.15), r);
     }
   }
   /* Sakura round the lake's south shore, either side of the castle. */
   for (let x = 116; x < 244; x += 8) {
     const y = 188 + r.range(-1, 1);
     if (treeFree(T, x, y, KEEP)) {
-      T.asset({ type: 'tree', style: 'sakura', dims: { size: r.range(0.9, 1.1), variant: r.int(1, 99) } }, 1, x, y, 0, r.range(0, 6.28));
+      tree(T, 'sakura', x, y, r.range(0.9, 1.1), r);
     }
   }
 }

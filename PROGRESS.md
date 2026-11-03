@@ -74211,3 +74211,7 @@ Laps 201 to 243 m (the Nationals qualifier is 169), a rough lap estimate of 12.8
 **Checks**: `check:clip` 2632 passed, 0 failed; `micro:check` passes; `mission-preset --check` passes; `lint:preload` up to date; headless shots of all six. Not run: `npm run verify` (no physics, plant, ABI or build change), `check:builder` (its five inch case reads only the qualifier). Not flown.
 
 **What went wrong.** `setFlags` takes the piece's own side, which is the other side as flown on a gate facing along its heading, so the first hairpin was refused; the generator now checks `flagsAsFlown` and turns it round. The first camera script for the builder's 3D view pointed at a field centred on zero, which the builder's world is not (`focusDoc`: x as is, z is minus y). The first T6 crossed its own line at the tower and was redrawn.
+
+### 2026-11-03: the 5 inch race pass goes to main
+
+The owner, 2026-11-03 02:33Z: "Push to main". That covers this branch (gate dress, the six chapter tracks, the pilots' corner, the baked dive gate frame; PR 221) and the board's race pack and setup sheet (board PR 68), which went first as d6b11a2. Both mains were fetched first and neither had moved past this branch's base, so both are fast forwards. Board `npm test` all passed before its push. The chapter tracks are builder presets only; publishing them to the board and marking them official still waits for his word. Night LED gates are still held.

@@ -40,7 +40,7 @@ import {
 import { LETTERS, openingCount, openingName } from '../props/letters.js';
 import {
   aperturesOf, elementById, kindOf, isSequenceable, logosOf, logoForDecal, setOpeningSize,
-  SCENE_TIMES, SCENE_GROUNDS, sceneOf,
+  SCENE_TIMES, SCENE_GROUNDS, sceneOf, isNightRace,
 } from './model.js';
 import { gateNumbers, gateNumberOf, sequenceLabel, faceLabel, unsequencedElements } from './sequence.js';
 import { labelOf, MAP_TOOLS, WHOOP_TOOLS, FIVE_INCH_TOOLS, partPiecesFor } from './elements.js';
@@ -2406,6 +2406,40 @@ export class Panels {
         }, { suffix: 'm', step: 0.5 }),
     );
     host.append(grid);
+
+    /*
+     * DAY OR NIGHT, a five inch track only (isNightRace in model.js). The
+     * track's choice and not the pilot's, so a room flies one picture. The
+     * same segmented control a map's time of day uses, and an edit like any
+     * other, so Undo takes it back.
+     */
+    if (!micro) {
+      host.append(el('h3', null, 'Race time'));
+      const seg = el('div', 'tb-seg');
+      seg.setAttribute('role', 'group');
+      seg.setAttribute('aria-label', 'Race time');
+      const nightNow = isNightRace(doc);
+      for (const [label, want] of [['Day', false], ['Night', true]]) {
+        const on = nightNow === want;
+        const b = button(label, on ? 'tb-seg-btn on' : 'tb-seg-btn', () => {
+          if (isNightRace(this.host.doc) !== want) {
+            this.host.edit('race time', (d) => {
+              if (want) {
+                d.night = true;
+              } else {
+                delete d.night;
+              }
+            });
+          }
+        });
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        seg.append(b);
+      }
+      host.append(seg);
+      host.append(el('p', 'tb-help', nightNow
+        ? 'A night race: a dark sky, a moon, and LED strip round every gate and up every flag. Everybody who flies this track flies it at night.'
+        : 'Flown in daylight. Pick Night for a dark sky with LED strip round every gate.'));
+    }
 
     host.append(el('h3', null, 'Racing line'));
     host.append(this.field('set-tangent', 'Tangent scale', doc.settings.tangentScale, (val) => {

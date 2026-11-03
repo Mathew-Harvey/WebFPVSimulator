@@ -92,6 +92,7 @@ the file.
   "trackClass": "full",
   // "mode": "freestyle",       written only on a freestyle map
   // "scene": { ... },          a map's time of day and ground, when not the default
+  // "night": true,             a five inch race flown at night, when it is one
   "field":    { ... },
   "settings": { ... },
   "branding": { ... },
@@ -111,6 +112,7 @@ the file.
 | `trackClass` | `"full"` or `"micro"` | Which kind of track. `full` is the sixty metre field flown on a 5 inch through MultiGP sized gates; `micro` is a RaceGOW room flown on a 65 mm whoop. It decides the palette, the sizes a new element gets, the grid, the warnings and which autosave seat and board the track belongs to. Always written; read as `full` when absent, which is what every version 2 document is. A freestyle map is always `full`. |
 | `mode` | `"freestyle"`, or absent | **Written only on a freestyle map.** Absent means a race track, which is every document written before maps existed, so no race track's bytes changed when maps arrived. Anything other than `"freestyle"` reads as a race track. See **Freestyle maps**. |
 | `scene` | object, or absent | **A map's only, and written only when it is not the default.** Its time of day and its ground; see **The scene** under **Freestyle maps**. Absent reads as golden hour over concrete, which is what every map looked like before the block existed. Never read or written on a race track. |
+| `night` | `true`, or absent | **A five inch race track's only, and written only when it is on.** The track is flown under a dark sky with a moon, and LED strip round every gate and up every flag (`NIGHT` in `src/render/scene.js`). The track's choice, so everybody who flies it flies the same picture. Anything but `true` reads as a day race, silently; never read or written on a whoop room or a map. |
 | `field` | object | The ground the course stands on. |
 | `settings` | object | Per track tuning for the derived racing line. |
 | `branding` | object | The sponsors' logos the course is dressed in. Optional; see below. |

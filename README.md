@@ -137,6 +137,75 @@ Node against synthetic radios, one check per shipped defect; `lint:input`
 is the same tickets' other half, the calibrate screen, the title's trouble
 rows, the Settings room and the thumb sticks, through headless Chromium.
 
+## Capture mode
+
+Footage of the mini games that does not depend on how fast the machine is. A
+headless Chromium renders this page at one to three frames a second of real
+time, so a recording of it stutters and differs every run. With `?capture=1`
+the page runs on a virtual clock: one external step is exactly one 1/60 s
+frame, however long the frame takes to draw, and the same seed with the same
+number of steps gives the same pictures.
+
+It is off by default and changes nothing in normal play. `src/boot.js`
+imports `src/capture.js` only when the URL says `capture=1`, so a normal visit
+downloads none of it, `requestAnimationFrame`, `performance.now` and
+`Date.now` stay the browser's own, and `window.__capture` does not exist.
+
+With the flag on, before any game code runs: `requestAnimationFrame` is a queue
+that runs only when stepped; `performance.now()`, `Date.now()` and `new Date()`
+return virtual time from a fixed epoch; `setTimeout` and `setInterval` fire off
+the virtual clock; `Math.random` is a seeded generator; CSS fades follow the
+virtual clock; and audio is off (no `AudioContext`, no music). The display
+loop is forced (never the timer loop) and no draw is skipped by the frame cap
+or the GPU guard. Network and WebAssembly loading still finish in real time,
+which is harmless because nothing is simulated between steps.
+
+`seed=<uint32>` (default 1) seeds `Math.random` and the two `Date.now()` seeds
+the mini games used (balloons and the fight family). Same seed, same start
+options, same camera script, same frames.
+
+### `window.__capture`
+
+| call | what it does |
+| --- | --- |
+| `ready()` | Steps until the shell and its map are up and a frame is drawn. |
+| `start(mode, opts)` | Starts a mode solo with its bots, cars, riders or ball, past the door and the quad picker. `mode` is `ball`, `drift`, `dogfight`, `ribbon` or `moto`; `opts` has `seed`, `bots`, `skill` (and `round`, `hits`, `length`, `size` where the game has them). The page must be on that mode's map: `/index.html?capture=1&seed=N&map=ball, drift, city or moto&craft=5inch&fly=1`. |
+| `step(n = 1)` | Advances n x 1000/60 ms: timers due, then the queued rAF callbacks once (physics advances one 1/60 s frame, with its own 1 kHz substeps), then resolves when the frame is drawn. |
+| `now()` / `frame()` | The virtual time in ms, and the number of steps taken. |
+| `cam({pos, look, fov})` | Places the camera each frame, through `window.__setCam` (one camera system). `cam(null)` gives it back. |
+| `follow(target, {offset, lookAhead, smooth, fov, world})` | Keeps a subject in mid frame. Targets: `player`, `ball`, `bot`, `bot:N`, `car:N`, `rider:N`, `goal:0`, `goal:1`, or several joined with `+` for their midpoint. `offset` is `[side, up, back]` in metres in the subject's direction of travel (`world: true` makes it a fixed world offset), `lookAhead` is seconds of its velocity, `smooth` is 0 to 0.99. |
+| `path(keys)` | Camera keys `[{t, pos, look, fov}]`, t in virtual ms. |
+| `pilot(keys)` | A stick script `[[tMs, roll, pitch, yaw, throttle], ...]` through `window.__stick`. `cam(null)` plus this is the player's own FPV view. |
+| `hide({tips, hints, leftTab, chips, hud})` | CSS visibility only, so it changes what is drawn and never the game: `tips` the first flight guidance, `hints` each mode's start line, `leftTab` the SCORE tab, left panel, film slate and AIR readout, `chips` the Report bug, Pause and music buttons, `hud` everything. |
+
+Scoring is the game's own: a grade, a table or a score appears only when the
+run earns it. Nothing here sets one.
+
+### Recording
+
+`node scripts/capture-minigame.mjs --mode=<m> --seconds=12 --seed=1 --out=out/capture/<m>`
+(also `npm run capture:minigame -- ...`) writes `frame_000001.png` onward at
+1080x1920, and `capture.json` with the seed, options, git commit, virtual clock
+spacing and the sha256 of the first 120 frames. Other flags: `--cam=follow:<target>|pilot|path:<file.json>`,
+`--hide=tips,hints,leftTab,chips`, `--width`, `--height`, `--warmup=60`, `--bots`,
+`--skill`, `--offset=side,up,back`, `--lookahead`, `--smooth`, `--fov`, `--stick=<file.json>`.
+It exits non-zero if a frame fails, `window.__frameFault` is set, or the frame
+count or the 16.667 ms spacing is wrong. Each mode has a default camera and stick script in the script.
+
+```
+node scripts/capture-minigame.mjs --mode=ball     --seconds=12 --seed=1 --out=out/capture/ball
+node scripts/capture-minigame.mjs --mode=drift    --seconds=12 --seed=1 --out=out/capture/drift
+node scripts/capture-minigame.mjs --mode=dogfight --seconds=12 --seed=1 --out=out/capture/dogfight
+node scripts/capture-minigame.mjs --mode=ribbon   --seconds=12 --seed=1 --out=out/capture/ribbon
+node scripts/capture-minigame.mjs --mode=moto     --seconds=12 --seed=1 --out=out/capture/moto
+```
+
+Encode with:
+
+```
+ffmpeg -framerate 60 -i out/capture/<mode>/frame_%06d.png -c:v libx264 -crf 16 -pix_fmt yuv420p -r 60 <mode>-1080x1920-60.mp4
+```
+
 ## Licence
 
 GPLv3. Compiling Betaflight's control loop in makes this a derivative

@@ -2224,7 +2224,7 @@ export async function boot({ loading, bootStart, mapId }) {
     const { BalloonChase, hashKey } = balloonMods;
     const bc = view.balloonChase;
     balloonKey = `${view.id}:${(view.egg && view.egg.key) || view.name || ''}`;
-    balloonGame = new BalloonChase(balloonWorld(bc), hashKey(balloonKey) ^ (Date.now() >>> 0));
+    balloonGame = new BalloonChase(balloonWorld(bc), hashKey(balloonKey) ^ (capturing ? window.__capture.seed : Date.now() >>> 0));
     if (!balloonView) {
       balloonView = new balloonMods.BalloonView();
     }
@@ -2745,7 +2745,7 @@ export async function boot({ loading, bootStart, mapId }) {
     fightSeats = null;
     const builtAt = performance.now();
     const world = fightWorld();
-    const seed = hashKey(fightKey) ^ (Date.now() >>> 0);
+    const seed = hashKey(fightKey) ^ (capturing ? window.__capture.seed : Date.now() >>> 0);
     if (roomRibbon) {
       fightGame = new fightMods.RibbonRoom(world);
     } else if (roomGame === 'dogfight') {
@@ -8389,6 +8389,10 @@ export async function boot({ loading, bootStart, mapId }) {
    * once: a session opened as ?loop=timer or ?loop=display flies that loop
    * whatever the row says, so an A against B stays one address away.
    */
+  /* Capture mode (src/capture.js): set only by ?capture=1, which boot.js
+   * answers by installing the virtual clock and window.__capture before this
+   * file runs. Every guarded line below tests this and nothing else. */
+  const capturing = Boolean(window.__capture);
   const loopParam = new URLSearchParams(window.location.search).get('loop');
   const loopForce = loopParam === 'timer' ? true : (loopParam === 'display' || loopParam === 'raf' ? false : null);
   let timerLoop = false;
@@ -8403,7 +8407,8 @@ export async function boot({ loading, bootStart, mapId }) {
   let filmNow = false;
 
   function applyLoopMode() {
-    timerLoop = loopForce !== null ? loopForce : pacingTimerOn(ui.settings);
+    /* Capture steps the display loop, one rAF callback a step: never the timer. */
+    timerLoop = capturing ? false : (loopForce !== null ? loopForce : pacingTimerOn(ui.settings));
   }
 
   /* Whether the timer paces THIS tick: only live flying. The timer exists
@@ -11184,6 +11189,51 @@ export async function boot({ loading, bootStart, mapId }) {
     runFrame(performance.now());
   }
 
+  /* Capture mode: where a named subject is, in the Three.js frame, for the
+   * follow camera (src/capture.js). `out` is filled; false when the subject
+   * is not there. Reads only; nothing here changes the game. */
+  function captureSubject(name, out) {
+    const [kind, idx] = name.split(':');
+    const n = idx === undefined ? NaN : Number(idx);
+    let p = null;
+    if (kind === 'player') {
+      p = shell.quad.position;
+    } else if (kind === 'ball') {
+      p = fightView && fightView.ball ? fightView.ball.position : null;
+    } else if (kind === 'bot') {
+      const g = fightGame;
+      const i = Number.isFinite(n) ? n : 1;
+      if (g && i >= 0 && i < g.cap && g.alive[i]) {
+        out.x = g.x[i];
+        out.y = g.y[i];
+        out.z = g.z[i];
+        return true;
+      }
+    } else if (kind === 'goal') {
+      const arena = view && view.ballGame ? view.ballGame.arena : null;
+      if (arena) {
+        out.x = (n === 1 ? 1 : -1) * arena.hx;
+        out.y = arena.gh / 2;
+        out.z = 0;
+        return true;
+      }
+    } else if (kind === 'car' || kind === 'rider') {
+      const film = view && view.filmGame ? view.filmGame.film : null;
+      const i = Number.isFinite(n) ? n : 0;
+      const list = film && film.cars && film.cars.length
+        ? film.cars.map((c) => carCurr[c.slot]).filter((c) => c && c.on)
+        : carCurr.filter((c) => c.on);
+      p = list[i] || null;
+    }
+    if (!p) {
+      return false;
+    }
+    out.x = p.x;
+    out.y = p.y;
+    out.z = p.z;
+    return true;
+  }
+
   function runFrame(nowWall) {
     try {
       frameBody(nowWall);
@@ -12789,6 +12839,14 @@ export async function boot({ loading, bootStart, mapId }) {
      * there at this container's frame rate is not a capture. Nothing in
      * the shell writes camOverride, and the check is a property read on a
      * scalar, so it allocates nothing. */
+    if (capturing) {
+      /* The capture camera and stick script, then the player's own craft
+       * drawn when the camera is not its eye. */
+      window.__capture.tick();
+      if (camOverride && mode === 'flight') {
+        shell.quad.visible = true;
+      }
+    }
     if (camOverride) {
       shell.camera.position.set(camOverride[0], camOverride[1], camOverride[2]);
       shell.camera.up.set(0, 1, 0);
@@ -12904,7 +12962,7 @@ export async function boot({ loading, bootStart, mapId }) {
       } else {
         filmLastDraw = nowWall;
       }
-    } else if (capHz > 0 && worldLive) {
+    } else if (capHz > 0 && worldLive && !capturing) {
       if (nowWall - capLastDraw < 1000 / capHz - 1.0) {
         drawThis = false;
       } else {
@@ -12925,7 +12983,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * that grows without limit (the day Frame pacing shipped, that hung a
      * whole browser on the battery's software rasteriser).
      */
-    if (worldLive && drawThis && !film && !replayStepMode
+    if (worldLive && drawThis && !film && !replayStepMode && !capturing
       && gpuGate.shouldSkip(renderStart, ui.settings.lowLatency !== false, latency.targetMs(), timerLoop)) {
       drawThis = false;
     }
@@ -13608,7 +13666,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * been pacing this frame whether or not it drew: a draw the guard or the
      * cap held back still waits on a busy GPU's compositing. The Settings
      * studio's craft counts too, and the guard does not time it. */
-    if (!timerLoop) {
+    if (!timerLoop && !capturing) {
       /* Never under the experimental timer loop: these intervals are the
        * timer's own cadence, and the learner would report a refresh rate
        * the display does not have. It holds what it had instead. */
@@ -13623,7 +13681,9 @@ export async function boot({ loading, bootStart, mapId }) {
      * here, at once and through the Render scale path; the preset moves
      * only between runs, below. See autoscale.js.
      */
-    if (ui.settings.graphicsAuto && !timerLoop && mapReady && !swapInFlight && !replayMode && !film && worldLive
+    /* Capture mode measures nothing real: Auto graphics and the latency
+     * learner read the GPU's own fence times, which differ from run to run. */
+    if (ui.settings.graphicsAuto && !timerLoop && !capturing && mapReady && !swapInFlight && !replayMode && !film && worldLive
       && ((mode === 'flight' && ui.screen === 'flight') || (mode === 'title' && ui.screen === 'title'))) {
       autoScale.observe(dt, renderMs, blockMs, gpuGate.state, drawThis, latency.targetMs());
       if (autoScale.state.dirty) {
@@ -16809,6 +16869,19 @@ export async function boot({ loading, bootStart, mapId }) {
   /* Which loop paces the frames now, for the probes that check the Frame
    * pacing setting and the URL force against the loop actually running. */
   window.__loopNow = () => (timerLoop ? 'timer' : 'raf');
+  if (capturing) {
+    window.__capture.attach({
+      subject: captureSubject,
+      /* 0 gives the lens back to the shell. */
+      fov: (v) => {
+        const want = v > 0 ? v : ui.settings.cameraFov;
+        if (shell.camera.fov !== want) {
+          shell.camera.fov = want;
+          shell.camera.updateProjectionMatrix();
+        }
+      },
+    });
+  }
   applyLoopMode();
   timerOn = true;
   if (timerPacesNow()) {

@@ -110,6 +110,7 @@
     'src/art/wallart-hang.js',
     'src/art/wallart.js',
     'src/boot.js',
+    'src/capture.js',
     'src/career/controller.js',
     'src/career/curriculum.js',
     'src/career/geometry.js',

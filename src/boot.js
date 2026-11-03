@@ -32,6 +32,13 @@ import { Loading, planStages } from './ui/loading.js';
 import { MAP_BUILD_MS } from './maps/build-cost.js';
 import { SIM_WINDOW, claimWindowName } from './share/windows.js';
 
+/* Capture mode (src/capture.js, README "Capture mode") installs its virtual
+ * clock before any game module runs. Fetched only for ?capture=1, so a normal
+ * visit downloads nothing and reads no clock differently. */
+if (new URLSearchParams(window.location.search).get('capture') === '1') {
+  await import('./capture.js');
+}
+
 /* P6: navigation to the first interactive frame. Stamped in the first module
  * the page runs so it covers every fetch and every module evaluation, and
  * read back through window.__boot. */

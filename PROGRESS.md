@@ -74251,3 +74251,5 @@ It is the track's choice and not the pilot's on purpose: a room flies one pictur
 ### 2026-11-03: night races go to main
 
 The owner, 03:33Z: "Push to main". That covers PR 222: night races with LED gates and the chapter presets' board ids. Main was fetched first and had not moved past this branch's base (347953be), so it is a fast forward. Not flown yet.
+
+- The owner, 2026-11-03 04:23Z, in this thread: "Push to main". Merged origin/main 174573c into the capture branch (only PROGRESS.md conflicted, both sides kept), lint:preload and lint:frame green, fast-forwarded main to e3e5747. Capture mode itself is not re-run after the merge.

@@ -74325,3 +74325,7 @@ The owner, 14:21Z: "Make it so I can race night or day on any 5 inch track". Set
 **Latency**: none at Track or Day. Night is the night race's numbers from the entry above, fewer calls than day (Tower Dive, High, 145 to 111).
 
 **Checks**: headless, a day track (no night key) flown with Race time set to Night drew the night (111 calls), and setting it back to Day from the same session rebuilt the day (145). `lint:shell` gives the same 13 problems as main (run on a worktree of origin/main 8584490a), the only difference being the Settings list's overflow, 1321 to 1366 px, the one row. Not run: `npm run verify` (no physics, plant, ABI or build change). Not flown.
+
+### 2026-11-03: Race time goes to main
+
+The owner, 14:43Z: "Push to main". Covers PR 226, the Race time row. Main was fetched first and had not moved past this branch's base (8584490a), so it is a fast forward. Not flown.

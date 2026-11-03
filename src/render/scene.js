@@ -3234,9 +3234,144 @@ function courseProps(course, height, scene, colliders, baker, kit, padDecks = []
           deck: startBlockDeck(s.dims.padSize),
         });
       }
+      if (course.trackClass !== 'micro') {
+        pilotsCorner(course, s, n, height, colliders, baker);
+      }
     }
   }
   return markerHosts;
+}
+
+/*
+ * THE PILOTS' CORNER, behind a five inch track's start pads.
+ *
+ * A club race day has the same three things behind the start line every time: a pop up shade for the pilots, the
+ * timing table under it, and a run of safety net between them and the pads. The field had none of it, so the start
+ * of every track was a row of launch stands on bare grass. The owner's pick of 2026-11-03, item 4 of the 5 inch race
+ * pass.
+ *
+ * NO NEW DRAW CALL. Every part is baked in a material the field already draws: the gates' frame tube for the legs and
+ * the table's frame, their vinyl for the canopy and the table top, and the boundary fence's chain link for the net
+ * (same options, same key, so the baker folds it into the fence's bucket). About two hundred triangles.
+ *
+ * SOLID AS DRAWN, the map rule: each leg is a capsule, the canopy and the table top are capsules across their width,
+ * and the net is a fence run, the same shape the boundary fence is given.
+ *
+ * WHICH WAY IS BEHIND. Away from the first station the lap flies, which is where the pads launch to. Plan geometry at
+ * scene build, nothing per frame.
+ */
+const CORNER = {
+  back: 5.5,      /* pads to the middle of the shade, metres */
+  net: 2.4,       /* pads to the net */
+  netH: 2.2,
+  shade: 3,       /* the pop up's square side */
+  legH: 2.3,
+  peak: 0.55,
+  tableW: 1.8,
+  tableD: 0.7,
+  tableH: 0.74,
+};
+function pilotsCorner(course, s, pads, height, colliders, baker) {
+  const mats = sharedObstacleMats();
+  const first = (course.stations || [])[0];
+  let fx = first ? first.x - s.x : Math.sin(s.yaw);
+  let fz = first ? first.z - s.z : Math.cos(s.yaw);
+  const fl = Math.hypot(fx, fz) || 1;
+  fx /= fl;
+  fz /= fl;
+  /* Across, to the pilots' right as they face the course. */
+  const ax = -fz;
+  const az = fx;
+  const at = (back, across) => ({ x: s.x - fx * back + ax * across, z: s.z - fz * back + az * across });
+  const yaw = Math.atan2(fx, fz);
+  const g = new THREE.Group();
+  const tube = 0.025;
+
+  /* The shade: four legs, a flat valance and a low peak. */
+  const c = at(CORNER.back, 0);
+  const cy = height(c.x, c.z);
+  const half = CORNER.shade / 2;
+  const legGeo = new THREE.CylinderGeometry(tube, tube, CORNER.legH, 5);
+  for (const [u, v] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+    const p = at(CORNER.back + v * half, u * half);
+    const ly = height(p.x, p.z);
+    const leg = new THREE.Mesh(legGeo, mats.frame);
+    leg.position.set(p.x, ly + CORNER.legH / 2, p.z);
+    g.add(leg);
+    colliders.add('obstacle', p.x, ly, p.z, p.x, ly + CORNER.legH, p.z, 0.06);
+  }
+  const valance = new THREE.Mesh(new THREE.BoxGeometry(CORNER.shade, 0.22, CORNER.shade), mats.panel);
+  valance.position.set(c.x, cy + CORNER.legH - 0.11, c.z);
+  valance.rotation.y = yaw;
+  g.add(valance);
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(half * Math.SQRT2, CORNER.peak, 4, 1), mats.panel);
+  roof.position.set(c.x, cy + CORNER.legH + CORNER.peak / 2, c.z);
+  roof.rotation.y = yaw + Math.PI / 4;
+  g.add(roof);
+  for (const v of [-0.6, 0, 0.6]) {
+    const a = at(CORNER.back + v * half, -half);
+    const b = at(CORNER.back + v * half, half);
+    colliders.add('obstacle', a.x, cy + CORNER.legH, a.z, b.x, cy + CORNER.legH, b.z, 0.35);
+  }
+
+  /* The timing table under it. */
+  const t = at(CORNER.back + 0.4, 0);
+  const ty = height(t.x, t.z);
+  const top = new THREE.Mesh(new THREE.BoxGeometry(CORNER.tableW, 0.04, CORNER.tableD), mats.panel);
+  top.position.set(t.x, ty + CORNER.tableH, t.z);
+  top.rotation.y = yaw;
+  g.add(top);
+  const tableLeg = new THREE.CylinderGeometry(0.018, 0.018, CORNER.tableH, 4);
+  for (const [u, v] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+    const p = at(CORNER.back + 0.4 + v * (CORNER.tableD / 2 - 0.05), u * (CORNER.tableW / 2 - 0.05));
+    const leg = new THREE.Mesh(tableLeg, mats.frame);
+    leg.position.set(p.x, height(p.x, p.z) + CORNER.tableH / 2, p.z);
+    g.add(leg);
+  }
+  const ta = at(CORNER.back + 0.4, -CORNER.tableW / 2);
+  const tb = at(CORNER.back + 0.4, CORNER.tableW / 2);
+  colliders.add('obstacle', ta.x, ty + CORNER.tableH * 0.5, ta.z, tb.x, ty + CORNER.tableH * 0.5, tb.z, CORNER.tableH * 0.5);
+
+  /* The net: as wide as the pads and the shade, between them, on two posts. */
+  const width = Math.max(CORNER.shade + 2, pads * 1.2 + 2);
+  const na = at(CORNER.net, -width / 2);
+  const nb = at(CORNER.net, width / 2);
+  const ya = height(na.x, na.z);
+  const yb = height(nb.x, nb.z);
+  /* The boundary fence's own material, option for option, so it lands in the fence's bucket. Made per world, never
+   * kept across one, because a world's dispose frees what it drew with. */
+  const cornerNet = celMaterial({
+    color: 0xffffff,
+    map: chainLinkTexture(),
+    alphaTest: 0.45,
+    transparent: false,
+    side: THREE.DoubleSide,
+    rim: 0.0,
+    key: 'chainlink',
+  });
+  const reps = Math.max(1, Math.round(width / 0.30));
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
+    na.x, ya, na.z, nb.x, yb, nb.z, nb.x, yb + CORNER.netH, nb.z,
+    na.x, ya, na.z, nb.x, yb + CORNER.netH, nb.z, na.x, ya + CORNER.netH, na.z,
+  ]), 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array([
+    fx, 0, fz, fx, 0, fz, fx, 0, fz, fx, 0, fz, fx, 0, fz, fx, 0, fz,
+  ]), 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array([
+    0, 0, reps, 0, reps, CORNER.netH / FENCE.height,
+    0, 0, reps, CORNER.netH / FENCE.height, 0, CORNER.netH / FENCE.height,
+  ]), 2));
+  g.add(new THREE.Mesh(geo, cornerNet));
+  const postGeo = new THREE.CylinderGeometry(tube * 1.4, tube * 1.4, CORNER.netH + 0.1, 5);
+  for (const [p, py] of [[na, ya], [nb, yb]]) {
+    const post = new THREE.Mesh(postGeo, mats.frame);
+    post.position.set(p.x, py + (CORNER.netH + 0.1) / 2, p.z);
+    g.add(post);
+  }
+  colliders.add('wall', na.x, (ya + yb) / 2 + CORNER.netH / 2, na.z, nb.x, (ya + yb) / 2 + CORNER.netH / 2, nb.z,
+    CORNER.netH / 2);
+  baker.bake(g);
 }
 
 /*

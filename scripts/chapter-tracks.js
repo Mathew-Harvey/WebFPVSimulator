@@ -66,7 +66,7 @@ const TYPE = {
 
 const LAYOUTS = [
   {
-    id: 'chapter-1-first-flight', name: 'Chapter 1: First Flight', pads: [2, 3], 
+    id: 'chapter-1-first-flight', board: 'trk-178a4de4', name: 'Chapter 1: First Flight', pads: [2, 3], 
     note: 'Start here: a hurdle, a spiral up the double, a flag slalom, a hairpin round a flagged gate, the top of the tower and a gate chicane home.',
     lap: [
       { g: 'gate', at: [32, 3], label: 'Start' },
@@ -90,7 +90,7 @@ const LAYOUTS = [
     ],
   },
   {
-    id: 'chapter-2-crossover', name: 'Chapter 2: Crossover', pads: [28, 0], 
+    id: 'chapter-2-crossover', board: 'trk-d79909cb', name: 'Chapter 2: Crossover', pads: [28, 0], 
     note: 'A figure of eight: through the bottom of the double one way and over its top the other, with an orbit round a flag, a spiral up the ladder and a power loop to finish.',
     lap: [
       { g: 'gate', at: [46, 4], yaw: 0, label: 'Start' },
@@ -111,7 +111,7 @@ const LAYOUTS = [
     ],
   },
   {
-    id: 'chapter-3-tower-dive', name: 'Chapter 3: Tower Dive', pads: [2, 3], 
+    id: 'chapter-3-tower-dive', board: 'trk-00a85dee', name: 'Chapter 3: Tower Dive', pads: [2, 3], 
     note: 'Punch up through the launch gate, dive the gate on the poles, slalom the flags, climb out of a hairpin and run the top of the ladder and the tower.',
     lap: [
       { g: 'gate', at: [32, 3], label: 'Start' },
@@ -135,7 +135,7 @@ const LAYOUTS = [
     ],
   },
   {
-    id: 'chapter-4-ladder-slalom', name: 'Chapter 4: Ladder Slalom', pads: [2, 3], 
+    id: 'chapter-4-ladder-slalom', board: 'trk-4e8b1e0e', name: 'Chapter 4: Ladder Slalom', pads: [2, 3], 
     note: 'A gate chicane, an orbit, a spiral down the ladder, a long flag slalom and a split-S through the double, then the tower and a hurdle home.',
     lap: [
       { g: 'gate', at: [30, 3], label: 'Start' },
@@ -160,7 +160,7 @@ const LAYOUTS = [
     ],
   },
   {
-    id: 'chapter-5-hairpins', name: 'Chapter 5: Hairpins', pads: [2, 3], 
+    id: 'chapter-5-hairpins', board: 'trk-85a412d1', name: 'Chapter 5: Hairpins', pads: [2, 3], 
     note: 'Hairpins both ways round flagged gates, a spiral down round a flag, a Dutch 8 round two flags and a reverse split-S over the double.',
     lap: [
       { g: 'gate', at: [26, 3], label: 'Start' },
@@ -182,7 +182,7 @@ const LAYOUTS = [
     ],
   },
   {
-    id: 'chapter-6-split-s', name: 'Chapter 6: Split-S', pads: [2, 3], 
+    id: 'chapter-6-split-s', board: 'trk-2998f9c3', name: 'Chapter 6: Split-S', pads: [2, 3], 
     note: 'A power loop off the start, the dive gate, a split-S down through the double, a flag slalom, a spiral down round a flag and a hurdle home.',
     lap: [
       { g: 'gate', at: [28, 3], label: 'Start' },
@@ -209,7 +209,11 @@ const LAYOUTS = [
 
 function build(spec) {
   const doc = createTrack(spec.name, 'full');
-  doc.id = spec.id;
+  /* The board's id, not the slug: the six are on the board under these (the owner's word of 2026-11-03, "push the 6
+   * tracks to the board"), so the builder's shipped copy and the board's are one track. A pilot who opens the
+   * shipped copy and publishes it has no edit key for the id, and the builder forks it to a new one, as it does
+   * for any board track that is not theirs. */
+  doc.id = spec.board;
   doc.createdUtc = STAMP;
   doc.modifiedUtc = STAMP;
   doc.field.width = FIELD.width;

@@ -74215,3 +74215,9 @@ Laps 201 to 243 m (the Nationals qualifier is 169), a rough lap estimate of 12.8
 ### 2026-11-03: the 5 inch race pass goes to main
 
 The owner, 2026-11-03 02:33Z: "Push to main". That covers this branch (gate dress, the six chapter tracks, the pilots' corner, the baked dive gate frame; PR 221) and the board's race pack and setup sheet (board PR 68), which went first as d6b11a2. Both mains were fetched first and neither had moved past this branch's base, so both are fast forwards. Board `npm test` all passed before its push. The chapter tracks are builder presets only; publishing them to the board and marking them official still waits for his word. Night LED gates are still held.
+
+### 2026-11-03: the six chapter tracks are on the board
+
+The owner, 03:11Z: "Do the led gates and push the 6 tracks to the board". Published 03:14Z to https://webfpv.org/board under the author WebFPV, tagged race (Chapter 1 also beginner, the rest technical): trk-178a4de4 First Flight, trk-d79909cb Crossover, trk-00a85dee Tower Dive, trk-4e8b1e0e Ladder Slalom, trk-85a412d1 Hairpins, trk-2998f9c3 Split-S. Each has its share card and picker thumbnail, drawn by the simulator's own orbit page (`renderShareCard`) against a scratch copy of the board on this machine with the same six documents, then posted with the edit key, because headless Chromium here cannot reach the live board through the proxy. The edit keys are in the project's files (multigp-study/chapter-track-edit-keys.json), not in this repository. None is marked official: that needs an admin's sign in, which this session does not have.
+
+The shipped presets now carry those ids (`board` in `scripts/chapter-tracks.js`), so the builder's copy and the board's are the same track; a pilot who opens the shipped one and publishes it has no key for the id and the builder forks it to a new one, which is what it does for every board track that is not theirs.

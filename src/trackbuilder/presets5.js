@@ -876,7 +876,7 @@ export const FIVE_INCH_PRESETS = [
   },
   {
     "schemaVersion": 3,
-    "id": "chapter-1-first-flight",
+    "id": "trk-178a4de4",
     "name": "Chapter 1: First Flight",
     "createdUtc": "2026-11-03T00:00:00Z",
     "modifiedUtc": "2026-11-03T00:00:00Z",
@@ -1683,7 +1683,7 @@ export const FIVE_INCH_PRESETS = [
   },
   {
     "schemaVersion": 3,
-    "id": "chapter-2-crossover",
+    "id": "trk-d79909cb",
     "name": "Chapter 2: Crossover",
     "createdUtc": "2026-11-03T00:00:00Z",
     "modifiedUtc": "2026-11-03T00:00:00Z",
@@ -2595,7 +2595,7 @@ export const FIVE_INCH_PRESETS = [
   },
   {
     "schemaVersion": 3,
-    "id": "chapter-3-tower-dive",
+    "id": "trk-00a85dee",
     "name": "Chapter 3: Tower Dive",
     "createdUtc": "2026-11-03T00:00:00Z",
     "modifiedUtc": "2026-11-03T00:00:00Z",
@@ -3525,7 +3525,7 @@ export const FIVE_INCH_PRESETS = [
   },
   {
     "schemaVersion": 3,
-    "id": "chapter-4-ladder-slalom",
+    "id": "trk-4e8b1e0e",
     "name": "Chapter 4: Ladder Slalom",
     "createdUtc": "2026-11-03T00:00:00Z",
     "modifiedUtc": "2026-11-03T00:00:00Z",
@@ -4468,7 +4468,7 @@ export const FIVE_INCH_PRESETS = [
   },
   {
     "schemaVersion": 3,
-    "id": "chapter-5-hairpins",
+    "id": "trk-85a412d1",
     "name": "Chapter 5: Hairpins",
     "createdUtc": "2026-11-03T00:00:00Z",
     "modifiedUtc": "2026-11-03T00:00:00Z",
@@ -5875,7 +5875,7 @@ export const FIVE_INCH_PRESETS = [
   },
   {
     "schemaVersion": 3,
-    "id": "chapter-6-split-s",
+    "id": "trk-2998f9c3",
     "name": "Chapter 6: Split-S",
     "createdUtc": "2026-11-03T00:00:00Z",
     "modifiedUtc": "2026-11-03T00:00:00Z",

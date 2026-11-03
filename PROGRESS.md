@@ -74235,3 +74235,7 @@ It is the track's choice and not the pilot's on purpose: a room flies one pictur
 **Checks**: `check:clip` 2638 passed, 0 failed (six new checks: a day track writes no key, a night one round trips byte for byte, anything but true is day, silently, a room and a map are never night). Headless shots on High and Low (/mnt/project-files/multigp-study/night-*.jpg/png), and the builder's Night button clicked headless: the document took the key, no page errors. Not run: `npm run verify` (no physics, plant, ABI or build change). Not flown.
 
 **What went wrong.** The first build gave each LED colour its own material, three draw calls, which put Low one call above day; one vertex coloured material fixed it. The sun's glow term on a night sky read as a street lamp a fifth of the sky across, hence the night define. The first moonlight (0.62) looked like dusk.
+
+### 2026-11-03: night races go to main
+
+The owner, 03:33Z: "Push to main". That covers PR 222: night races with LED gates and the chapter presets' board ids. Main was fetched first and had not moved past this branch's base (347953be), so it is a fast forward. Not flown yet.

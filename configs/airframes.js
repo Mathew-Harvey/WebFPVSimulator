@@ -297,7 +297,9 @@ export const AIRFRAMES = [
      * it is the tune the houses were flown on. 'whoop-champion' is the
      * maker's 1S whoop configuration and belongs to plant 1; tunesFor in
      * configs/registry.js offers a tune by plant, so it leaves the whoop's
-     * list with the plant and a profile holding it is reseated here.
+     * list with the plant and a profile holding it is reseated here. The
+     * plant is the tune's own `plant` field there, because reading it off
+     * this airframe kept it on both lists (bug-bb1e9529).
      */
     defaultTune: 'betaflight-default',
     /*

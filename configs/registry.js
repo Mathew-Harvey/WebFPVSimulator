@@ -58,43 +58,67 @@
 
 import { AIRFRAMES } from './airframes.js';
 
+/*
+ * `plant` is the plant a tune was written and measured on, the simId of
+ * configs/airframes.js and the argument sim_set_airframe takes. It is what
+ * tunesFor offers by, and it is a fact about the tune, so it does not move
+ * when an airframe does. `airframe` is who it was written for, and null
+ * retires it: offered to nobody, whatever its plant.
+ */
 export const TUNES = [
   {
     id: 'betaflight-default',
     airframe: '5inch',
+    plant: 0,
     name: 'Betaflight default',
     note: 'Factory 4.5.1 with four settings changed: a quarter more feedforward, and less bounce back after a stop.',
   },
   {
     id: 'whoop-champion',
     airframe: 'whoop65',
+    plant: 1,
     name: 'Whoop stock',
     note: 'The maker\u2019s factory 1S whoop tune. Low gains, a narrow D boost band, and the gains coming off a fifth of the way up the stick because 1S sags.',
   },
   {
     id: 'whoop-racing',
     airframe: null,
+    plant: 1,
     name: 'Whoop racing',
     note: 'The 30000 kV variant’s factory tune. More damping and less integral than the stock tune, which is the shape of a tune for a motor with less authority.',
   },
   {
     id: 'whoop-freestyle',
     airframe: null,
+    plant: 1,
     name: 'Whoop freestyle',
     note: 'The 25000 kV variant on the bigger GF1219S prop. The highest gains of the three, and the only one the maker ships on Betaflight rates rather than Actual.',
   },
 ];
 
 /*
- * THE WHOOP'S STOCK TUNE IS OFFERED AGAIN, AND THE OTHER TWO STAY RETIRED.
+ * THE WHOOP'S STOCK TUNE GOES WITH PLANT 1, AND THE WHOOP IS ON PLANT 0.
  *
- * Since 2026-10-09 the whoop flies its own plant again, an 0702 28,000 kV 1S
- * machine, and 'whoop-champion' is its default: it was measured on that plant
- * (configs/airframes.js has the numbers). Racing and Freestyle were written
- * for the maker's 30,000 and 25,000 kV variants and were not measured on it,
- * so they stay at `airframe: null` until somebody does. What follows is the
- * reason all three came off in the first place, kept because it is still the
- * rule.
+ * From 2026-10-09 to 2026-10-23 the whoop flew its own plant, an 0702
+ * 28,000 kV 1S machine, and 'whoop-champion' was its default: it was measured
+ * on that plant. Since 2026-10-23 the whoop flies the five inch's plant, the
+ * one the houses were flown on, on the five inch's tune (configs/airframes.js
+ * says why), so 'whoop-champion' is offered to nobody until an airframe
+ * selects plant 1 again, and then it is offered with no edit here. Racing and
+ * Freestyle were written for the maker's 30,000 and 25,000 kV variants and
+ * were never measured on plant 1, so they stay at `airframe: null`.
+ *
+ * bug-bb1e9529, 2026-11-02, a five inch flown on 'whoop-champion'. tunesFor
+ * used to find a tune's plant through its airframe, so when the whoop moved
+ * to plant 0 its 1S tune moved with it and was offered to BOTH airframes: on
+ * the five inch's Tune row and the Presets tab, and kept on every whoop that
+ * held it, though the move's record says a stored whoop on 'whoop-champion'
+ * is reseated on betaflight-default. 24 of the 220 feel and tune reports
+ * filed between that move and this fix were flown on it, 7 of them on a five
+ * inch. The tune's own `plant` is what stops that: scripts/tuneplant-check.js.
+ *
+ * What follows is the reason all three came off in the first place, kept
+ * because it is still the rule.
  *
  *
  * They were the whoop's, and they were right for as long as the whoop was a
@@ -119,35 +143,38 @@ export const TUNES = [
  */
 
 /*
- * Every tune that is offered to ANYBODY, which is the retirement above read
- * without an airframe in hand. The Presets tab on the flight controller
- * screen is the second room that lists tunes and it has no airframe to
- * filter by, so it listed the whole table and handed a five inch pilot the
- * three retired whoop presets. `airframe: null` means offered to nobody, and
- * that has to mean it in both rooms or it does not mean it anywhere.
- *
- * Not a replacement for tunesFor: this one only drops the retired rows, and
- * the Tune row still picks by plant.
+ * The tunes written for a plant, retired ones left out. tunesFor below is
+ * this for the plant an airframe selects; it is exported so a check can ask
+ * about a plant no airframe is on.
  */
-export const OFFERED_TUNES = TUNES.filter((t) => t.airframe != null);
+export function tunesForPlant(simId) {
+  return TUNES.filter((t) => t.airframe != null && t.plant === simId);
+}
 
 /*
  * The tunes an airframe may load. A 6S 5 inch race tune on a 1S whoop is not
  * a thing a pilot should be able to reach by accident, and the rule survives
  * the whoop changing plants: an airframe is offered the tunes written for the
- * plant it selects. A tune with a null airframe is offered to nobody, which
- * is the retirement above.
+ * plant it selects, read off the tune's own `plant` and never off the
+ * airframe it was written for, which may since have moved (bug-bb1e9529,
+ * above). A tune with a null airframe is offered to nobody, which is the
+ * retirement above.
  */
 export function tunesFor(airframeId) {
   const want = AIRFRAMES.find((a) => a.id === airframeId);
-  if (!want) {
-    return [];
-  }
-  return TUNES.filter((t) => {
-    const owner = t.airframe && AIRFRAMES.find((a) => a.id === t.airframe);
-    return Boolean(owner) && owner.simId === want.simId;
-  });
+  return want ? tunesForPlant(want.simId) : [];
 }
+
+/*
+ * Every tune that is offered to ANYBODY, which is the Tune row's rule read
+ * without an airframe in hand. The Presets tab on the flight controller
+ * screen is the second room that lists tunes and it has no airframe to
+ * filter by, so it listed the whole table and handed a five inch pilot the
+ * three retired whoop presets. Offered means offered on some airframe's Tune
+ * row, so it is built from tunesFor and the two rooms cannot disagree: a tune
+ * for a plant nobody flies is in neither.
+ */
+export const OFFERED_TUNES = TUNES.filter((t) => AIRFRAMES.some((a) => tunesFor(a.id).includes(t)));
 
 /*
  * The one tune that is NOT a file here: the dump the pilot saved from the

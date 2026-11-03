@@ -5363,8 +5363,8 @@ export async function boot({ loading, bootStart, mapId }) {
    * runGravityScale is the multiple of 9.80665 the module is actually
    * holding, which starts at 1.0 because that is the module's own default
    * and the machine every harness replay flies; the shell's normal is
-   * configs/airframes.js gravityBase, 1.62 on the five inch and 2.025 on
-   * the whoop. So at boot the two disagree by
+   * configs/airframes.js gravityBase, 1.62 on both airframes since the whoop
+   * took the five inch's plant on 2026-10-23. So at boot the two disagree by
    * construction, applySettings sees it and pushes the base through the ONE
    * path that talks to sim_set_gravity, and the record key is built from the
    * scale the plant is holding rather than from the slider, so it survives

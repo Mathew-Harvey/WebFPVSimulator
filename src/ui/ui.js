@@ -837,13 +837,13 @@ const CROSSHAIR_LABEL = { off: 'Off', wings: 'Wings', cross: 'Cross', dot: 'Dot'
  * The pilot flew that and called it right; if a later report says it turns
  * too hard, the answer is mass, not this band.
  *
- * THE WHOOP HAS ITS OWN BASE NOW, 2.025, which is the five inch's 125. A
- * pilot flying the same track back to back in Vdrone and here had to take
- * the whoop to 120 to 130, and the owner made 125 its normal. So "Weight
- * 100" is still the machine we ship, it is just a heavier machine on the
- * whoop, and the slider's top is per airframe: the module refuses a gravity
- * above 2.5, so the whoop stops at 120, 2.43. WEIGHT_MAX is the widest any
- * airframe offers and configs/airframes.js weightMax is each one's own.
+ * THE WHOOP HAD ITS OWN BASE FOR A WHILE, 2.025, the five inch's 125, and
+ * its slider stopped at 120 because the module refuses a gravity above 2.5.
+ * Since 2026-10-23 it flies the five inch's plant at the five inch's 1.62,
+ * and its slider goes to 140 (configs/airframes.js), so a whoop and a five inch
+ * report at one weight quote the same multiple of g. The slider's
+ * top is still per airframe: WEIGHT_MAX is the widest any airframe offers
+ * and configs/airframes.js weightMax is each one's own.
  *
  * THE BOARD HOLDS THIS BAND TOO. A time and a freestyle run carry the weight
  * they were flown at, and the board refuses one off 60 to 140 in steps of 5

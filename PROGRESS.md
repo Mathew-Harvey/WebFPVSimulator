@@ -74304,3 +74304,4 @@ The owner, 03:33Z: "Push to main". That covers PR 222: night races with LED gate
 - Checks: `check:concert` 20 of 20, `lint:preload` up to date, `lint:fc` 33 of 33, headless load 0 console errors. `lint:catalog` cannot run in this container (no vendored Betaflight sources), on main as well. verify not run: no physics, plant, ABI or build change. Not flown.
 - What went wrong: a first push was typed with a force flag out of habit and refused; the branch fast-forwards from main, so it went up without one.
 - Shots: /mnt/project-files/hanabi-sound/pass2/.
+- 2026-11-03 12:45Z the owner, on sim PR 224 and board PR 69: "To main". Board fast-forwarded first, then the simulator. Not flown before the push.

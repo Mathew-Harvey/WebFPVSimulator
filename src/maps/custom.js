@@ -99,6 +99,21 @@ export async function buildMap(shell, onProgress, options) {
   if (opts.hideSponsors) {
     course.hideSponsors = true;
   }
+  /*
+   * DAY OR NIGHT, THE PILOT'S PICK (Settings, Race time; the owner's ask of
+   * 2026-11-03, "make it so I can race night or day on any 5 inch track").
+   * 'track' flies what the author chose, 'day' and 'night' override it. A
+   * five inch race track only: a whoop room has its lights on, and the
+   * renderer refuses a room anyway. Only the picture changes, never a gate,
+   * a collider or the clock, so a lap at night is the same lap.
+   */
+  if (course.trackClass === 'full' && !(doc && doc.mode === 'freestyle')) {
+    if (opts.raceTime === 'night') {
+      course.night = true;
+    } else if (opts.raceTime === 'day') {
+      delete course.night;
+    }
+  }
   const map = await buildFieldScene(shell, reporter(progress), course, q);
   /* Dan, in the corner of a RaceGOW room, judging the pilot. Loaded only for
    * a RaceGOW track, his picture included: see src/maps/dan/index.js. A track

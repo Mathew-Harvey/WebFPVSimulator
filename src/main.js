@@ -581,6 +581,12 @@ function preloadMapModules(id) {
   }
 }
 
+/* The pilot's Race time pick: 'track' (the author's own), 'day' or 'night'. */
+function raceTimeOf(settings) {
+  const v = settings && settings.raceTime;
+  return v === 'day' || v === 'night' ? v : 'track';
+}
+
 async function loadMap(shell, id, loading, options) {
   const entry = mapById(id);
   loading.start('module');
@@ -624,6 +630,8 @@ async function loadMap(shell, id, loading, options) {
   /* The Gem look, once a world is built: colours and vertex tones only, nothing per frame (look.js). */
   applyLook(map.scene, shell.quad);
   map.shadowsOff = Boolean(options && options.quality && options.quality.shadowsOff);
+  /* The Race time pick this world was built with: see raceTimeOf. */
+  map.raceTime = raceTimeOf(options);
   /* The published map a built world was made from, or null for the
    * pilot's own. The world does not say, because to it a document is a
    * document, and the shell has to tell two of them apart: see
@@ -1498,6 +1506,7 @@ export async function boot({ loading, bootStart, mapId }) {
   try {
     view = await loadMap(shell, ui.settings.map, loading, {
       quality: qualityOf(ui.settings),
+      raceTime: raceTimeOf(ui.settings),
       renderScale: renderScaleOf(ui.settings),
       hideSponsors: replayClean,
       ...worldDocument(ui.settings.map),
@@ -1518,6 +1527,7 @@ export async function boot({ loading, bootStart, mapId }) {
     ui.renderMenu();
     view = await loadMap(shell, 'custom', loading, {
       quality: qualityOf(ui.settings),
+      raceTime: raceTimeOf(ui.settings),
       renderScale: renderScaleOf(ui.settings),
       hideSponsors: replayClean,
     });
@@ -7670,6 +7680,8 @@ export async function boot({ loading, bootStart, mapId }) {
       && wantId === view.id
       && wantQ === view.graphics
       && Boolean(ui.settings.shadowsOff) === Boolean(view.shadowsOff)
+      /* Only a race track reads Race time, so only one is rebuilt for it. */
+      && (wantId !== 'custom' || raceTimeOf(ui.settings) === view.raceTime)
       && wantedCourseKey(wantId) === loadedCourseKey(view);
   }
 
@@ -7743,6 +7755,7 @@ export async function boot({ loading, bootStart, mapId }) {
     try {
       view = await loadMap(shell, wantId, loading, {
         quality: qualityOf(ui.settings),
+        raceTime: raceTimeOf(ui.settings),
         renderScale: renderScaleOf(ui.settings),
         hideSponsors: replayClean,
         /* The same map rebuilt (a change of graphics): a map with a game
@@ -7783,6 +7796,7 @@ export async function boot({ loading, bootStart, mapId }) {
         careerWorld = null;
         view = await loadMap(shell, previous, loading, {
           quality: qualityOf(ui.settings),
+          raceTime: raceTimeOf(ui.settings),
           renderScale: renderScaleOf(ui.settings),
           hideSponsors: replayClean,
           ...worldDocument(previous),

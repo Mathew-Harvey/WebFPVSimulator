@@ -74317,3 +74317,11 @@ The owner, 2026-11-03 12:21Z, of the two new maps: "they are ok, do a pass to in
 - Checks this turn: `check:yume` in Node, and in the browser on High and Low, `lint:preload`, `check:props`, `lint:quality`, `lint:partners`, `check:fresh`. Not run: `npm run verify` (no plant, ABI or build change). Not flown.
 
 - The owner, 2026-11-03 13:01Z, in this thread: "Push to main", after the latency above (fewer draw calls in every view, under half the triangles) and that nobody had flown it were put to him. No check scale named beyond the checks above. Covers sim PR 225 and the board's PR 70, board first. Main had not moved, so both fast forward. Not flown.
+
+### 2026-11-03: Race time, night or day on any five inch track
+
+The owner, 14:21Z: "Make it so I can race night or day on any 5 inch track". Settings, Screen, has a Race time row under Shadows: Track (the default, the time the builder chose), Day or Night. `raceTimeOf` in `src/main.js` reads it into every `loadMap`, `buildMap` in `src/maps/custom.js` turns the course's `night` on or off for a five inch race track only, and `worldMatchesSettings` rebuilds a race track's world when the pick changes, as Shadows does. Only the picture changes: no gate, collider or clock reads `night`, so a lap at night is the same lap on the board. Everybody in a room still sees their own pick, which is fine because it is only the picture.
+
+**Latency**: none at Track or Day. Night is the night race's numbers from the entry above, fewer calls than day (Tower Dive, High, 145 to 111).
+
+**Checks**: headless, a day track (no night key) flown with Race time set to Night drew the night (111 calls), and setting it back to Day from the same session rebuilt the day (145). `lint:shell` gives the same 13 problems as main (run on a worktree of origin/main 8584490a), the only difference being the Settings list's overflow, 1321 to 1366 px, the one row. Not run: `npm run verify` (no physics, plant, ABI or build change). Not flown.

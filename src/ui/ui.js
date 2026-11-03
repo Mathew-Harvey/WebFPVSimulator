@@ -1716,6 +1716,14 @@ const DEFAULTS = {
    * the world, as a preset does; Low has no map and ignores it.
    */
   shadowsOff: false,
+  /*
+   * Race time: 'track' flies a five inch race at the time its author chose,
+   * 'day' and 'night' override it on every track (the owner's ask of
+   * 2026-11-03). A string so loadSettings' typeof gate accepts it; anything
+   * else reads as 'track' (raceTimeOf in src/main.js). Changing it rebuilds
+   * a race track's world, as Shadows does.
+   */
+  raceTime: 'track',
   packVoltage: 4.2,
   /*
    * How heavy the quad is, as a percentage of the weight the airframe is
@@ -10881,6 +10889,18 @@ export class Ui {
               : 'On: the sun casts shadows, at this preset\'s detail. Turn it off if the picture is slow or the shadow edges bother you. Changing this rebuilds the world.',
           normalizeGraphics(s.graphics) !== 'low' && !s.shadowsOff,
           (v) => { if (normalizeGraphics(s.graphics) !== 'low') { s.shadowsOff = !v; } },
+        ),
+        choice(
+          'Race time',
+          s.raceTime === 'night'
+            ? 'Night: every five inch race track is flown under a dark sky, with LED strip round every gate and up every flag. It draws less than day. Changing this rebuilds the track.'
+            : s.raceTime === 'day'
+              ? 'Day: every five inch race track is flown in daylight, even one built as a night race. Changing this rebuilds the track.'
+              : 'Track: each five inch race track is flown at the time its builder chose, day unless it was built as a night race. Pick Day or Night to fly every track that way.',
+          ['track', 'day', 'night'],
+          s.raceTime === 'day' || s.raceTime === 'night' ? s.raceTime : 'track',
+          (v) => ({ track: 'Track', day: 'Day', night: 'Night' }[v]),
+          (v) => { s.raceTime = v; },
         ),
         /*
          * THE DOOR TO THE KNOBS. Render scale, the frame cap, low latency,

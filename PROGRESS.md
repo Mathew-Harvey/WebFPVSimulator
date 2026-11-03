@@ -74290,3 +74290,5 @@ The owner, 03:33Z: "Push to main". That covers PR 222: night races with LED gate
 - No change on the GPU: no draw call, no triangle, no program added (the net was already in the fence's bucket; a wrap mode is a sampler state). On the CPU, five more capsules in the collider list, all at the shade, met by the broadphase only when the craft is beside it. Not run: `npm run verify` (no physics, plant, ABI or build change).
 
 - Checks after the fix: check:props, lint:preload, check:fresh green; the ray grid and the shots above. Not flown.
+
+- The owner, 2026-11-03 07:30Z, in this thread: "Push to main". Main had not moved from 1bbe7d1, so main fast forwards to this branch. No verification scale named beyond the checks above. Not flown.

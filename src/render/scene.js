@@ -667,7 +667,12 @@ const FENCE = {
  *
  * The canvas is one tile 64 px square and the material repeats it, so the
  * whole kilometre of fence carries 16 kB of texture rather than a bitmap of
- * the run. RepeatWrapping in x only, because the fabric is one panel tall.
+ * the run. RepeatWrapping both ways. The boundary fence is one panel tall
+ * and reads v 0 to 1 only, so it cannot tell, but the pilots' corner's net
+ * is 2.2 m of the same fabric, v 0 to 2.1, and clamped in v everything above
+ * the first panel was the tile's top row stretched into vertical streaks.
+ * The tile joins itself on every edge (the diagonals wrap), so repeating it
+ * in v is seamless.
  */
 function chainLinkTexture() {
   const N = 64;
@@ -691,7 +696,7 @@ function chainLinkTexture() {
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.wrapS = THREE.RepeatWrapping;
-  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
   tex.anisotropy = 8;
   return tex;
 }
@@ -3443,10 +3448,27 @@ function pilotsCorner(course, s, pads, height, colliders, baker) {
   roof.position.set(c.x, cy + CORNER.legH + CORNER.peak / 2, c.z);
   roof.rotation.y = yaw + Math.PI / 4;
   g.add(roof);
-  for (const v of [-0.6, 0, 0.6]) {
-    const a = at(CORNER.back + v * half, -half);
-    const b = at(CORNER.back + v * half, half);
-    colliders.add('obstacle', a.x, cy + CORNER.legH, a.z, b.x, cy + CORNER.legH, b.z, 0.35);
+  /*
+   * The canopy, solid as drawn. It was three capsules of 0.35 m at 0.6 of the half side: solid half a metre over the
+   * eaves, 0.35 m past the two sides they ran across, and not solid at all for the last 0.15 m of the other two, so a
+   * quad could clip the canopy's edge and pass through it, or be stopped in clear air beside it. Now six runs of
+   * 0.25 m at half a metre centres, each shortened by its radius, which fills the 3 m square to its edges and no
+   * further, at the valance's height; and two thin runs higher up the middle for the peak. Measured with
+   * window.__hit straight down through a 0.2 m grid over the shade.
+   */
+  const canopyR = 0.25;
+  for (let k = 0; k < 6; k += 1) {
+    const v = -half + canopyR + k * ((CORNER.shade - canopyR * 2) / 5);
+    const a = at(CORNER.back + v, -(half - canopyR));
+    const b = at(CORNER.back + v, half - canopyR);
+    const y = cy + CORNER.legH + 0.03;
+    colliders.add('obstacle', a.x, y, a.z, b.x, y, b.z, canopyR);
+  }
+  for (const v of [-0.3, 0.3]) {
+    const a = at(CORNER.back + v, -0.45);
+    const b = at(CORNER.back + v, 0.45);
+    const y = cy + CORNER.legH + CORNER.peak * 0.55;
+    colliders.add('obstacle', a.x, y, a.z, b.x, y, b.z, 0.15);
   }
 
   /* The timing table under it. */
@@ -3467,8 +3489,11 @@ function pilotsCorner(course, s, pads, height, colliders, baker) {
   const tb = at(CORNER.back + 0.4, CORNER.tableW / 2);
   colliders.add('obstacle', ta.x, ty + CORNER.tableH * 0.5, ta.z, tb.x, ty + CORNER.tableH * 0.5, tb.z, CORNER.tableH * 0.5);
 
-  /* The net: as wide as the pads and the shade, between them, on two posts. */
-  const width = Math.max(CORNER.shade + 2, pads * 1.2 + 2);
+  /* The net: as wide as the pads and the shade, between them, on two posts. The pads' row is read off the start
+   * block's own spacing and pad size, as the loop that places them does: a fixed 1.2 m a pad left a row of eight at
+   * 3 m spacing standing 10 m wider than its net. */
+  const padRow = (pads - 1) * (s.dims.spacing || 0) + (s.dims.padSize || 0);
+  const width = Math.max(CORNER.shade + 2, padRow + 2);
   const na = at(CORNER.net, -width / 2);
   const nb = at(CORNER.net, width / 2);
   const ya = height(na.x, na.z);

@@ -74253,3 +74253,40 @@ It is the track's choice and not the pilot's on purpose: a room flies one pictur
 The owner, 03:33Z: "Push to main". That covers PR 222: night races with LED gates and the chapter presets' board ids. Main was fetched first and had not moved past this branch's base (347953be), so it is a fast forward. Not flown yet.
 
 - The owner, 2026-11-03 04:23Z, in this thread: "Push to main". Merged origin/main 174573c into the capture branch (only PROGRESS.md conflicted, both sides kept), lint:preload and lint:frame green, fast-forwarded main to e3e5747. Capture mode itself is not re-run after the merge.
+
+## 2026-11-03 | bugs | Bug hunt on what landed in the last two days: the pilots' corner (branch claude/project-thread-mnb50b)
+
+- Ask: the owner, 2026-11-03 06:59Z, "Do a bug hunt and root cause fix". Read as: sweep the sim and board with the weight on what reached main since 2026-11-01 (Hanabi Sound, Yumeboshi Land, the chapter tracks, the pilots' corner, night races, capture mode, the thock, the board's race pack), fix each real defect where it starts.
+- Before anything: `git fetch origin main` in both checkouts, branch cut from origin/main 1bbe7d1 (board d6b11a2), merge bases found.
+- What was run to look: 55 Node and browser checks (all green: the selftests, check:plant, check:world, check:world-golden, check:world-engines, check:career, check:minigames 396 s, check:ball, check:concert, check:yume, check:fest, check:raceline, check:path, check:fresh, lint:memory, lint:presets, lint:partners, lint:preload, lint:nouns, lint:fc, test:edge); lint:catalog cannot run here, vendor/betaflight is not checked out. A sweep of all 36 worlds through `__setMap` in one page: no console error and no stray resource on any. Every freestyle world's spawn probed with `__hit`: none inside a solid. lint:attract on yume, concert, park and hayate, and the attract walk run on all seven shipped five inch tracks: nothing flown through. Shots of chapter 1 by day and as a night race.
+
+### The pilots' corner's net was streaks above its first metre: fixed
+
+- Seen in a parked shot of Chapter 1's start: the diamond fabric stopped about a metre up and above it the net was vertical lines.
+- Root cause: `chainLinkTexture` clamped the texture in v (`ClampToEdgeWrapping`) because the boundary fence is one panel tall and reads v 0 to 1. The corner's net is 2.2 m of the same fabric with v running 0 to 2.1, so everything past 1.0 sampled the tile's top row.
+- Fix: repeat in v. The tile's diagonals wrap on every edge, so the fence, which never leaves 0 to 1, draws the same; the net now carries the diamonds to its top (shot before and after).
+
+### The net was sized by a guessed pad pitch: fixed
+
+- `pilotsCorner` sized the net as 1.2 m a pad, while the pads are placed at the start block's own `spacing`. On the shipped tracks (4 pads at 1.5 m) the net was 0.3 m short of the row plus margin; a row of eight at 3 m would have stood 10 m wider than its net. Now `(pads - 1) * spacing + padSize + 2`, the row the loop above actually places.
+
+### The canopy was not solid as drawn: fixed
+
+- Measured with `__hit` straight down through a 0.2 m grid over the shade on Chapter 1: the three canopy capsules (0.35 m, at 0.6 of the half side, full length) left the outer 0.15 to 0.2 m of two edges with nothing solid, ran 0.35 m past the other two edges into clear air, and stood about half a metre over the eaves. The map rule is every solid collides and every gap you can see is flyable.
+- Fix: six runs of 0.25 m at even centres, each shortened by its radius, at the valance's height, which fills the 3 m square to its edges and no further, and two thin runs up the middle for the peak. Re-measured: solid over the whole square, nothing past it but the legs. Still about a quarter metre proud of the eaves at the very edge, the price of a capsule under a pyramid.
+- Not a physics, plant, ABI or build change: scenery colliders, like the fence's.
+
+### Smaller
+
+- "Never name another FPV sim" (the owner, 2026-10-31): the one remaining name in code, a pilot's quote in src/input/input.js, is cut to the part that says what was asked. Old PROGRESS.md entries still quote pilots who named one; they are the record and were left as written.
+
+### Read and not a defect
+
+- Night races: the LED strip, stars, dimming of unlit materials (copies, shared textures kept, so async banner paints still land), nightBuild reset, Undo of Race time, normalise and toPlain round trip, the board storing the flag in the document. Chapter tracks: presets5.js matches what scripts/mission-preset.js writes. Yumeboshi Land's moving rides are seated from the step count with trig.js, no engine trig. The thock and compressor: every cue sets the shared noise filter's Q itself, effects at 0 return early. Capture mode: every guard tests `window.__capture`, and `capturing` is read only from the frame loop, after its declaration. Board race pack: compass bearing and the south west peg agree with plan.js's y up drawing. Support prompt beacon: the sim sends only `sim-exit`, which the board counts.
+- Seen and left for the owner, a look and not a defect: on a night race the gates' red frames and printed boards read at about 40 percent of day, because they are lit by the moon and hemisphere (0.78 against 1.87 by day), while the unlit ground is at 14 percent, so the frames look bright beside the grass.
+
+### Latency
+
+- No change on the GPU: no draw call, no triangle, no program added (the net was already in the fence's bucket; a wrap mode is a sampler state). On the CPU, five more capsules in the collider list, all at the shade, met by the broadphase only when the craft is beside it. Not run: `npm run verify` (no physics, plant, ABI or build change).
+
+- Checks after the fix: check:props, lint:preload, check:fresh green; the ray grid and the shots above. Not flown.

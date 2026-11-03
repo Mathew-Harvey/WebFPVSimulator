@@ -62,8 +62,8 @@ const STORE_KEY = 'webfpv_stick_map_v1';
 const PAD_STORE_KEY = 'webfpv.pad.v1';
 /*
  * THE RADIO'S RESTART SWITCH, bug-a25bc2dd: "As people start to grind
- * tracks they will need ready access to a restart race hot key. The default
- * in VDrone is A but can be assigned to an AUX on the radio too." R is the
+ * tracks they will need ready access to a restart race hot key ... [it]
+ * can be assigned to an AUX on the radio too." R is the
  * key and has been; a pilot with both hands on a radio had no way to it but
  * the pause menu. This is any button, or a switch that arrives as an axis,
  * picked by flipping it from the Restart switch row in Settings.

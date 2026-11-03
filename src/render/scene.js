@@ -3769,9 +3769,14 @@ function tiltedGate(spec, index, isStart, pitch, opts = {}) {
     });
   }
 
-  /* The lit target, in the pivot so it leans with the frame. Built at a sill
-   * of zero because the pivot already sits at the opening's centre. */
-  const marks = apertureMarkers(pivot, [-clearH * 0.5], clearW, clearH, 1, isStart, 0, micro);
+  /* The lit target, leaning with the frame. Built at a sill of zero because
+   * it sits at the opening's centre. It has a pivot of its own, the frame's
+   * twin, so that it alone stays live and the frame bakes (see `animate`). */
+  const lit = new THREE.Group();
+  lit.position.copy(pivot.position);
+  lit.rotation.x = pitch;
+  g.add(lit);
+  const marks = apertureMarkers(lit, [-clearH * 0.5], clearW, clearH, 1, isStart, 0, micro);
 
   /* The header rides on the leaning frame, above the opening in the frame's
    * own plane, so a pilot approaching from above reads it square on.
@@ -3799,12 +3804,19 @@ function tiltedGate(spec, index, isStart, pitch, opts = {}) {
      * rides on the pivot, so its height above the opening's centre is
      * foreshortened by the tilt. */
     top: centreY + (halfH + tubeR * 3 + (micro ? 0 : GATE_BANNER_H + 0.03)) * Math.cos(pitch),
-    /* The whole leaning frame stays live rather than baking, because its
-     * parts sit inside a pivot whose rotation the baker would have to flatten
-     * and the lit target has to keep its per obstacle materials anyway. A
-     * course has a handful of dive gates, not a hundred, so the draw calls
-     * are affordable and the alternative is a baked gate that cannot pulse. */
-    animate: [pivot],
+    /* Only the lit target stays live. The leaning frame, its fittings and its
+     * header bake with every other obstacle: the baker takes each mesh's
+     * world matrix, so the pivot's lean is flattened into the merged buffer
+     * and the frame is drawn as it stood. It used to stay live whole, on the
+     * reasoning that a course has a handful of dive gates and the draw calls
+     * were affordable, and measured on a five inch field each one cost about
+     * 87 draw calls on High (its tubes, fittings and outline hulls, each its
+     * own draw twice): a track with a launch gate and a dive gate drew 319
+     * where the same track with plain gates drew 145. The owner asked for
+     * dives and launches in the chapter tracks on 2026-11-03, and latency
+     * comes first, so the frame bakes now and the pulse still works, because
+     * the materials it drives are the lit target's own. */
+    animate: [lit],
     ringMat: marks.ring.material,
     haloMat: marks.halo.material,
     /* A dive gate is one opening, so the per opening lists are one long. */

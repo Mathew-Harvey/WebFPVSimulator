@@ -1716,8 +1716,8 @@ function sharedObstacleMats() {
  * robin, so fifteen gates and five marks put each mark on three gates spread
  * down the lap rather than on three gates in a row.
  *
- * THE SAILS ALTERNATE TWO WAYS AT ONCE. A teardrop flag's sweep is navy or
- * red so a line of them down a course reads as a run rather than a repeat,
+ * THE SAILS ALTERNATE TWO WAYS AT ONCE. A teardrop flag's sweep is yellow or
+ * orange so a line of them down a course reads as a run rather than a repeat,
  * and now it also has to cycle through the sponsors. `sails` is the run a
  * line of flags wears: sail i carries mark i mod n with the accent i mod 2,
  * which needs lcm(n, 2) entries before it repeats. A gate's own header
@@ -1798,14 +1798,14 @@ function bannerKit(logoUrls, key, sponsorMarks) {
       /* The far leg's, painted mirrored rather than scaled onto the mesh. */
       sleeveFlipped: printed(paint(i, BANNER_SIZE.sleeve, paintGateSleeve, { flip: true }), `slvf${i}`),
       /* This gate's own header pennants: its mark, both accents. */
-      sails: [sailOf(i, 'navy'), sailOf(i, 'red')],
+      sails: [sailOf(i, 'yellow'), sailOf(i, 'orange')],
     });
   }
 
   const runLength = n % 2 === 0 ? n : n * 2;
   const sails = [];
   for (let i = 0; i < runLength; i += 1) {
-    sails.push(sailOf(i % n, i % 2 === 1 ? 'red' : 'navy'));
+    sails.push(sailOf(i % n, i % 2 === 1 ? 'orange' : 'yellow'));
   }
 
   const kit = {

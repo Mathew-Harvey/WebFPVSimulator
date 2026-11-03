@@ -1066,14 +1066,14 @@ function dressKit(THREE, doc, logos, keep) {
       header: paint(i, BANNER_SIZE.header, paintGateHeader, {}),
       sleeve: paint(i, BANNER_SIZE.sleeve, paintGateSleeve, {}),
       sleeveFlipped: paint(i, BANNER_SIZE.sleeve, paintGateSleeve, { flip: true }),
-      sails: [sailOf(i, 'navy'), sailOf(i, 'red')],
+      sails: [sailOf(i, 'yellow'), sailOf(i, 'orange')],
     });
   }
   /* The run of turn flags alternates navy and red down the lap, round the logos. */
   const runLength = n % 2 === 0 ? n : n * 2;
   const run = [];
   for (let i = 0; i < runLength; i += 1) {
-    run.push(sailOf(i % n, i % 2 === 1 ? 'red' : 'navy'));
+    run.push(sailOf(i % n, i % 2 === 1 ? 'orange' : 'yellow'));
   }
   return {
     forGate: (slot) => dress[((Math.round(slot) % n) + n) % n],

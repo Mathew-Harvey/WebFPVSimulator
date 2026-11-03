@@ -826,13 +826,13 @@ export class View3D {
          * inverts the winding and a single sided plane turned inside out
          * disappears. */
         sleeveFlipped: paint(i, BANNER_SIZE.sleeve, paintGateSleeve, { flip: true }),
-        sails: [sailOf(i, 'navy'), sailOf(i, 'red')],
+        sails: [sailOf(i, 'yellow'), sailOf(i, 'orange')],
       });
     }
     const runLength = n % 2 === 0 ? n : n * 2;
     const sails = [];
     for (let i = 0; i < runLength; i += 1) {
-      sails.push(sailOf(i % n, i % 2 === 1 ? 'red' : 'navy'));
+      sails.push(sailOf(i % n, i % 2 === 1 ? 'orange' : 'yellow'));
     }
     /*
      * The ground paint's material, one per mark, made only once its image

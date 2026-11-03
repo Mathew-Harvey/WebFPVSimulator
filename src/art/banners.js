@@ -65,6 +65,31 @@ export const BANNER = {
   ink: '#1a1f2b',
   chequerDark: '#23272f',
   chequerLight: '#eae6dd',
+  /*
+   * THE RACE KIT: the colours a course's own gates and flags are printed in.
+   *
+   * WHY THEY ARE NOT THE VINYL. Shot on the race field on 2026-11-02, a
+   * vinyl gate read as cardboard in sun and as a grey stub against the light,
+   * and past about 25 m it was gone into the tree line. A real chapter course
+   * is printed in saturated colour precisely so a pilot can pick the next
+   * piece out from across the field, and a hue the grass and the trees do
+   * not have survives distance, haze and shade where a pale value does not:
+   * backlit, a white gate and a dark one are the same grey, an orange one is
+   * still orange. Orange sits opposite the turf's green; yellow is the
+   * second flag colour because it holds against both the trees and the sky,
+   * where navy vanished into one and red into neither but read as a stop.
+   *
+   * BOTH STAY UNDER THE SKY, which is the rule the vinyl's own note sets: a
+   * printed board may never out value the horizon band (0xf2e3cb). The
+   * yellow is the lighter of the two and is still a clear step below it.
+   *
+   * The pale vinyl stays on the course as the panel a sponsor's mark sits on,
+   * so a mark designed for white still reads, and the town's props keep the
+   * navy and red: this is the race's own kit and nothing else's.
+   */
+  race: '#ff7414',
+  raceShade: '#d4560a',
+  raceYellow: '#ffc21a',
 };
 
 /* The same colours as 0xRRGGBB, for the two Three.js consumers that cannot
@@ -172,12 +197,14 @@ export const HEADER_NUMBER_ZONE = 0.22;
 export function paintGateHeader(ctx, w, h, opts = {}) {
   const numberZone = opts.numberZone ?? HEADER_NUMBER_ZONE;
   ctx.clearRect(0, 0, w, h);
-  ctx.fillStyle = BANNER.vinyl;
+  /* The board is the race orange (see BANNER.race); the mark gets a pale
+   * vinyl panel of its own between the two number zones, below. */
+  ctx.fillStyle = BANNER.race;
   ctx.fillRect(0, 0, w, h);
 
-  /* The hems: a shade darker bound edge top and bottom, which is what stops
-   * a white sheet reading as a hole in the sky at any distance. */
-  ctx.fillStyle = BANNER.vinylShade;
+  /* The hems: a shade darker bound edge top and bottom, which is the
+   * printed board's own border and its edge against the sky. */
+  ctx.fillStyle = BANNER.raceShade;
   ctx.fillRect(0, 0, w, h * 0.045);
   ctx.fillRect(0, h * 0.955, w, h * 0.045);
 
@@ -196,6 +223,16 @@ export function paintGateHeader(ctx, w, h, opts = {}) {
    * small logo. */
   const boxY = h * 0.07;
   const boxH = h * 0.79;
+  /* A sponsor's mark gets its own pale panel, inset so the orange frames it,
+   * because a mark is drawn for a white page and this is that page. An
+   * unbranded board has no panel: the chequered flag sits on the orange, and
+   * the whole board is the colour a pilot finds from across the field. The
+   * roundels at both ends stay on the orange, where a pale disc reads best. */
+  if (opts.logo) {
+    const inset = h * 0.02;
+    ctx.fillStyle = BANNER.vinyl;
+    ctx.fillRect(left + inset, boxY, right - left - inset * 2, boxH);
+  }
   if (opts.logo) {
     fit(ctx, opts.logo, left, boxY, right - left, boxH);
   } else {
@@ -235,13 +272,21 @@ export function paintGateSleeve(ctx, w, h, opts = {}) {
     ctx.translate(w, 0);
     ctx.scale(-1, 1);
   }
-  ctx.fillStyle = BANNER.vinyl;
+  /* Race orange, like the header, with a pale panel for the mark. */
+  ctx.fillStyle = BANNER.race;
   ctx.fillRect(0, 0, w, h);
 
-  /* The chequer column, down one edge. Narrower than it was: the wall is
-   * the white, and the chequer is the border that stops it vanishing. */
+  /* The chequer column, down one edge: the race's border. */
   const colW = w * 0.18;
   chequerColumn(ctx, 0, 0, colW, h, Math.round(h / (colW * 0.5)));
+
+  /* A sponsor's mark gets a pale panel in the middle of the sleeve, clear of
+   * the column, with orange above and below it so the leg still reads orange
+   * end to end. Unbranded, the device sits straight on the orange. */
+  if (opts.logo) {
+    ctx.fillStyle = BANNER.vinyl;
+    ctx.fillRect(colW + (w - colW) * 0.1, h * 0.12, (w - colW) * 0.8, h * 0.72);
+  }
 
   ctx.save();
   /* Turned a quarter, reading up the banner. The quarter turn has put the
@@ -308,9 +353,18 @@ function chequerColumn(ctx, x, y, w, h, cells) {
  * rectangle under it: a join exactly on the fold would show every facet. */
 const SAIL_HEAD_V = 0.70;
 
+/* A sail's two colours by accent name. 'navy' and 'red' are the town's
+ * dressing (src/props/course.js); 'orange' and 'yellow' are the race kit a
+ * course's own flags wear (see BANNER.race). */
+const SAIL_ACCENTS = {
+  navy: [BANNER.navy, BANNER.red],
+  red: [BANNER.red, BANNER.navy],
+  orange: [BANNER.race, BANNER.ink],
+  yellow: [BANNER.raceYellow, BANNER.ink],
+};
+
 export function paintFlagSail(ctx, w, h, opts = {}) {
-  const accent = opts.accent === 'red' ? BANNER.red : BANNER.navy;
-  const other = opts.accent === 'red' ? BANNER.navy : BANNER.red;
+  const [accent, other] = SAIL_ACCENTS[opts.accent] || SAIL_ACCENTS.navy;
   ctx.clearRect(0, 0, w, h);
   ctx.fillStyle = BANNER.vinyl;
   ctx.fillRect(0, 0, w, h);

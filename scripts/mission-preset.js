@@ -1,6 +1,8 @@
 /*
  * mission-preset.js: writes src/trackbuilder/presets5.js, the five inch tracks that ship with the builder.
  *
+ * THE NATIONALS QUALIFIER, AND SINCE 2026-11-03 THE SIX CLUB SIZE TRACKS OF scripts/chapter-tracks.js AFTER IT.
+ *
  * ONE TRACK, FROM A SHORT LIST. The 2026 Australian Drone Nationals qualifying track, the plan Wilf (the 2025
  * National Champion) drew, laid out the way the builder lays a track and not copied out of a picture: every
  * distance below is a whole metre read off the plan's own dimensions, so the numbers can be argued with and the
@@ -65,6 +67,7 @@ import {
   addSpiral, placeHurdle, placeUpGate, placeWall, reverseWall, setFlags,
 } from '../src/trackbuilder/parts.js';
 import { ELEMENTS, GATE_PRESETS, applyGatePreset } from '../src/trackbuilder/elements.js';
+import { chapterTracks } from './chapter-tracks.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const OUT = join(root, 'src', 'trackbuilder', 'presets5.js');
@@ -201,8 +204,11 @@ function build() {
 /* ---------------------------------------------------------------- */
 
 function render() {
-  const plain = toPlain(build());
-  const json = JSON.stringify(plain, null, 2).replace(/^/gm, '  ').trimStart();
+  /* The Nationals qualifier first, because the builder's acceptance run and its self test read it as [0], then the
+   * six club size tracks of scripts/chapter-tracks.js. */
+  const json = [toPlain(build()), ...chapterTracks()]
+    .map((plain) => JSON.stringify(plain, null, 2).replace(/^/gm, '  ').trimStart())
+    .join(',\n  ');
   return `/*
  * presets5.js: the five inch tracks that ship with the builder, and nothing else.
  *
@@ -230,7 +236,8 @@ function render() {
 
 /*
  * THE 2026 AUSTRALIAN DRONE NATIONALS QUALIFYING TRACK, laid out from the designer's plan. Credit goes to the
- * designer and the event, as the plan names them; the sponsor's mark is not on it.
+ * designer and the event, as the plan names them; the sponsor's mark is not on it. After it, the six WebFPV chapter
+ * tracks of scripts/chapter-tracks.js: original layouts on a 60 by 30 m club field.
  */
 export const FIVE_INCH_PRESETS = [
   ${json},

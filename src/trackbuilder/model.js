@@ -327,6 +327,11 @@ export function sceneOf(doc) {
   };
 }
 
+/* Whether a track is a night race, which only a full sized race track can be. */
+export function isNightRace(doc) {
+  return Boolean(doc && doc.night === true && docModeOf(doc) !== 'freestyle' && trackClassOf(doc) === 'full');
+}
+
 /* Whether a scene is the default one, which is the one toPlain leaves out. */
 export function isDefaultScene(scene) {
   return scene.time === SCENE_DEFAULT.time && scene.ground === SCENE_DEFAULT.ground;
@@ -1171,6 +1176,14 @@ export function normalize(raw) {
     }
   }
 
+  /* A night race (NIGHT in src/render/scene.js), and only on a full sized
+   * race track: a room has its lights on and a map has its own time of day.
+   * Anything but true is no night race, silently, because absent is every
+   * track written before it existed. */
+  if (src.night === true && doc.mode !== 'freestyle' && doc.trackClass === 'full') {
+    doc.night = true;
+  }
+
   /*
    * The logos. A version 2 document carries `branding.logos`; a version 1
    * one carries a single `branding.logo`, and it is promoted to the first
@@ -1673,6 +1686,8 @@ export function toPlain(doc) {
     ...(freestyle ? { mode: 'freestyle' } : {}),
     /* A map's scene, and only once it is not the default: see SCENE_TIMES. */
     ...(freestyle && !isDefaultScene(scene) ? { scene } : {}),
+    /* Written only when it is on, so no track saved before it changes a byte. */
+    ...(isNightRace(doc) ? { night: true } : {}),
     field: {
       width: num(doc.field.width),
       depth: num(doc.field.depth),

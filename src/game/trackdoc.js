@@ -877,6 +877,9 @@ function buildCourse(raw) {
     /* The series the track is credited to, when it has one: the RaceGOW5
      * set's is what puts Dan in the room (src/maps/dan/). */
     series: doc.credit && doc.credit.series ? doc.credit.series : '',
+    /* A night race, under a dark sky with LED strip on every gate (NIGHT in
+     * src/render/scene.js). Only a full sized race track carries one. */
+    ...(doc.night === true ? { night: true } : {}),
     structures,
     stations,
     ...(loose.length ? { loose } : {}),

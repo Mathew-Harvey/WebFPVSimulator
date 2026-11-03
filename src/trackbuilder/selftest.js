@@ -34,7 +34,7 @@ import {
   createTrack, createElement, createSequenceEntry, deserialize, elementById, normalize, isSequenceable, kindOf,
   roundTripsCleanly, serialize, aperturesOf, toPlain, startPadsOf, newElementId,
   logoForDecal, cropOf, achievementOf, ACHIEVEMENT_MAX, dressOrder, LOGO_SLOTS, SCHEMA_VERSION,
-  SCENE_TIMES, SCENE_GROUNDS, SCENE_DEFAULT, sceneOf, deepClone, setSideBuilt, setPoleBuilt, setOpeningSize, gateWidthOf,
+  SCENE_TIMES, SCENE_GROUNDS, SCENE_DEFAULT, sceneOf, isNightRace, deepClone, setSideBuilt, setPoleBuilt, setOpeningSize, gateWidthOf,
   groupMembers, expandGroups, elementNormal, apertureCenter, letterLayoutOf, openingNearest, setLetter, topOf,
 } from './model.js';
 import { applyAutoFaces, flipFace, setYaw, clearOverride, travelDirection, defaultYawFor } from './faces.js';
@@ -4267,6 +4267,30 @@ function suiteFreestyle() {
     d = h.redo(d);
     d = h.redo(d);
     check('and redo puts both back', d.scene.time === 'dusk' && d.scene.ground === 'tarmac');
+  }
+
+  /* -------- a night race -------- */
+
+  {
+    const day = createTrack('Day race');
+    check('a new race track is a day race and writes no night key',
+      !isNightRace(day) && !serialize(day).includes('"night"'));
+    const nightPlain = { ...toPlain(day), night: true };
+    const nightRead = normalize(nightPlain);
+    check('a night race reads back as one', isNightRace(nightRead.doc) && nightRead.repairs.length === 0);
+    check('and round trips byte for byte', serialize(deserialize(serialize(nightRead.doc)).doc) === serialize(nightRead.doc)
+      && JSON.parse(serialize(nightRead.doc)).night === true);
+    check('anything but true is a day race, silently',
+      [1, 'yes', 'true', {}, false].every((v) => {
+        const r = normalize({ ...toPlain(day), night: v });
+        return !isNightRace(r.doc) && r.repairs.length === 0 && !serialize(r.doc).includes('"night"');
+      }));
+    const roomPlain = { ...toPlain(createTrack('Room race', 'micro')), night: true };
+    check('a whoop room is never a night race', !isNightRace(normalize(roomPlain).doc)
+      && !serialize(normalize(roomPlain).doc).includes('"night"'));
+    const mapNight = normalize({ ...JSON.parse(text), night: true });
+    check('nor is a map, which has its own time of day', !isNightRace(mapNight.doc)
+      && !serialize(mapNight.doc).includes('"night"'));
   }
 
   /* -------- hotkeys -------- */

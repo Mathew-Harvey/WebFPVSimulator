@@ -172,11 +172,18 @@ function makeBaker() {
     const meshes = [];
     for (const b of buckets.values()) {
       const mesh = new THREE.Mesh(mergeGeometries(b.geos, false), b.material);
-      if (!b.hull) {
+      /* A night race's LED strip: light, so it casts nothing, and on the no
+       * ink layer whatever layer the rest of the bake is on, because the
+       * depth edge pass draws a dark line inside a strip a few pixels wide
+       * and that line is all that would be left of it at 30 m. */
+      const noInk = Boolean(b.material.userData.noInk);
+      if (!b.hull && !noInk) {
         mesh.castShadow = true;
         mesh.receiveShadow = true;
       }
-      if (layer) {
+      if (noInk) {
+        mesh.layers.set(1);
+      } else if (layer) {
         mesh.layers.set(layer);
       }
       scene.add(mesh);
@@ -190,6 +197,77 @@ function makeBaker() {
 
 const SUN_DIR = new THREE.Vector3(0.60, 0.50, 0.62).normalize();
 const HORIZON = 0xf2e3cb;
+
+/*
+ * A NIGHT RACE, the owner's ask of 2026-11-03 ("do the led gates"), and the
+ * sixth item of the race study: a track whose author ticked Night race is
+ * flown under a dark sky with every gate outlined in LED strip, the way a
+ * club runs a night round. It is the track's choice and not the pilot's, so
+ * everybody in a room flies the same picture, and only a full sized race
+ * track can make it: a whoop room has its lights on and a map has its own
+ * time of day.
+ *
+ * IT COSTS LESS THAN A DAY, NOT MORE, because the latency rule says it must
+ * not cost more. There is no real light anywhere in it: the strips are
+ * unlit colour, which is what an LED reads as to a camera at night, and the
+ * moon is the sun turned down and turned blue. The shadow pass is off,
+ * because a moon behind cloud casts nothing a pilot uses, and the clouds
+ * are not built. Every strip on the course shares one material per colour,
+ * so the whole lot bakes into one or two draw calls (makeBaker's noInk).
+ *
+ * The colours are the brand's: sakura for the gates, amber for the flags,
+ * mint for the start, and the target keeps its own green, which nothing
+ * else on a night course is.
+ */
+const NIGHT = {
+  horizon: 0x26305a,
+  high: 0x060a1c,
+  fogNear: 70,
+  fogFar: 1100,
+  moonDir: new THREE.Vector3(-0.42, 0.46, -0.58).normalize(),
+  moon: 0xa8bdf0,
+  moonI: 0.42,
+  hemiSky: 0x3a4c7e,
+  hemiGround: 0x141a16,
+  hemiI: 0.36,
+  /* What an unlit colour (a far treeline, a printed board) is multiplied by,
+   * since no light reaches it to dim it the way the moon dims the rest. */
+  unlit: 0.14,
+};
+const LED_GATE = 0xff4fa8;
+const LED_START = 0x7dffb4;
+const LED_FLAG = 0xffb347;
+/* Set by buildFieldScene before any obstacle is built, read by the builders
+ * below; the same module state pattern as MICRO_SCALE's callers use. */
+let nightBuild = false;
+/*
+ * ONE material for every strip of every colour, the colour carried by the
+ * vertices, so the bake merges the whole course's LED into ONE draw call
+ * rather than one per colour. Unfogged: a strip of light at 50 m is as
+ * bright as one at 5, and fog the colour of the night sky would put it out.
+ */
+let ledMat = null;
+function ledMaterial() {
+  if (!ledMat) {
+    ledMat = new THREE.MeshBasicMaterial({ vertexColors: true, fog: false });
+    ledMat.userData.noInk = true;
+    ledMat.userData.nightKeep = true;
+  }
+  return ledMat;
+}
+/* Paint a geometry one LED colour, in place, and hand it back. */
+function ledPaint(geo, hex) {
+  const c = new THREE.Color(hex);
+  const n = geo.attributes.position.count;
+  const col = new Float32Array(n * 3);
+  for (let i = 0; i < n; i += 1) {
+    col[i * 3] = c.r;
+    col[i * 3 + 1] = c.g;
+    col[i * 3 + 2] = c.b;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return geo;
+}
 
 /*
  * THE ROOM a micro track is flown in.
@@ -318,7 +396,13 @@ const SKY_GLSL = /* glsl */ `
      * degree half angle, ramp out to 1.6.
      */
     float sd = max(dot(vd, normalize(sunDir)), 0.0);
+    #ifdef NIGHT_SKY
+    /* The moon's halo: tight and cool. The sun's warm glow on a dark sky
+     * was a street lamp a fifth of the sky across. */
+    col += vec3(0.62, 0.70, 0.95) * pow(sd, 400.0) * 0.35;
+    #else
     col += vec3(1.0, 0.80, 0.42) * pow(sd, 40.0) * 0.30;
+    #endif
     col = mix(col, vec3(0.985, 0.965, 0.905), smoothstep(0.99961, 0.99985, sd));
     return col;
   }
@@ -1716,8 +1800,8 @@ function sharedObstacleMats() {
  * robin, so fifteen gates and five marks put each mark on three gates spread
  * down the lap rather than on three gates in a row.
  *
- * THE SAILS ALTERNATE TWO WAYS AT ONCE. A teardrop flag's sweep is navy or
- * red so a line of them down a course reads as a run rather than a repeat,
+ * THE SAILS ALTERNATE TWO WAYS AT ONCE. A teardrop flag's sweep is yellow or
+ * orange so a line of them down a course reads as a run rather than a repeat,
  * and now it also has to cycle through the sponsors. `sails` is the run a
  * line of flags wears: sail i carries mark i mod n with the accent i mod 2,
  * which needs lcm(n, 2) entries before it repeats. A gate's own header
@@ -1798,14 +1882,14 @@ function bannerKit(logoUrls, key, sponsorMarks) {
       /* The far leg's, painted mirrored rather than scaled onto the mesh. */
       sleeveFlipped: printed(paint(i, BANNER_SIZE.sleeve, paintGateSleeve, { flip: true }), `slvf${i}`),
       /* This gate's own header pennants: its mark, both accents. */
-      sails: [sailOf(i, 'navy'), sailOf(i, 'red')],
+      sails: [sailOf(i, 'yellow'), sailOf(i, 'orange')],
     });
   }
 
   const runLength = n % 2 === 0 ? n : n * 2;
   const sails = [];
   for (let i = 0; i < runLength; i += 1) {
-    sails.push(sailOf(i % n, i % 2 === 1 ? 'red' : 'navy'));
+    sails.push(sailOf(i % n, i % 2 === 1 ? 'orange' : 'yellow'));
   }
 
   const kit = {
@@ -1970,6 +2054,8 @@ function apertureMarkers(group, sills, clearWs, clearHs, stack, isStart, primary
   const haloMat = new THREE.MeshBasicMaterial({
     color: ringColor, transparent: true, opacity: 0.5, fog: true,
   });
+  ringMat.userData.nightKeep = true;
+  haloMat.userData.nightKeep = true;
   const rings = [];
   const halos = [];
   for (let k = 0; k < stack; k += 1) {
@@ -2074,6 +2160,49 @@ function apertureMarkers(group, sills, clearWs, clearHs, stack, isStart, primary
     lvlHalo.layers.set(1);
     group.add(lvlHalo);
     halos.push(lvlHalo);
+    /*
+     * A NIGHT RACE'S LED STRIP round every opening, lit whether or not the
+     * race wants this one next, because at night an unlit frame is not
+     * there at all. It runs round the very edge of the clear opening, a
+     * little deeper than the target's bar and a few millimetres outside it,
+     * so the target's green still reads inside it and the two never share a
+     * face to flicker on. Static, on a shared material: the bake merges every
+     * strip on the course into one draw call per colour.
+     */
+    if (nightBuild && !micro) {
+      const led = 0.06;
+      const out = 0.004;
+      const deep = bar * 1.35;
+      const ledGeos = [];
+      const box = (len, ang, x, y) => {
+        const geo = new THREE.BoxGeometry(len, led, deep);
+        geo.rotateZ(ang);
+        geo.translate(x, y, 0);
+        ledGeos.push(geo);
+      };
+      if (shape === 'square' && !holes) {
+        box(clearW + out * 2, 0, 0, cy + halfH - led * 0.5 + out);
+        box(clearW + out * 2, 0, 0, cy - halfH + led * 0.5 - out);
+        box(clearH + out * 2, Math.PI / 2, -halfW + led * 0.5 - out, cy);
+        box(clearH + out * 2, Math.PI / 2, halfW - led * 0.5 + out, cy);
+      } else if (holes) {
+        for (const seg of polygonBars(holes[k].poly, led)) {
+          box(seg.len, seg.angle, seg.x, seg.y);
+        }
+      } else {
+        for (const seg of outlineBars(shape, halfW + out, halfH + out, led)) {
+          box(seg.len, seg.angle, seg.x, cy + seg.y);
+        }
+      }
+      if (ledGeos.length) {
+        const strip = new THREE.Mesh(
+          ledPaint(mergeGeometries(ledGeos, false), isStart ? LED_START : LED_GATE),
+          ledMaterial(),
+        );
+        strip.layers.set(1);
+        group.add(strip);
+      }
+    }
   }
   const ring = rings[0];
   const halo = halos[0];
@@ -3182,6 +3311,12 @@ function courseProps(course, height, scene, colliders, baker, kit, padDecks = []
         kit, () => 0.5, height, s.x, s.z, markerIndex,
         built.h, built.r, s.baseY,
       );
+      /* At night the mast is the LED: a lit tube is how a club marks a flag
+       * after dark, and the sail alone would be a dark rag on a dark field. */
+      if (nightBuild) {
+        made.pole.geometry = ledPaint(made.pole.geometry.clone(), LED_FLAG);
+        made.pole.material = ledMaterial();
+      }
       markerIndex += 1;
       made.group.rotation.y = s.yaw;
       made.group.updateMatrixWorld(true);
@@ -3234,9 +3369,144 @@ function courseProps(course, height, scene, colliders, baker, kit, padDecks = []
           deck: startBlockDeck(s.dims.padSize),
         });
       }
+      if (course.trackClass !== 'micro') {
+        pilotsCorner(course, s, n, height, colliders, baker);
+      }
     }
   }
   return markerHosts;
+}
+
+/*
+ * THE PILOTS' CORNER, behind a five inch track's start pads.
+ *
+ * A club race day has the same three things behind the start line every time: a pop up shade for the pilots, the
+ * timing table under it, and a run of safety net between them and the pads. The field had none of it, so the start
+ * of every track was a row of launch stands on bare grass. The owner's pick of 2026-11-03, item 4 of the 5 inch race
+ * pass.
+ *
+ * NO NEW DRAW CALL. Every part is baked in a material the field already draws: the gates' frame tube for the legs and
+ * the table's frame, their vinyl for the canopy and the table top, and the boundary fence's chain link for the net
+ * (same options, same key, so the baker folds it into the fence's bucket). About two hundred triangles.
+ *
+ * SOLID AS DRAWN, the map rule: each leg is a capsule, the canopy and the table top are capsules across their width,
+ * and the net is a fence run, the same shape the boundary fence is given.
+ *
+ * WHICH WAY IS BEHIND. Away from the first station the lap flies, which is where the pads launch to. Plan geometry at
+ * scene build, nothing per frame.
+ */
+const CORNER = {
+  back: 5.5,      /* pads to the middle of the shade, metres */
+  net: 2.4,       /* pads to the net */
+  netH: 2.2,
+  shade: 3,       /* the pop up's square side */
+  legH: 2.3,
+  peak: 0.55,
+  tableW: 1.8,
+  tableD: 0.7,
+  tableH: 0.74,
+};
+function pilotsCorner(course, s, pads, height, colliders, baker) {
+  const mats = sharedObstacleMats();
+  const first = (course.stations || [])[0];
+  let fx = first ? first.x - s.x : Math.sin(s.yaw);
+  let fz = first ? first.z - s.z : Math.cos(s.yaw);
+  const fl = Math.hypot(fx, fz) || 1;
+  fx /= fl;
+  fz /= fl;
+  /* Across, to the pilots' right as they face the course. */
+  const ax = -fz;
+  const az = fx;
+  const at = (back, across) => ({ x: s.x - fx * back + ax * across, z: s.z - fz * back + az * across });
+  const yaw = Math.atan2(fx, fz);
+  const g = new THREE.Group();
+  const tube = 0.025;
+
+  /* The shade: four legs, a flat valance and a low peak. */
+  const c = at(CORNER.back, 0);
+  const cy = height(c.x, c.z);
+  const half = CORNER.shade / 2;
+  const legGeo = new THREE.CylinderGeometry(tube, tube, CORNER.legH, 5);
+  for (const [u, v] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+    const p = at(CORNER.back + v * half, u * half);
+    const ly = height(p.x, p.z);
+    const leg = new THREE.Mesh(legGeo, mats.frame);
+    leg.position.set(p.x, ly + CORNER.legH / 2, p.z);
+    g.add(leg);
+    colliders.add('obstacle', p.x, ly, p.z, p.x, ly + CORNER.legH, p.z, 0.06);
+  }
+  const valance = new THREE.Mesh(new THREE.BoxGeometry(CORNER.shade, 0.22, CORNER.shade), mats.panel);
+  valance.position.set(c.x, cy + CORNER.legH - 0.11, c.z);
+  valance.rotation.y = yaw;
+  g.add(valance);
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(half * Math.SQRT2, CORNER.peak, 4, 1), mats.panel);
+  roof.position.set(c.x, cy + CORNER.legH + CORNER.peak / 2, c.z);
+  roof.rotation.y = yaw + Math.PI / 4;
+  g.add(roof);
+  for (const v of [-0.6, 0, 0.6]) {
+    const a = at(CORNER.back + v * half, -half);
+    const b = at(CORNER.back + v * half, half);
+    colliders.add('obstacle', a.x, cy + CORNER.legH, a.z, b.x, cy + CORNER.legH, b.z, 0.35);
+  }
+
+  /* The timing table under it. */
+  const t = at(CORNER.back + 0.4, 0);
+  const ty = height(t.x, t.z);
+  const top = new THREE.Mesh(new THREE.BoxGeometry(CORNER.tableW, 0.04, CORNER.tableD), mats.panel);
+  top.position.set(t.x, ty + CORNER.tableH, t.z);
+  top.rotation.y = yaw;
+  g.add(top);
+  const tableLeg = new THREE.CylinderGeometry(0.018, 0.018, CORNER.tableH, 4);
+  for (const [u, v] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+    const p = at(CORNER.back + 0.4 + v * (CORNER.tableD / 2 - 0.05), u * (CORNER.tableW / 2 - 0.05));
+    const leg = new THREE.Mesh(tableLeg, mats.frame);
+    leg.position.set(p.x, height(p.x, p.z) + CORNER.tableH / 2, p.z);
+    g.add(leg);
+  }
+  const ta = at(CORNER.back + 0.4, -CORNER.tableW / 2);
+  const tb = at(CORNER.back + 0.4, CORNER.tableW / 2);
+  colliders.add('obstacle', ta.x, ty + CORNER.tableH * 0.5, ta.z, tb.x, ty + CORNER.tableH * 0.5, tb.z, CORNER.tableH * 0.5);
+
+  /* The net: as wide as the pads and the shade, between them, on two posts. */
+  const width = Math.max(CORNER.shade + 2, pads * 1.2 + 2);
+  const na = at(CORNER.net, -width / 2);
+  const nb = at(CORNER.net, width / 2);
+  const ya = height(na.x, na.z);
+  const yb = height(nb.x, nb.z);
+  /* The boundary fence's own material, option for option, so it lands in the fence's bucket. Made per world, never
+   * kept across one, because a world's dispose frees what it drew with. */
+  const cornerNet = celMaterial({
+    color: 0xffffff,
+    map: chainLinkTexture(),
+    alphaTest: 0.45,
+    transparent: false,
+    side: THREE.DoubleSide,
+    rim: 0.0,
+    key: 'chainlink',
+  });
+  const reps = Math.max(1, Math.round(width / 0.30));
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
+    na.x, ya, na.z, nb.x, yb, nb.z, nb.x, yb + CORNER.netH, nb.z,
+    na.x, ya, na.z, nb.x, yb + CORNER.netH, nb.z, na.x, ya + CORNER.netH, na.z,
+  ]), 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array([
+    fx, 0, fz, fx, 0, fz, fx, 0, fz, fx, 0, fz, fx, 0, fz, fx, 0, fz,
+  ]), 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array([
+    0, 0, reps, 0, reps, CORNER.netH / FENCE.height,
+    0, 0, reps, CORNER.netH / FENCE.height, 0, CORNER.netH / FENCE.height,
+  ]), 2));
+  g.add(new THREE.Mesh(geo, cornerNet));
+  const postGeo = new THREE.CylinderGeometry(tube * 1.4, tube * 1.4, CORNER.netH + 0.1, 5);
+  for (const [p, py] of [[na, ya], [nb, yb]]) {
+    const post = new THREE.Mesh(postGeo, mats.frame);
+    post.position.set(p.x, py + (CORNER.netH + 0.1) / 2, p.z);
+    g.add(post);
+  }
+  colliders.add('wall', na.x, (ya + yb) / 2 + CORNER.netH / 2, na.z, nb.x, (ya + yb) / 2 + CORNER.netH / 2, nb.z,
+    CORNER.netH / 2);
+  baker.bake(g);
 }
 
 /*
@@ -3634,9 +3904,14 @@ function tiltedGate(spec, index, isStart, pitch, opts = {}) {
     });
   }
 
-  /* The lit target, in the pivot so it leans with the frame. Built at a sill
-   * of zero because the pivot already sits at the opening's centre. */
-  const marks = apertureMarkers(pivot, [-clearH * 0.5], clearW, clearH, 1, isStart, 0, micro);
+  /* The lit target, leaning with the frame. Built at a sill of zero because
+   * it sits at the opening's centre. It has a pivot of its own, the frame's
+   * twin, so that it alone stays live and the frame bakes (see `animate`). */
+  const lit = new THREE.Group();
+  lit.position.copy(pivot.position);
+  lit.rotation.x = pitch;
+  g.add(lit);
+  const marks = apertureMarkers(lit, [-clearH * 0.5], clearW, clearH, 1, isStart, 0, micro);
 
   /* The header rides on the leaning frame, above the opening in the frame's
    * own plane, so a pilot approaching from above reads it square on.
@@ -3664,12 +3939,19 @@ function tiltedGate(spec, index, isStart, pitch, opts = {}) {
      * rides on the pivot, so its height above the opening's centre is
      * foreshortened by the tilt. */
     top: centreY + (halfH + tubeR * 3 + (micro ? 0 : GATE_BANNER_H + 0.03)) * Math.cos(pitch),
-    /* The whole leaning frame stays live rather than baking, because its
-     * parts sit inside a pivot whose rotation the baker would have to flatten
-     * and the lit target has to keep its per obstacle materials anyway. A
-     * course has a handful of dive gates, not a hundred, so the draw calls
-     * are affordable and the alternative is a baked gate that cannot pulse. */
-    animate: [pivot],
+    /* Only the lit target stays live. The leaning frame, its fittings and its
+     * header bake with every other obstacle: the baker takes each mesh's
+     * world matrix, so the pivot's lean is flattened into the merged buffer
+     * and the frame is drawn as it stood. It used to stay live whole, on the
+     * reasoning that a course has a handful of dive gates and the draw calls
+     * were affordable, and measured on a five inch field each one cost about
+     * 87 draw calls on High (its tubes, fittings and outline hulls, each its
+     * own draw twice): a track with a launch gate and a dive gate drew 319
+     * where the same track with plain gates drew 145. The owner asked for
+     * dives and launches in the chapter tracks on 2026-11-03, and latency
+     * comes first, so the frame bakes now and the pulse still works, because
+     * the materials it drives are the lit target's own. */
+    animate: [lit],
     ringMat: marks.ring.material,
     haloMat: marks.halo.material,
     /* A dive gate is one opening, so the per opening lists are one long. */
@@ -4834,27 +5116,31 @@ function attractOrbit(course, gates, tops, heightFn) {
   };
 }
 
-function skyDome(q = null) {
+function skyDome(q = null, night = false) {
   const geo = new THREE.SphereGeometry(1500, 40, 24);
   /* The streak cloud on Medium and High, compiled in rather than switched
    * by a uniform: Low's dome is main's program. It was a uniform branch
    * until the sweep after graphics pass 25, which found Low paying, in a
    * software renderer, for comic code it never drew (src/render/comic.js,
    * chunkOn), and a preset change builds the dome again anyway. */
-  const cirrus = COMIC_SHADING && !(q && q.id === 'low');
+  /* Not at night: the streak's colours are a lit cloud's, written into the
+   * program, and a white streak on a night sky is daylight left on. */
+  const cirrus = COMIC_SHADING && !(q && q.id === 'low') && !night;
   const mat = new THREE.ShaderMaterial({
     side: THREE.BackSide,
     depthWrite: false,
     fog: false,
-    defines: cirrus ? { COMIC_CIRRUS: 1 } : {},
+    defines: { ...(cirrus ? { COMIC_CIRRUS: 1 } : {}), ...(night ? { NIGHT_SKY: 1 } : {}) },
     /* The streak cloud's fwidth. WebGL 2 has derivatives built in and three
      * ignores this there; on WebGL 1, which three falls back to and main
      * draws on, it is what lets the dome compile at all. */
     extensions: { derivatives: cirrus },
     uniforms: {
-      uHigh: { value: new THREE.Color(SKY_HIGH) },
-      uHorizon: { value: new THREE.Color(HORIZON) },
-      uSun: { value: SUN_DIR.clone() },
+      uHigh: { value: new THREE.Color(night ? NIGHT.high : SKY_HIGH) },
+      uHorizon: { value: new THREE.Color(night ? NIGHT.horizon : HORIZON) },
+      /* At night the disc is the moon, where the moonlight comes from. Its
+       * warm glow term is the moon's halo. */
+      uSun: { value: (night ? NIGHT.moonDir : SUN_DIR).clone() },
       ...(cirrus ? cirrusUniforms() : {}),
     },
     vertexShader: /* glsl */ `
@@ -4884,6 +5170,33 @@ function skyDome(q = null) {
     `,
   });
   return new THREE.Mesh(geo, mat);
+}
+
+/*
+ * A night race's stars: one draw call of fixed size points on the dome,
+ * from a stream of their own so the world's rng is not moved by a star.
+ * Thinner toward the horizon, where the haze would take them.
+ */
+function nightStars() {
+  const r = makeRng(0x57a25);
+  const n = 700;
+  const pos = new Float32Array(n * 3);
+  for (let i = 0; i < n; i += 1) {
+    const a = r() * Math.PI * 2;
+    const h = 0.06 + Math.sqrt(r()) * 0.94;
+    const c = Math.sqrt(1 - h * h);
+    pos[i * 3] = Math.cos(a) * c * 1400;
+    pos[i * 3 + 1] = h * 1400;
+    pos[i * 3 + 2] = Math.sin(a) * c * 1400;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const stars = new THREE.Points(geo, new THREE.PointsMaterial({
+    color: 0xdfe6ff, size: 1.6, sizeAttenuation: false, fog: false, depthWrite: false,
+  }));
+  stars.layers.set(1);
+  stars.frustumCulled = false;
+  return stars;
 }
 
 /* Chunky stylised clouds: clustered flattened icospheres, unlit, so they
@@ -5092,7 +5405,11 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
    * map covers 144 m at 2048, so the softer filter is what keeps a tree's
    * cast edge from reading as a staircase. The city sets its own. Low
    * turns the map off: a Deck's fill rate cannot pay for a 2048 cascade. */
-  renderer.shadowMap.enabled = q.shadows;
+  /* A night race: see NIGHT. Read before anything is built, because the
+   * gate builders read nightBuild, and never in a room. */
+  const night = Boolean(course && course.night && course.trackClass !== 'micro');
+  nightBuild = night;
+  renderer.shadowMap.enabled = q.shadows && !night;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   /*
@@ -5138,7 +5455,7 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
    * fog is short and dark instead: it is what makes the far wall recede and
    * it is doing the job the sky dome does outdoors.
    */
-  scene.background = new THREE.Color(indoor ? ROOM.air : HORIZON);
+  scene.background = new THREE.Color(indoor ? ROOM.air : (night ? NIGHT.horizon : HORIZON));
   /* The ink reads this: a room's course is a frame of tubes a few pixels
    * across (buildComposer in src/render/post.js). */
   scene.userData.indoor = indoor;
@@ -5159,11 +5476,16 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
    */
   scene.fog = indoor
     ? new THREE.Fog(ROOM.air, 5.5 * MICRO_SCALE, 44 * MICRO_SCALE)
-    : new THREE.Fog(HORIZON, FOG_NEAR, FOG_FAR);
+    : (night ? new THREE.Fog(NIGHT.horizon, NIGHT.fogNear, NIGHT.fogFar) : new THREE.Fog(HORIZON, FOG_NEAR, FOG_FAR));
   if (!indoor) {
-    const sky = skyDome(q);
+    const sky = skyDome(q, night);
     sky.layers.set(1);
     scene.add(sky);
+    /* Not on Low, where the one draw call they cost is the one the night
+     * would otherwise have saved. */
+    if (night && !(q && q.id === 'low')) {
+      scene.add(nightStars());
+    }
   }
 
   const rng = makeRng(20260811);
@@ -5238,8 +5560,11 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
 
   /* The key light's direction: the sun's on the field, the ceiling's in a
    * room. updateShadowFocus below re-aims it every frame along this. */
-  const keyDir = indoor ? ROOM_KEY_DIR : SUN_DIR;
-  const sun = new THREE.DirectionalLight(indoor ? ROOM.light : 0xffe9c4, indoor ? 0.45 : 1.45);
+  const keyDir = indoor ? ROOM_KEY_DIR : (night ? NIGHT.moonDir : SUN_DIR);
+  const sun = new THREE.DirectionalLight(
+    indoor ? ROOM.light : (night ? NIGHT.moon : 0xffe9c4),
+    indoor ? 0.45 : (night ? NIGHT.moonI : 1.45),
+  );
   sun.position.copy(keyDir).multiplyScalar(120);
   /*
    * NOT IN A ROOM. A key standing almost straight down runs along every
@@ -5249,7 +5574,7 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
    * old key was all but off, so its gates never cast in practice either, and
    * without it a room also saves the whole shadow pass.
    */
-  sun.castShadow = q.shadows && !indoor;
+  sun.castShadow = q.shadows && !indoor && !night;
   const shadowMap = q.field.shadowMap || 2048;
   sun.shadow.mapSize.set(shadowMap, shadowMap);
   sun.shadow.camera.near = 1;
@@ -5268,7 +5593,9 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
   /* Sky above, warm grass bounce below: this is what keeps shadowed faces
    * from going dead grey. Indoors the pair above does that job instead. */
   if (!indoor) {
-    scene.add(new THREE.HemisphereLight(0x8fb8e8, 0x4a6b34, 0.42));
+    scene.add(night
+      ? new THREE.HemisphereLight(NIGHT.hemiSky, NIGHT.hemiGround, NIGHT.hemiI)
+      : new THREE.HemisphereLight(0x8fb8e8, 0x4a6b34, 0.42));
   }
 
   /*
@@ -5334,7 +5661,13 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
   const grass = grassField(samples, rng, pitch);
   const noInkBaker = makeBaker();
   /* Clouds, indoors, would be through the ceiling. */
-  if (!indoor) {
+  /* No clouds at night: a lit cloud on a dark sky is the brightest thing in
+   * the frame, and two banks are draw calls a night race does not spend. The
+   * first bank still draws its numbers from the world's rng, so the scenery
+   * after it lands where it lands by day. */
+  if (!indoor && night) {
+    clouds(rng);
+  } else if (!indoor) {
     noInkBaker.bake(clouds(rng));
     /* A second, larger bank from its OWN stream, 2026-10-07, for a sky
      * that reads as weather rather than as a few stickers. Never from the
@@ -6926,6 +7259,35 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
 
   baker.flush(scene, 0);
 
+  /*
+   * NIGHT, FOR WHAT NO LIGHT REACHES. A lit material is dimmed by the moon;
+   * an unlit one (the far treeline rings, a printed board, a painted line)
+   * would stay at noon. Each is swapped for a darkened copy, never darkened
+   * in place, because some of them are shared with every build after this
+   * one. Anything marked nightKeep is light of its own and is left alone.
+   * Before the craft is added, so nothing of the pilot's is touched.
+   */
+  if (night) {
+    const dimmed = new Map();
+    scene.traverse((o) => {
+      if (!o.isMesh || !o.material || Array.isArray(o.material)) {
+        return;
+      }
+      const m = o.material;
+      if (!m.isMeshBasicMaterial || m.userData.nightKeep) {
+        return;
+      }
+      let d = dimmed.get(m.uuid);
+      if (!d) {
+        d = m.clone();
+        d.userData = { ...m.userData };
+        d.color.multiplyScalar(NIGHT.unlit);
+        dimmed.set(m.uuid, d);
+      }
+      o.material = d;
+    });
+  }
+
   /* The craft is the session's, built once in src/render/shell.js and
    * re-parented into whichever map is active. Read through the shell every
    * time and never captured: swapCraft replaces the group between runs, so
@@ -7146,6 +7508,8 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
   if (wallArt) {
     await wallArt.ready;
   }
+  /* Back to day for any gate built outside a field scene after this one. */
+  nightBuild = false;
   const microCourse = Boolean(course && course.trackClass === 'micro');
   const gateOpening = microCourse ? RACEGOW_GATE_OPENING_MAX : 1.524 * GATE_SCALE;
   const gateReal = microCourse

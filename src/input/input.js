@@ -556,6 +556,63 @@ function firefoxRadioGuessMap() {
 }
 
 /*
+ * CHROME ON ANDROID, ONCE IT STOPS DROPPING AXES, MOVES THEM INSTEAD.
+ *
+ * fourAxisPad is Chrome's old fallback for a pad it does not know: four
+ * axes, the rest dropped, and on an AETR radio throttle or yaw gone. Chromium
+ * has replaced it (GamepadMappings.java, UnknownGamepadMappings, behind
+ * kAndroidUnknownGamepadExtraAxes, which is enabled by default in Chromium's
+ * main branch as of November 2026 and so reaches phones as their Chrome
+ * updates). The new mapping keeps every axis, and lays them out by rule:
+ *
+ *   0  X                                    channel 1, aileron
+ *   1  Y                                    channel 2, elevator
+ *   2  Rx, preferred over Z                 channel 4, rudder
+ *   3  Ry, preferred over Rz                channel 5
+ *   4  the first left over: Z               channel 3, throttle
+ *   5  the next: Rz                         channel 6
+ *   6+ the trigger axes and the rest
+ *
+ * for a radio that sends channels 1 to 8 on X, Y, Z, Rx, Ry, Rz, Slider and
+ * Dial, which EdgeTX and OpenTX do (usb_driver.cpp), and which Android's
+ * Generic.kl names Z, RX, RY, RZ, THROTTLE and RUDDER in that order. The
+ * preference is by name, not by the order the phone lists its axes, so this
+ * table does not depend on the phone. It is the Firefox table above to the
+ * slot: roll 0, pitch 1, yaw 2, throttle 4. The AETR guess read through it
+ * puts the throttle on the yaw stick and yaw on channel 5, which is the arm
+ * switch on most models: a quad that will not climb and will not turn, which
+ * is the ticket "Android does not pass yaw through", arriving now with the
+ * yaw right there on axis 2.
+ *
+ * So a phone's Chrome handing over a pad with no mapping and five or more
+ * axes flies that table as its guess. A pad with four is the old fallback
+ * and keeps the AETR guess and the Stick help recipe. Only uncalibrated
+ * pilots meet it: the wizard's map is the pilot's and wins, and the guess
+ * gets every check the AETR guess gets, so a radio wired some other way is
+ * still told to calibrate. Worked out from both ends' source, not flown on a
+ * phone yet. Firefox on Android is left out: its gamepad code is its own.
+ */
+function androidChromeHost() {
+  const nav = typeof navigator !== 'undefined' ? navigator : null;
+  if (!nav) {
+    return false;
+  }
+  const ua = String(nav.userAgent || '');
+  const platform = String((nav.userAgentData && nav.userAgentData.platform) || '');
+  return (/Android/.test(ua) || /android/i.test(platform)) && !/Firefox\//.test(ua);
+}
+
+function androidExtraAxesPad(gp) {
+  return Boolean(gp && gp.mapping !== 'standard' && gp.axes && gp.axes.length >= 5);
+}
+
+function androidGuessMap() {
+  const map = firefoxRadioGuessMap();
+  map.guess = 'android';
+  return map;
+}
+
+/*
  * WHICH CHANNELS ARE BACKWARDS, AND WHY THIS HAD TO EXIST.
  *
  * The wizard works out a channel's direction from the direction the pilot
@@ -1615,6 +1672,9 @@ export class InputManager {
     this.ownMap = this.loadMap();
     this.map = this.ownMap;
     this.mapKey = 'own';
+    /* Whether this page runs in Chrome on an Android phone, read once: see
+     * androidExtraAxesPad. Assignable, so a self test can be a phone. */
+    this.androidChrome = androidChromeHost();
     this.padChoice = loadPadChoice();
     this.padPick = null;
     this.padPickQueued = null;
@@ -2709,6 +2769,11 @@ export class InputManager {
      * isAetrGuess and isStandardGuess. */
     const mine = own.stored && !(standard && isAetrGuess(own))
       && !(radio && isStandardGuess(own));
+    if (!standard && !own.stored && this.androidChrome && androidExtraAxesPad(gp)) {
+      /* Chrome on Android's newer layout for a pad it does not know. Only
+       * on the guess: a pilot's own map is theirs. See androidExtraAxesPad. */
+      return 'android';
+    }
     if (mine || !standard) {
       return 'own';
     }
@@ -2726,6 +2791,9 @@ export class InputManager {
     }
     if (key === 'own') {
       return this.ownMap;
+    }
+    if (key === 'android') {
+      return androidGuessMap();
     }
     return key === 'firefox' ? firefoxRadioGuessMap() : standardGuessMap(this.stickMode);
   }

@@ -1999,6 +1999,70 @@ section('Firefox on Linux calls an EdgeTX radio a gamepad: bug-c9423f3e, bug-9cc
   }
 }
 
+section('Chrome on Android with the extra axes mapping: yaw on axis 2, throttle on axis 4');
+{
+  /* GamepadMappings.java, UnknownGamepadMappings under
+   * kAndroidUnknownGamepadExtraAxes, for an EdgeTX radio in AETR order:
+   * X, Y, Rx, Ry, then Z and Rz. So aileron, elevator, rudder, channel 5,
+   * throttle, channel 6, and the sliders. Throttle parked at the bottom,
+   * channel 5 an arm switch at one end. No mapping, as for any pad Chrome
+   * does not know. */
+  const phonePad = (axes = [0, 0, 0, -1, -1, 0, 0, 0]) => makePad(axes, 17, 'EdgeTX Radiomaster Pocket Joystick');
+  const near = (a, b) => Math.abs(a - b) < 1e-9;
+  {
+    const rig = new Rig(phonePad());
+    const im = rig.im;
+    im.androidChrome = true;
+    rig.step();
+    check('a phone, nothing touched: throttle at idle and the arm switch flies nothing',
+      im.channels.throttle === 0 && im.channels.yaw === 0 && im.channels.pitch === 0, JSON.stringify(im.channels));
+    rig.ax(4, 1); rig.step();
+    check('throttle stick up: full throttle, from axis 4', near(im.channels.throttle, 1), JSON.stringify(im.channels));
+    rig.ax(4, -1); rig.ax(2, 1); rig.step();
+    check('rudder right: yaw right, from axis 2, not throttle',
+      near(im.channels.yaw, 1) && im.channels.throttle === 0, JSON.stringify(im.channels));
+    rig.ax(2, 0); rig.ax(3, 1); rig.step();
+    check('channel 5 thrown: no yaw, where the AETR guess read it as yaw',
+      im.channels.yaw === 0 && im.channels.roll === 0, JSON.stringify(im.channels));
+    rig.ax(3, -1); rig.step();
+    const rep = im.mapReport();
+    check('a report says it is the Android guess', rep.map === 'guess' && rep.guess === 'android'
+      && rep.axes.yaw === 2 && rep.axes.throttle === 4, JSON.stringify(rep));
+  }
+  {
+    /* Chrome's old fallback: four axes. Unchanged, the AETR guess and the
+     * Stick help recipe. */
+    const rig = new Rig(makePad([0, 0, -1, 0], 17, 'EdgeTX Radiomaster Pocket Joystick'));
+    rig.im.androidChrome = true;
+    rig.step();
+    check('a phone handing over four axes keeps the AETR guess', rig.im.mapReport().guess === 'aetr',
+      JSON.stringify(rig.im.mapReport()));
+  }
+  {
+    const rig = new Rig(phonePad());
+    rig.im.androidChrome = false;
+    rig.step();
+    check('the same pad on a computer keeps the AETR guess', rig.im.mapReport().guess === 'aetr');
+  }
+  {
+    /* A pilot's own map wins on a phone. */
+    const own = JSON.stringify({
+      roll: { axis: 0, center: 0, full: 1 },
+      pitch: { axis: 1, center: 0, full: -1 },
+      yaw: { axis: 5, center: 0, full: 1 },
+      throttle: { axis: 6, low: -1, high: 1 },
+    });
+    const storage = memoryStorage();
+    storage.setItem('webfpv_stick_map_v1', own);
+    const rig = new Rig(phonePad(), storage);
+    rig.im.androidChrome = true;
+    rig.step();
+    const rep = rig.im.mapReport();
+    check('a calibrated map on a phone is the pilot\'s', rep.map === 'calibrated' && rep.axes.yaw === 5,
+      JSON.stringify(rep));
+  }
+}
+
 section('a standard gamepad that rests like a radio');
 {
   const std = (axes) => ({ ...makePad(axes, 17, 'Mystery pad (STANDARD GAMEPAD Vendor: 1234 Product: 5678)'), mapping: 'standard' });
@@ -2122,6 +2186,9 @@ section('stick help: which machine, and what the screen says');
   check('worded as untried, asking to be told, and a computer for the radios that cannot change',
     /nobody has confirmed it on a phone yet/.test(androidText) && /Report a bug/.test(androidText)
     && /DJI controller/.test(androidText) && /computer/.test(androidText));
+  check('Android: update Chrome or try Chrome Beta comes before the radio recipe',
+    /update Chrome/.test(androidText) && /Chrome Beta/.test(androidText)
+    && androidText.indexOf('update Chrome') < androidText.indexOf('copy of the model'));
   check('Windows: joy.cpl as the test, and not as a calibration',
     /joy\.cpl/.test(platformHelp('windows').lines.join(' ')) && /changes nothing a browser reads/.test(platformHelp('windows').lines.join(' ')));
   check('Safari on a Mac is told to try another browser first, and Chrome on a Mac is not',

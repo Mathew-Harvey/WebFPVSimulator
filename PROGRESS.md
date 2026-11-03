@@ -74329,3 +74329,41 @@ The owner, 14:21Z: "Make it so I can race night or day on any 5 inch track". Set
 ### 2026-11-03: Race time goes to main
 
 The owner, 14:43Z: "Push to main". Covers PR 226, the Race time row. Main was fetched first and had not moved past this branch's base (8584490a), so it is a fast forward. Not flown.
+
+## 2026-11-04: Android Chrome and yaw, the newer layout gets its own guess
+
+Mat, 2026-11-03: "Getting comments that android doesn't pass yaw through to the chrome based browser sometimes, can we
+fix this from our end?"
+
+### What was found
+
+- Chrome's old fallback for a pad it does not know (four axes, the rest dropped) is unchanged, and no page can bring a
+  dropped axis back. The Stick help recipe (the missing stick on channels 5 and 6) stays for it.
+- Chromium's current `GamepadMappings.java` (read 2026-11-03 from the chromium/chromium mirror's main branch) has the
+  newer `UnknownGamepadMappings` path, and `device/gamepad/public/cpp/gamepad_features.cc` has
+  `kAndroidUnknownGamepadExtraAxes` as `FEATURE_ENABLED_BY_DEFAULT`. Which stable release first ships it on was not
+  found (the googlesource log answered 503). The DJI ticket of 2026-10-06 on Chrome 154 still showed four axes.
+- That path keeps every axis, by rule rather than by the order the phone lists them: X, Y, Rx (preferred over Z), Ry
+  (preferred over Rz), then Z, Rz, then the rest. For an EdgeTX or OpenTX radio in AETR order that is aileron,
+  elevator, rudder, channel 5, throttle, channel 6: Firefox's table to the slot. The AETR guess reads it as throttle on
+  the yaw stick and yaw on channel 5, which is the arm switch on most models. So a phone that has the new Chrome still
+  "does not pass yaw", while the yaw is right there on axis 2. That is the likeliest reading of "sometimes".
+
+### What changed
+
+- `src/input/input.js`: `androidChromeHost`, `androidExtraAxesPad`, `androidGuessMap` and a new guess key `android`.
+  Chrome on Android (not Firefox), a pad with no mapping and five or more axes, no stored map: flies roll 0, pitch 1,
+  yaw 2, throttle 4. Four axes keeps the AETR guess. A calibrated map always wins. The guess gets every check the AETR
+  guess gets (parked throttle, no yaw, throttle as yaw), so a radio wired another way is still told to calibrate.
+- `src/ui/ui.js`: Stick help names the Android guess.
+- `src/ui/stickhelp.js`: the Android paragraph now says to update Chrome or try Chrome Beta first, before the recipe.
+- `scripts/input-selftest.js`: a section for the layout (eight checks) and one for the copy's order.
+
+Latency: no change. The platform is read once in the constructor; the guess is chosen in `guessKey`, which already
+ran every poll, and adds one comparison there. `readGamepad` reads the same number of axes per poll.
+
+Not flown on a phone. Worked out from Chromium's and EdgeTX's source; no Android device here.
+
+### Run, in the same turn
+
+- `node scripts/input-selftest.js`: all passed (counts in the PR).

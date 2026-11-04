@@ -1382,43 +1382,82 @@ function frontRoom(H) {
 
 /*
  * THE FAMILY ROOM: pale blue grey walls, open to the south into the
- * dining room, a wall of dark built ins on the chimney's wall with the
- * television in a white surround in the middle of it, which is what every
- * still through the wide opening shows (GB2kc0xNhoE-mr2,
- * gf-gOVLqJl3GvA-mr2, Egrl50wX2z4-mr3); the stone fireplace under it is
- * not in any still and stays because the chimney is on that wall outside.
- * A sectional, the dark console behind it with six wicker baskets along
- * its face and a lamp each end, a navy rug, a dome light.
+ * dining room, the chimney's wall built in round the television in a
+ * warm stained wood (Nick's videos, v2 289 to 293, 311 to 314): closed
+ * cupboards to the counter, open shelves of ornaments over them to the
+ * crown, the television over a wood mantel in the middle and under it the
+ * fireplace, shut behind a cream screen in a dark surround. South of the
+ * built ins a small window with its wood blind down, the patterned
+ * wingback in front of it, a picture on the stub of wall beside the
+ * opening; the brown leather armchair in the south east corner, its back
+ * to the south wall at the opening's east side (v2 289, 291 to 293).
+ * Until 2026-11-04 the built ins were near black and ran the wall's whole
+ * length, the fireplace grey stone, and the sectional cream; it is grey.
+ * The dark console behind the sectional with six wicker baskets along its
+ * face and a lamp each end, a navy rug, a dome light, and on the north
+ * wall, between the window by the corner and the French doors, the black
+ * framed pictures (v2 311, 312, 313).
  */
 function familyRoom(H) {
   const f = FLOOR0;
   const w = TX;
-  H.box('homeStone', w, 5.03, f, w + 0.45, 6.37, f + 1.3, { name: 'fireplace' });
-  H.paint('homeChair', w + 0.45, 5.4, f + 0.12, w + 0.455, 6.0, f + 0.85);
-  H.box('homeShelf', w, 4.95, f + 1.3, w + 0.55, 6.45, f + 1.38, { name: 'mantel' });
-  H.box('homeShelf', w, 5.03, f + 1.38, w + 0.2, 6.37, CEIL0, { name: 'chimney breast' });
-  H.paint('homeWallIn', w + 0.2, 5.1, f + 1.5, w + 0.205, 6.3, f + 2.3);
-  H.box('homeScreen', w + 0.2, 5.2, f + 1.6, w + 0.25, 6.2, f + 2.2, { name: 'television', kind: 'obstacle' });
-  H.box('homeStone', w + 0.45, 4.95, f, w + 0.95, 6.45, f + 0.08, { name: 'hearth' });
-  /* The cube shelving, floor to ceiling either side, baskets in the low
-   * cubes. The frame stays dark, as it is in the house; the cubes' backs
-   * are wood, since a dark colour on a wall facing away from the sun draws
-   * in its shade tint and the slate backs of the first shots read as a
-   * black grid across the room. */
-  for (const [a, b] of [[3.0 + TI / 2, 4.95], [6.45, DEP - TX]]) {
-    H.box('homeShelf', w, a, f, w + 0.42, b, CEIL0, { name: 'built in' });
-    const n = Math.max(2, Math.round((b - a) / 0.42));
+  /* The fireplace, its screen and the mantel over it; the chimney breast
+   * over the mantel in the built ins' wood, the television on it. */
+  H.box('homeShelf', w, 5.03, f, w + 0.4, 6.37, f + 1.22, { name: 'fireplace' });
+  H.paint('homeCushion', w + 0.4, 5.28, f + 0.12, w + 0.405, 6.12, f + 0.98);
+  for (const [a, b] of [[5.28, 5.32], [6.08, 6.12]]) {
+    H.paint('homeWicker', w + 0.405, a, f + 0.12, w + 0.41, b, f + 0.98);
+  }
+  H.box('homeWood', w, 4.95, f + 1.22, w + 0.5, 6.45, f + 1.3, { name: 'mantel' });
+  H.box('homeWood', w, 5.03, f + 1.3, w + 0.26, 6.37, CEIL0, { name: 'chimney breast' });
+  H.box('homeScreen', w + 0.26, 5.2, f + 1.45, w + 0.31, 6.2, f + 2.05, { name: 'television', kind: 'obstacle' });
+  H.paint('homeShelf', w + 0.26, 5.12, f + 2.18, w + 0.265, 6.28, CEIL0 - 0.12);
+  /* The built ins either side, solid to the crown so no shelf is a slot:
+   * cupboards to the counter, doors drawn on them, and over the counter
+   * the shelves as dark openings in the wood with ornaments in them. */
+  const ORN = ['homeWhite', 'homeBook', 'homeWallIn', 'homePlay', 'homeHedge'];
+  for (const [a, b] of [[3.95, 4.95], [6.45, DEP - TX]]) {
+    H.box('homeWood', w, a, f, w + 0.45, b, f + 0.86, { name: 'built in' });
+    H.box('homeWood', w, a, f + 0.86, w + 0.32, b, CEIL0, { name: 'built in' });
+    const n = Math.max(2, Math.round((b - a) / 0.5));
     for (let j = 0; j < n; j += 1) {
       const y0 = a + ((b - a) * j) / n + 0.03;
       const y1 = a + ((b - a) * (j + 1)) / n - 0.03;
-      for (let k = 0; k < 5; k += 1) {
-        const h0 = f + 0.06 + k * 0.46;
-        H.paint(k < 2 ? 'homeWicker' : 'homeWood', w + 0.42, y0, h0, w + 0.426, y1, h0 + 0.38);
-        if (k >= 2 && (j + k) % 3 === 0) {
-          H.paint(SPINES[(j + k) % SPINES.length], w + 0.426, y0 + 0.04, h0 + 0.02, w + 0.43, y0 + (y1 - y0) * 0.6, h0 + 0.3);
+      H.paint('homeShelf', w + 0.45, y0, f + 0.08, w + 0.455, y1, f + 0.78);
+      H.paint('homeWood', w + 0.455, y0 + 0.03, f + 0.11, w + 0.46, y1 - 0.03, f + 0.75);
+      for (let k = 0; k < 4; k += 1) {
+        const h0 = f + 0.96 + k * 0.42;
+        H.paint('homeShelf', w + 0.32, y0, h0, w + 0.325, y1, h0 + 0.34);
+        if ((j + k) % 2 === 0) {
+          const m = ORN[(j + k) % ORN.length];
+          const c = (y0 + y1) / 2 + (((j + k) % 3) - 1) * 0.06;
+          H.paint(m, w + 0.325, c - 0.07, h0, w + 0.33, c + 0.07, h0 + 0.12 + (k % 3) * 0.05);
         }
       }
     }
+  }
+  /* The small window south of the built ins, shut, its wood blind down,
+   * painted on both faces of the wall since nothing passes it. */
+  const sw = [3.25, 3.8, f + 0.85, f + 2.15];
+  H.paint('homeShelf', w + 0.012, sw[0] - 0.06, sw[2] - 0.06, w + 0.018, sw[1] + 0.06, sw[3] + 0.06);
+  H.paint('homeBook', w + 0.018, sw[0], sw[2], w + 0.022, sw[1], sw[3]);
+  for (const h of [sw[2] + 0.42, sw[2] + 0.86]) {
+    H.paint('homeWood', w + 0.022, sw[0], h, w + 0.025, sw[1], h + 0.02);
+  }
+  H.paint('homeTrim', -0.03, sw[0] - 0.07, sw[2] - 0.07, -0.016, sw[1] + 0.07, sw[3] + 0.07);
+  H.paint('homeWindow', -0.034, sw[0], sw[2], -0.03, sw[1], sw[3]);
+  H.paint('homeTrim', -0.038, sw[0], (sw[2] + sw[3]) / 2 - 0.02, -0.034, sw[1], (sw[2] + sw[3]) / 2 + 0.02);
+  picture(H, 'x', 3.0 + TI / 2, 1, 0.3, 0.65, f + 1.3, f + 1.85, 'homeWallIn', 0.012);
+  /* The patterned wingback before the window, back to the west wall, and
+   * the leather armchair, each down to the floor and clear of the walls
+   * and the built ins by less than a slot or more. */
+  armchair(H, w, 3.1, w + 0.75, 3.88, 'w', 'homeCushion');
+  armchair(H, BRICK_X1 - TI / 2 - 0.8, 3.0 + TI / 2, BRICK_X1 - TI / 2, 3.86, 's', 'homeWood');
+  /* The pictures on the north wall between its window and the French
+   * doors, black frames with white mounts. */
+  for (const [a, h] of [[1.85, f + 1.2], [1.85, f + 1.78], [2.4, f + 1.05], [2.4, f + 1.62]]) {
+    picture(H, 'x', DEP - TX, -1, a, a + 0.42, h, h + 0.48, 'homeWhite', 0.012);
+    picture(H, 'x', DEP - TX, -1, a + 0.1, a + 0.32, h + 0.1, h + 0.38, 'homeStone', 0.022);
   }
   /* The sectional: its long run facing the fireplace, a return along the
    * north wall, and a console behind it with two lamps. */
@@ -1461,7 +1500,7 @@ function sofa(H, x0, y0, x1, y1, back) {
   const f = FLOOR0;
   const seat = f + 0.45;
   const top = f + 0.85;
-  const m = 'homeSofa';
+  const m = 'homeStone';
   const bt = 0.22;
   H.box(m, x0, y0, f, x1, y1, seat, { name: 'sofa' });
   if (back === 'e') {
@@ -1470,13 +1509,38 @@ function sofa(H, x0, y0, x1, y1, back) {
     for (let i = 0; i < n; i += 1) {
       const a = y0 + 0.2 + ((y1 - y0 - 0.4) * i) / n;
       const b = y0 + 0.2 + ((y1 - y0 - 0.4) * (i + 1)) / n - 0.04;
-      H.paint('homeCushion', x0 + 0.05, a, seat, x1 - bt, b, seat + 0.012);
+      H.paint('homeCoping', x0 + 0.05, a, seat, x1 - bt, b, seat + 0.012);
     }
     H.box(m, x0, y0, seat, x1, y0 + 0.18, f + 0.65, { name: 'sofa arm' });
   } else {
     H.box(m, x0, y1 - bt, seat, x1, y1, top, { name: 'sofa back' });
-    H.paint('homeCushion', x0 + 0.2, y0 + 0.05, seat, x1 - 0.05, y1 - bt, seat + 0.012);
+    H.paint('homeCoping', x0 + 0.2, y0 + 0.05, seat, x1 - 0.05, y1 - bt, seat + 0.012);
     H.box(m, x0, y0, seat, x0 + 0.18, y1, f + 0.65, { name: 'sofa arm' });
+  }
+}
+
+/* An armchair from (x0, y0) to (x1, y1), its back to side `back` ('n',
+ * 's', 'e' or 'w'), upholstered to the floor in `m`, its arms the chair's
+ * depth. */
+function armchair(H, x0, y0, x1, y1, back, m) {
+  const f = FLOOR0;
+  const seat = f + 0.44;
+  const bt = 0.2;
+  const at = 0.16;
+  const top = f + 1.0;
+  const arm = f + 0.66;
+  H.box(m, x0, y0, f, x1, y1, seat, { name: 'armchair' });
+  const backs = { e: [x1 - bt, y0, x1, y1], w: [x0, y0, x0 + bt, y1], n: [x0, y1 - bt, x1, y1], s: [x0, y0, x1, y0 + bt] };
+  const [a, b, c, d] = backs[back];
+  H.box(m, a, b, seat, c, d, top, { name: 'armchair back' });
+  if (back === 'e' || back === 'w') {
+    for (const [p, q] of [[y0, y0 + at], [y1 - at, y1]]) {
+      H.box(m, x0, p, seat, x1, q, arm, { name: 'armchair arm' });
+    }
+  } else {
+    for (const [p, q] of [[x0, x0 + at], [x1 - at, x1]]) {
+      H.box(m, p, y0, seat, q, y1, arm, { name: 'armchair arm' });
+    }
   }
 }
 
@@ -1535,6 +1599,14 @@ function diningRoom(H) {
   picture(H, 'y', w, 1, -1.3, -0.9, f + 1.35, f + 1.85, 'homePlay', 0.012);
   picture(H, 'y', w, 1, -0.7, -0.3, f + 1.45, f + 1.9, 'homeWallIn', 0.012);
   picture(H, 'y', w, 1, -0.7, -0.4, f + 1.05, f + 1.35, 'homePlay', 0.012);
+  /* The wood coat tree in the corner south of the door to the hall, the
+   * frames over the shoe cubby behind it (v2 296, 319). Close enough to
+   * the wall that its foot's and its hooks' squares are under a slot from
+   * it. */
+  const ct = [BRICK_X1 - TX - 0.13, -0.25];
+  H.drum('homeWood', ...ct, f, f + 0.04, 0.12, { seg: 8, name: 'coat tree foot' });
+  H.post('homeWood', ...ct, f + 0.04, f + 1.75, 0.025, { seg: 6, kind: 'pole' });
+  H.drum('homeWood', ...ct, f + 1.5, f + 1.56, 0.1, { seg: 8, name: 'coat tree hooks' });
   /* The piano on the east wall, north of the double opening and right
    * beside it (the owner's still of 2026-10-18 from the piano room), its
    * keys to the room, a wall of black frames over it. */
@@ -1981,25 +2053,38 @@ function bed(H, x, y, w, l, head, m, f = FLOOR1) {
  * WHERE ITS ROOMS ARE, real metres. The main room is the west part, one
  * open room from the front wall to the back under the dining room and the
  * family room, the stair down along its east side at the front with the
- * lounge beside it, and past the stair's head the room reaches on east
- * under the breakfast room to the kitchenette. At the stair's foot, on the
- * east, a door into the utility room: unfinished, its joists bare, east of
- * the stair from the front wall to the hall and on across the east end to
- * the back wall (his second video: the door open at the foot from the
- * lounge, v2 339, 340, 366, 367, 397, 565; inside, v2 341 to 349, 376 to
- * 383, 566 to 568). Past the stair's head a short hall from the main room
- * to the utility room's other door, the guest room north of it against
- * the back wall, where its small high window is (v2 350 to 354, 369 to
- * 375, 569), and a closet door on the hall's south side. What each room
- * holds is his second video's, the newest look at it; the older stills
+ * lounge beside it, and past the stair's head the room as wide as the
+ * lounge and the stair together, the kitchenette along its east wall. At
+ * the stair's foot, on the east, a door into the utility room: unfinished,
+ * its joists bare, east of the stair from the front wall to the guest room
+ * and the hall and on across the east end to the back wall (his second
+ * video: the door open at the foot from the lounge, v2 339, 340, 366, 367,
+ * 397, 565; inside, v2 341 to 349, 376 to 383, 566 to 568). Past the stair's head, right beside the kitchenette's
+ * end, the guest room's door: from the lounge, past the white posts, the
+ * dark cabinet and then the doorway with the bed and the small high window
+ * straight through it (v2 368, 369, 370, 386, 387), and from inside, out
+ * through it to the lounge's television (v2 353, 354). The guest room's
+ * other door, in its east wall, opens on a short hall to the utility
+ * room's other door (from the utility room down the hall into the guest
+ * room, its bench at the bed's foot on the right, v2 350, 351, v1 71, 95;
+ * from the guest room down the hall to the utility room's door at its
+ * end, its leaf swung back into the hall, v2 371 to 375; out of the
+ * utility room into it on the left, v2 349, 568, 569). Until 2026-11-04
+ * the hall ran from the main room with the guest room off it; neither
+ * flight finds that. What each room holds is his second video's, the
+ * newest look at it; the older stills
  * (bsmt-hdRR_6chm2M-mr2, bsmt-j6odZGcoq_0-mr2, bsmt--M3qDT4i7xk-mr2,
  * bsmt-K9uGMfYKJLg-mr2, bsmt-dv3zfxHDwjw-mr2, bsmt-Jdr06Vgp-NM-mr3, the
  * rest in REFERENCES.md) for what it does not show. There was a yellow
  * playroom east of the stair, inferred from one still; neither flight
  * shows one, and the utility room is where it stood.
  */
-/* Where the halls start, east of the main room's back part. */
-const B_EAST = 7.2;
+/* The main room's east wall, in line with the stair's east wall: from the
+ * lounge the guest room's door is just past the stair's head, the
+ * kitchenette's dark end beside it (v2 369, 386, 387, 396). Until
+ * 2026-11-04 the main room reached 1.4 m further east past the stair's
+ * head. */
+const B_EAST = STAIR_X1 + TI;
 const MAIN = { x0: TX, y0: TX, x1: B_EAST - TI, y1: DEP - TX };
 const MAIN_E = B_EAST - TI / 2;
 /* The lounge's east side, the stair's west wall. */
@@ -2007,22 +2092,26 @@ const LOUNGE_X1 = STAIR_X0 - TI;
 /* Where the half wall along the stair's foot gives way to the full wall:
  * the opening over the half wall is still half a metre high there. */
 const HALF_Y = 2.0;
-const HALL = { x0: B_EAST, x1: 10.5, y0: 4.22, y1: 5.15 };
-const HALL_DOOR = [4.26, 5.11];
-/* The utility room, an L: the strip east of the stair from the front wall
- * to the hall, and its east end from there to the back wall. Its door from
- * the landing at the stair's foot, in the stair's east wall, swings in
- * against the front wall. */
-const UTIL = { x0: STAIR_X1 + TI, y0: TX, x1: LEN - TX, y1: HALL.y0 - TI };
-const UTIL_E = { x0: HALL.x1 + TI, y0: UTIL.y1, x1: LEN - TX, y1: DEP - TX };
+/* The guest room, from the main room's east wall to the hall, from the
+ * utility room's strip along the front to the back wall; its door from the
+ * main room at its south west corner, hard by the kitchenette's end. */
+const GUEST = { x0: B_EAST, y0: 4.22, x1: 9.1, y1: DEP - TX };
+const GUEST_DOOR = [4.26, 5.11];
+/* The hall from the guest room's east wall to the utility room, its door
+ * at each end in line with the guest room's own. */
+const HALL = { x0: GUEST.x1 + TI, x1: 11.4, y0: GUEST.y0, y1: 5.15 };
+const HALL_DOOR = GUEST_DOOR;
+/* The utility room: the strip east of the stair along the front wall, a
+ * passage up the east wall past the hall's end, and the room north of the
+ * hall to the back wall. Its door from the landing at the stair's foot, in
+ * the stair's east wall, swings in against the front wall. */
+const UTIL = { x0: STAIR_X1 + TI, y0: TX, x1: LEN - TX, y1: GUEST.y0 - TI };
+const UTIL_C = { x0: HALL.x1 + TI, y0: UTIL.y1, x1: LEN - TX, y1: HALL.y1 + TI };
+const UTIL_E = { x0: HALL.x0, y0: UTIL_C.y1, x1: LEN - TX, y1: DEP - TX };
 const UTIL_DOOR = [TX + 0.06, SB_FOOT - 0.04];
-/* The closet door on the hall's south side, painted shut. */
-const CLOSET = [8.6, 9.4];
-const GUEST = { x0: B_EAST, y0: HALL.y1 + TI, x1: HALL.x1, y1: DEP - TX };
-const GUEST_DOOR = [8.5, 9.3];
 /* The soffit over the kitchenette, and the beam across the lounge from
  * the west wall to the stair's. */
-const SOFF = { x0: 6.42, y0: HALL.y1 + TI, h: BF + 2.0 };
+const SOFF = { x0: MAIN.x1 - 0.72, y0: 5.27, h: BF + 2.0 };
 const BEAM = { y0: 3.85, y1: 4.15, h: BF + 2.05 };
 
 function basement(H) {
@@ -2039,35 +2128,40 @@ function basement(H) {
   for (const [a, b, c, d] of around(HOLE, TX, TX, UTIL.x0, DEP - TX)) {
     H.paint('homeWallIn', a, b, -0.008, c, d, -0.002);
   }
-  /* Their edges under the hall's south wall, clear of the slab's edge at
-   * the stair's head. */
+  /* Their edges under the walls, the front strip's clear of the slab's
+   * edge at the stair's head. */
   const under = UTIL.y1 + TI / 2;
-  H.paint('homeWallIn', UTIL.x0, under, -0.008, UTIL_E.x0, DEP - TX, -0.002);
+  const guestE = GUEST.x1 + TI / 2;
+  const hallN = HALL.y1 + TI / 2;
+  const hallE = HALL.x1 + TI / 2;
+  H.paint('homeWallIn', UTIL.x0, under, -0.008, guestE, DEP - TX, -0.002);
+  H.paint('homeWallIn', guestE, under, -0.008, hallE, hallN, -0.002);
   H.paint('homeShelf', UTIL.x0, TX, -0.008, LEN - TX, under, -0.002);
-  H.paint('homeShelf', UTIL_E.x0, under, -0.008, LEN - TX, DEP - TX, -0.002);
+  H.paint('homeShelf', guestE, hallN, -0.008, hallE, DEP - TX, -0.002);
+  H.paint('homeShelf', hallE, under, -0.008, LEN - TX, DEP - TX, -0.002);
 
   /* THE WALLS. The stair's west wall is the lounge's east one, a half
    * wall along its foot and then full height to the stair's head; past the
-   * head the main room reaches east to its own east wall, with the cased
-   * way into the hall in it. The stair's east wall runs from the front wall
-   * to its head, the utility room's door in it at the foot, and at its
-   * head turns east as the hall's south wall. */
+   * head the main room reaches east to its own east wall, with the guest
+   * room's door in it. The stair's east wall runs from the front wall to
+   * its head, the utility room's door in it at the foot, and at its head
+   * turns east along the guest room and the hall to the hall's end. The
+   * guest room's east wall, with its door into the hall; the hall's north
+   * wall; its end, with the utility room's door. */
   const door = (d) => [d[0], d[1], f, f + DOOR_H];
   H.wall('y', STAIR_X0 - TI / 2, HALF_Y, SB.top, f, 0);
-  H.wall('y', MAIN_E, UTIL.y1, DEP - TX, f, 0, { holes: [door(HALL_DOOR)] });
-  H.frame('y', MAIN_E, TI, -1, door(HALL_DOOR), 'homeWhite', { w: 0.08, d: 0.02 });
-  H.frame('y', MAIN_E, TI, 1, door(HALL_DOOR), 'homeWhite', { w: 0.08, d: 0.02 });
+  H.wall('y', MAIN_E, UTIL.y1, DEP - TX, f, 0, { holes: [door(GUEST_DOOR)] });
   H.wall('y', STAIR_X1 + TI / 2, TX, UTIL.y1, f, 0, { holes: [door(UTIL_DOOR)] });
-  H.wall('x', HALL.y0 - TI / 2, STAIR_X1, HALL.x1, f, 0);
-  H.wall('x', HALL.y1 + TI / 2, B_EAST, HALL.x1, f, 0, { holes: [door(GUEST_DOOR)] });
-  H.wall('y', HALL.x1 + TI / 2, UTIL.y1, DEP - TX, f, 0, { holes: [door(HALL_DOOR)] });
+  H.wall('x', GUEST.y0 - TI / 2, STAIR_X1, HALL.x1, f, 0);
+  H.wall('y', guestE, UTIL.y1, DEP - TX, f, 0, { holes: [door(HALL_DOOR)] });
+  H.wall('x', hallN, HALL.x0, HALL.x1, f, 0);
+  H.wall('y', hallE, UTIL.y1, UTIL_C.y1, f, 0, { holes: [door(HALL_DOOR)] });
   doorway(H, 'y', STAIR_X1 + TI / 2, ...UTIL_DOOR, f, { leaf: { side: 1, at: 'b0' } });
-  doorway(H, 'x', HALL.y1 + TI / 2, ...GUEST_DOOR, f, { leaf: { side: 1, at: 'b0' } });
-  doorway(H, 'y', HALL.x1 + TI / 2, ...HALL_DOOR, f, { leaf: { side: 1, at: 'b1' } });
-  /* The closet, its door shut: casing, the panel and a knob on the face. */
-  H.frame('x', HALL.y0 - TI / 2, TI, 1, door(CLOSET), 'homeWhite', { w: 0.06, d: 0.02 });
-  H.paint('homeWhite', CLOSET[0], HALL.y0 + 0.012, f, CLOSET[1], HALL.y0 + 0.018, f + DOOR_H);
-  H.paint('homeSteel', CLOSET[1] - 0.1, HALL.y0 + 0.018, f + 0.95, CLOSET[1] - 0.06, HALL.y0 + 0.022, f + 1.0);
+  /* The guest room's two doors swung in against its south wall (v2 351,
+   * 353), the hall's end door back into the hall (v2 373). */
+  doorway(H, 'y', MAIN_E, ...GUEST_DOOR, f, { leaf: { side: 1, at: 'b0' } });
+  doorway(H, 'y', guestE, ...HALL_DOOR, f, { leaf: { side: -1, at: 'b0' } });
+  doorway(H, 'y', hallE, ...HALL_DOOR, f, { leaf: { side: -1, at: 'b0' } });
   /* The rooms' colours: greige in the main room, the hall and the guest
    * room, so the white trim, the fireplace and the half wall stand out of
    * it as they do in the stills; the stairwell and the landing at its foot
@@ -2077,8 +2171,9 @@ function basement(H) {
    * basement does (the foundation's own grey takes the yard's violet shade
    * indoors). The main
    * room is an L, so its faces are listed: the west wall, the front to the
-   * stair's foot, the back, the stair's west wall, the hall's south wall
-   * past the stair's head, and the east wall with the way into the hall. */
+   * stair's foot, the back, the stair's west wall, the guest room's south
+   * wall past the stair's head, and the east wall with the guest room's
+   * door. */
   const mainFaces = (m, h1, proud, a0) => {
     const sides = [
       ['y', MAIN.x0, MAIN.y0, MAIN.y1, 1, []],
@@ -2086,22 +2181,24 @@ function basement(H) {
       ['x', MAIN.y1, MAIN.x0, MAIN.x1, -1, []],
       ['y', LOUNGE_X1, a0, SB.top, -1, []],
       ['x', UTIL.y1 + TI, STAIR_X1, MAIN.x1, 1, []],
-      ['y', MAIN.x1, UTIL.y1 + TI, MAIN.y1, -1, [door(HALL_DOOR)]],
+      ['y', MAIN.x1, UTIL.y1 + TI, MAIN.y1, -1, [door(GUEST_DOOR)]],
     ];
     for (const [dir, at, b0, b1, side, holes] of sides) {
       face(H, m, dir, at + side * proud, b0, b1, f, h1, holes, side, 0.008 + proud);
     }
   };
-  const hallHoles = { n: [door(GUEST_DOOR)], w: [door(HALL_DOOR)], e: [door(HALL_DOOR)] };
+  const guestHoles = { w: [door(GUEST_DOOR)], e: [door(HALL_DOOR)] };
+  const hallHoles = { w: [door(HALL_DOOR)], e: [door(HALL_DOOR)] };
   mainFaces('homeWallCream', 0, 0, HALF_Y);
   roomFaces(H, 'homeWallCream', HALL, f, 0, hallHoles);
-  roomFaces(H, 'homeWallCream', GUEST, f, 0, { s: [door(GUEST_DOOR)] });
-  roomFaces(H, 'homeCarpet', UTIL, f, 0, { w: [door(UTIL_DOOR)], n: { a0: UTIL.x0, a1: UTIL_E.x0 } });
-  roomFaces(H, 'homeCarpet', UTIL_E, f, 0, { s: false, w: [door(HALL_DOOR)] });
+  roomFaces(H, 'homeWallCream', GUEST, f, 0, guestHoles);
+  roomFaces(H, 'homeCarpet', UTIL, f, 0, { w: [door(UTIL_DOOR)], n: { a0: UTIL.x0, a1: UTIL_C.x0 } });
+  roomFaces(H, 'homeCarpet', UTIL_C, f, 0, { s: false, n: false, w: [door(HALL_DOOR)] });
+  roomFaces(H, 'homeCarpet', UTIL_E, f, 0, { s: { a0: UTIL_E.x0, a1: UTIL_C.x0 } });
   const base = (r, holes) => roomFaces(H, 'homeWhite', r, f, f + 0.1, holes, 0.014);
   mainFaces('homeWhite', f + 0.1, 0.014, SB_FOOT);
   base(HALL, hallHoles);
-  base(GUEST, { s: [door(GUEST_DOOR)] });
+  base(GUEST, guestHoles);
   base({ x0: LOUNGE_X1, y0: TX, x1: STAIR_X1, y1: SB_FOOT }, { w: false, n: false, e: [door(UTIL_DOOR)] });
 
   basementStair(H);
@@ -2210,7 +2307,7 @@ function basementMain(H) {
       can(H, x, y);
     }
   }
-  for (const x of [1.4, 3.6, 5.8]) {
+  for (const x of [1.3, 3.0, 4.7]) {
     for (const y of [5.7, 7.2]) {
       can(H, x, y);
     }
@@ -2245,14 +2342,16 @@ function basementMain(H) {
     }
     H.paint('homeShelf', a + 0.02, 7.744, f + 0.85, b - 0.02, 7.75, f + 0.86);
   }
-  /* The red swivel chair under the window: a black star base, its stem,
-   * the red seat and back. */
-  H.drum('homeChair', 5.05, 7.45, f, f + 0.06, 0.27, { seg: 10 });
-  H.post('homeChair', 5.05, 7.45, f + 0.06, f + 0.44, 0.025, { seg: 6, kind: 'pole' });
-  H.box('homePlay', 4.83, 7.23, f + 0.44, 5.27, 7.67, f + 0.5, { name: 'chair' });
-  H.box('homePlay', 4.85, 7.63, f + 0.5, 5.25, 7.69, f + 0.92, { name: 'chair back' });
-  H.paint('homeWindow', 4.8, m.y1 - 0.018, f + 1.95, 5.5, m.y1 - 0.012, f + 2.2);
-  H.frame('x', DEP - TX / 2, TX, -1, [4.8, 5.5, f + 1.95, f + 2.2], 'homeWhite', { w: 0.06, d: 0.02 });
+  /* The red swivel chair under the window, between the hutch and the
+   * fridge (v2 362, 388): a black star base, its stem, the red seat and
+   * back. */
+  const rc = 4.35;
+  H.drum('homeChair', rc, 7.45, f, f + 0.06, 0.27, { seg: 10 });
+  H.post('homeChair', rc, 7.45, f + 0.06, f + 0.44, 0.025, { seg: 6, kind: 'pole' });
+  H.box('homePlay', rc - 0.22, 7.23, f + 0.44, rc + 0.22, 7.67, f + 0.5, { name: 'chair' });
+  H.box('homePlay', rc - 0.2, 7.63, f + 0.5, rc + 0.2, 7.69, f + 0.92, { name: 'chair back' });
+  H.paint('homeWindow', 4.25, m.y1 - 0.018, f + 1.95, 4.95, m.y1 - 0.012, f + 2.2);
+  H.frame('x', DEP - TX / 2, TX, -1, [4.25, 4.95, f + 1.95, f + 2.2], 'homeWhite', { w: 0.06, d: 0.02 });
   /* The fridge, a cupboard over it to the soffit. */
   H.box('homeSteel', SOFF.x0, 7.5, f, m.x1, m.y1, f + 1.8, { name: 'fridge' });
   H.paint('homeShutter', SOFF.x0 - 0.005, 7.62, f + 0.95, SOFF.x0, 7.66, f + 1.55);
@@ -2394,49 +2493,55 @@ function couch(H, x0, y0, x1, y1, face, f, o = {}) {
 }
 
 /*
- * OFF THE HALLS. The guest room (v2 352, 370, 371, 569; bsmt-Jdr06Vgp-NM-mr3,
- * the fourth view of bsmt-K9uGMfYKJLg-mr2): a bed with grey and white
- * striped bedding and a red throw, its head to the back wall, a white
- * upholstered bench at its foot, a wood dresser in the far corner under
- * the small high window, a white oil heater, a closet door, a flush light.
+ * PAST THE STAIR'S HEAD. The guest room (v2 352, 370, 371, 569;
+ * bsmt-Jdr06Vgp-NM-mr3, the fourth view of bsmt-K9uGMfYKJLg-mr2): a bed
+ * with grey and white striped bedding and a red throw, its head to the back
+ * wall, a white upholstered bench at its foot, a wood dresser in the far
+ * corner by the small high window, a white oil heater, a closet door, a
+ * flush light, a door from the main room and one to the hall.
  * THE UTILITY ROOM, unfinished, the foundation's grey and its joists bare
  * under two tube lights (v2 341 to 349, 376 to 383, 566 to 568; v1 68 to
  * 70, 80, 92, 93): in from the stair's foot a blue foam mat with a weight
  * bench and a rack of dumbbells on it, the furnace with its trunk duct to
  * the joists, the water heater and the softener along the north wall,
  * two by four shelving of plastic bins the length of the front wall, the
- * workbench under a pegboard against the hall's wall, and across the east
- * end, where the door from the hall comes in, wire shelving the length of
- * the east wall full of quads, more on the west wall, and the desk across
- * the north end with two monitors and a red chair (the second view of
+ * workbench under a pegboard against the guest room's and the hall's wall, and up the
+ * east end, past the hall's door, wire shelving the length of the east
+ * wall full of quads, more on the west wall north of the hall, and the
+ * desk across the north end with two monitors and a red chair (the second view of
  * bsmt-K9uGMfYKJLg-mr2, bsmt-dv3zfxHDwjw-mr2).
  */
 function basementRooms(H) {
   const f = BF;
-  can(H, 7.9, (HALL.y0 + HALL.y1) / 2);
-  can(H, 9.6, (HALL.y0 + HALL.y1) / 2);
+  can(H, (HALL.x0 + HALL.x1) / 2, (HALL.y0 + HALL.y1) / 2);
   can(H, 5.2, 0.62);
 
   const g = GUEST;
-  bed(H, 9.1, 6.2, 1.4, 2.0, 'n', 'homeWhite', f);
+  /* The bed against the east wall, its head to the back wall. */
+  const bx = g.x1 - 1.4;
+  bed(H, bx, 6.2, 1.4, 2.0, 'n', 'homeWhite', f);
   for (let i = 0; i < 3; i += 1) {
-    H.paint('homeStone', 9.13, 6.45 + i * 0.36, f + 0.55, 10.47, 6.63 + i * 0.36, f + 0.562);
+    H.paint('homeStone', bx + 0.03, 6.45 + i * 0.36, f + 0.55, g.x1 - 0.03, 6.63 + i * 0.36, f + 0.562);
   }
   /* Up against the foot of the bed: 8 cm short of it was a slot a craft
    * wedged in (bug-243d42f7, scripts/bedslot-check.js). */
-  H.box('homeWhite', 9.5, 5.75, f, g.x1, 6.2, f + 0.45, { name: 'bench' });
-  H.paint('homePlay', 9.13, 6.28, f + 0.562, 10.47, 6.5, f + 0.57);
-  H.box('homeWood', g.x0, 7.65, f, 8.5, g.y1, f + 1.0, { name: 'dresser' });
+  H.box('homeWhite', g.x1 - 1.0, 5.75, f, g.x1, 6.2, f + 0.45, { name: 'bench' });
+  H.paint('homePlay', bx + 0.03, 6.28, f + 0.562, g.x1 - 0.03, 6.5, f + 0.57);
+  H.box('homeWood', g.x0, 7.65, f, g.x0 + 1.3, g.y1, f + 1.0, { name: 'dresser' });
   for (let i = 0; i < 3; i += 1) {
-    H.paint('homeShelf', g.x0 + 0.05, 7.645, f + 0.31 + i * 0.3, 8.45, 7.65, f + 0.32 + i * 0.3);
+    H.paint('homeShelf', g.x0 + 0.05, 7.645, f + 0.31 + i * 0.3, g.x0 + 1.25, 7.65, f + 0.32 + i * 0.3);
   }
-  H.box('homeWhite', g.x0, 6.4, f, 7.4, 7.1, f + 0.65, { name: 'heater' });
-  H.paint('homeWindow', 7.45, g.y1 - 0.018, f + 1.8, 8.25, g.y1 - 0.012, f + 2.15);
-  H.frame('x', DEP - TX / 2, TX, -1, [7.45, 8.25, f + 1.8, f + 2.15], 'homeWhite', { w: 0.06, d: 0.02 });
+  H.box('homeWhite', g.x0, 6.4, f, g.x0 + 0.2, 7.1, f + 0.65, { name: 'heater' });
+  /* The small high window between the dresser and the bed's head (v2 352,
+   * 370, 371). */
+  const gw = [g.x0 + 1.37, g.x0 + 2.17, f + 1.8, f + 2.15];
+  H.paint('homeWindow', gw[0], g.y1 - 0.018, gw[2], gw[1], g.y1 - 0.012, gw[3]);
+  H.frame('x', DEP - TX / 2, TX, -1, gw, 'homeWhite', { w: 0.06, d: 0.02 });
+  /* The closet door, shut, on the west wall behind the kitchenette. */
   H.frame('y', MAIN_E, TI, 1, [5.4, 6.15, f, f + DOOR_H], 'homeWhite', { w: 0.06, d: 0.02 });
   H.paint('homeWhite', g.x0 + 0.012, 5.4, f, g.x0 + 0.018, 6.15, f + DOOR_H);
   H.paint('homeSteel', g.x0 + 0.018, 6.03, f + 0.95, g.x0 + 0.022, 6.07, f + 1.0);
-  H.drum('homeLamp', 8.85, 6.7, -0.09, -0.008, 0.18, { seg: 12 });
+  H.drum('homeLamp', (g.x0 + g.x1) / 2, (g.y0 + g.y1) / 2, -0.09, -0.008, 0.18, { seg: 12 });
 
   const u = UTIL;
   /* The mat, the bench on it and the dumbbells' rack by the door's wall. */
@@ -2488,9 +2593,17 @@ function basementRooms(H) {
   for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
     H.paint('homePlay', 9.425 + dx * 0.16 - 0.06, 3.775 + dy * 0.16 - 0.06, f + 0.96, 9.425 + dx * 0.16 + 0.06, 3.775 + dy * 0.16 + 0.06, f + 0.965);
   }
-  /* The joists, across the room from front to back, and the tube lights. */
+  /* The joists, across the room from front to back but never over the
+   * hall, and the tube lights. */
   for (let x = u.x0 + 0.3; x < u.x1 - 0.05; x += 0.4) {
-    H.paint('homeWood', x, u.y0, -0.014, x + 0.06, x < UTIL_E.x0 ? u.y1 : UTIL_E.y1, -0.008);
+    if (x >= UTIL_C.x0) {
+      H.paint('homeWood', x, u.y0, -0.014, x + 0.06, UTIL_E.y1, -0.008);
+    } else {
+      H.paint('homeWood', x, u.y0, -0.014, x + 0.06, u.y1, -0.008);
+      if (x >= UTIL_E.x0 && x + 0.06 <= HALL.x1) {
+        H.paint('homeWood', x, UTIL_E.y0, -0.014, x + 0.06, UTIL_E.y1, -0.008);
+      }
+    }
   }
   for (const [x, y] of [[7.4, 2.2], [11.0, 2.2], [12.2, 5.9]]) {
     H.paint('homeLamp', x - 0.06, y - 0.6, -0.022, x + 0.06, y + 0.6, -0.014);
@@ -2498,12 +2611,12 @@ function basementRooms(H) {
 
   const s = UTIL_E;
   H.box('homeSteel', 13.4, 1.0, f, s.x1, s.y1, f + 1.85, { name: 'shelving' });
-  H.box('homeSteel', s.x0, 5.8, f, 11.0, 7.3, f + 1.85, { name: 'shelving' });
+  H.box('homeSteel', s.x0, 5.8, f, s.x0 + 0.38, 7.3, f + 1.85, { name: 'shelving' });
   const kit = ['homePlay', 'homePlayBlue', 'homeTeal', 'homeBook', 'homeShutter'];
   for (let k = 0; k < 5; k += 1) {
     const h = f + 0.05 + k * 0.37;
     H.paint('homeChair', 13.394, 1.0, h - 0.02, 13.4, s.y1, h);
-    H.paint('homeChair', 11.0, 5.8, h - 0.02, 11.006, 7.3, h);
+    H.paint('homeChair', s.x0 + 0.38, 5.8, h - 0.02, s.x0 + 0.386, 7.3, h);
     for (let i = 0; i < 13; i += 1) {
       const y = 1.1 + i * 0.52;
       H.paint(kit[(i + 2 * k) % kit.length], 13.388, y, h + 0.02, 13.394, y + 0.34, h + 0.12 + ((i + k) % 3) * 0.06);
@@ -2511,7 +2624,7 @@ function basementRooms(H) {
     }
     for (let i = 0; i < 3; i += 1) {
       const y = 5.9 + i * 0.48;
-      H.paint(kit[(i + k) % kit.length], 11.006, y, h + 0.02, 11.012, y + 0.36, h + 0.2);
+      H.paint(kit[(i + k) % kit.length], s.x0 + 0.386, y, h + 0.02, s.x0 + 0.392, y + 0.36, h + 0.2);
     }
   }
   H.box('homeChair', 10.9, 7.55, f + 0.71, 13.2, s.y1, f + 0.75, { name: 'desk' });

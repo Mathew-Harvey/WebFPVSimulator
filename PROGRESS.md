@@ -74580,3 +74580,70 @@ Thumbnail: regenerated (`node scripts/boardcards.js --worlds --only house`): the
 What went wrong: the bar first stopped 0.3 off the back wall, a slot, until it ran to the wall; the pavilion gap first sat low enough to clip the columns' stone bases; a stale measure run was still going when the fence moved from 28.4 to 28.0 and was stopped and run again; one comparison view put its camera inside the new grill. Then the bigger one: round 2's first pavilion was turned to the frames but left where the older stills had it, out on the lawn, with its stools down the wrong side, and it was rendered, measured and nearly committed that way before the flight over the roof and the pass along the house were read; it moved and was rebuilt. On the way the column against the garage wall stood 0.11 off it, a slot, until it went against it, and four comparison cameras were placed inside the sectional or too far off and were placed again.
 
 Approval, 2026-11-04 10:44Z: Mat, after the round 2 report stated the cost (draw calls flat or lower everywhere but round 1's +3 at the basement utility room's door, triangles about 2k under main), wrote "push to main" in the thread "Make Nick's house match his flights". That covers rounds 1 and 2 of Nick Burns' house (sim PR 233) and the +3 calls at the utility door, and the board's thumbnail (board PR 75, pushed to main first, 79ad120). Then at 10:45Z: "now the inside? after the push to main", the next round. Not flown.
+
+## 2026-11-04: Nick Burns' house, round 3, the inside
+
+Mat at 10:45Z, after the push of rounds 1 and 2: "now the inside? after the push to main". This round is a frame by frame pass over his second flight's indoor frames, v2 280 to 512 and 529 to 656, against renders from cameras put where the frames were shot. It covers the ground floor and the basement, the basement hall included. There is no upstairs footage in either flight.
+
+The basement:
+- `B_EAST` is now the stair's east wall plus a partition. The main room past the stair's head is as wide as the lounge and the stair together, with the kitchenette along its east wall. From the lounge, the guest room's door is right past the stair's head, beside the kitchenette's dark end (v2 368 to 370, 386, 387, 396). The main room used to reach 1.4 m further east.
+- The guest room (x 5.88 to 9.1, y 4.22 to 8.2) has two doors:
+  - from the main room, in its west wall (`GUEST_DOOR`);
+  - in its east wall, onto a short hall (`HALL`, x 9.22 to 11.4) that ends at the utility room's other door, its leaf swung back into the hall (v2 350, 351, 371 to 375, 349, 568, 569).
+  Before this round the hall ran from the main room, with the guest room off it and a closet on its south side. Neither flight shows that, so the closet is gone.
+- The utility room now wraps round the hall's east end (`UTIL_C`, `UTIL_E`). Its joists are painted to match.
+- The guest room's furniture is from the frames:
+  - the bed with its head to the north wall;
+  - the bench at its foot;
+  - the dresser in the north west corner;
+  - the heater;
+  - the small high window over the bed's head;
+  - a closed closet door painted on the west wall.
+- The cans, the red chair and the main room's north window moved with the wall. The red chair stands 0.42 to 0.47 off the fridge, not 0.27, because 0.27 would have been a slot.
+- `supporters.js`: `GUEST_ROOM` follows the new room, and `seesRoom` draws no workshop sign from the guest room or from the main room past the stair's head. Through the hall's doors the eye meets the east shelving, the sign north of the hall faces east behind the guest room's east wall, and the hall's north wall stands between its doors and the sign over the desk. check:house says where each sign lands.
+- Two things were left as they are:
+  - The stair's west side is a sloped knee wall in the frames. We keep the half wall to y 2.0, because the opening above it closes to under 0.5 m there.
+  - The real room has two white posts; we keep one.
+
+The ground floor:
+- Round 1 already put its layout right: the galley, the island, the back hall, the pantry, the den, the foyer, and the basement door open along the breakfast room's wall. Seventeen matched views agreed with it.
+- The family room's west wall did not agree. Its built ins were near black cubes from the corner to the corner, and the fireplace was grey stone under a white surround. In v2 290, 313 and 314 the built ins are:
+  - warm stained wood;
+  - closed cupboards to a counter, with open shelves of ornaments over them to the crown;
+  - round the television, which sits over a wood mantel;
+  - with the fireplace under the mantel, shut behind a cream screen in a dark surround.
+  South of them (v2 291, 314) is a small window with its wood blind down. It is painted on both faces of the wall and not cut, because the blind is down and nothing passes it.
+- The sectional is grey, not cream: `sofa()` now draws in the grey of the stone, with lighter grey cushions. The tub chairs keep `homeSofa`.
+- New pieces:
+  - the patterned wingback in front of the window and the brown leather armchair in the south east corner, by a new `armchair()`, solid to the floor and clear of the walls by less than a slot or more than one;
+  - four black framed pictures on the north wall between its window and the French doors (v2 311 to 313);
+  - a picture on the stub of wall west of the opening;
+  - the dining room's wood coat tree beside the door to the hall (v2 296, 319).
+- Nick's walk to the sofa keeps its route. The leather armchair stands with its back to the south wall, 0.27 clear of his path.
+- The back wall's small window by the north west corner stays as it is. The rear wall from the patio (v1 295, v1 203) shows a small ground floor window there.
+
+`scripts/bedslot-check.js` finds the ticket's bed by its height as well as its plan position. The guest room's bed now stands under bedroom 4's, head to the same north wall. A find by plan alone took the basement's frame first and dropped the craft into its headboard, which failed. Nothing about the check's thresholds changed.
+
+Checks:
+- `node scripts/house-check.js`: all passed.
+- `node scripts/bedslot-check.js`: 6 passed.
+- `node scripts/yardtrack-check.js`: all passed.
+- `npm run check:career`: 179 pass.
+- lint:nouns, check:props and lint:partners passed.
+- Not flown.
+
+Latency, measured headless with `__renderStats()` on main (0418c8e, in a worktree) and on this branch, 21 views on High and Low: the basement's seven, the ground floor's eight and six outside.
+- Draw calls are flat or one fewer in every view. The family room, the hall and two of the basement's views draw one fewer, because the sofa no longer draws its own colour there.
+- Each of these readings was shot again after a warm view, and both read flat:
+  - The street view read +1 once on High (98 to 99). Shot again it read 98 both times, which is Nick's balloon flickering.
+  - The west view read +1 once on Low.
+  - The first view of the Low run, on main, read 77 against 66.
+- Triangles are a little higher, the only rise. The pictures, the two armchairs, the coat tree and the window add about 0.5k on High (g290 272.3k to 272.8k, the west view 302.7k to 303.2k, 0.2 percent) and about 0.2k to 0.3k on Low. That is after halving the shelves' ornaments and drawing the blind's slats as two lines. The house is one batch a colour, so every view carries the same few hundred.
+
+What went wrong:
+- The first basement layout put the guest room at x 7.2 to 10.5, with the hall east of it. The render from the lounge showed the door in the wrong place, and the frames (v2 369, 386, 387, 396) moved it right past the stair's head.
+- Several comparison cameras were placed too low, or inside the sectional and the table, and were placed again.
+- The leather armchair first stood against the east wall south of the wide opening. That is in Nick's walk to the sofa, and house-check failed it. It moved to the south east corner, where v2 293 shows it.
+- The coat tree's foot and hooks first stood a slot off the wall and moved in to under one.
+- The first measure run's script line ran the branch twice, so main was shot a minute later than planned. The numbers above are from the corrected runs.
+- I read the back wall's corner window as a mistake until v1 295 showed it from the patio.

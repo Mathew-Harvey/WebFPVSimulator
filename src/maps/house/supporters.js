@@ -96,15 +96,17 @@ export const SUPPORTER_SPOTS = [
  * workshop's strip along the front, its door's end included, though not
  * from the main room north of the hall. No sign can be seen through the
  * door at the stair's foot from the landing or the lounge: each hangs where
- * that doorway's view does not reach. Nor from inside the guest room, whose
- * one door opens on the hall: the sign on the east end's west wall is the
- * other face of the guest room's own east wall, and the line from its door
- * to the one over the desk meets the hall's east wall above its door.
+ * that doorway's view does not reach. Nor from inside the guest room or
+ * the main room past the stair's head: through the guest room's door to
+ * the hall and the hall's end door the eye meets the east wall's
+ * shelving; the sign north of the hall faces east from the other side of
+ * the guest room's own east wall, and the hall's north wall stands
+ * between its doors and the one over the desk.
  */
 const GARAGE = { x0: 13.9, x1: 23.6, y1: 5.5, top: 3.2 };
 const WORKSHOP_X0 = 6.5;
 const WORKSHOP_STRIP = { x0: 5.85, y1: 4.1 };
-const GUEST_ROOM = { y0: 5.27, x1: 10.5 };
+const GUEST_ROOM = { y0: 4.22, x1: 9.1 };
 export function seesRoom(room, x, y, h) {
   if (room === 'garage') {
     return y < FRONT || (x > GARAGE.x0 && x < GARAGE.x1 && y < GARAGE.y1 && h < GARAGE.top);

@@ -13,6 +13,14 @@
  * for the contents too, and a big exhibit booth stood in the shop when they
  * were taken, so nothing the photos show standing on the floor is drawn
  * unless the flight shows it too. No address, no map, no street view.
+ * And since 5 November 2026 the reel Mat sent, 233 frames of two packs
+ * flown through the shop when the photos were taken (in
+ * /mnt/project-files/tcmore-warehouse/reel-frames/), for its LINES: every
+ * way it flies is a way here, and what a line needs is built for it, the
+ * print room behind the grey door, the red carpet corner, the coat room
+ * behind the wood lined door, a way under the racking, a cardboard tube,
+ * and, by the owner's pick, two plain exhibit booths (the section "The
+ * reel's lines" below).
  *
  * WHAT THE FLIGHT AND THE PHOTOS SHOW, and so what this is. One tall hall
  * under a dark steel deck, open web joists across it and maroon girders
@@ -41,10 +49,11 @@
  * barani corner and a white door standing open in it. Down the east side a
  * partition, painted white along the grey door's room at the south end and
  * taped drywall to the roof from there, racking against it all the way
- * with a black display box on top, and in it two ways through: the grey
- * sliding door into the paint shop at its south west corner, and at the
- * north end the wide opening into the machine room, Thomas's doorway to
- * barani through, with a white door and a cubby beside it. Behind it the
+ * with a black display box on top, and in it three ways through: the
+ * grey door near the south wall into the print room, the grey sliding
+ * door into the paint shop at its south west corner, and at the north end
+ * the wide opening into the machine room, Thomas's doorway to barani
+ * through, with a white door and a cubby beside it. Behind it the
  * spray room, its booth in the corner by the partition, white hood over a
  * dark filter wall with its back to the taped wall between the rooms, the
  * desk, cabinets and counter along the cream wall, drying racks and a big
@@ -61,8 +70,9 @@
  * shown, so here it leads out.
  *
  * NO WORDS. The pictures show crate labels, signs and a name sprayed on
- * the booth. None of it is drawn: a label is a white patch, a sign a
- * coloured plate. The only marks on this map are the partners' signs
+ * the booth, and the reel's booths carry their clients' names. None of it
+ * is drawn: a label is a white patch, a sign a coloured plate, a booth's
+ * name nothing. The only marks on this map are the partners' signs
  * (./index.js).
  *
  * THE SCALE IS THE HOUSES'. Everything is three and a half times life size
@@ -187,6 +197,11 @@ export const OPENINGS = {
    * at the north end. */
   slidingDoor: { y0: 6.7, y1: 8.3, x: PX + PT / 2, h0: FLOOR0, h1: 2.4 },
   barani: { y0: 52.2, y1: 54.7, x: PX + PT / 2, h0: FLOOR0, h1: 3.1 },
+  /* The grey door near the south wall, open since 5 November 2026: the
+   * reel flies in at it and the length of the print room behind it. */
+  greyDoor: { y0: 1.3, y1: 2.3, x: PX + PT / 2, h0: FLOOR0, h1: 2.1 },
+  /* The print room's office, its door off the long room. */
+  printOffice: { x0: 39.0, x1: 40.0, y: 3.46, h0: FLOOR0, h1: 2.1 },
 };
 
 /* An opening as the [along0, along1, up0, up1] its wall takes. */
@@ -642,6 +657,14 @@ function dock(H) {
 /* The racking and the crate aisle                                     */
 /* ------------------------------------------------------------------ */
 
+/* The cardboard tube in the west lane, outside and in: 0.5 inside. */
+export const TUBE = { x0: 3.45, x1: 4.05, y0: 12.0, y1: 15.0 };
+
+/* Two bays of the orange racking with nothing on the slab, so the west
+ * lane can be left under the first beam into the crate aisle, the way the
+ * reel ducks under a pallet rack (its frames 36 and 37). */
+const UNDER_RACK = [26.5, 39.4];
+
 function aisle(H) {
   const f = FLOOR0;
   const r = seededRandom(7102);
@@ -698,6 +721,9 @@ function aisle(H) {
         if (k === 1) {
           return;
         }
+        if (k < 0 && UNDER_RACK.some((y) => y > b.a0 && y < b.a1)) {
+          return;
+        }
         if (k < 0) {
           H.crate(r.chance(0.25) ? 'whWhite' : 'whCrate', 5.0, b.a0 - 0.05, 6.4, b.a1 + 0.05, b.h, b.h + r.range(1.5, 1.9), {
             faces: 'we', label: 'e', shift: r.range(-0.3, 0.3), tag: r.chance(0.5),
@@ -707,6 +733,26 @@ function aisle(H) {
         }
       },
     });
+  }
+  /* A big cardboard tube laid in the west lane, its two neighbours on
+   * it, and the reel flies the length of one (its frame 230): square here,
+   * a whoop's width and more inside, its ends darker. */
+  const T = TUBE;
+  H.box('whCrate', T.x0, T.y0, f, T.x1, T.y1, f + 0.05, { name: 'tube' });
+  H.box('whCrate', T.x0, T.y0, f + 0.55, T.x1, T.y1, f + 0.6, { name: 'tube' });
+  H.box('whCrate', T.x0, T.y0, f + 0.05, T.x0 + 0.05, T.y1, f + 0.55, { name: 'tube' });
+  H.box('whCrate', T.x1 - 0.05, T.y0, f + 0.05, T.x1, T.y1, f + 0.55, { name: 'tube' });
+  /* Its cut ends darker, a rim round each mouth, and the inside dark. */
+  for (const y of [T.y0 - 0.012, T.y1]) {
+    H.paint('whCrateDark', T.x0, y, f, T.x1, y + 0.012, f + 0.05);
+    H.paint('whCrateDark', T.x0, y, f + 0.55, T.x1, y + 0.012, f + 0.6);
+    H.paint('whCrateDark', T.x0, y, f + 0.05, T.x0 + 0.05, y + 0.012, f + 0.55);
+    H.paint('whCrateDark', T.x1 - 0.05, y, f + 0.05, T.x1, y + 0.012, f + 0.55);
+  }
+  H.paint('whCrateDark', T.x0 + 0.05, T.y0, f + 0.05, T.x1 - 0.05, T.y1, f + 0.062);
+  H.paint('whCrateDark', T.x0 + 0.05, T.y0, f + 0.538, T.x1 - 0.05, T.y1, f + 0.55);
+  for (const x of [T.x0 + 0.15, T.x1 - 0.15]) {
+    H.cap('whCrate', [x, T.y0 + 0.2, f + 0.75], [x, T.y1 - 0.2, f + 0.75], 0.15, { name: 'tube', seg: 8 });
   }
   /* West of it, against the west wall, crates one and two high with a
    * lane between them and the racking, off the cross aisle and clear of
@@ -737,7 +783,7 @@ function aisle(H) {
 function crates(H) {
   const f = FLOOR0;
   const r = seededRandom(7103);
-  for (const [s0, s1] of [[22.6, 37.6], [40.0, 45.0]]) {
+  for (const [s0, s1] of [[22.6, 25.8], [39.6, 45.0]]) {
     let y = s0;
     while (y < s1 - 0.5) {
       const len = Math.min(r.range(2.2, 3.2), s1 - y);
@@ -909,9 +955,8 @@ function workshop(H) {
           for (let z = 0.3; z < 1.5; z += 0.3) {
             put('whBlack', b.a0 - 0.3, b.a1 + 0.3, 0.55, 0.562, b.h + z, b.h + z + 0.03, { name: 'bin shelf', solid: false, cast: false });
           }
-        } else if (b.i === 4) {
-          put('whSteel', b.a0 + 0.5, b.a0 + 1.4, 0.0, 0.6, b.h, b.h + 1.9, { name: 'cabinet' });
         }
+        /* The last bay's floor is the red carpet corner's back, open. */
         return;
       }
       if (r.chance(0.95)) {
@@ -1205,7 +1250,7 @@ function shopFloor(H) {
 function partition(H) {
   const f = FLOOR0;
   const o = OPENINGS;
-  const holes = [holeOf(o.slidingDoor), holeOf(o.barani)];
+  const holes = [holeOf(o.slidingDoor), holeOf(o.barani), holeOf(o.greyDoor)];
   /* Drywall to the roof, the colour of the mud, the wall between the
    * spray room and the machine room, and the spray room's south wall, cream
    * block on its side (frame 8.15.03 looks along it to the sliding door). */
@@ -1249,11 +1294,16 @@ function partition(H) {
   H.face('whSteel', 'y', out, 1, s.y1, s.y1 + 1.6, f, s.h1 + 0.05);
   H.face('whYellow', 'y', out + 0.012, 1, s.y1 + 0.4, s.y1 + 0.9, 1.9, 2.15);
   H.exitSign('y', out, 1, s.y1, s.h1 + 0.3);
-  /* The grey door into the room south of the paint shop, near the south
-   * wall, shut, its paper sign and the sign over it (frame 8.11.19 and the
-   * photos of it). */
-  H.face('whSteel', 'y', PX, -1, 1.3, 2.3, f, 2.1);
-  H.face('whWhite', 'y', PX - 0.012, -1, 1.6, 2.0, 1.4, 1.62);
+  /* The grey door into the print room south of the paint shop, near the
+   * south wall (frame 8.11.19 and the photos of it): its grey frame, and
+   * the door standing open inside against the wall, its paper sign on it;
+   * the sign over it. Shut in the flight's frames, open in the reel's. */
+  const g = o.greyDoor;
+  H.face('whSteel', 'y', PX, -1, g.y0 - 0.08, g.y0, f, g.h1 + 0.08);
+  H.face('whSteel', 'y', PX, -1, g.y1, g.y1 + 0.08, f, g.h1 + 0.08);
+  H.face('whSteel', 'y', PX, -1, g.y0, g.y1, g.h1, g.h1 + 0.08);
+  H.box('whSteel', PX + PT, g.y1, f, PX + PT + 0.05, g.y1 + 0.95, g.h1 - 0.02, { name: 'door leaf' });
+  H.face('whWhite', 'y', PX + PT + 0.05, 1, g.y1 + 0.3, g.y1 + 0.7, 1.4, 1.62);
   H.exitSign('y', PX, -1, 1.8, 2.3);
 }
 
@@ -1468,6 +1518,243 @@ function machineRoom(H) {
   }
 }
 
+
+/* ------------------------------------------------------------------ */
+/* The reel's lines, 5 November 2026                                    */
+/* ------------------------------------------------------------------ */
+
+/*
+ * THE PRINT ROOM behind the grey door, the room south of the paint shop
+ * (the "Digital Department" of the photos, the reel's frames 18 to 33).
+ * The reel climbs over its rooms and looks down into them, so they are
+ * walls without ceilings under the hall's own roof: a long room down the
+ * south wall, red floored, the printers along the wall and the prints
+ * pinned up opposite; the office north of it, desks and screens, its
+ * door off the long room; and at the far end a little white room, shut,
+ * its door with a window in it (frames 23 and 24), flown over.
+ */
+const PRINT = { x0: PX + PT, x1: 46.4, wall: 3.4, top: 3.2 };
+
+function printRoom(H) {
+  const f = FLOOR0;
+  const { x0, x1, wall, top } = PRINT;
+  const o = OPENINGS;
+  /* The wall between the long room and the office, and the end room. */
+  H.wall('whWhite', 'x', wall + 0.06, x0, x1, 0, top, 0.12, [holeOf(o.printOffice)], 'print room wall');
+  H.box('whWhite', x1, 0, 0, LEN, SHOP_S - PT / 2, 2.8, { name: 'end room' });
+  H.face('whSteel', 'y', x1, -1, 0.9, 2.0, f, 2.15);
+  H.face('whDeck', 'y', x1 - 0.012, -1, 1.25, 1.65, 1.3, 1.85);
+  H.face('whWhite', 'y', x1 - 0.012, -1, 1.3, 1.6, 2.0, 2.1);
+  /* The long room's red floor, the office's grey carpet. */
+  H.paint('whRed', x0, 0, f, x1, wall, f + 0.012);
+  H.paint('whSteel', x0, wall + 0.12, f, x1, SHOP_S - PT, f + 0.012);
+  /* The printers along the south wall, black, the paper's white edge
+   * along each one's front, and prints leant on the wall between two. */
+  for (const [a, b] of [[33.2, 35.6], [37.2, 39.6], [42.4, 44.8]]) {
+    H.box('whBlack', a, 0, f, b, 0.85, f + 1.15, { name: 'printer' });
+    H.paint('whWhite', a + 0.1, 0.85, f + 0.95, b - 0.1, 0.862, f + 1.02);
+    H.paint('whSteel', a, 0.85, f + 0.1, b, 0.862, f + 0.3);
+  }
+  for (const [a, b, h, m] of [[40.2, 41.2, 1.4, 'whBlack'], [41.25, 41.8, 1.1, 'whBoard'], [45.4, x1, 1.6, 'whBlack']]) {
+    H.box(m, a, 0, f, b, 0.12, f + h, { name: 'prints' });
+  }
+  /* The prints pinned up along the long room's north wall, each a
+   * colour on a black frame, and the big map one (frames 22 and 32). */
+  const at = wall;
+  for (const [a, b, c0, c1, m, n] of [
+    [32.8, 35.0, 0.9, 2.6, 'whRackTeal', 'whOrange'], [35.6, 37.0, 1.1, 2.5, 'whYellow', 'whRed'],
+    [37.4, 38.7, 1.3, 2.3, 'whOrange', 'whBlack'], [40.6, 43.8, 0.8, 2.6, 'whGreen', 'whBoard'],
+    [44.4, 46.0, 1.1, 2.5, 'whRed', 'whYellow'],
+  ]) {
+    H.face('whBlack', 'x', at, -1, a, b, c0, c1);
+    H.face(m, 'x', at - 0.012, -1, a + 0.06, b - 0.06, c0 + 0.06, c1 - 0.06);
+    H.face(n, 'x', at - 0.024, -1, a + (b - a) * 0.3, a + (b - a) * 0.75, c0 + (c1 - c0) * 0.25, c0 + (c1 - c0) * 0.6);
+  }
+  /* The office: desks along the paint shop's wall with their screens and
+   * chairs, a bookcase, a whiteboard. */
+  const back = SHOP_S - PT;
+  for (const a of [33.0, 35.6, 41.2, 43.8]) {
+    H.table('whWhite', a, back - 0.8, a + 1.8, back, 0.75, { name: 'desk', topM: 'whBoard', top: 0.05, leg: 0.06 });
+    H.box('whBlack', a + 0.5, back - 0.12, f + 0.75, a + 1.3, back, f + 1.2, { name: 'screen' });
+    H.box('whBlack', a + 0.6, back - 1.3, f, a + 1.2, back - 0.8, f + 0.95, { name: 'chair' });
+  }
+  H.box('whWhite', 45.0, wall + 0.12, f, x1, wall + 0.5, f + 2.0, { name: 'bookcase' });
+  for (const h of [0.5, 1.0, 1.5]) {
+    H.paint('whCrate', 45.05, wall + 0.5, f + h, x1 - 0.05, wall + 0.512, f + h + 0.3);
+  }
+  H.face('whWhite', 'y', x0, 1, 4.0, 5.6, 1.0, 2.0);
+  H.face('whSteel', 'y', x0 + 0.012, 1, 4.0, 5.6, 0.95, 1.0);
+  /* Its lights, under the joists, over the walls' tops. */
+  for (const x of [35.0, 41.0]) {
+    for (const y of [1.7, 4.9]) {
+      H.box('whLamp', x - 1.2, y - 0.15, 5.55, x + 1.2, y + 0.15, 5.7, { name: 'light' });
+    }
+  }
+}
+
+/*
+ * THE RED CARPET CORNER by the grey door (the reel's frames 6 and 13 to
+ * 15): the south racking's last bay open at the slab, a red carpet in it
+ * and on the slab before the door, the pegboard on the wall at its back
+ * hung with coils of cable, and a tall shelf of parts bins in the corner.
+ */
+function carpetCorner(H) {
+  const f = FLOOR0;
+  H.paint('whRed', 29.1, 0, f, PX, 2.9, f + 0.012);
+  H.face('whCrate', 'x', 0, 1, 29.15, 31.35, 0.4, 1.5);
+  for (let x = 29.4; x < 31.2; x += 0.45) {
+    for (const h of [0.6, 1.05]) {
+      H.face('whBlack', 'x', 0.012, 1, x, x + 0.3, h, h + 0.3);
+      H.face('whCrate', 'x', 0.024, 1, x + 0.07, x + 0.23, h + 0.07, h + 0.23);
+    }
+  }
+  H.box('whDeck', 31.5, 0, f, PX, 1.1, f + 2.0, { name: 'bins' });
+  for (let z = 0.3; z < 1.9; z += 0.3) {
+    H.paint('whBlack', 31.488, 0.05, f + z, 31.5, 1.05, f + z + 0.03);
+  }
+}
+
+/*
+ * THE COAT ROOM behind the wood lined door (the reel's frames 66 and
+ * 67 fly through that door into a little lit room, a jacket hung in it):
+ * white, a flat roof, a light, the coats on hooks over a bench, shelves.
+ */
+function coatRoom(H) {
+  const f = FLOOR0;
+  const [x0, x1, y0, y1] = [11.4, 15.6, -3.4, -TW];
+  H.box('whConcrete', x0, y0, 0, x1, y1, f, { name: 'slab', cast: false });
+  H.wall('whWhite', 'x', y0 + 0.06, x0, x1, 0, 2.8, 0.12, [], 'coat room wall');
+  H.wall('whWhite', 'y', x0 + 0.06, y0 + 0.12, y1, 0, 2.8, 0.12, [], 'coat room wall');
+  H.wall('whWhite', 'y', x1 - 0.06, y0 + 0.12, y1, 0, 2.8, 0.12, [], 'coat room wall');
+  H.box('whWhite', x0, y0, 2.7, x1, y1, 2.8, { name: 'coat room roof' });
+  H.box('whLamp', 12.9, -2.2, 2.6, 14.1, -1.9, 2.7, { name: 'light' });
+  /* The coats on their hooks, the bench under them. */
+  const w0 = y0 + 0.12;
+  H.box('whBoard', x0 + 0.12, w0, f, x0 + 0.5, -1.0, f + 0.45, { name: 'bench' });
+  H.box('whBlack', x0 + 0.12, w0, f + 1.0, x0 + 0.4, -2.6, f + 1.8, { name: 'coat' });
+  H.box('whRed', x0 + 0.12, -2.6, f + 1.1, x0 + 0.4, -2.0, f + 1.8, { name: 'coat' });
+  H.box('whRackTeal', x0 + 0.12, -2.0, f + 1.05, x0 + 0.4, -1.4, f + 1.8, { name: 'coat' });
+  H.box('whSteel', x0 + 0.12, w0, f + 1.8, x0 + 0.2, -1.0, f + 1.85, { name: 'hook rail' });
+  /* Shelves of boxes along the east wall. */
+  H.box('whWhite', x1 - 0.5, y0 + 0.12, f, x1 - 0.12, -1.8, f + 2.0, { name: 'shelves' });
+  for (const h of [0.3, 0.8, 1.3]) {
+    H.paint('whCrate', x1 - 0.512, y0 + 0.2, f + h, x1 - 0.5, -1.9, f + h + 0.35);
+  }
+}
+
+/*
+ * THE BOOTHS, the owner's pick of 5 November 2026 ("Add plain booths"):
+ * the reel flies through two exhibit booths stood in the shop, so here
+ * they are, with no names, logos or words on them, as nothing on this map
+ * has. The white one in the crate block east of the green racking (frames
+ * 74 to 91 and 201 to 222): an open white frame room, a mullion down each
+ * side and a transom across, flown through and out of its open top; a
+ * white wall with a screen; a black tower with a lit blue edge and lit
+ * shelves; and a white window frame of four panes before a black wall,
+ * flown through a pane. The black one in the machine room's open middle
+ * (frames 141 to 200): a black room with a wide front, a door at the
+ * back, light strips round its walls, lit shelves, a counter lit along its
+ * foot, and the coffer in its ceiling the reel hovers under, slatted.
+ */
+export const BOOTH_A = { x0: 12.6, x1: 15.6, y0: 26.8, y1: 30.4, h: 3.2, mull: 28.6, tran: 2.3 };
+export const WINDOW_A = { x0: 12.6, x1: 15.6, y: 35.8, h: 2.95 };
+export const BOOTH_B = { x0: 34.4, x1: 40.4, y0: 38.6, y1: 44.2, h: 3.6, front: [35.6, 39.2, 2.8], back: [37.4, 38.4, 2.2] };
+export const COFFER = { x0: 36.0, x1: 38.8, y0: 40.2, y1: 42.6, h: 4.1 };
+
+function booths(H) {
+  const f = FLOOR0;
+  const u = 0.1;
+  /* The white frame room: four posts, a rail round the top and one
+   * across it, a mullion down each long side with a transom across both,
+   * and its south side a solid white panel with a screen on an arm. */
+  const A = BOOTH_A;
+  for (const [x, y] of [[A.x0, A.y0], [A.x1 - u, A.y0], [A.x0, A.y1 - u], [A.x1 - u, A.y1 - u]]) {
+    H.box('whWhite', x, y, f, x + u, y + u, A.h, { name: 'booth frame' });
+  }
+  for (const x of [A.x0, A.x1 - u]) {
+    H.box('whWhite', x, A.y0 + u, A.h - u, x + u, A.y1 - u, A.h, { name: 'booth frame' });
+    H.box('whWhite', x, A.mull - u / 2, f, x + u, A.mull + u / 2, A.h - u, { name: 'booth frame' });
+    H.box('whWhite', x, A.y0 + u, A.tran, x + u, A.y1 - u, A.tran + u, { name: 'booth frame' });
+  }
+  H.box('whWhite', A.x0 + u, A.y1 - u, A.h - u, A.x1 - u, A.y1, A.h, { name: 'booth frame' });
+  H.box('whWhite', A.x0 + u, A.mull - u / 2, A.h - u, A.x1 - u, A.mull + u / 2, A.h, { name: 'booth frame' });
+  H.box('whWhite', A.x0 + u, A.y0, f, A.x1 - u, A.y0 + u, A.h, { name: 'booth panel' });
+  H.paint('whBlack', A.x0 + 0.9, A.y0 + u, 1.6, A.x0 + 2.1, A.y0 + u + 0.012, 2.3);
+  H.paint('whRackTeal', A.x0 + 0.95, A.y0 + u + 0.012, 1.65, A.x0 + 2.05, A.y0 + u + 0.024, 2.25);
+  /* The white wall with its screen and the navy plate at its foot, both
+   * faces, and the black tower it meets, its edge lit blue and its face
+   * lit shelves. */
+  const [wy0, wy1] = [32.4, 32.7];
+  H.box('whWhite', 12.6, wy0, f, 16.6, wy1, f + 3.4, { name: 'booth wall' });
+  for (const [y, side] of [[wy0, -1], [wy1, 1]]) {
+    H.face('whBlack', 'x', y, side, 13.4, 15.6, 1.6, 2.8);
+    H.face('whRackTeal', 'x', y + side * 0.012, side, 13.5, 15.5, 1.68, 2.72);
+    H.face('whDeck', 'x', y, side, 13.6, 15.4, 0.2, 0.75);
+  }
+  const [tx0, tx1, ty0, ty1] = [16.6, 17.6, 31.2, 35.4];
+  H.box('whBlack', tx0, ty0, f, tx1, ty1, f + 3.8, { name: 'booth tower' });
+  H.paint('whRackTeal', tx0 - 0.012, ty1 - 0.25, f, tx0, ty1, f + 3.8);
+  H.paint('whRackTeal', tx0, ty1, f, tx1, ty1 + 0.012, f + 3.8);
+  for (const h of [0.6, 1.4, 2.2]) {
+    H.paint('whLamp', tx0 - 0.012, wy1 + 0.3, f + h, tx0, ty1 - 0.4, f + h + 0.05);
+    H.paint('whDeck', tx0 - 0.012, wy1 + 0.3, f + h + 0.05, tx0, ty1 - 0.4, f + h + 0.5);
+  }
+  /* The window frame of four panes, and the black wall behind it. */
+  const W = WINDOW_A;
+  const xm = (W.x0 + W.x1) / 2;
+  for (const x of [W.x0, xm - u / 2, W.x1 - u]) {
+    H.box('whWhite', x, W.y, f, x + u, W.y + u, W.h, { name: 'window frame' });
+  }
+  for (const h of [f + 0.1, (f + W.h) / 2 - u / 2, W.h - u]) {
+    H.box('whWhite', W.x0 + u, W.y, h, W.x1 - u, W.y + u, h + u, { name: 'window frame' });
+  }
+  H.box('whBlack', 12.4, 37.0, f, 17.6, 37.3, f + 3.4, { name: 'booth wall' });
+  H.face('whRackTeal', 'x', 37.0, -1, 12.4, 12.6, 0, 3.45);
+  H.face('whLamp', 'x', 37.0, -1, 13.2, 16.8, 2.6, 2.66);
+  /* The black room. */
+  const B = BOOTH_B;
+  const t = 0.12;
+  H.wall('whBlack', 'x', B.y0 + t / 2, B.x0, B.x1, 0, B.h, t, [[B.front[0], B.front[1], 0, B.front[2]]], 'booth wall');
+  H.wall('whBlack', 'x', B.y1 - t / 2, B.x0, B.x1, 0, B.h, t, [[B.back[0], B.back[1], 0, B.back[2]]], 'booth wall');
+  H.wall('whBlack', 'y', B.x0 + t / 2, B.y0 + t, B.y1 - t, 0, B.h, t, [], 'booth wall');
+  H.wall('whBlack', 'y', B.x1 - t / 2, B.y0 + t, B.y1 - t, 0, B.h, t, [], 'booth wall');
+  /* Its ceiling round the coffer, and the coffer, its slats painted. */
+  const C = COFFER;
+  for (const [a0, b0, a1, b1] of [[B.x0, B.y0, B.x1, C.y0], [B.x0, C.y1, B.x1, B.y1], [B.x0, C.y0, C.x0, C.y1], [C.x1, C.y0, B.x1, C.y1]]) {
+    H.box('whBlack', a0, b0, B.h - 0.1, a1, b1, B.h, { name: 'booth ceiling' });
+  }
+  H.box('whBlack', C.x0, C.y0, B.h, C.x0 + 0.08, C.y1, C.h, { name: 'coffer' });
+  H.box('whBlack', C.x1 - 0.08, C.y0, B.h, C.x1, C.y1, C.h, { name: 'coffer' });
+  H.box('whBlack', C.x0 + 0.08, C.y0, B.h, C.x1 - 0.08, C.y0 + 0.08, C.h, { name: 'coffer' });
+  H.box('whBlack', C.x0 + 0.08, C.y1 - 0.08, B.h, C.x1 - 0.08, C.y1, C.h, { name: 'coffer' });
+  H.box('whBlack', C.x0, C.y0, C.h, C.x1, C.y1, C.h + 0.08, { name: 'coffer' });
+  for (let x = C.x0 + 0.25; x < C.x1 - 0.1; x += 0.25) {
+    H.paint('whSteel', x - 0.03, C.y0 + 0.08, C.h - 0.012, x + 0.03, C.y1 - 0.08, C.h);
+  }
+  /* Light strips round the walls under the ceiling, and up the front's
+   * edges and along its foot outside. */
+  H.paint('whLamp', B.x0 + t, B.y0 + t, B.h - 0.35, B.x0 + t + 0.012, B.y1 - t, B.h - 0.3);
+  H.paint('whLamp', B.x1 - t - 0.012, B.y0 + t, B.h - 0.35, B.x1 - t, B.y1 - t, B.h - 0.3);
+  H.paint('whLamp', B.x0 + t, B.y1 - t - 0.012, B.h - 0.35, B.x1 - t, B.y1 - t, B.h - 0.3);
+  for (const x of [B.front[0] - 0.06, B.front[1]]) {
+    H.paint('whLamp', x, B.y0 - 0.012, f, x + 0.06, B.y0, B.front[2]);
+  }
+  H.paint('whLamp', B.x0, B.y0 - 0.012, f, B.x1, B.y0, f + 0.06);
+  /* Lit shelves along its east wall, and the counter lit along its foot
+   * by its west wall, two boxes on it. */
+  for (const [y0, y1] of [[39.2, 40.4], [41.0, 42.2]]) {
+    H.box('whWhite', B.x1 - t - 0.45, y0, f, B.x1 - t, y1, f + 2.6, { name: 'lit shelves' });
+    H.paint('whLamp', B.x1 - t - 0.462, y0 + 0.08, f + 0.3, B.x1 - t - 0.45, y1 - 0.08, f + 2.4);
+    for (const h of [0.8, 1.4, 2.0]) {
+      H.paint('whBlack', B.x1 - t - 0.474, y0 + 0.08, f + h, B.x1 - t - 0.462, y1 - 0.08, f + h + 0.04);
+    }
+  }
+  H.box('whBlack', B.x0 + t, 42.4, f, 36.2, 43.2, f + 1.0, { name: 'counter' });
+  H.paint('whLamp', B.x0 + t, 42.388, f + 0.05, 36.2, 42.4, f + 0.12);
+  H.box('whOrange', B.x0 + t, 42.5, f + 1.0, B.x0 + t + 0.6, 43.0, f + 1.3, { name: 'box' });
+  H.box('whWhite', B.x0 + t + 0.6, 42.5, f + 1.0, B.x0 + t + 1.1, 43.0, f + 1.25, { name: 'box' });
+}
+
 /* ------------------------------------------------------------------ */
 /* The layout                                                          */
 /* ------------------------------------------------------------------ */
@@ -1485,6 +1772,10 @@ export function warehouseLayout() {
   partition(H);
   sprayRoom(H);
   machineRoom(H);
+  printRoom(H);
+  carpetCorner(H);
+  coatRoom(H);
+  booths(H);
   return { parts: H.P.list.slice(), prisms: [], discs: [], cones: [], scaled: [] };
 }
 

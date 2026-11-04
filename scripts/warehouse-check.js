@@ -316,7 +316,7 @@ async function placedBlock(L) {
 const LINES = [
   ['up the crate aisle and in at the office\'s French door', [[8.2, 46.0, 1.6], [8.2, 9.0, 1.6], [9.2, 7.0, 1.6], [9.2, 2.5, 1.6]]],
   ['out through the office window over the tool chest', [[6.9, 3.0, 1.55], [6.9, 8.0, 1.55]]],
-  ['out the wood door in the south wall', [[13.0, 8.0, 1.2], [13.0, -4.0, 1.2]]],
+  ['out the wood door into the coat room', [[13.0, 8.0, 1.2], [13.0, -2.6, 1.2]]],
   ['down the dock lane past the shut doors', [[1.5, 49.4, 2.0], [17.5, 49.4, 2.0]]],
   ['up the crate aisle to the forklift at the middle door', [[8.2, 9.0, 2.0], [8.2, 48.5, 2.0], [6.6, 52.0, 2.0], [6.6, 54.6, 2.0]]],
   ['down the lane between the west wall crates and the racking', [[4.1, 46.0, 1.8], [4.1, 7.0, 1.8]]],
@@ -333,6 +333,22 @@ const LINES = [
   ['out the back door', [[23.4, 48.0, 1.2], [23.4, 60.0, 1.2]]],
   ['into the office by its side door', [[16.0, 1.8, 1.4], [8.5, 1.8, 1.4]]],
   ['down the workshop low', [[24.3, 52.0, 0.8], [24.3, 4.0, 0.8]]],
+  /* The reel's lines, 5 November 2026 (its frame numbers in brackets). */
+  ['along the south racking into the red carpet corner (2 to 15)', [[22.0, 1.65, 1.0], [29.6, 1.65, 1.0], [30.25, 0.55, 0.8]]],
+  ['in the grey door and down the print room (13 to 23)', [[29.6, 1.8, 1.2], [36.0, 1.8, 1.2], [45.6, 1.7, 1.2]]],
+  ['up over the office, looking down, and into the long room (18 to 31)', [[36.0, 1.8, 1.2], [36.0, 1.8, 4.2], [38.0, 5.0, 4.2], [44.6, 5.0, 4.2], [44.6, 1.9, 4.2], [44.6, 1.9, 1.6]]],
+  ['back out of the print room by the grey door (31 to 33)', [[45.0, 1.9, 1.6], [33.0, 1.8, 1.6], [27.5, 1.8, 1.6]]],
+  ['into the print room\'s office by its door', [[39.5, 1.8, 1.2], [39.5, 4.6, 1.2], [37.2, 4.6, 1.2]]],
+  ['out of the west lane under the orange racking (36, 37)', [[4.1, 26.5, 1.2], [8.2, 26.5, 1.2], [8.2, 30.0, 1.2]]],
+  ['under the orange racking again further north', [[4.1, 39.4, 1.2], [8.6, 39.4, 1.2]]],
+  ['through the cardboard tube in the west lane (230)', [[3.75, 9.4, 0.3], [3.75, 17.6, 0.3]]],
+  ['through the forklift\'s cab (95, 103)', [[5.2, 51.9, 1.75], [11.2, 51.9, 1.75]]],
+  ['under the white table by the sliding door (134)', [[24.6, 7.1, 0.4], [30.3, 7.1, 0.4]]],
+  ['through the white frame booth and out of its open top (77 to 89)', [[17.3, 27.9, 1.4], [14.1, 27.9, 1.4], [14.1, 27.9, 4.4]]],
+  ['in under the white booth\'s transom and out by the screen wall', [[11.9, 29.5, 1.4], [16.4, 29.5, 1.4], [16.4, 31.0, 1.4]]],
+  ['through a pane of the window frame (212 to 214)', [[11.9, 34.6, 2.2], [13.4, 34.6, 2.2], [13.4, 36.4, 2.2], [18.5, 36.4, 2.2]]],
+  ['into the black booth and out of its back door (149 to 183)', [[37.4, 35.8, 1.4], [37.9, 41.0, 1.4], [37.9, 45.6, 1.4]]],
+  ['up into the black booth\'s coffer (164 to 176)', [[37.4, 39.6, 1.4], [37.4, 41.4, 3.75]]],
 ];
 
 function linesBlock(near) {

@@ -74439,3 +74439,29 @@ Mat at 03:28Z on 2026-11-04: "mate, you can do better than this. try again, work
 - What went wrong: the booth 0.15 m off the partition was a slot; full bay cartons met across an upright's 0.1 m, a slot, until they reached into the upright; two cabinet towers 0.35 m off a carton. All fixed before the check passed.
 
 Approval, 2026-11-04 04:01Z: Mat, after the round 5 report stated the cost (draw calls flat, about 2.8k triangles more on High and 1.2k on Low), wrote "push to main". That covers rounds 4 and 5 of Thomas More's Shop (sim PR 229) and the board's thumbnail (board PR 72, pushed to main first, 9877428). Not flown.
+
+### 2026-11-05: Thomas More's Shop, round 6: the reel's lines (branch)
+
+Mat at 04:05Z on 2026-11-04 sent a reel of two packs flown through the shop (233 frames, now in /mnt/project-files/tcmore-warehouse/reel-frames/): "here is heaps more screen shots, please update the map to allow for all these lines". The reel was flown when the phone photos were taken: blue racking and boxed stock where the 2026 frames have crates, and exhibit booths stood on the floor. So it was read for its lines, not its contents, and the walls stay the 2026 frames' (8.11.19 still has the white partition to the roof beside the grey door). Asked on a card whether to build the booths, since the photos' booth was left out on 27 October; Mat picked "Add plain booths" at 04:12Z.
+
+What each line needed, with the reel's frame numbers:
+- 2 to 15, the south racking to the grey door and the red carpet corner: the south rack's last bay is open at the slab, red carpet in it and before the door, a pegboard of cable coils on the wall at its back, a tall shelf of parts bins in the corner.
+- 13 to 33, in at the grey door, up over the office looking down, along the long room and out again: the grey door is open (shut in every 2026 frame, open in the reel) and behind it the print room: a long room down the south wall, red floored, printers along the wall, prints pinned up opposite; an office beside it with desks, screens and chairs, its own door; a little white room shut at the far end, its door with a window. The rooms have walls 3.2 high and no ceilings, so the climb over them and the look down into them (frames 18, 19, 29) are flown.
+- 36 and 37, under a pallet rack: two bays of the orange racking west of the crate aisle have nothing on the slab, so the west lane is left under the first beam into the aisle.
+- 66 and 67, through the wood lined door into a lit room with a jacket: the wood door now opens into a coat room (white, roofed, a light, coats on hooks over a bench, shelves) instead of outside.
+- 95 and 103, through the forklift's cab: it already flew; now a line and a gap say so.
+- 134, under the white table: the white table on sawhorses by the sliding door, now a line.
+- 230, the length of a cardboard tube: a big square tube laid in the west lane, 0.5 inside, two more on it.
+- 74 to 91 and 201 to 222, the white booth: an open white frame room flown through and out of its open top, a white wall with a screen, a black tower with a lit blue edge, and a window frame of four panes before a black wall, flown through a pane. Stood in the crate block east of the green racking, whose middle crates it replaces (the stacks at y 22.6 to 25.8 and 39.6 to 45 stay).
+- 141 to 200, the black booth: a black room with a wide front, a back door, light strips round the walls, lit shelves, a counter lit along its foot, and the slatted coffer in its ceiling the reel hovers under. Stood in the machine room's open middle.
+- No names on either booth, as nothing on the map has. Booth blue is the rack teal, so the colours stay eighteen.
+
+Gaps added: GREY DOOR and PRINT OFFICE (250), WINDOW PANE and BLACK BOOTH BACK DOOR (500), FORKLIFT CAB and CARDBOARD TUBE (1000, the two tight ones 0.08 in from their edges instead of 0.15). Lines added to `scripts/warehouse-check.js`: fifteen, each named with its frames; the wood door's line now ends in the coat room.
+
+Checks: `node scripts/warehouse-check.js` all passed (lines, gaps, no slots, module); lint:partners, lint:nouns, lint:preload, check:props passed; attract-check's warehouse loop unchanged. Not flown.
+
+Latency, the same 25 views as round 5, headless `__renderStats()`: draw calls unchanged (eighteen colours; High 32 to 42 against 31 to 42, Low 28 to 38 against 27 to 38, the per view counts lagging a frame either way). Triangles up: High 97.7k to 99.0k against 94.7k to 96.2k, about 2.9k or 3 percent; Low 72.4k to 73.5k against 70.7k to 72.0k, about 1.5k. Needs Mat's word before main.
+
+The board's picture is unchanged: the card's lens looks across the workshop to the barani corner and sees none of it, so the thumbnail was regenerated, compared and left as it was.
+
+What went wrong: the office's screens stood 0.2 off the paint shop wall (its centre line had been taken for its face), a slot; the coat room's bench and coats 0.28 off its wall, slots; two boxes on the black booth's counter 0.2 apart and off its wall, slots; the white booth line started inside a column; the tube's ends were first painted over its mouth, so it looked solid. All fixed before the check passed.

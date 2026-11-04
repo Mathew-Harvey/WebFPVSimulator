@@ -31,7 +31,9 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 import { WAREHOUSE_DOC_ID } from '../registry.js';
-import { S, FIELD_W, FIELD_D, docAt, OPENINGS, SPAWN } from './warehouse.js';
+import {
+  S, FIELD_W, FIELD_D, FLOOR0, docAt, OPENINGS, SPAWN, TUBE, WINDOW_A, BOOTH_B,
+} from './warehouse.js';
 
 const EAST = 0;
 const NORTH = Math.PI / 2;
@@ -43,16 +45,27 @@ export const WAREHOUSE_NAME = "Thomas More's Shop";
 const MARGIN = 0.15;
 
 /* A gap across an east west wall's opening (normal north) or a north south
- * one's (normal east). */
-function across(o, name, points) {
+ * one's (normal east), `m` in from its edges (the tight ones closer). */
+function across(o, name, points, m = MARGIN) {
   const ew = o.y !== undefined;
   const p = ew ? docAt((o.x0 + o.x1) / 2, o.y) : docAt(o.x, (o.y0 + o.y1) / 2);
   const span = ew ? o.x1 - o.x0 : o.y1 - o.y0;
   return ['gap', p.x, p.y, ew ? NORTH : EAST, {
-    width: S * (span - 2 * MARGIN),
-    height: S * (o.h1 - o.h0 - 2 * MARGIN),
-  }, { z: S * (o.h0 + MARGIN), name, points }];
+    width: S * (span - 2 * m),
+    height: S * (o.h1 - o.h0 - 2 * m),
+  }, { z: S * (o.h0 + m), name, points }];
 }
+
+/* The reel's tight ones (5 November 2026): the cardboard tube, halfway
+ * down it; the forklift's cab, across it behind the seat; one pane of the
+ * white booth's window frame; the black booth's back door. */
+const TUBE_GAP = { x0: TUBE.x0 + 0.05, x1: TUBE.x1 - 0.05, y: (TUBE.y0 + TUBE.y1) / 2, h0: FLOOR0 + 0.05, h1: FLOOR0 + 0.55 };
+const CAB_GAP = { y0: 51.55, y1: 52.2, x: 8.4, h0: FLOOR0 + 0.95, h1: FLOOR0 + 2.2 };
+const PANE_GAP = {
+  x0: WINDOW_A.x0 + 0.1, x1: (WINDOW_A.x0 + WINDOW_A.x1) / 2 - 0.05, y: WINDOW_A.y + 0.05,
+  h0: FLOOR0 + 0.2, h1: (FLOOR0 + WINDOW_A.h) / 2 - 0.05,
+};
+const BACK_GAP = { x0: BOOTH_B.back[0], x1: BOOTH_B.back[1], y: BOOTH_B.y1 - 0.06, h0: FLOOR0, h1: BOOTH_B.back[2] };
 
 function rows() {
   const pad = docAt(SPAWN.px, SPAWN.py);
@@ -68,6 +81,12 @@ function rows() {
     across(OPENINGS.officeWindow, 'OFFICE WINDOW', 500),
     /* Thomas's favourite, the wide opening into the machine room. */
     across(OPENINGS.barani, 'BARANI DOORWAY', 1000),
+    across(OPENINGS.greyDoor, 'GREY DOOR', 250),
+    across(OPENINGS.printOffice, 'PRINT OFFICE', 250),
+    across(PANE_GAP, 'WINDOW PANE', 500),
+    across(BACK_GAP, 'BLACK BOOTH BACK DOOR', 500),
+    across(CAB_GAP, 'FORKLIFT CAB', 1000, 0.08),
+    across(TUBE_GAP, 'CARDBOARD TUBE', 1000, 0.08),
   ];
 }
 

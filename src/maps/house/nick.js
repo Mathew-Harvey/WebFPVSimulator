@@ -12,7 +12,8 @@
  * WHERE HE GOES. He sits on the north chair of the black metal set under
  * the red umbrella, facing the house, which is where the stills put him.
  * Every so often he gets up, walks round behind the west chair, across the
- * patio and in through the slider, and goes to one of three places: the
+ * patio, up the steps and in through the French doors into the family
+ * room, and goes to one of three places: the
  * kitchen sink, the family room sofa (where he sits and watches the
  * television), or the bay in the breakfast room, where he stands and looks
  * out at the yard. Then he comes back the way he went and sits down again.
@@ -125,36 +126,37 @@ function floorAt(x, y) {
 const PATIO = { at: [UMBRELLA.x, 11.88], top: G_PAVE + 0.45, face: [0, -1] };
 
 /* Out from beside his chair, round behind the west chair, across the patio
- * and in through the slider (x 5.0 to 6.6, into the breakfast room), to
- * just inside it. */
-const OUT = [[8.25, 11.76], [7.55, 12.05], [6.55, 11.9], [5.8, 10.4], [5.8, 9.15], [5.8, 8.6], [5.8, 7.85]];
+ * and in through the family room's French doors (x 3.0 to 4.5, between
+ * their two open leaves), to just inside them. */
+const OUT = [[8.25, 11.76], [7.55, 12.05], [6.55, 11.9], [5.2, 10.9], [3.75, 9.6], [3.75, 8.9], [3.75, 8.6], [3.75, 7.9]];
 
 /*
  * Then on to one of these. `face` is where he looks when he gets there;
  * `seat` is a seat he sits on, the last point of `path` being where he
- * stands in front of it. The sofa is the long run of the sectional, facing
- * the fireplace and the television, reached round its south end because
- * the return closes its north end, in through the wide opening and down
- * between the console behind it and the wall to the stair;
+ * stands in front of it. The kitchen and the bay are through the opening
+ * into the breakfast room, past the south side of the round table. The
+ * sofa is the long run of the sectional, facing the fireplace and the
+ * television, reached round its south end because the return closes its
+ * north end, down between the console behind it and the east wall;
  * its seat is 0.45 over the floor.
  */
 const PLACES = [
   {
     id: 'kitchen',
-    path: [[6.0, 5.6], [9.35, 5.6], [9.6, 7.1], [12.1, 7.1]],
+    path: [[4.05, 6.6], [5.3, 6.6], [6.0, 6.15], [8.6, 5.65], [9.3, 5.65], [9.25, 7.15], [12.1, 7.15]],
     face: [0, 1],
     dwell: [12000, 26000],
   },
   {
     id: 'sofa',
-    path: [[5.3, 6.3], [3.95, 6.3], [3.95, 4.47], [3.47, 4.47], [3.47, 3.75], [1.95, 3.75], [2.0, 5.8]],
+    path: [[4.05, 6.6], [4.05, 4.47], [3.47, 4.47], [3.47, 3.75], [1.95, 3.75], [2.0, 5.8]],
     seat: { at: [2.62, 5.8], top: FLOOR0 + 0.45 },
     face: [-1, 0],
     dwell: [22000, 42000],
   },
   {
     id: 'bay',
-    path: [[6.0, 5.6], [9.35, 5.6], [9.35, 7.3], [9.05, 8.5], [8.7, 8.75]],
+    path: [[4.05, 6.6], [5.3, 6.6], [6.0, 6.15], [7.75, 6.2], [7.62, 7.95], [7.3, 8.65]],
     face: [0, 1],
     dwell: [12000, 24000],
   },

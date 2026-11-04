@@ -55,8 +55,8 @@ const TD = 0x5c5680;
  * and chimney; inside a honey oak floor through the ground floor, olive green
  * in the kitchen, breakfast room and back hall, pale blue grey over a dark
  * stained wainscot in the dining room, cream in the front room and the foyer,
- * cream cabinets under a dark granite top, white doors, white balusters under
- * a dark stained rail.
+ * white shaker cabinets under a dark top round a sage island, white doors,
+ * dark turned balusters under a dark stained rail.
  */
 export const MATERIALS = {
   /* outside */

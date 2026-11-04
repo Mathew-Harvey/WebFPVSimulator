@@ -9,11 +9,14 @@
  * WHAT THE DRAW ADDS, in the world frame, after the kit has drawn every
  * part the house marks as drawn:
  *
- *   prisms   the roofs' slopes, gables and fascias, the slide: a profile
+ *   prisms   the roofs' slopes, gables and fascias: a profile
  *            extruded along one axis. Drawn only; their solids are the
  *            roofs' bands, which are parts.
  *   discs    the cul de sac's paving, its kerb and island, the mulch
  *            round the trees: level discs and rings, drawn only.
+ *   hips     the pavilion's hipped roof: four slopes from a level eave
+ *            to a ridge, one closed solid. Drawn only; its solid is
+ *            banded like the prisms'.
  *   cones    the patio umbrella.
  *   scaled   the town's own trees and cars, drawn through a frame k times
  *            their size, so a street tree is a tree over a house S
@@ -77,6 +80,44 @@ function drawPrisms(kit, prisms) {
   }
 }
 
+/* A hipped roof's closed solid from its four eave corners and its ridge's
+ * two ends, every face wound to face out from the middle, one flat
+ * normal a face. */
+function drawHips(kit, hips) {
+  const T = kit.THREE;
+  kit.begin(0, 0, 0, 0, CHUNK);
+  for (const r of hips) {
+    const [a, b, c, d] = r.eave;
+    const [r0, r1] = r.ridge;
+    /* r0 is the ridge's end nearer the first eave corner: west or south. */
+    const along = Math.abs(r1[0] - r0[0]) > Math.abs(r1[2] - r0[2]);
+    const faces = along
+      ? [[a, b, r1, r0], [b, c, r1], [c, d, r0, r1], [d, a, r0], [a, d, c, b]]
+      : [[a, b, r0], [b, c, r1, r0], [c, d, r1], [d, a, r0, r1], [a, d, c, b]];
+    const mid = [0, 1, 2].map((k) => (a[k] + b[k] + c[k] + d[k] + r0[k] + r1[k]) / 6);
+    const pos = [];
+    const tri = (p, q, w) => {
+      const u = [q[0] - p[0], q[1] - p[1], q[2] - p[2]];
+      const v = [w[0] - p[0], w[1] - p[1], w[2] - p[2]];
+      const n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+      const out = [0, 1, 2].map((k) => (p[k] + q[k] + w[k]) / 3 - mid[k]);
+      const flip = n[0] * out[0] + n[1] * out[1] + n[2] * out[2] < 0;
+      pos.push(...p, ...(flip ? w : q), ...(flip ? q : w));
+    };
+    for (const f of faces) {
+      tri(f[0], f[1], f[2]);
+      if (f.length === 4) {
+        tri(f[0], f[2], f[3]);
+      }
+    }
+    const g = new T.BufferGeometry();
+    g.setAttribute('position', new T.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new T.Float32BufferAttribute(new Array((pos.length / 3) * 2).fill(0), 2));
+    g.computeVertexNormals();
+    kit.add(r.m, g);
+  }
+}
+
 function drawDiscs(kit, discs) {
   const { S } = FRAME;
   kit.begin(0, 0, 0, 0, CHUNK);
@@ -102,6 +143,7 @@ function drawScaled(kit, scaled) {
 
 function drawHouse(kit, L) {
   drawPrisms(kit, L.prisms);
+  drawHips(kit, L.hips);
   drawDiscs(kit, L.discs);
   kit.begin(0, 0, 0, 0, CHUNK);
   for (const c of L.cones) {

@@ -2085,11 +2085,11 @@ export const CHAPTERS = [
         camera: 'fpv',
         world: place('house'),
         briefing: {
-          goal: 'Out of Nick Burns\' house through the slider, through the swing set at the end of the garden, and back in through the kitchen window.',
+          goal: 'Out of Nick Burns\' house through the French doors, through the pavilion at the end of the garden, and back in through the kitchen window.',
           why: 'Out of a house and back in again is the line every whoop pilot flies at home. Doors and windows are small, so line up from far out.',
           steps: [
-            'West out of the breakfast room and through the slider into the garden.',
-            'Down the garden and through the swing set.',
+            'West out of the breakfast room into the family room and out through the French doors onto the patio.',
+            'Down the garden and into the pavilion through its open side.',
             'Back to the house and in through the kitchen window.',
           ],
           sticks: [{ stick: 'yaw', dir: 'both' }, { stick: 'pitch', dir: 'tap' }, { stick: 'throttle', dir: 'hold' }],
@@ -2097,7 +2097,7 @@ export const CHAPTERS = [
         },
         objectives: [
           {
-            kind: 'gap', text: 'Slider, swing set, kitchen window', names: ['SLIDER', 'SWING SET', 'KITCHEN WINDOW'], ordered: true,
+            kind: 'gap', text: 'French doors, pavilion, kitchen window', names: ['FRENCH DOORS', 'PAVILION', 'KITCHEN WINDOW'], ordered: true,
             hint: 'In that order. Line up from far out.',
           },
         ],

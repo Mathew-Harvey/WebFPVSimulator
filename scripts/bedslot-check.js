@@ -178,8 +178,12 @@ const diffText = readFileSync(join(root, 'configs', 'betaflight-default.diff'), 
  * and the strip along the wall the slot was, 5 cm of the world off the wall
  * (the frame's wall face), which is over the slot when there is one and over
  * the mattress's edge when there is not. */
-const T = { x: -28, z: -49.65 };
-const frame = solids.find((s) => s.name === 'bed frame' && T.x > s.lo[0] && T.x < s.hi[0] && Math.abs(T.z - s.lo[2]) < 0.5);
+const T = { x: -28, y: 11.7, z: -49.65 };
+/* Upstairs, the storey its craft was on: since 2026-11-04 the basement
+ * guest room's bed stands under bedroom 4's, head to the same north wall,
+ * and a find by plan alone took it, the headboard for the wall side. */
+const frame = solids.find((s) => s.name === 'bed frame' && T.x > s.lo[0] && T.x < s.hi[0] && Math.abs(T.z - s.lo[2]) < 0.5
+  && s.lo[1] <= T.y && T.y - s.lo[1] < 2);
 const bedM = frame && mattresses.find((m) => Math.abs(m.lo[1] - frame.hi[1]) < 1e-6 && T.x > m.lo[0] && T.x < m.hi[0]
   && m.lo[2] >= frame.lo[2] - 1e-6 && m.hi[2] <= frame.hi[2] + 1e-6);
 check('the ticket\'s spot is at the wall side of a bed', Boolean(frame && bedM));

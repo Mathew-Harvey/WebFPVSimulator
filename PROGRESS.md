@@ -74470,6 +74470,185 @@ Approval, 2026-11-04 04:35Z: Mat, after the round 6 report stated the cost (draw
 
 Also corrected on the way: rounds 5 and 6 were dated 5 November in their headings here and in the map's comments; both were done on 4 November 2026 (UTC), and the text now says so.
 
+### 2026-11-04: Thomas More's Shop, the polish pass: floor plan, rooms, leaks
+
+Mat at 08:01Z on 2026-11-04, through the coordinator: "thomas moor's workshop needs lots of work still lots of polish, start by mapping the actual rooms and floor plan then add the furniture , finall ylook for issus where its possible to fly through walls etc".
+
+The floor plan, read again from the 19 frames, the phone photos (building only) and the reel, is drawn as a picture that marks which walls are read and which are guessed: `/mnt/project-files/tcmore-warehouse/plans/floor-plan-2026-11-04.png`. It went to Mat with a request for Thomas to mark it up. What changed in the map:
+- The roof is turned. The open web joists run north and south every 2 m, and the maroon girders run east and west on the column lines (frames 8.11.32, 8.12.11 and 8.14.08 look along the joists; photo 0132 looks across them). There are none over the white block, and none in the paint shop, whose walls and duct stand where girders would. Two light rows moved off the girder lines (y 18 to 19.6, y 39 to 41). The ducts hang under the girders and the heaters hang with them.
+- The white block, x 11.5 to 18.0 and y 0 to 11.5, is walled to the deck. Its north face is the tall white wall behind the green racking (8.12.11, 8.14.08), and the racking's back is against its west face. The wood lined door is in that west face at y 7.5 to 8.7, in the slot north of the office (8.14.19). Through it a plywood passage runs in and round to the south, with a jacket hung in it, into the coat room (moved inside the block from outside the south wall) and out by the front door (THE WOOD DOOR, where it was). Everything else in the block is solid and not drawn.
+- The office's side door now opens into a 0.7 m slot between the office and the block. The glass cabinet on the office's side is thinner (0.2 m), the work cart stands before the office's corner, and the green ladder leans on the block.
+- The panel rack of 8.14.19 is the green racking's south end bay seen from close, so that is what it is now: panels on edge up to the first beams, paper rolls laid over them. The separate panel rack against the south wall is gone.
+- The red corridor (photos 0151 to 0159). The south racking stands 1.5 m off the wall, x 20.2 to 30.8 in five bays, with plywood over its back. Behind it a red floor runs from the washroom to the grey door, with black boards on the wall and bar clamps on the racking's back. The washroom is a white box at x 18 to 20.2 with its grey door shut. The racking's last bay is still open at the slab: it is the way from the workshop to the grey door and into the corridor.
+- The exit door moved from x 22.8 to 24.0 on the north wall to x 30.2 to 31.4, by the barani corner, with a red frame (photo 0131, frame 8.13.05). The plywood stacks moved west to x 23.4 to 29.2. The gap is still named BACK DOOR, which the Barani Doorway lesson (wl-4) uses; its steps still read right.
+- The green, white and red stripe turns the corner onto the west wall (photos 0105, 0106).
+- Furniture: what stood inside the new walls moved out. A bench went to x 19 to 21.4, y 6 to 7.2; a carcass now touches the block; a rolling bench by the start was dropped; the cart by the start moved 0.4 m north; the big table by the grey door moved north of the racking.
+- Gap added: WOOD LINED DOOR (250). Lines in `scripts/warehouse-check.js` follow the plan: in at the wood lined door, round the passage and out the front door; down the slot to the office's side door; under the racking's open bay and down the red corridor; the two print room lines through the open bay; out the exit door.
+
+The fly through sweep is a new section in `scripts/warehouse-check.js`, "6. leaks". It flood fills the air the craft can reach from the start, in 0.1 m cells, with every solid grown by the craft's radius. Then it asks three things. Does the air leave the hall only by an open door? Is there any air inside a thing drawn thick, or round, that is not solid? Does any drawn sheet have air 6 cm off it on both sides? Run against main, it found one real fault: the dark plinth round the outside of the hall was painted across both open doors, so a pilot flew through a dark strip at the foot of each. That is fixed: the plinth stops at the doors. It found nothing else, on main or on this branch. It is proven to bite: with one of the white block's solids taken out it flagged the block's faces, and with the heaters made not solid it flagged them. The section takes about a second. It is a net for holes, not a ruler: at 0.1 m cells, a gap the craft only just fits may read either way.
+
+Checks: `node scripts/warehouse-check.js` all passed (34 lines, 14 gaps, slots, leaks, module). lint:preload, lint:partners, lint:nouns, check:props and lint:memory passed, and `tests/career/career-maps.test.js` passed 72. Not run: `npm run verify`, because nothing touches physics, the plant, the ABI or the build. Not flown.
+
+Latency, measured on the same 25 views as rounds 5 and 6 with headless `__renderStats()` against main ac23a42:
+- Draw calls are unchanged: High 32 to 42, Low 28 to 38, the same 18 colours.
+- Triangles on High average 98.85k against 98.76k, about 0.08k or 0.1 percent more.
+- Triangles on Low average 73.34k against 73.30k, 38 more.
+- The cost is flat.
+
+The board's picture changes, because the card's lens looks at the barani corner and now sees the moved exit door, the moved stacks and the turned roof. `assets/thumbs/warehouse.jpg` was regenerated, and the board's copy was vendored again on its own branch, to go first.
+
+What went wrong:
+- The first build put the wood lined door in the block's north face, with a panel rack beside it. The renders and a second reading of 8.14.19 and 8.12.11 showed that the panels are the green racking's end bay and the door is in the block's side. So the block grew to y 11.5 and the door moved.
+- The checks found slots, all fixed before they passed: machine room lights 0.25 m under a girder at y 39 (that girder now stops at the partition), the jacket 0.35 m under the passage ceiling, the panel bay 0.1 m off the block, the first yellow cabinet 0.2 m off the washroom, and two carcasses 0.1 m apart.
+- The leak check's first version tested 15 cm off each sheet. On a 15 cm wall that point lands in the air beyond the wall, so the test was wrong. It tests at 6 cm now.
+
+Approval, 2026-11-04 09:05Z: Mat wrote "Push to main" in the thread. That covers this polish pass (sim PR 232) and the board's thumbnail (board PR 74), with the cost stated as flat. The board's copy was pushed first, at 4e16ac0.
+### 2026-11-04: Nick Burns' house, true to his two flights (branch claude/project-thread-ldfnvf)
+
+Mat at 07:08Z to 07:10Z on 2026-11-04: "ok next we aqre going to improvem nick's house, making it as accurate as possible", seven zips of frames from two of Nick's flights, "go hard, use opus exta to make it perfect as possible", and "both the neighbourhood, the backyard, , upstair,s ground floor and basement". The frames are one a second: v1, a summer flight (ground floor, basement, back yard, 382 frames), and v2, a late autumn one (the yard from the ground and from above, then the ground floor and the basement twice, 660 frames). Every comment in `src/maps/house/house.js` that changed cites them as "v2 518", the second video's frame 518. Where the flights and the older stills differ, the flights win, and v2, the newer, wins over v1. No frame is in the tree (they hold family photos on the walls); the comparison sheets are in /mnt/project-files/nick-burns-house/compare/ and hold model renders and exterior frames with nobody in them only.
+
+What changed, by floor:
+
+- The ground floor. The glass doors to the patio are the family room's: a pair of white French doors in its north wall at its east end (v2 518, 550; v1 295, v2 158 from outside), both leaves swung in. The breakfast room has no door of its own to the patio, so the slider is gone, and the bay starts at the breakfast room's west wall; the bay and the whole kitchen moved 1.75 m west of where the older stills had put them (v2 479, 324). The kitchen is a galley along the back wall: white shaker cabinets under a dark top, the black wall oven and microwave tower just east of the bay, the sink under the window, the run turning up the east wall to the steel fridge; the island parallel to the back wall in sage under the dark top, three tall stools at its breakfast room end, the pressed tin panel over it (v2 479 to 486, 539, 546). The basement door stands open into the breakfast room, flat along its west wall (v2 326, 327, 488). The back hall runs straight from the front room's door into the kitchen with the cubbies along its west side and the dark framed collage on its east (v2 323, 324, 547, 616); the walk in pantry and the dark way to the garage door off the kitchen's south wall (v2 483 to 485). The hall is cream under a dark crown, with the dark chest, the shoe bench, the hexagon mirror and the wreath (v2 320, 321, 545, 617). The front room (den): the red bench with the television, the turquoise secretary, a white cube bookcase, the dark sofa, the papasan, a striped rug and the brown shutters closed over the window's lower half (v2 322, 616; v1 146 to 154). The stair's balusters are dark turned ones under a dark rail (v2 320, 626), carried up to the landing.
+- The basement, rebuilt from v2 329 to 399 and 529 to 570. The stair's foot has the utility room's door on its east (v2 339, 340, 397, 565). The playroom and the old workshop are gone: east of the stair, from the front wall to the hall and on across the east end to the back wall, is one unfinished utility room under bare joists, two tube lights, a blue mat, a weight bench and a dumbbell rack, the furnace and its duct, the water heater, the softener, a wall of wood shelving with bins, and the workbench under a pegboard with a quad on it (v2 341 to 349, 376 to 383, 566 to 568; v1 68, 80, 92). The main room: the black gaming desk with its monitor and the gaming chair, the mustard glass door hutch and the red swivel chair along the north wall (v2 333, 334, 361, 390); the stadium print on the mantel, three small frames over a single armchair in the south west corner, and a wood ottoman where the two black chairs were (v2 338, 360, 388 to 392). The guest room keeps its place off the hall, its bed with a red throw (v2 352, 370, 371, 569). The real basement's hall runs from the utility room to the bedroom, and the bedroom also opens on the main room; ours keeps its short hall from the main room with the guest room off it, which is a question for Mat below.
+- The back yard. The fire pit sits in a curved stone seat wall with a cap (v1 202, 206; v2 11, 193). The pavilion keeps its orientation (v2 36 to 48 agree with the owner's word of 2026-10-20) and gains its dark sectional, a dark and light striped rug and the condensers outside its back corner (v2 41 to 48, 53, 161 to 164). The fences: a low weathered picket fence across the back of the lawn, down the chimney's side and across that side yard to the house with a gate, meeting the tall board fence in the far corner (v2 13 to 36, 54, 62, 118), its gaps drawn lit.
+- Upstairs: neither flight goes up, so only what the hall sees of it changed (the dark balusters on the landing).
+- The yard's size: not changed, and the flights say it is wrong. Flying the back picket fence east, v2 29 to 34 meet the tall board fence across the end; turning along it toward the house, v2 37 to 42 reach the pavilion right beside it, its cedar gate just past it (v2 45). So the tall fence stands a few metres east of the pavilion, about x 26 to 28, not at x 45.6, and the lawn east of it, where the swing set, the slide and RaceGOW6 Track 3's far end are, is the neighbour's. None of the swing set, the slide or the shed is in any frame of either flight. Moving the fence changes the yard track, the SWING SET gap and lesson px-2, so it is Mat's call (asked).
+- The neighbourhood: not changed. The flights show neighbours' houses behind the back fence (v2 25, 33) and across a road to the west (v2 62, 118); the plot ends at the fences, so adding them means growing the field, which moves the map's frame. Asked, not done.
+
+Other files:
+- `src/maps/house/yard.js`: the 'SLIDER' gap is now 'FRENCH DOORS', where the doors now are.
+- `src/career/curriculum.js`: lesson px-2, Garden Gaps, went through the slider. Its goal, step and objective now name the French doors (`names: ['FRENCH DOORS', 'SWING SET', 'KITCHEN WINDOW']`); medal times left as they were (still provisional). `node --test tests/career/career-maps.test.js tests/career/career-objectives.test.js tests/career/career-words.test.js`: 102 pass.
+- `src/maps/house/supporters.js`: the old workshop's two walls are gone, so mattsflooring hangs over the new workbench on the hall's wall and quadconfig over the shelving on the west wall of the room's east end, both out of the line of sight from the door at the stair's foot. `seesRoom` now shows the workshop's signs from the utility room's strip along the front (x over 5.85, y under 4.1) as well as east of x 6.5, and never from inside the guest room, which no sign can be seen from.
+- `src/maps/house/nick.js`: Nick walks in and out through the French doors now, and his paths to the sink, the sofa and the bay go through the breakfast room round the table. `src/maps/house/stickers.js`: the hall, island and back door stickers are aimed from where those walls now are (the check's stickers block: each lands).
+- `src/props/homes.js`: the palette's comment names the kitchen and the balusters as they are now. No colour added.
+- `scripts/house-check.js`: the basement's lines follow the new rooms (the playroom's line is gone; new ones run from the stair's foot through the utility door and along the room, down it past the shelving, and over the mat and the bench to the furnace), and two old lines' labels name the ottoman and the armchair.
+
+The slot rule, argued. `scripts/house-check.js` reports two solid boxes facing each other 0.099 to 0.4 real metres apart as a slot, unless something solid stands at the middle of the space between them. With the kitchen and the breakfast room moved, boxes above and below a floor's slab came to face each other across it at a point where the middle of the space between them missed the slab (twice: a basement soffit under the ground floor's slab and a breakfast room chair standing on the slab over it, 0.33 apart, plan 6.9, 7.45 and 6.6, 6.9), and each was reported as a slot that no whoop could enter, because the slab fills it. The check already allows a chair against a floor's slab; this is the same pair seen through the slab. The check now also skips a pair when a floor's slab (the `FLOORS` names already in the check) lies against either face, a hundredth of the gap in from it: that box faces the slab, not the other box. Nothing is missed by it, because the slab is a box in the same list and its pairing with the other box is still tested on its own. No threshold moved: 0.099 and 0.4 are as they were, and every other slot found on the way was fixed by moving the piece (below).
+
+Checks run this turn: `node scripts/house-check.js` all passed (lines, gaps, slots, coplanar, supporters, stickers); `node scripts/bedslot-check.js` 6 passed; `node scripts/yardtrack-check.js` all passed; the three career test files 102 pass. `npm run verify` not run (a map's geometry, not physics, the plant, the ABI or the build). Not flown.
+
+Latency, measured headless with `__renderStats()` before (main, ac23a42, in a worktree) and after, on the same views, High and Low:
+- The twenty general views (six ground floor, two basement, four of the yard from above and the patio, eight round the yard, the front and the basement's east end): draw calls flat or one lower in every one (High 39 to 97, Low 31 to 90); triangles up 1.5k to 1.9k on High (about 0.6 percent, for example the foyer 299.4k to 301.2k) and 0.6k to 1.0k on Low.
+- The utility room: the three workshop signs now hang in a room whose door a camera at the stair's foot looks through, so a view from that door draws them (+3 calls: High 91 to 94, Low 83 to 86) where the old foot hall drew none. The basement's busiest view goes from 93 to 95 calls on High and 85 to 86 on Low; the guest room's two fewer (68 to 66); the map's busiest views, the yard from above (97 High, 90 Low), unchanged. That is a rise in one room and needs Mat's word.
+- The first view of each run reads high (the foyer at 88 calls on Low in one, the basement lounge at 88 in another); each was shot again second in a run, and the comparison uses those.
+
+The board's picture: `node scripts/boardcards.js --worlds --only house` regenerated `assets/thumbs/house.jpg`; from the street it shows the porch and the front room's window as they now are, so it changed, and the board copies it from this commit (board first).
+
+What went wrong:
+- Fourteen slots on the way, each fixed by moving the piece rather than the rule: the hutch's crown and the furnace 0.38 and 0.35 under the slab (the crown lowered to the slab, the plenum run up to it); the monitor 0.16 off the wall (flushed); the gaming chair's tuck box 0.18 off the wall (a hidden box to the wall); the red chair's back 0.36 off the wall (moved out); the dumbbell rack and the furnace 0.1 to 0.12 off the stair's wall (started at the wall); the softener 0.108 off the wall; the desk's legs as panels against its hidden box (made posts); the armchair 0.18 off the treadmill and 0.35 off the built in (resized); the furnace 0.23 off the water heater (the heater moved).
+- The utility room's dark ceiling paint ended on the slab's edge at the stair's head, a coplanar pair; it now ends under the hall's wall.
+- The utility room's walls in the foundation grey read violet, because that colour takes the shade tint; they are the cream that does not.
+- Colours reaching new places cost calls. Each material is one batch culled by its bounding sphere, so a colour that newly reaches a far corner of the plot adds a call to views that used to cull it. The picket gaps in the green wall colour were +1 call on Low in the basement lounge (b_lounge 67 to 68), the pavilion's navy rug and tan cushions +1 to +2 in three yard views, and the shelving's tan bins +1 in the utility room and the guest room. Each was redrawn in a colour already drawn there (the gaps and a bin colour in the stone grey, the rug in dark stripes, the cushions in stone), and the views came back flat.
+- The first baseline shot of the foyer on Low read 88 calls and 130k triangles; shot again it read 78 and 140.5k. It was the page's first frame, not the map, and the comparison uses the second.
+- A gaming chair accent in red and a tan cushion on the ottoman were not in any frame; both came off.
+
+Questions for Mat, none acted on:
+- The neighbours: add the houses behind the back fence and across the road to the west? It needs the field to grow, which moves the map's frame.
+- The yard's east side: move the tall fence in beside the pavilion as the flights show, taking the swing set, the slide and the shed (in no frame) with it and refitting the yard track and lesson px-2, or keep the bigger yard? Asked on a card.
+- The basement's hall: rebuild it as the flights have it (utility room to bedroom, bedroom also open to the main room), which moves the guest room's door and a line or two?
+- The red Japanese maple by the pavilion (v2 48, v1 313): a new colour, so about one call more in the back yard's views. Add it?
+
+### 2026-11-04: Nick Burns' house, round 2: the tall fence beside the pavilion, the pavilion in the corner of the house and the garage
+
+Mat at 09:05Z on 2026-11-04 picked "Move the fence in" on the card "Move the tall back fence in beside the pavilion, as Nick's flights show?", whose option read: the tall fence moves to just past the pavilion, so the yard is about 20 m narrower, the swing set and slide go, the Garden Gaps lesson flies the pavilion instead, and the yard track stays.
+
+- The tall fence (`EAST_FENCE` in `src/maps/house/house.js`) is at x 28.0, not 45.6. Along the back picket fence east, v2 29 to 34 meet it across the end; turned along it toward the house, v2 37 to 42 reach the pavilion beside it; from the grill, v2 163 and 164 look across about six metres of lawn to it; and the cedar fence from the garage's back corner to it is a shut gate and two panels (v2 44, 45). The back picket fence ends at it, the cedar fence runs from the garage's corner to it with its gate shut at the garage end (`CEDAR_GATE`, painted, no gap), and east of it is the neighbour's lawn with its trees.
+- The swing set, its slide and the slide's eight solid capsules, and the shed are gone. Neither flight finds any of them; v2 13, 14 and 54 to 56 show the back west corner as lawn and tall grasses.
+- The pavilion moved. Read again with the flight over the roof and the pass along the back of the house (v2 41 to 48, 157 to 164, 203 to 205, 250, 252), it is not a building out on the lawn 4.6 m from the garage: it stands in the corner of the house and the garage, the garage's back wall its back wall and the house's east wall its west end, open to the lawn on the north and to the tall fence on the east. From the lawn nothing stands between it and the house (v2 250, 252); from over the roof its roof meets the house's wall (v2 203, 204); from the patio the path along the back of the house runs straight into it (v2 157 to 161). It is now x 14 to 22.8 and y 5.4 to 10.2 (its roof's edge to 23.1 and 10.5), where it was x 15 to 21 and y 10 to 15. Its open side still faces the back fence, as the owner said on 2026-10-20.
+- Its roof is hipped, not gabled: from over the roof four slopes (v2 204), from the lawn and from under it every eave level, the nearest corner the highest point (v2 41 to 43, 160, 250). A hipped roof is a new thing for this map's draw: `House.hip` records the four eave corners and the ridge's two ends, `drawHips` in `src/maps/house/index.js` draws them as one closed solid in the roof's colour, and `hipRoof` in `house.js` gives it its solid in bands drawn in from all four sides, as `gableRoof` does from two, so the solid is under the slopes and never over them. Pitch 5 in 12, lower than the house's: from the lawn the slopes barely show over the fascia. The hip rises from the garage's eave, so the two roofs meet. The ceiling is white, as every frame under it shows (it was dark brown), with two fans and a white fascia a hair proud all round.
+- Inside, as the frames have it. The bar is an L: the east arm faced in slate down the tall fence's side from the garage wall to the corner column, the grill built into its inside (v2 43, 44, 163, 164); the north arm cream under the same granite, with five black stools outside it facing in (v2 41, 42, 250, 252). The first round 2 pass had the four stools down the east side; the frames from the lawn put them along the north. On the back wall the covered television over a grey deck box, and the white door into the garage at the west end, shut, with its glass (v2 47, 161, 162, 252). The dark wicker sectional across the middle with its back to the lawn, the striped rug in front of it and the wicker chair at its west end (v2 46, 47, 162). The two condensers stand along the house's wall in the corner (v2 48, 160, 161), where they were along the garage's.
+- The garage's back wall lost its door hole and its window: the frames show the one white door, shut, and no window. The garage is still flown into through its open middle bay, its east window and the back hall's door.
+- The stamped path along the back of the house from the patio to the pavilion, with the bed of shrubs north of it (v2 48, 49, 160), replaces the bed along the wall, the beds behind the garage and their shrubs, and the old path from the pool deck to where the pavilion stood.
+- The gap SWING SET is now PAVILION (`OPENINGS.pavilion`: across the open north side between the corner columns, from over the bar's top to under the ceiling). Lesson px-2, Garden Gaps, flies French doors, pavilion, kitchen window; its goal and step say so. Medal times left provisional and unchanged, though the out and back is now shorter.
+- `scripts/house-check.js`: the swings and the two slide lines are replaced by four: into the pavilion through its open side, out of it east over the bar, along the back of the house into it, and down the lawn between the pavilion and the tall fence. The roofs block checks the hipped roof's solid against its four slopes.
+- The yard track (RaceGOW6 Track 3 at YARD_AT 18, 20) stays where it is, on the lawn north of the pavilion, its zone x 16 to 20.3, clear of the fence.
+- The yard's depth was checked against v2 37: from a camera at the same spot by the tall fence, the house and the pavilion fill about the same angle in the frame and in ours (a rough read, about 39 and 38 degrees across the lens's middle), so the back fence stays at y 31.6. The west fence is not changed; nothing in the frames measured it.
+- One thing the frames leave uncertain: how deep the corner is. From inside the pavilion looking west (v2 47, 48) the house's wall at its west end looks narrower than ours, as if the garage's back wall stood nearer the house's back wall line than our garage's 5.4 does. The garage's depth comes from the older stills and was not changed.
+
+Checks: `node scripts/house-check.js` all passed; `node scripts/yardtrack-check.js` all passed; `node scripts/bedslot-check.js` 6 passed; `npm run check:career` 179 pass; lint:nouns, check:props, lint:partners passed. Not flown.
+
+Latency, measured headless with `__renderStats()` on main (ac23a42, in a worktree) and on this branch (rounds 1 and 2 together), 30 views on High and Low: the twenty general views of round 1 and nine of the pavilion from the frames' spots (v2 42, 43, 47, 160, 161, 162, 204, 250, 252).
+- Draw calls flat or lower in every view but one. The yard's north and west views draw 4 to 8 fewer on High and 4 to 8 fewer on Low (x_lawn_north 39 to 31 High, 31 to 23 Low, the swing set's and the shed's colours no longer out there), the pavilion's views 1 to 3 fewer. The one rise is round 1's: the utility room's door, +3 (High 92 to 95, Low 84 to 87), its signs in sight.
+- Triangles about 2.0k fewer than main in every view on High (0.7 percent) and about 1.0k fewer on Low; the yard's north view 10.0k fewer on High.
+- Nick's balloon is worth a call either way: from the fence by the pavilion one Low run read 88 to 89 at v2 43's spot and the next 88 to 88, with v2 42's spot the other way round.
+- The hipped roof adds no colour: it is drawn in the roof's own batch, and the white ceiling in the trim's.
+- In the first Low run three of main's views read the view before them (gf_kit_west the family room's exact numbers, x_lawn_north the lawn east's, v2 42's spot v2 252's); each was shot again after a view of its own, and those are the numbers above.
+
+Thumbnail: regenerated (`node scripts/boardcards.js --worlds --only house`): the pavilion's hipped roof in the corner behind the garage, the swing set gone and the tall fence in. The board's copy goes first.
+
+What went wrong: the bar first stopped 0.3 off the back wall, a slot, until it ran to the wall; the pavilion gap first sat low enough to clip the columns' stone bases; a stale measure run was still going when the fence moved from 28.4 to 28.0 and was stopped and run again; one comparison view put its camera inside the new grill. Then the bigger one: round 2's first pavilion was turned to the frames but left where the older stills had it, out on the lawn, with its stools down the wrong side, and it was rendered, measured and nearly committed that way before the flight over the roof and the pass along the house were read; it moved and was rebuilt. On the way the column against the garage wall stood 0.11 off it, a slot, until it went against it, and four comparison cameras were placed inside the sectional or too far off and were placed again.
+
+Approval, 2026-11-04 10:44Z: Mat, after the round 2 report stated the cost (draw calls flat or lower everywhere but round 1's +3 at the basement utility room's door, triangles about 2k under main), wrote "push to main" in the thread "Make Nick's house match his flights". That covers rounds 1 and 2 of Nick Burns' house (sim PR 233) and the +3 calls at the utility door, and the board's thumbnail (board PR 75, pushed to main first, 79ad120). Then at 10:45Z: "now the inside? after the push to main", the next round. Not flown.
+
+## 2026-11-04: Nick Burns' house, round 3, the inside
+
+Mat at 10:45Z, after the push of rounds 1 and 2: "now the inside? after the push to main". This round is a frame by frame pass over his second flight's indoor frames, v2 280 to 512 and 529 to 656, against renders from cameras put where the frames were shot. It covers the ground floor and the basement, the basement hall included. There is no upstairs footage in either flight.
+
+The basement:
+- `B_EAST` is now the stair's east wall plus a partition. The main room past the stair's head is as wide as the lounge and the stair together, with the kitchenette along its east wall. From the lounge, the guest room's door is right past the stair's head, beside the kitchenette's dark end (v2 368 to 370, 386, 387, 396). The main room used to reach 1.4 m further east.
+- The guest room (x 5.88 to 9.1, y 4.22 to 8.2) has two doors:
+  - from the main room, in its west wall (`GUEST_DOOR`);
+  - in its east wall, onto a short hall (`HALL`, x 9.22 to 11.4) that ends at the utility room's other door, its leaf swung back into the hall (v2 350, 351, 371 to 375, 349, 568, 569).
+  Before this round the hall ran from the main room, with the guest room off it and a closet on its south side. Neither flight shows that, so the closet is gone.
+- The utility room now wraps round the hall's east end (`UTIL_C`, `UTIL_E`). Its joists are painted to match.
+- The guest room's furniture is from the frames:
+  - the bed with its head to the north wall;
+  - the bench at its foot;
+  - the dresser in the north west corner;
+  - the heater;
+  - the small high window over the bed's head;
+  - a closed closet door painted on the west wall.
+- The cans, the red chair and the main room's north window moved with the wall. The red chair stands 0.42 to 0.47 off the fridge, not 0.27, because 0.27 would have been a slot.
+- `supporters.js`: `GUEST_ROOM` follows the new room, and `seesRoom` draws no workshop sign from the guest room or from the main room past the stair's head. Through the hall's doors the eye meets the east shelving, the sign north of the hall faces east behind the guest room's east wall, and the hall's north wall stands between its doors and the sign over the desk. check:house says where each sign lands.
+- Two things were left as they are:
+  - The stair's west side is a sloped knee wall in the frames. We keep the half wall to y 2.0, because the opening above it closes to under 0.5 m there.
+  - The real room has two white posts; we keep one.
+
+The ground floor:
+- Round 1 already put its layout right: the galley, the island, the back hall, the pantry, the den, the foyer, and the basement door open along the breakfast room's wall. Seventeen matched views agreed with it.
+- The family room's west wall did not agree. Its built ins were near black cubes from the corner to the corner, and the fireplace was grey stone under a white surround. In v2 290, 313 and 314 the built ins are:
+  - warm stained wood;
+  - closed cupboards to a counter, with open shelves of ornaments over them to the crown;
+  - round the television, which sits over a wood mantel;
+  - with the fireplace under the mantel, shut behind a cream screen in a dark surround.
+  South of them (v2 291, 314) is a small window with its wood blind down. It is painted on both faces of the wall and not cut, because the blind is down and nothing passes it.
+- The sectional is grey, not cream: `sofa()` now draws in the grey of the stone, with lighter grey cushions. The tub chairs keep `homeSofa`.
+- New pieces:
+  - the patterned wingback in front of the window and the brown leather armchair in the south east corner, by a new `armchair()`, solid to the floor and clear of the walls by less than a slot or more than one;
+  - four black framed pictures on the north wall between its window and the French doors (v2 311 to 313);
+  - a picture on the stub of wall west of the opening;
+  - the dining room's wood coat tree beside the door to the hall (v2 296, 319).
+- Nick's walk to the sofa keeps its route. The leather armchair stands with its back to the south wall, 0.27 clear of his path.
+- The back wall's small window by the north west corner stays as it is. The rear wall from the patio (v1 295, v1 203) shows a small ground floor window there.
+
+`scripts/bedslot-check.js` finds the ticket's bed by its height as well as its plan position. The guest room's bed now stands under bedroom 4's, head to the same north wall. A find by plan alone took the basement's frame first and dropped the craft into its headboard, which failed. Nothing about the check's thresholds changed.
+
+Checks:
+- `node scripts/house-check.js`: all passed.
+- `node scripts/bedslot-check.js`: 6 passed.
+- `node scripts/yardtrack-check.js`: all passed.
+- `npm run check:career`: 179 pass.
+- lint:nouns, check:props and lint:partners passed.
+- Not flown.
+
+Latency, measured headless with `__renderStats()` on main (0418c8e, in a worktree) and on this branch, 21 views on High and Low: the basement's seven, the ground floor's eight and six outside.
+- Draw calls are flat or one fewer in every view. The family room, the hall and two of the basement's views draw one fewer, because the sofa no longer draws its own colour there.
+- Each of these readings was shot again after a warm view, and both read flat:
+  - The street view read +1 once on High (98 to 99). Shot again it read 98 both times, which is Nick's balloon flickering.
+  - The west view read +1 once on Low.
+  - The first view of the Low run, on main, read 77 against 66.
+- Triangles are a little higher, the only rise. The pictures, the two armchairs, the coat tree and the window add about 0.5k on High (g290 272.3k to 272.8k, the west view 302.7k to 303.2k, 0.2 percent) and about 0.2k to 0.3k on Low. That is after halving the shelves' ornaments and drawing the blind's slats as two lines. The house is one batch a colour, so every view carries the same few hundred.
+
+What went wrong:
+- The first basement layout put the guest room at x 7.2 to 10.5, with the hall east of it. The render from the lounge showed the door in the wrong place, and the frames (v2 369, 386, 387, 396) moved it right past the stair's head.
+- Several comparison cameras were placed too low, or inside the sectional and the table, and were placed again.
+- The leather armchair first stood against the east wall south of the wide opening. That is in Nick's walk to the sofa, and house-check failed it. It moved to the south east corner, where v2 293 shows it.
+- The coat tree's foot and hooks first stood a slot off the wall and moved in to under one.
+- The first measure run's script line ran the branch twice, so main was shot a minute later than planned. The numbers above are from the corrected runs.
+- I read the back wall's corner window as a mistake until v1 295 showed it from the patio.
+
+Approval, 2026-11-04 14:06Z: Mat, after the round 3 report stated the cost (draw calls flat or lower, triangles up about 0.2 percent), wrote "Push to main" in the thread "Make Nick's house match his flights". That covers round 3 of Nick Burns' house (sim PR 234), the inside, and its triangle rise. No board change. Not flown.
 ## 2026-11-04: pick your own made up handle in public rooms
 
 Mat's ask, 07:53Z: "we need a way to be able to make rooms where users can have their own name, perhaps in the steam only game, in such a way as to keep it free of abusive names etc". Then 08:01Z: "on steam a user can type in any name they want and its saved in the steam cloud".
@@ -74485,3 +74664,5 @@ Latency: none. The picker is a menu sheet; the wire change is three integers in 
 Checks run: `npm run net:selftest` all passed (3 new), board `npm test` all passed (7 new), `lint:boot` 9 of 9, `lint:preload` up to date, `lint:shell` gate checks as before, a shots run of the Tag tab at 1280x720. Not run: `npm run verify` (no physics, plant, ABI or build change), and nobody has flown it in a room with another pilot.
 
 What went wrong: the first shots run opened the meet sheet, not the editor, so its Tag clicks found nothing; it was rerun through Change look. At 1280 wide the seventh tab sits partly off the tab strip's right edge, which scrolls; left as is for Mat's look.
+
+Approval, 2026-11-04 14:22Z: Mat wrote "Push to main" in the thread "Add custom room names without abuse". That covers the handle picker (board PR 73 first, then this sim PR 231). Steam typed names (part 2) are not covered and not built.

@@ -14,7 +14,7 @@
  * src/maps/built/index.js). Hung where a team's signs hang: three on the
  * garage's walls round the open middle bay a whoop flies in by and one
  * over its shelving, three in the workshop over the desk, the bench and
- * between its doors.
+ * the shelving on its west wall.
  *
  * Each is aimed as a sticker is (aimAt in ./stickers.js), from a point in
  * a room the way to look, so a wall that moves takes its sign with it, and
@@ -78,10 +78,11 @@ export const SUPPORTER_SPOTS = [
   { slug: 'dronefactory', room: 'garage', from: [21.5, 4.7, 1.5], dir: 'e', w: 0.9 },
   /* The workshop, its floor at BF. Over the desk and its two monitors. */
   { slug: 'yourfpv', room: 'workshop', from: [12.05, 6.5, BF + 1.75], dir: 'n', w: 0.85 },
-  /* Over the pegboard and the bench. */
-  { slug: 'mattsflooring', room: 'workshop', from: [12.35, 3.0, BF + 2.05], dir: 's', w: 1.2 },
-  /* Between its two doors. */
-  { slug: 'quadconfig', room: 'workshop', from: [12.0, 2.8, BF + 1.5], dir: 'w', w: 1.2 },
+  /* Over the pegboard and the bench, on the hall's wall. */
+  { slug: 'mattsflooring', room: 'workshop', from: [9.5, 3.0, BF + 2.05], dir: 'n', w: 1.2 },
+  /* Over the shelving on the west wall of its east end, out of sight of
+   * the door at the stair's foot, as the other two are. */
+  { slug: 'quadconfig', room: 'workshop', from: [12.0, 6.55, BF + 2.05], dir: 'w', w: 1.2 },
 ];
 
 /*
@@ -90,16 +91,28 @@ export const SUPPORTER_SPOTS = [
  * costs a call and a sign that is hidden and in sight is a hole: the
  * garage from anywhere in it or anywhere in front of the house's front
  * line, which is the street, the drive and the lawn its open bay faces;
- * the workshop from anywhere in the basement east of the stair's foot, its
- * two halls included, whose doors open into it.
+ * the workshop from anywhere in the basement east of the stair's foot, the
+ * hall included, whose door opens into it, and from the whole of the
+ * workshop's strip along the front, its door's end included, though not
+ * from the main room north of the hall. No sign can be seen through the
+ * door at the stair's foot from the landing or the lounge: each hangs where
+ * that doorway's view does not reach. Nor from inside the guest room or
+ * the main room past the stair's head: through the guest room's door to
+ * the hall and the hall's end door the eye meets the east wall's
+ * shelving; the sign north of the hall faces east from the other side of
+ * the guest room's own east wall, and the hall's north wall stands
+ * between its doors and the one over the desk.
  */
 const GARAGE = { x0: 13.9, x1: 23.6, y1: 5.5, top: 3.2 };
 const WORKSHOP_X0 = 6.5;
+const WORKSHOP_STRIP = { x0: 5.85, y1: 4.1 };
+const GUEST_ROOM = { y0: 4.22, x1: 9.1 };
 export function seesRoom(room, x, y, h) {
   if (room === 'garage') {
     return y < FRONT || (x > GARAGE.x0 && x < GARAGE.x1 && y < GARAGE.y1 && h < GARAGE.top);
   }
-  return h < 0 && x > WORKSHOP_X0;
+  if (h >= 0 || (y > GUEST_ROOM.y0 && x < GUEST_ROOM.x1)) return false;
+  return x > WORKSHOP_X0 || (x > WORKSHOP_STRIP.x0 && y < WORKSHOP_STRIP.y1);
 }
 
 /*

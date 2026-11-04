@@ -66,12 +66,12 @@ function rows() {
      * times the slab's step. */
     ['startPads', pad.x, pad.y, WEST, { pads: 1, spacing: 1.5, padSize: 0.9 }, { z: S * SPAWN.h }],
     across(OPENINGS.frontDoor, 'FRONT DOOR', 100),
-    across(OPENINGS.slider, 'SLIDER', 100),
+    across(OPENINGS.frenchDoors, 'FRENCH DOORS', 100),
     across(OPENINGS.garage, 'GARAGE DOOR', 250),
     across(OPENINGS.bay, 'BAY WINDOW', 500),
     across(OPENINGS.kitchenWindow, 'KITCHEN WINDOW', 500),
     across(OPENINGS.kidsWindow, 'KIDS ROOM WINDOW', 500),
-    across(OPENINGS.swings, 'SWING SET', 250),
+    across(OPENINGS.pavilion, 'PAVILION', 250),
     across(OPENINGS.tallWindow, 'TALL WINDOW', 1000),
     across(OPENINGS.basementDoor, 'BASEMENT DOOR', 250),
   ];

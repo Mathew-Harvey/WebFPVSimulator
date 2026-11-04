@@ -368,6 +368,12 @@ const CAL = {
    * throttle that is idle everywhere but the last few percent, and the
    * only way back is to recalibrate. See zeroThrottleHere. */
   THROTTLE_MIN_RANGE: 0.3,
+  /* How long the check step waits with the throttle stick held below zero,
+   * by THROTTLE_SPRING or more, before it says so and offers to move zero
+   * down to it. Long enough that a stick swept through the bottom on its
+   * way somewhere does not flash the offer, short enough that a stick
+   * parked there gets it at once. See belowThrottleZero. */
+  BELOW_ZERO_MS: 600,
   /*
    * How far a channel has to be deflected on the check step, and how far
    * clear of every other channel, before the screen will name it as the
@@ -1226,6 +1232,67 @@ function noteThrottleSpring(c, spec, axes) {
 }
 
 /*
+ * AND THE RECOVERABLE FAILURE ABOVE HAD NO WAY BACK.
+ *
+ * "A radio whose pilot ignored the centre step ... gets zero at mid-stick",
+ * and the note calls that the recoverable failure. Nothing ever recovered
+ * it. The centre step takes the throttle wherever it is, the full range
+ * step then insists every axis comes back to where it was taken, which for
+ * a pilot who centred the throttle is the middle, and a throttle put back
+ * there at its own release reads as a spring. From then on:
+ *
+ *   bug-6f04ebea, a DJI remote on Chrome for Windows, calibrated:
+ *   "drone feels like a stone and the hoverpoint is ~ at 70% throttle.
+ *    changes in the settings makes no difference"
+ *
+ * Reproduced through the real wizard on a five axis pad shaped like that
+ * one: the saved map is {low: 0, high: 1, sprung: true}, the bottom half of
+ * the stick is idle, and hover at the report's weight, 21.7 percent of the
+ * throttle, is 60.9 percent of the stick. Weight and Motor power move hover
+ * within the top half only, which is the "no difference" in the ticket.
+ * The check step read 0 percent with the stick at the bottom and offered
+ * nothing, because its offer only ever moved zero UP, and the report could
+ * not say any of it: it carried no throttle spec at all, though `sprung`
+ * above is recorded so that a ticket would.
+ *
+ * What gives it away is the same thing that gives a parked throttle away
+ * everywhere else in this file: where the stick sits when nobody is
+ * holding it. A sprung stick rests at its zero. A parked one rests at the
+ * bottom, and the bottom is below zero on this map.
+ *
+ * belowThrottleZero is how far below zero, in raw units, measured away from
+ * full so a reversed throttle reads the same way: zero or less at or above
+ * zero, and positive below it. throttleFarEnd is the bottom of the travel
+ * as far as it has been seen, and zeroPercentOf is where zero sits on the
+ * stick, 0 on a radio calibrated as asked and 50 on the ticket's.
+ */
+function belowThrottleZero(spec, v) {
+  if (!spec || !Number.isFinite(v) || !Number.isFinite(spec.low) || !Number.isFinite(spec.high)
+    || spec.high === spec.low) {
+    return 0;
+  }
+  return (spec.low - v) * Math.sign(spec.high - spec.low);
+}
+
+function throttleFarEnd(spec, lo, hi) {
+  return spec.high > spec.low
+    ? Math.min(spec.low, Number.isFinite(lo) ? lo : spec.low)
+    : Math.max(spec.low, Number.isFinite(hi) ? hi : spec.low);
+}
+
+function zeroPercentOf(spec, lo, hi) {
+  if (!spec || !Number.isFinite(spec.low) || !Number.isFinite(spec.high)) {
+    return 0;
+  }
+  const far = throttleFarEnd(spec, lo, hi);
+  const span = spec.high - far;
+  if (!span) {
+    return 0;
+  }
+  return Math.max(0, Math.min(100, ((spec.low - far) / span) * 100));
+}
+
+/*
  * Map a raw axis onto -1..1. pos is the raw value that means +1 on the
  * channel, neg is -1. Legacy maps store `full` as (pos - center) instead.
  */
@@ -1308,7 +1375,7 @@ function calPrompt(c, mode) {
   }[c.step] || '';
 }
 
-function calHint(c, travelled, need, gp, idleThrottle = 0, moving = null, blocked = null) {
+function calHint(c, travelled, need, gp, idleThrottle = 0, moving = null, blocked = null, belowZero = null) {
   if (!gp) {
     return 'Radio disconnected. Plug it back in, joystick mode.';
   }
@@ -1402,6 +1469,15 @@ function calHint(c, travelled, need, gp, idleThrottle = 0, moving = null, blocke
       return `Moving ${moving}${rev ? ', reversed' : ''}.`
         + ' If the wrong stick moved on screen, press M.'
         + ` If it moved the wrong way, press R to reverse ${moving}.`;
+    }
+    /* The other half of the offer above: a throttle reading nothing with
+     * the stick a long way below where zero is. Said after the moving
+     * channel, so the reverse hint is not hidden by it, and in the same
+     * words, because it is the same button. See belowThrottleZero. */
+    if (belowZero) {
+      return `Throttle zero is set ${belowZero.percent} percent of the way up this stick, and the stick is below it,`
+        + ' so the bottom of its travel does nothing and hovering takes far more stick than it should.'
+        + ' If this is where your throttle stays when you let go, press T or Throttle zero is here.';
     }
     const keep = c.checkOnly
       ? 'Enter or Save mapping keeps the change. Escape leaves it as it was.'
@@ -1718,6 +1794,10 @@ export class InputManager {
      * noteStandardParked. */
     this.radioAsGamepad = false;
     this.stdPark = null;
+    /* A calibrated throttle whose stick rests below the zero the map gives
+     * it, so the bottom of its travel is idle. See noteThrottleBelowZero. */
+    this.throttleBelowZero = false;
+    this.belowZeroPark = null;
     /* The help screen's own watch, from the moment it opened: every axis's
      * rest and range. Null while the screen is not up. See stickCheckView. */
     this.stickCheck = null;
@@ -2433,6 +2513,55 @@ export class InputManager {
   }
 
   /*
+   * A CALIBRATED THROTTLE THAT RESTS BELOW ITS OWN ZERO. See
+   * belowThrottleZero for the ticket and the reproduction.
+   *
+   * noteStandardParked's question asked of a saved map: the throttle axis
+   * still for GUESS.PARK_MS and THROTTLE_SPRING or more below the zero the
+   * map gives it, which a sprung stick on its spring never is and a parked
+   * one waiting at the bottom always is. ONLY OUT OF FLIGHT, for that
+   * method's reason: in flight a thumb may hold a sprung stick against its
+   * stop for seconds. A gamepad pilot who does it on the title anyway is
+   * shown a row offering the check step, where the throttle can be watched
+   * before anything is kept, so the false reading costs a row.
+   *
+   * The verdict changes nothing that flies. It comes down when the stick is
+   * seen resting AT its zero for as long, because that is the spring the
+   * map assumed, and with a new pad or a new map.
+   */
+  noteThrottleBelowZero(gp, nowWall) {
+    if (this.flying) {
+      this.belowZeroPark = null;
+      return;
+    }
+    const spec = this.map && this.map.stored ? this.map.throttle : null;
+    if (!spec || !Number.isInteger(spec.axis) || spec.axis >= gp.axes.length) {
+      this.belowZeroPark = null;
+      return;
+    }
+    const v = gp.axes[spec.axis];
+    const below = belowThrottleZero(spec, v);
+    /* Below zero when the verdict is down, or back at zero when it is up:
+     * the one place that answers the question the other way. */
+    const telling = this.throttleBelowZero
+      ? Math.abs(below) <= CAL.NEAR_REST * 0.5
+      : below >= CAL.THROTTLE_SPRING;
+    if (!telling) {
+      this.belowZeroPark = null;
+      return;
+    }
+    const p = this.belowZeroPark;
+    if (!p || Math.abs(v - p.at) > GUESS.PARK_STILL) {
+      this.belowZeroPark = { at: v, since: nowWall };
+      return;
+    }
+    if (nowWall - p.since >= GUESS.PARK_MS) {
+      this.throttleBelowZero = !this.throttleBelowZero;
+      this.belowZeroPark = null;
+    }
+  }
+
+  /*
    * THE RESTART SWITCH, watched on every poll that reads a radio.
    *
    * A flip is the moment it goes from off to on. Only that moment counts, so
@@ -2857,13 +2986,44 @@ export class InputManager {
       guess: m.stored ? null : (m.guess || 'aetr'),
       buttons: gp.buttons ? gp.buttons.length : 0,
       raw: this.rawTravel(),
+      /*
+       * WHERE ZERO THROTTLE IS. bug-6f04ebea read "hoverpoint ~ at 70%" over
+       * a report whose throttle line said hover near 21.7 percent of stick,
+       * and nothing in it could say which was wrong, because the throttle's
+       * low and high were never sent. `at` is where zero sits on the stick,
+       * as a percentage of its travel from the bottom the flight has seen to
+       * full: 0 on a radio calibrated as asked, 50 on that ticket's. See
+       * throttleZeroReport.
+       */
+      throttleZero: this.throttleZeroReport(m.throttle),
       check: {
         dead: this.deadList,
         missing: this.missingChannels(gp),
         stray: this.strayAxes(),
         flownS: this.deadWatch ? Math.round(this.deadWatch.ms / 1000) : 0,
         asGamepad: this.radioAsGamepad,
+        belowZero: this.throttleBelowZero,
       },
+    };
+  }
+
+  /* The throttle's spec as the map holds it, rounded for a report, and
+   * where zero sits on the stick. The travel is the raw range the flight's
+   * watch has seen on that axis and nothing else: not a nominal -1 to 1,
+   * which would put zero halfway up a short throw radio calibrated
+   * perfectly. Before any flight `at` is 0 and low and high still say it.
+   * Null for a map with no throttle axis. */
+  throttleZeroReport(spec) {
+    if (!spec || !Number.isInteger(spec.axis) || !Number.isFinite(spec.low) || !Number.isFinite(spec.high)) {
+      return null;
+    }
+    const round = (v) => Math.round(v * 100) / 100;
+    const seen = this.deadWatch && this.deadWatch.axes[spec.axis];
+    return {
+      low: round(spec.low),
+      high: round(spec.high),
+      sprung: Boolean(spec.sprung),
+      at: Math.round(zeroPercentOf(spec, seen ? seen.lo : NaN, seen ? seen.hi : NaN)),
     };
   }
 
@@ -2985,6 +3145,8 @@ export class InputManager {
     this.forgetDeadChannels();
     this.radioAsGamepad = false;
     this.stdPark = null;
+    this.throttleBelowZero = false;
+    this.belowZeroPark = null;
   }
 
   seedPadRoster() {
@@ -3342,6 +3504,10 @@ export class InputManager {
       deadChannels: this.deadList,
       missingChannels: this.missingChannels(selected),
       radioAsGamepad: this.radioAsGamepad,
+      /* throttleBelowZero  the saved map's throttle rests below its zero,
+       *            so the bottom of the stick is idle. See
+       *            noteThrottleBelowZero. */
+      throttleBelowZero: this.throttleBelowZero && Boolean(this.map && this.map.stored),
       fourAxes: fourAxisPad(selected),
       axisCount: selected && selected.axes ? selected.axes.length : 0,
       /* restart    the restart switch for the pad in use, as the Settings
@@ -3702,8 +3868,24 @@ export class InputManager {
     if (!Number.isFinite(v) || Math.abs(spec.high - v) < CAL.THROTTLE_MIN_RANGE) {
       return false;
     }
+    /*
+     * DOWN AS WELL AS UP. The offer is also made with the stick below zero
+     * (see belowThrottleZero), and a zero moved down to the bottom of the
+     * travel is a parked throttle's, so it loses `sprung` and saves as the
+     * plain {axis, low, high} a radio calibrated as asked saves. A zero moved
+     * down but still well clear of the bottom is still a raised zero and
+     * keeps it. The bottom is the furthest the stick has been on that side
+     * since this screen opened, the live reading included.
+     */
+    const lowering = belowThrottleZero(spec, v) > 0;
     spec.low = v;
-    spec.sprung = true;
+    const far = throttleFarEnd(spec, c.min ? c.min[spec.axis] : v, c.max ? c.max[spec.axis] : v);
+    if (lowering && Math.abs(v - far) <= CAL.THROTTLE_SPRING) {
+      delete spec.sprung;
+    } else {
+      spec.sprung = true;
+    }
+    c.belowZeroMs = 0;
     return true;
   }
 
@@ -3735,10 +3917,13 @@ export class InputManager {
     this.yawParkSince = 0;
     /* The same goes for a dead channel, which was judged on the old axes,
      * and for a radio dressed as a gamepad, which the wizard has just read
-     * for what it is. */
+     * for what it is. A throttle below zero was a fact about the old map's
+     * zero, and this map has its own. */
     this.forgetDeadChannels();
     this.radioAsGamepad = false;
     this.stdPark = null;
+    this.throttleBelowZero = false;
+    this.belowZeroPark = null;
     /* Two outcomes, and the shell says which. See saveMap. */
     this.calResult = this.saveMap() ? 'saved' : 'saved-unstored';
     this.calibration = null;
@@ -4002,6 +4187,12 @@ export class InputManager {
      * showing the wizard's own preview and "which one is moving" is a
      * question the step itself is already answering. */
     const moving = c.step === 'confirm' ? movingChannel(channels) : null;
+    /* The stick held below zero long enough to mean it, and where zero is
+     * on it, for the hint. See belowThrottleZero. */
+    const thr = c.draft && c.draft.throttle;
+    const belowZero = c.step === 'confirm' && thr && (c.belowZeroMs || 0) >= CAL.BELOW_ZERO_MS
+      ? { percent: Math.round(zeroPercentOf(thr, c.min && c.min[thr.axis], c.max && c.max[thr.axis])) }
+      : null;
     return {
       step: c.step,
       phase: c.phase,
@@ -4019,8 +4210,11 @@ export class InputManager {
        * skipCalibrationSelect. */
       canSkip: c.step === SELECT_STEP,
       /* Only on the check step, and only when the throttle is reading high
-       * enough to fly the quad on its own. See zeroThrottleHere. */
-      canZeroThrottle: c.step === 'confirm' && channels.throttle > CAL.THROTTLE_IDLE,
+       * enough to fly the quad on its own, or when the stick is sitting
+       * below zero, where the bottom of its travel is idle. See
+       * zeroThrottleHere. */
+      canZeroThrottle: c.step === 'confirm' && (channels.throttle > CAL.THROTTLE_IDLE || Boolean(belowZero)),
+      belowZero,
       throttlePercent: Math.round(channels.throttle * 100),
       channels,
       axes,
@@ -4037,7 +4231,7 @@ export class InputManager {
       checkOnly: Boolean(c.checkOnly),
       title: calTitle(c),
       prompt: calPrompt(c, this.stickMode),
-      hint: calHint(c, travelled, need, gp, c.step === 'confirm' ? channels.throttle : 0, moving, blocked),
+      hint: calHint(c, travelled, need, gp, c.step === 'confirm' ? channels.throttle : 0, moving, blocked, belowZero),
     };
   }
 
@@ -4058,6 +4252,14 @@ export class InputManager {
     }
     if (c.step === 'sweep') {
       this.calSweep(c, axes, dtMs);
+      return;
+    }
+    /* The check step's only clock: how long the throttle stick has sat
+     * below the draft's zero. See belowThrottleZero and BELOW_ZERO_MS. */
+    if (c.step === 'confirm') {
+      const spec = c.draft && c.draft.throttle;
+      const v = spec && Number.isInteger(spec.axis) ? axes[spec.axis] : NaN;
+      c.belowZeroMs = belowThrottleZero(spec, v) >= CAL.THROTTLE_SPRING ? (c.belowZeroMs || 0) + dtMs : 0;
       return;
     }
     /* The menu switch identifies exactly like a flight channel: pick the
@@ -4675,6 +4877,7 @@ export class InputManager {
       this.noteButtonTravel(gp);
       this.noteYawParked(gp, nowWall);
       this.noteStandardParked(gp, nowWall);
+      this.noteThrottleBelowZero(gp, nowWall);
       this.noteRestartSwitch(gp);
       this.noteAutoResetSwitch(gp);
       this.noteWeapons(gp);

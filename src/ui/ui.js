@@ -3547,6 +3547,15 @@ function recordSentence(s, trackName) {
           : ` This run is on ${link}.`);
 }
 
+/* Where zero throttle sits on the stick, from the report's stick probe: the
+ * map report's throttleZero.at, a percentage, or 0 with no radio or no map.
+ * See throttleSummary in configs/rates.js. Exported for
+ * scripts/input-selftest.js. */
+export function stickZeroAt(stick) {
+  const z = stick && stick.map && stick.map.throttleZero;
+  return z && Number.isFinite(z.at) ? z.at : 0;
+}
+
 /*
  * THE RADIO DEAD END, SAID OUT LOUD AND MADE FIXABLE.
  *
@@ -3571,7 +3580,7 @@ function recordSentence(s, trackName) {
  * complaining about. A banner nobody can focus is a banner a radio pilot
  * cannot act on, which would be the same joke twice.
  */
-function padTroubleItem(info, platform = 'other') {
+export function padTroubleItem(info, platform = 'other') {
   if (!info || !info.count || info.using === 'Keyboard') {
     return null;
   }
@@ -3738,6 +3747,27 @@ function padTroubleItem(info, platform = 'other') {
       note: `${capital(channelList(dead))} did not move once in flight while your other sticks did.`
         + ' If you were moving it, the sim was not getting it. Stick help finds out whether that'
         + ` is the sim, the browser or the radio, and says what fixes it.${phone}`,
+    };
+  }
+  /*
+   * A CALIBRATION WITH ZERO THROTTLE PARTWAY UP A STICK THAT DOES NOT SPRING
+   * BACK. bug-6f04ebea: "drone feels like a stone and the hoverpoint is ~ at
+   * 70% throttle". The stick rests below the zero the map gives it, so the
+   * bottom of its travel is idle and hover is high on the stick. Decided out
+   * of flight by noteThrottleBelowZero in src/input/input.js. Last of the
+   * rows because every stick works; it opens the check step on its own,
+   * which offers to move zero down to the stick and shows the throttle
+   * before anything is kept.
+   */
+  if (info.calibrated && info.throttleBelowZero) {
+    return {
+      label: 'Your throttle rests below zero',
+      action: 'calibrate-check',
+      rowClass: 'row-warn',
+      note: 'Your calibration put zero throttle partway up the stick, and the stick sits below that'
+        + ' when you let go, so the bottom of its travel does nothing and hovering takes far more'
+        + ' stick than it should. Check sticks: leave the throttle all the way down, press'
+        + ' Throttle zero is here, then save.',
     };
   }
   return null;
@@ -8544,6 +8574,9 @@ export class Ui {
       /* The shell itself is what broke. A report with no fault field is
        * still worth more than no report at all. */
     }
+    /* Read once, before the object, because the throttle line needs where
+     * its zero is and `stick` below carries the rest. */
+    const stick = this.stickProbe ? this.stickProbe() : null;
     return {
       href,
       screen: this.screen,
@@ -8578,6 +8611,10 @@ export class Ui {
         clampWeight(s.weight, s.airframe),
         s.packVoltage,
         this.tuneCaps.kv ? effectiveTune(s).motorKv : MOTOR_KV_STOCK,
+        /* Where zero throttle is on the stick, so the hover above is not a
+         * percentage of the channel passed off as one of the stick. See
+         * throttleSummary and bug-6f04ebea. */
+        stickZeroAt(stick),
       ),
       /*
        * THE SLIDER'S POSITION, and it belongs in the report for the same
@@ -8613,7 +8650,7 @@ export class Ui {
        * derivative of the setpoint, is seeing an impulse train at frame
        * rate. That is twitchy, from code that did not change.
        */
-      stick: this.stickProbe ? this.stickProbe() : null,
+      stick,
       /*
        * WHAT THE FRAMES COST WHILE FLYING. bug-e82b8bb8 was a pilot saying
        * the lag made the track unflyable and a report saying 60 fps, read

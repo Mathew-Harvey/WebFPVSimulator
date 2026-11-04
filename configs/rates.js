@@ -621,12 +621,28 @@ export function ratesShort(r) {
  * Motor power is the same: it moves hover, so the report passes the pilot's
  * (a percent, 100 when the tuning mode is off) and the line agrees with the
  * keyboard's.
+ *
+ * AND AT THE PILOT'S OWN ZERO. Every figure above is a percentage of the
+ * throttle CHANNEL, which is the stick only when zero throttle is at the
+ * bottom of it. bug-6f04ebea's report said hover near 21.7 percent of stick
+ * beside a pilot saying 70, and both were right: the calibration had zero
+ * halfway up, so 21.7 percent of the channel was 60.9 percent of the stick.
+ * `zeroAt` is where zero sits on the stick, as src/input/input.js measures
+ * it for the report (throttleZeroReport), and when it is off the bottom the
+ * line says so and gives hover on the stick as well. Left out it is 0 and
+ * the line is what it always was.
  */
-export function throttleSummary(r, airframe = '5inch', weight = 100, cellV = 4.2, motorKv = 100) {
+export function throttleSummary(r, airframe = '5inch', weight = 100, cellV = 4.2, motorKv = 100, zeroAt = 0) {
   const p = normaliseRates(r);
   const hover = hoverStickPercent(p.throttleCap, airframe, weight, cellV, motorKv);
   const curve = p.thrExpo > 0 ? `, mid ${p.thrMid} expo ${p.thrExpo}` : ', no expo';
-  return `cap ${p.throttleCap}${curve}, hover near ${hover.toFixed(1)} percent of stick`;
+  const line = `cap ${p.throttleCap}${curve}, hover near ${hover.toFixed(1)} percent of stick`;
+  const z = Math.min(100, Math.max(0, Number(zeroAt) || 0));
+  if (z < 1) {
+    return line;
+  }
+  const onStick = z + (hover * (100 - z)) / 100;
+  return `${line} from zero, and zero is ${Math.round(z)} percent up this stick, so hover near ${onStick.toFixed(1)} percent of the stick`;
 }
 
 /*

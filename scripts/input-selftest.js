@@ -2697,6 +2697,186 @@ section('the full range step says which rest it is waiting for: bug-6afb51eb');
   check('throttle down: on to the throttle step', rig.view().step === 'throttle', rig.view().step);
 }
 
+/* ------------------------------------------------------------------------
+ * A throttle that stays where it is put, calibrated with zero halfway up.
+ * bug-6f04ebea, a DJI remote on Chrome for Windows, five axes and 24
+ * buttons, calibrated: "drone feels like a stone and the hoverpoint is ~ at
+ * 70% throttle. changes in the settings makes no difference". The pilot
+ * here centres the throttle at the first step, because it says "both sticks
+ * in the centre", and puts it back in the middle at its release, where the
+ * full range step has just taught them it goes. The wizard reads that as a
+ * spring and puts zero at the middle (noteThrottleSpring says it will).
+ * What is asserted is the way back, from the check step, from the menus
+ * and in the report, and that none of it touches a spring that is real.
+ * ---------------------------------------------------------------------- */
+const RC3 = 'HID Interface (Vendor: 2ca3 Product: 1021)';
+const RC3_LAY = {
+  roll: 0, pitch: 1, yaw: 3, thr: 2, thrRest: 0, thrReturn: 0,
+};
+/* The pilot's own way through, ending on the check step with the stick
+ * wherever `park` puts it. */
+function rc3Rig(park = -1) {
+  const rig = new Rig(makePad([-0.05, -0.05, 0, -0.05, 0], 24, RC3));
+  const drove = driveWizard(rig, RC3_LAY);
+  rig.ax(2, park);
+  rig.step();
+  return { rig, drove };
+}
+/* Out of flight with the hands off for `ms`, at the pad's own rate. */
+function idle(rig, ms) {
+  rig.im.flying = false;
+  rig.run(ms);
+}
+
+section('a throttle that stays put, zeroed halfway up by the wizard: the check step offers the bottom (bug-6f04ebea)');
+{
+  const { rig, drove } = rc3Rig(-1);
+  check('the wizard completes the way this pilot went through it', drove === true, String(drove));
+  const draft = rig.im.calibration.draft.throttle;
+  check('and its draft has zero at the middle, marked sprung: the reading the ticket flew on',
+    draft.low === 0 && draft.high === 1 && draft.sprung === true, JSON.stringify(draft));
+  let v = rig.view();
+  check('the stick at its bottom reads 0 percent', v.throttlePercent === 0, String(v.throttlePercent));
+  check('a stick only passing through the bottom does not flash the offer', v.canZeroThrottle === false);
+  rig.run(700);
+  v = rig.view();
+  check('left there, the check step offers to put zero where the stick is', v.canZeroThrottle === true);
+  check('and says where zero is now: halfway up', v.belowZero && v.belowZero.percent === 50, JSON.stringify(v.belowZero));
+  check('in words, with the key', /50 percent of the way up this stick/.test(v.hint) && /press T/.test(v.hint), v.hint);
+  check('which is taken', rig.im.zeroThrottleHere() === true);
+  const t = rig.im.calibration.draft.throttle;
+  check('zero is at the bottom and the spring is gone: the plain radio map',
+    t.low === -1 && t.high === 1 && !('sprung' in t), JSON.stringify(t));
+  rig.step();
+  v = rig.view();
+  check('the offer comes down with the stick still at the bottom', v.canZeroThrottle === false && v.belowZero === null);
+  rig.ax(2, 0); rig.step();
+  check('the middle of the stick is now half throttle', rig.view().throttlePercent === 50, String(rig.view().throttlePercent));
+  rig.ax(2, -1); rig.step();
+  check('and the save keeps it', rig.im.acceptCalibration() === true);
+  const s = rig.im.map.throttle;
+  check('saved as low -1, high 1, not sprung', s.low === -1 && s.high === 1 && !s.sprung, JSON.stringify(s));
+  rig.ax(2, -1); rig.step();
+  const bottom = rig.im.channels.throttle;
+  rig.ax(2, 0); rig.step();
+  const middle = rig.im.channels.throttle;
+  rig.ax(2, 1); rig.step();
+  check('flown: bottom 0, middle exactly 0.5, top exactly 1', bottom === 0 && middle === 0.5 && rig.im.channels.throttle === 1,
+    `${bottom} ${middle} ${rig.im.channels.throttle}`);
+}
+{
+  /* Zero moved down, but not to the bottom: still a raised zero, so the
+   * spring stays, which is what the 3D throttle reads it by. */
+  const { rig } = rc3Rig(-0.6);
+  rig.run(700);
+  check('a stick held 0.6 under zero, not at its bottom: the offer is made', rig.view().canZeroThrottle === true);
+  rig.im.zeroThrottleHere();
+  const t = rig.im.calibration.draft.throttle;
+  check('and zero moved there keeps sprung, because the bottom is still 0.4 below it',
+    t.low === -0.6 && t.sprung === true, JSON.stringify(t));
+}
+{
+  /* The controls. A real spring is never told it is below zero at rest. */
+  const rig = new Rig(makePad([0, 0, 0, 0], 4, 'Xbox, check step'));
+  driveWizard(rig, { roll: 0, pitch: 1, yaw: 3, thr: 2, thrRest: 0, thrReturn: 0 });
+  rig.run(1500);
+  check('a gamepad whose spring was detected, resting on the check step: no below zero offer',
+    rig.view().canZeroThrottle === false && rig.view().belowZero === null, JSON.stringify(rig.view().belowZero));
+  const radio = new Rig(makePad([0, 0, -1, 0], 4, 'TX16S, check step'));
+  driveWizard(radio, { roll: 0, pitch: 1, yaw: 3, thr: 2, thrRest: -1, thrReturn: -1 });
+  radio.run(1500);
+  check('a radio calibrated as asked, parked at the bottom on the check step: nothing to offer',
+    radio.view().canZeroThrottle === false && radio.view().belowZero === null);
+}
+
+section('the same map, saved and flown: the menus notice and the report says where zero is (bug-6f04ebea)');
+{
+  const { rig } = rc3Rig(0);
+  rig.im.acceptCalibration();
+  check('saved with zero at the middle, as the ticket flew', rig.im.map.throttle.low === 0 && rig.im.map.throttle.sprung === true,
+    JSON.stringify(rig.im.map.throttle));
+  /* A flight that uses the whole stick, so the watch has seen its bottom. */
+  rig.im.flying = true;
+  for (const v of [-1, 0.4, 1, 0.2, -1]) {
+    rig.ax(2, v); rig.run(200);
+  }
+  rig.ax(2, -1);
+  rig.run(6000);
+  check('in flight, parked at the bottom for six seconds: no verdict, because a thumb can hold a stick there',
+    rig.im.padSummary().throttleBelowZero === false, String(rig.im.padSummary().throttleBelowZero));
+  idle(rig, 3900);
+  check('out of flight, 3.9 s at the bottom: not yet', rig.im.padSummary().throttleBelowZero === false);
+  idle(rig, 300);
+  check('4.2 s: the throttle rests below zero', rig.im.padSummary().throttleBelowZero === true);
+  const rep = rig.im.mapReport();
+  check('the report carries the throttle spec', rep.throttleZero && rep.throttleZero.low === 0 && rep.throttleZero.high === 1
+    && rep.throttleZero.sprung === true, JSON.stringify(rep.throttleZero));
+  check('and where zero sits on the stick the flight used: 50 percent', rep.throttleZero && rep.throttleZero.at === 50,
+    JSON.stringify(rep.throttleZero));
+  check('and the verdict, in the checks', rep.check && rep.check.belowZero === true, JSON.stringify(rep.check));
+
+  if (!globalThis.window.matchMedia) {
+    globalThis.window.matchMedia = () => ({ matches: false });
+  }
+  const ui = await import('../src/ui/ui.js');
+  const { throttleSummary } = await import('../configs/rates.js');
+  const row = typeof ui.padTroubleItem === 'function' ? ui.padTroubleItem(rig.im.padSummary(), 'windows') : null;
+  check('the title and the pause menu get a row for it', row && row.label === 'Your throttle rests below zero', JSON.stringify(row));
+  check('and it opens the check step on its own, against the saved map', row && row.action === 'calibrate-check', row && row.action);
+  const at = typeof ui.stickZeroAt === 'function' ? ui.stickZeroAt({ map: rep }) : 0;
+  const hover = hoverStickPercent(100, '5inch', 60);
+  const line = throttleSummary({}, '5inch', 60, 4.2, 100, at);
+  const onStick = (50 + hover / 2).toFixed(1);
+  check(`the report's throttle line says hover is ${onStick} percent of this stick, not ${hover.toFixed(1)}`,
+    line.includes(`hover near ${hover.toFixed(1)} percent of stick from zero`) && line.includes('zero is 50 percent up this stick')
+      && line.endsWith(`hover near ${onStick} percent of the stick`), line);
+  check('and a radio with zero at the bottom keeps the line it always had',
+    throttleSummary({}, '5inch', 60, 4.2, 100, 0) === throttleSummary({}, '5inch', 60, 4.2, 100), throttleSummary({}, '5inch', 60, 4.2, 100, 0));
+
+  /* Both directions, as every latch here is. Resting at zero is the spring
+   * the map assumed. */
+  rig.ax(2, 0);
+  idle(rig, 4200);
+  check('the stick seen resting at its zero for as long: the verdict comes down', rig.im.padSummary().throttleBelowZero === false);
+  rig.ax(2, -1);
+  idle(rig, 4200);
+  check('and back at the bottom it goes up again', rig.im.padSummary().throttleBelowZero === true);
+
+  /* The row's door: Check sticks, with the stick where it rests. */
+  check('Check sticks opens', rig.im.startCalibrationCheck() === true);
+  rig.run(700);
+  const v = rig.view();
+  check('on the saved map, with the stick at its bottom, it offers zero there', v.canZeroThrottle === true
+    && v.belowZero && v.belowZero.percent === 50, JSON.stringify(v.belowZero));
+  check('taken', rig.im.zeroThrottleHere() === true);
+  check('and saved', rig.im.acceptCalibration() === true);
+  check('the saved map is the plain radio map', rig.im.map.throttle.low === -1 && !rig.im.map.throttle.sprung,
+    JSON.stringify(rig.im.map.throttle));
+  check('the new map has no verdict', rig.im.padSummary().throttleBelowZero === false);
+  idle(rig, 6000);
+  check('and earns none parked at the bottom, where its zero now is', rig.im.padSummary().throttleBelowZero === false);
+  check('so the row is gone', typeof ui.padTroubleItem === 'function' && ui.padTroubleItem(rig.im.padSummary(), 'windows') === null);
+}
+{
+  /* The controls, out of flight. */
+  const radio = new Rig(makePad([0, 0, -1, 0], 4, 'TX16S, menus'));
+  driveWizard(radio, { roll: 0, pitch: 1, yaw: 3, thr: 2, thrRest: -1, thrReturn: -1 });
+  radio.im.acceptCalibration();
+  radio.ax(2, -1);
+  idle(radio, 6000);
+  check('a radio calibrated as asked, parked at the bottom on the title: no verdict', radio.im.padSummary().throttleBelowZero === false);
+  const pad = new Rig(makePad([0, 0, 0, 0], 4, 'Xbox, menus'));
+  driveWizard(pad, { roll: 0, pitch: 1, yaw: 3, thr: 2, thrRest: 0, thrReturn: 0 });
+  pad.im.acceptCalibration();
+  pad.ax(2, 0);
+  idle(pad, 6000);
+  check('a gamepad calibrated with its spring, resting at the middle: no verdict', pad.im.padSummary().throttleBelowZero === false);
+  const guess = new Rig(makePad([0, 0, 0, 0, 0], 24, `${RC3}, guess`));
+  guess.ax(2, -1);
+  idle(guess, 6000);
+  check('an uncalibrated pad is not asked: the guess has rows of its own', guess.im.padSummary().throttleBelowZero === false);
+}
+
 console.log(failed ?`\n${failed} failed, ${passed} passed` : `\nall ${passed} passed`);
 for (const f of fails) {
   console.log(`  FAIL ${f}`);

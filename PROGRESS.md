@@ -74437,3 +74437,5 @@ Mat at 03:28Z on 2026-11-04: "mate, you can do better than this. try again, work
 - Lines: the spray room's three moved with the door and the booth. `node scripts/warehouse-check.js` all passed; lint:partners, lint:nouns, lint:preload, check:props passed; career tests pass file by file; attract-check passes for the warehouse.
 - Latency: draw calls unchanged (High 31 to 42, Low 27 to 38, the same 18 colours). Triangles up: High 94.7k to 96.2k over the 25 views against main's 92.0k to 93.3k, about 2.8k or 3 percent; Low 70.7k to 72.0k against about 69.6k to 70.7k, about 1.2k. Needs Mat's word before main.
 - What went wrong: the booth 0.15 m off the partition was a slot; full bay cartons met across an upright's 0.1 m, a slot, until they reached into the upright; two cabinet towers 0.35 m off a carton. All fixed before the check passed.
+
+Approval, 2026-11-04 04:01Z: Mat, after the round 5 report stated the cost (draw calls flat, about 2.8k triangles more on High and 1.2k on Low), wrote "push to main". That covers rounds 4 and 5 of Thomas More's Shop (sim PR 229) and the board's thumbnail (board PR 72, pushed to main first, 9877428). Not flown.

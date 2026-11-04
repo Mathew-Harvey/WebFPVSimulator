@@ -880,6 +880,15 @@ function workshop(H) {
           for (let x = b.a0 + 0.35; x < b.a1 - 0.4; x += 0.8) {
             put('whWhite', x, x + 0.35, 0.0, 0.4, b.h, b.h + 0.42, { name: 'pail' });
           }
+        } else if (b.i === 1) {
+          /* The wall of navy parts bins on shelving (the photos facing the
+           * south racking): one block, the rows of bins painted on it. */
+          put('whDeck', b.a0 - 0.3, b.a1 + 0.3, 0.0, 0.55, b.h, b.h + 1.72, { name: 'bins' });
+          for (let z = 0.3; z < 1.5; z += 0.3) {
+            put('whBlack', b.a0 - 0.3, b.a1 + 0.3, 0.55, 0.562, b.h + z, b.h + z + 0.03, { name: 'bin shelf', solid: false, cast: false });
+          }
+        } else if (b.i === 4) {
+          put('whSteel', b.a0 + 0.5, b.a0 + 1.4, 0.0, 0.6, b.h, b.h + 1.9, { name: 'cabinet' });
         }
         return;
       }
@@ -1005,6 +1014,83 @@ function workshop(H) {
   H.face('whSteel', 'x', DEP, -1, 28.6, 29.3, 4.3, 5.0);
   H.face('whSteel', 'x', DEP, -1, 30.1, 30.5, 3.7, 4.2);
   H.face('whSteel', 'x', DEP, -1, 24.2, PX, 3.6, 3.65);
+}
+
+/*
+ * THE WORKSHOP'S CLUTTER, the second pass of 4 November 2026: every frame
+ * of the workshop shows it packed, rolling benches and carts in rows down
+ * its middle, white carcasses and shrink wrapped panels on pallets, panel
+ * carts, stand fans, a blue step ladder and a red hand truck, and the
+ * racking by the grey door (frames 8.11.19, 8.12.45, 8.13.24, 8.13.32).
+ * Kept clear: the start, the low line down x 24.3, the line along the
+ * columns at y 34.2 below 1.4 m, the cross aisle at y 21.3 and the lane to
+ * the office's side door at y 1.8.
+ */
+function clutter(H) {
+  const f = FLOOR0;
+  const r = seededRandom(7107);
+  /* A rolling bench: a board top over steel legs. */
+  const roller = (x0, y0, x1, y1, h = 0.88) => {
+    H.table('whSteel', x0, y0, x1, y1, h, { name: 'cart', topM: 'whBoard', top: 0.06, leg: 0.06 });
+  };
+  /* A white carcass, or a stack of them, on a pallet. */
+  const carcass = (x0, y0, x1, y1, h) => {
+    H.box('whCrateDark', x0, y0, f, x1, y1, f + 0.15, { name: 'pallet' });
+    H.box('whWhite', x0 + 0.05, y0 + 0.05, f + 0.15, x1 - 0.05, y1 - 0.05, f + h, { name: 'carcass' });
+  };
+  /* A stand fan: a pole on a foot and its round head as a box. */
+  const fan = (x, y) => {
+    H.box('whSteel', x - 0.2, y - 0.2, f, x + 0.2, y + 0.2, f + 0.05, { name: 'fan foot' });
+    H.box('whSteel', x - 0.03, y - 0.03, f + 0.05, x + 0.03, y + 0.03, f + 1.2, { name: 'fan pole' });
+    H.box('whSteel', x - 0.3, y - 0.08, f + 1.2, x + 0.3, y + 0.08, f + 1.8, { name: 'fan head' });
+  };
+  /* The south west of the workshop (frame 8.11.19's left half). */
+  roller(15.6, 4.0, 17.8, 5.1);
+  roller(12.6, 18.4, 13.5, 19.7);
+  H.bench(15.8, 16.4, 17.6, 18.8, { topM: 'whBoard' });
+  carcass(12.6, 11.6, 13.6, 13.2, 1.2);
+  /* Down the middle, west of the low line. */
+  H.bench(19.0, 24.6, 22.6, 26.2, { topM: 'whBoard' });
+  H.box('whWhite', 19.4, 24.9, f + 0.92, 20.4, 25.6, f + 1.2, { name: 'box' });
+  roller(21.6, 15.6, 23.0, 16.6);
+  roller(19.4, 39.8, 21.6, 40.8);
+  carcass(21.2, 50.6, 23.3, 51.6, 1.0);
+  /* The blue step ladder open on the slab, and the red hand truck. */
+  H.box('whRackTeal', 19.2, 11.0, f, 19.27, 11.07, f + 1.8, { name: 'ladder' });
+  H.box('whRackTeal', 19.73, 11.0, f, 19.8, 11.07, f + 1.8, { name: 'ladder' });
+  H.box('whRackTeal', 19.2, 11.73, f, 19.27, 11.8, f + 1.6, { name: 'ladder' });
+  H.box('whRackTeal', 19.73, 11.73, f, 19.8, 11.8, f + 1.6, { name: 'ladder' });
+  H.box('whRackTeal', 19.2, 11.0, f + 1.74, 19.8, 11.8, f + 1.8, { name: 'ladder' });
+  H.box('whRed', 22.0, 27.6, f, 22.6, 27.9, f + 0.08, { name: 'hand truck' });
+  H.box('whRed', 22.0, 27.9, f, 22.06, 27.96, f + 1.2, { name: 'hand truck' });
+  H.box('whRed', 22.54, 27.9, f, 22.6, 27.96, f + 1.2, { name: 'hand truck' });
+  /* East of the low line: the shrink wrapped stacks of white panels the
+   * start looks at, rolling benches, carcasses, a panel cart. */
+  for (const [x0, x1, h] of [[25.8, 26.9, 1.8], [26.9, 28.0, 1.65]]) {
+    H.box('whCrateDark', x0, 12.0, f, x1, 13.2, f + 0.15, { name: 'pallet' });
+    H.box('whWhite', x0, 12.05, f + 0.15, x1, 13.15, f + h, { name: 'wrapped panels' });
+    H.paint('whConcrete', x0 + 0.05, 11.988, f + 0.4, x1 - 0.05, 12.0, f + h - 0.2);
+  }
+  roller(26.0, 4.6, 28.6, 5.8);
+  roller(29.2, 13.4, 30.4, 15.6);
+  roller(26.2, 28.6, 28.6, 29.6);
+  carcass(29.0, 21.6, 30.4, 23.2, 1.1);
+  carcass(25.8, 48.6, 27.4, 49.6, 0.9);
+  /* The panel cart: a dolly with sheets stood on edge in it. */
+  H.box('whBoard', 26.0, 40.6, f, 27.8, 41.4, f + 0.2, { name: 'dolly' });
+  H.box(r.pick(['whBoard', 'whWhite']), 26.1, 40.85, f + 0.2, 27.7, 41.15, f + 1.6, { name: 'sheets' });
+  fan(23.0, 19.2);
+  fan(26.4, 33.0);
+  /* The racking north of the grey door on the partition's cream face,
+   * orange uprights, teal beams, pallets of cartons on the beams (frame
+   * 8.11.19's right half). */
+  rack(H, {
+    axis: 'y', a0: 6.4, a1: 11.1, d0: 30.85, d1: PX, upright: 'whRackOrange', beam: 'whRackTeal', levels: [1.6, 3.1], top: 3.6,
+    load: (put, k, b) => {
+      const h = k < 0 ? r.range(0.6, 1.2) : r.range(0.5, 0.9);
+      put(k < 0 ? 'whWhite' : 'whCrate', b.a0 - 0.2, b.a1 + 0.2, 30.95, 31.95, b.h, b.h + h, { name: 'carton' });
+    },
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -1265,6 +1351,7 @@ export function warehouseLayout() {
   crates(H);
   office(H);
   workshop(H);
+  clutter(H);
   partition(H);
   sprayRoom(H);
   machineRoom(H);

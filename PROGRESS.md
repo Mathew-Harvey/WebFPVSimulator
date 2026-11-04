@@ -74351,3 +74351,13 @@ The owner, 2026-11-03 23:45Z: "Can we review TCmores workshop map, review the OG
 **Checks**: `check:warehouse` all passed (lines, gaps, slots, lift off twice bit identical); `lint:partners` 120 passed; `lint:nouns` pass; `lint:preload` up to date; `check:props` all passed; `node scripts/attract-check.js warehouse` nothing flown through. The career tests (`node --test` on each file in `tests/career/`) all passed. Not run: `npm run verify`, nothing in physics, the plant, the ABI or the build changed. Not flown. Comparisons (Thomas's frame or the phone photo, then main, then this branch): `/mnt/project-files/tcmore-warehouse/shots-v3/`.
 
 **What went wrong**: the first cut added 7k triangles (8 percent) before the drywall was redrawn; the panel rack's sheets and the tool chest first left slots the gap rule refuses; the barani corner first carried the stripe the frame does not show.
+
+### 2026-11-04: Thomas More's Shop, round 2: the workshop furnished the way the frames show it (branch)
+
+Mat's ask of 00:43Z: "match the photos exactly and keep iterating until there is not difference, both with furniture and layout, all gaps must be flyable". Shot the same 25 viewpoints again and set each beside its frame or photo. The building now reads right; the largest remaining difference was that the real workshop is packed and ours was bare.
+
+- New `clutter(H)` in `src/maps/warehouse/warehouse.js`: rolling benches down the middle, white carcasses on pallets, two shrink wrapped panel stacks facing the start, a panel cart, two stand fans, the blue step ladder and the red hand truck, and the orange and teal racking north of the grey door on the partition's cream face (frames 8.11.19, 8.12.45, 8.13.24, 8.13.32). Kept clear: the start, the low line down x 24.3, the column line at y 34.2 below 1.4 m, the cross aisle and the office side door lane.
+- The south teal racking gains the wall of navy parts bins (photos 0144 to 0150) and a grey cabinet.
+- Latency: draw calls flat (High 31 to 42, Low 27 to 38, the same colours). Triangles up about 1.3k on High (91.9k to 93.1k against main's 90.2k to 91.8k) and about 1.1k on Low (69.4k to 70.5k against 68.0k to 69.4k), measured over the same 25 views headless. A rise, so it needs Mat's own word before main.
+- Checks: `node scripts/warehouse-check.js` all passed (lines, gaps, slots, module); lint:partners, lint:nouns, lint:preload, check:props passed; career tests pass file by file. Thumbnail regenerated.
+- What went wrong: the first cut made eight slots (cart shelves 0.15 m off the slab, bins and cartons a hand apart across uprights); the shelves went and the bins and cartons now meet across the uprights.

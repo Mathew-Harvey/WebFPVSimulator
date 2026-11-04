@@ -25,7 +25,7 @@
  *                 door of the ground floor's loop, up the stairs, into every
  *                 room upstairs, out of the windows that are openings, into
  *                 the garage, under the pergola and through its rafters,
- *                 through the porch and the swings
+ *                 through the porch and the pavilion
  *   4. gaps       every named gap's window clear of every solid by the
  *                 craft's radius
  *   5. slots      the gap rule (GAP_MIN in src/props/parts.js) inside the
@@ -418,12 +418,10 @@ const LINES = [
   ['out through the kitchen window', [[12.1, 7.2, 1.75], [12.1, 10.5, 1.75]]],
   ['under the pergola', [[1.0, 12.0, 2.2], [11.0, 12.0, 2.2]]],
   ['down between two of the pergola rafters', [[5.5, 10.0, 5.0], [5.5, 10.0, 2.6]]],
-  ['through the swings', [[28.25, 16.0, 1.5], [28.25, 22.0, 1.5]]],
-  /* Under the slide off the swing set's tower, across the chute: low down
-   * the slope from the lawn on its east past the A frame's leg, and high
-   * by the tower (a player's report, 2026-10-23). */
-  ['under the slide, low', [[33.3, 20.2, 0.45], [29.0, 20.2, 0.45]]],
-  ['under the slide, by the tower', [[33.0, 19.75, 0.8], [30.9, 19.75, 0.8]]],
+  ['into the pavilion through its open side', [[17.0, 13.5, 1.6], [17.0, 7.8, 1.6]]],
+  ['out of the pavilion east over the bar', [[19.0, 8.0, 1.8], [24.5, 8.0, 1.8]]],
+  ['along the back of the house into the pavilion', [[10.0, 9.0, 1.4], [18.0, 9.0, 1.4]]],
+  ['down the lawn between the pavilion and the tall fence', [[25.0, 7.0, 1.2], [25.0, 30.5, 1.2]]],
   ['in the basement door and down the stair to its foot, into the lounge', [[5.2, 5.8, 1.2], [5.2, 4.6, 1.2], [5.2, 4.0, 1.05], [5.2, 1.3, -0.9], [5.2, 0.62, -1.35], [3.0, 0.62, -1.35]]],
   ['off the stair over the half wall into the lounge', [[5.2, 1.6, -0.6], [3.4, 1.6, -0.6]]],
   ['from the lounge round the stair head to the red chair', [[3.3, 2.1, -1.2], [4.2, 2.3, -1.2], [4.2, 4.5, -1.2], [5.8, 4.5, -1.2], [5.8, 6.8, -1.2], [5.0, 7.0, -1.2]]],
@@ -594,7 +592,10 @@ const mainTop = (px, py) => {
 };
 const garageTop = (px, py) => Math.min(frontTop(py), 2.946 + PITCH * (5.75 - py));
 const brickTop = (px) => 5.45 + PITCH * Math.min(px + 0.35, 4.95 - px);
-const pavilionTop = (px) => 2.75 + PITCH * Math.min(px - 14.58, 21.42 - px);
+/* The pavilion's hipped roof in the corner of the house and the garage,
+ * its eave at 2.9 from the house's wall, the garage's eave and its two
+ * open sides' edges. */
+const pavilionTop = (px, py) => 2.9 + (5 / 12) * Math.min(px - 14, 23.1 - px, py - 5.75, 10.5 - py);
 
 /* Under each gable's rake overhang, a point this far under the slab's
  * underside, real metres, is air. */
@@ -613,9 +614,7 @@ function roofsBlock(placed, near) {
     ['the dormer over the front room', 9.6, 13.4, 0.2, 2.75, mainTop],
     ['the brick block\'s roof', -0.3, 4.55, -1.9, 2.5, brickTop],
     ['the garage roof', 14.2, 23.6, -1.9, 5.7, garageTop],
-    /* The pavilion turned round on 2026-10-20, its open side to the back
-     * fence: its roof is the same span mirrored about the pavilion's middle. */
-    ['the pavilion\'s roof', 14.65, 21.35, 9.8, 15.3, pavilionTop],
+    ['the pavilion\'s roof', 14.05, 23.05, 5.8, 10.45, pavilionTop],
   ];
   for (const [name, x0, x1, y0, y1, top] of spans) {
     let worst = 0;

@@ -71,7 +71,7 @@ function rows() {
     across(OPENINGS.bay, 'BAY WINDOW', 500),
     across(OPENINGS.kitchenWindow, 'KITCHEN WINDOW', 500),
     across(OPENINGS.kidsWindow, 'KIDS ROOM WINDOW', 500),
-    across(OPENINGS.swings, 'SWING SET', 250),
+    across(OPENINGS.pavilion, 'PAVILION', 250),
     across(OPENINGS.tallWindow, 'TALL WINDOW', 1000),
     across(OPENINGS.basementDoor, 'BASEMENT DOOR', 250),
   ];

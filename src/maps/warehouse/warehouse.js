@@ -1247,6 +1247,13 @@ function sprayRoom(H) {
   H.face('whCrateDark', 'y', C, 1, 6.7, 7.4, 1.2, 2.3);
   H.face('whWhite', 'y', C + 0.012, 1, 6.85, 7.25, 1.4, 1.5);
   H.face('whWhite', 'y', C, 1, 8.2, 8.5, 2.2, 2.5);
+  /* The shelves over the desk, full of tins and jars (frame 8.15.09): one
+   * block, its shelf lines and the rows of tins painted on its face. */
+  H.box('whCrateDark', W, 7.5, f + 1.35, W + 0.3, 9.4, f + 2.45, { name: 'shelves' });
+  for (const [h, m] of [[1.4, 'whWhite'], [1.78, 'whYellow'], [2.16, 'whRed']]) {
+    H.paint('whBoard', W + 0.3, 7.5, f + h + 0.3, W + 0.312, 9.4, f + h + 0.34);
+    H.paint(m, W + 0.3, 7.6, f + h, W + 0.312, 9.3, f + h + 0.22);
+  }
   H.box('whWhite', W, 10.0, f, W + 0.6, 17.0, f + 0.9, { name: 'counter' });
   H.box('whWhite', W, 10.0, f + 1.6, W + 0.35, 17.0, f + 2.3, { name: 'wall cabinet' });
   for (let y = 10.7; y < 17; y += 0.7) {
@@ -1335,6 +1342,10 @@ function machineRoom(H) {
   /* Two sliding table saws across the room, the first just inside the
    * doorway, pallets of cut parts and rolling benches between them. */
   slider(H, 35.4, 46.8);
+  /* Flat packed cartons stacked against the north wall beside the second
+   * collector (the photo looking into the room from its doorway). */
+  H.box('whCrate', 44.8, 54.6, f, 46.8, DEP, f + 1.4, { name: 'cartons' });
+  H.paint('whCrateDark', 44.8, 54.588, f + 0.7, 46.8, 54.6, f + 0.74);
   slider(H, 42.0, 40.2);
   H.table('whCrateDark', 38.0, 36.0, 40.4, 37.2, 0.85, { name: 'bench', topM: 'whBoard' });
   H.table('whCrateDark', 44.6, 49.0, 47.0, 50.2, 0.85, { name: 'bench', topM: 'whBoard' });

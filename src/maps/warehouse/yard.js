@@ -62,7 +62,7 @@ function rows() {
     ['startPads', pad.x, pad.y, NORTH, { pads: 1, spacing: 1.5, padSize: 0.9 }, { z: S * SPAWN.h }],
     across(OPENINGS.woodDoor, 'THE WOOD DOOR', 100),
     across(OPENINGS.backDoor, 'BACK DOOR', 100),
-    across(OPENINGS.frontOffice, 'FRONT OFFICE', 250),
+    across(OPENINGS.frontOffice, 'OFFICE SIDE DOOR', 250),
     across(OPENINGS.frenchDoor, 'FRENCH DOOR', 250),
     across(OPENINGS.slidingDoor, 'SLIDING DOOR', 250),
     across(OPENINGS.officeWindow, 'OFFICE WINDOW', 500),

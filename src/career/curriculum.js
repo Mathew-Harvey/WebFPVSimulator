@@ -1825,10 +1825,10 @@ export const CHAPTERS = [
         camera: 'fpv',
         world: place('warehouse'),
         briefing: {
-          goal: 'Down the crate aisle of Thomas More\'s Shop, in through the white office\'s French door and out through its window.',
+          goal: 'To the foot of the crate aisle of Thomas More\'s Shop, in through the white office\'s French door and out through its window.',
           why: 'A real building is a track nobody drew. The doors are where they are, and the line is the one you find between the crates.',
           steps: [
-            'North up the crate aisle from the slab, low and steady.',
+            'West from the slab to the foot of the crate aisle, low and steady.',
             'Into the white office through the French door.',
             'Turn round inside and out through the window beside it.',
           ],

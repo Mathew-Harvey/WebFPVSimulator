@@ -314,21 +314,24 @@ async function placedBlock(L) {
 /* Each line is plan points [px, py, h], real metres, flown straight from
  * one to the next. */
 const LINES = [
-  ['up the crate aisle and in at the office\'s French door', [[8.2, 6.5, 1.6], [8.2, 46.0, 1.6], [6.4, 48.5, 1.6], [6.4, 53.5, 1.6]]],
-  ['out through the office window over the tool chest', [[8.3, 53.0, 1.55], [8.3, 47.5, 1.55]]],
-  ['out the wood door in the north wall', [[2.8, 48.0, 1.2], [2.8, 60.0, 1.2]]],
-  ['down the dock lane past the shut doors', [[2.6, 47.0, 2.0], [2.6, 9.0, 2.0]]],
-  ['from the dock lane through the racks and crates to the workshop', [[2.6, 21.3, 1.6], [24.0, 21.3, 1.6]]],
+  ['up the crate aisle and in at the office\'s French door', [[8.2, 46.0, 1.6], [8.2, 9.0, 1.6], [9.2, 7.0, 1.6], [9.2, 2.5, 1.6]]],
+  ['out through the office window over the tool chest', [[6.9, 3.0, 1.55], [6.9, 8.0, 1.55]]],
+  ['out the wood door in the south wall', [[13.0, 8.0, 1.2], [13.0, -4.0, 1.2]]],
+  ['down the dock lane past the shut doors', [[1.5, 49.4, 2.0], [17.5, 49.4, 2.0]]],
+  ['up the crate aisle to the forklift at the middle door', [[8.2, 9.0, 2.0], [8.2, 48.5, 2.0], [6.6, 52.0, 2.0], [6.6, 54.6, 2.0]]],
+  ['down the lane between the west wall crates and the racking', [[4.1, 46.0, 1.8], [4.1, 7.0, 1.8]]],
+  ['from the west wall through the racks and crates to the workshop', [[1.5, 21.3, 1.6], [24.0, 21.3, 1.6]]],
   ['over the crates, under the lights', [[14.5, 7.0, 4.9], [14.5, 48.0, 4.9]]],
   ['through the barani doorway into the machine room', [[26.0, 53.4, 1.8], [40.0, 53.4, 1.8]]],
   ['back out by the barani doorway and down the workshop', [[40.0, 53.4, 2.4], [28.0, 53.4, 2.4], [28.0, 30.0, 2.4]]],
-  ['in the sliding door and across the spray room to the booth', [[26.0, 23.8, 1.5], [41.0, 23.8, 1.5], [43.0, 23.8, 1.5]]],
-  ['under the booth\'s hood between the sawhorses', [[38.0, 22.5, 1.3], [43.0, 22.5, 1.3]]],
+  ['down the machine room past the saws', [[33.4, 52.0, 1.6], [33.4, 33.0, 1.6], [48.0, 35.0, 1.6], [48.0, 52.5, 1.6]]],
+  ['in the sliding door and across the spray room to the booth', [[26.0, 23.8, 1.5], [39.5, 23.8, 1.5], [39.5, 27.0, 1.3]]],
+  ['under the booth\'s hood between the sawhorses', [[39.5, 23.0, 1.3], [39.5, 27.6, 1.3]]],
   ['out of the spray room by the paint shop door', [[38.0, 3.3, 1.4], [26.0, 3.3, 1.4]]],
   ['across the workshop between the columns', [[19.0, 34.2, 1.6], [30.0, 34.2, 1.6]]],
   ['under the big table', [[22.2, 10.5, 0.45], [22.2, 14.5, 0.45]]],
   ['out the back door', [[23.4, 48.0, 1.2], [23.4, 60.0, 1.2]]],
-  ['into the front office', [[21.0, 1.8, 1.4], [14.0, 1.8, 1.4]]],
+  ['into the office by its side door', [[16.0, 1.8, 1.4], [8.5, 1.8, 1.4]]],
   ['down the workshop low', [[24.3, 52.0, 0.8], [24.3, 4.0, 0.8]]],
 ];
 

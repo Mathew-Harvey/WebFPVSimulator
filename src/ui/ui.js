@@ -19759,9 +19759,10 @@ export class Ui {
     const how = {
       calibrated: 'read through your calibration',
       standard: 'read as a standard gamepad',
-    }[view.map] || (view.guess === 'firefox'
-      ? 'read the way Firefox lays out a radio'
-      : 'read by the built in guess of a radio\'s channel order');
+    }[view.map] || ({
+      firefox: 'read the way Firefox lays out a radio',
+      android: 'read the way Chrome on Android lays out a radio',
+    }[view.guess] || 'read by the built in guess of a radio\'s channel order');
     Ui.text(this.stickPad, view.pad
       ? `${view.pad}: ${view.axisCount} ${view.axisCount === 1 ? 'axis' : 'axes'}, ${how}.`
       : 'No radio or gamepad.');

@@ -74330,6 +74330,54 @@ The owner, 14:21Z: "Make it so I can race night or day on any 5 inch track". Set
 
 The owner, 14:43Z: "Push to main". Covers PR 226, the Race time row. Main was fetched first and had not moved past this branch's base (8584490a), so it is a fast forward. Not flown.
 
+## 2026-11-04: Android Chrome and yaw, the newer layout gets its own guess
+
+Mat, 2026-11-03: "Getting comments that android doesn't pass yaw through to the chrome based browser sometimes, can we
+fix this from our end?"
+
+### What was found
+
+- Chrome's old fallback for a pad it does not know (four axes, the rest dropped) is unchanged, and no page can bring a
+  dropped axis back. The Stick help recipe (the missing stick on channels 5 and 6) stays for it.
+- Chromium's current `GamepadMappings.java` (read 2026-11-03 from the chromium/chromium mirror's main branch) has the
+  newer `UnknownGamepadMappings` path, and `device/gamepad/public/cpp/gamepad_features.cc` has
+  `kAndroidUnknownGamepadExtraAxes` as `FEATURE_ENABLED_BY_DEFAULT`. Which stable release first ships it on was not
+  found (the googlesource log answered 503). The DJI ticket of 2026-10-06 on Chrome 154 still showed four axes.
+- That path keeps every axis, by rule rather than by the order the phone lists them: X, Y, Rx (preferred over Z), Ry
+  (preferred over Rz), then Z, Rz, then the rest. For an EdgeTX or OpenTX radio in AETR order that is aileron,
+  elevator, rudder, channel 5, throttle, channel 6: Firefox's table to the slot. The AETR guess reads it as throttle on
+  the yaw stick and yaw on channel 5, which is the arm switch on most models. So a phone that has the new Chrome still
+  "does not pass yaw", while the yaw is right there on axis 2. That is the likeliest reading of "sometimes".
+
+### What changed
+
+- `src/input/input.js`: `androidChromeHost`, `androidExtraAxesPad`, `androidGuessMap` and a new guess key `android`.
+  Chrome on Android (not Firefox), a pad with no mapping and five or more axes, no stored map: flies roll 0, pitch 1,
+  yaw 2, throttle 4. Four axes keeps the AETR guess. A calibrated map always wins. The guess gets every check the AETR
+  guess gets (parked throttle, no yaw, throttle as yaw), so a radio wired another way is still told to calibrate.
+- `src/ui/ui.js`: Stick help names the Android guess.
+- `src/ui/stickhelp.js`: the Android paragraph now says to update Chrome or try Chrome Beta first, before the recipe.
+- `scripts/input-selftest.js`: a section for the layout (eight checks) and one for the copy's order.
+
+Latency: no change. The platform is read once in the constructor; the guess is chosen in `guessKey`, which already
+ran every poll, and adds one comparison there. `readGamepad` reads the same number of axes per poll.
+
+Not flown on a phone. Worked out from Chromium's and EdgeTX's source; no Android device here.
+
+### Run, in the same turn
+
+- `node scripts/input-selftest.js`: all passed (counts in the PR).
+
+### To main
+
+Mat, 2026-11-04 00:03Z, in the thread: "Push to main". Covers PR 227, the Android guess and the update Chrome line.
+Main was fetched first and was still this branch's base (6d078f1), so it is a fast forward. `lint:input` was run
+once and stopped at its 5 minute timeout with no result; a second run was still going at the push. Not flown.
+
+Afterwards, `lint:input` in full: 243 pass, 4 fail on this change (the town load failure row, its report, the Fly
+reload, and the Fly solo card order with Mini games after Builder). The same four failed on main before the change
+(6d078f1, run from a `git archive`), plus one more there (a whoop landing that did not settle). None of them is about
+the stick map.
 ### 2026-11-04: Thomas More's Shop laid out the way the photos show the building (branch)
 
 The owner, 2026-11-03 23:45Z: "Can we review TCmores workshop map, review the OG photos and the map, we want to make it as perfect as possible to irl". The 27 October rebuild read only the nineteen flight frames, because the 70 phone photos were taken while an exhibit booth stood in the shop. This pass reads the photos again for the building only (walls, doors, rooms, what stands against a wall in both sources), and still draws nothing on the floor that only the photos show.
@@ -74369,3 +74417,5 @@ Mat at 01:24Z: "And go again, cabinets on the wall not doors", and on the card t
 ### 2026-11-04: Thomas More's Shop, round 3: the dock end (branch)
 
 Mat at 01:50Z: "Keep going". The photo up the crate aisle and frame 8.11.54 show the dock end busier than ours: a yellow cart against the green racking by the forklift, a red bag and a hand truck on the orange side, and low white cabinets on the slab north of the dock lane. Added in `clutter(H)`, every line kept clear. `node scripts/warehouse-check.js` all passed; lint:nouns passed. Latency: High over the 25 views 92.0k to 93.3k triangles, about 0.2k over round 2, calls unchanged (31 to 42). One shot of the first view read 60 calls and 98k; shot again it read 36 and 93.1k, so it was the page's first frame, not the map.
+
+Mat at 03:21Z on 2026-11-04: "push to main", then "then do another round". Board pushed first (46c3462), then the simulator, main merged in. That word covers the rises stated in rounds 2 and 3: about 1.3k triangles on High and 1.1k on Low over main, calls unchanged.

@@ -334,9 +334,14 @@ const RADIO_LINE = 'On the radio: choose USB joystick mode as you plug it in, be
  * line sums with it by default, and the stick would arrive offset by the
  * switch and clipped at one end.
  *
- * Chrome has a newer mapping behind a flag (ANDROID_UNKNOWN_GAMEPAD_EXTRA_
- * AXES) that keeps the rest as extra axes. Under it a radio arrives with
- * more than four axes, fourAxisPad is false, and none of this is shown.
+ * Chrome has a newer mapping behind a feature (ANDROID_UNKNOWN_GAMEPAD_EXTRA_
+ * AXES, enabled by default in Chromium's main branch by November 2026) that
+ * keeps the rest as extra axes. Under it a radio arrives with more than four
+ * axes, fourAxisPad is false, none of this is shown, and input.js flies the
+ * radio on the layout that mapping gives (androidExtraAxesPad). So updating
+ * Chrome is the first thing to try, and the copy says so before the recipe.
+ * Which stable release first carries it on by default was not found, so it
+ * names Chrome Beta too rather than a version.
  */
 export function platformHelp(platform, browser = 'chromium', facts = {}) {
   const four = facts.fourAxes ? ` Your radio is arriving as ${facts.axisCount || 4} axes.` : '';
@@ -348,6 +353,8 @@ export function platformHelp(platform, browser = 'chromium', facts = {}) {
           + ' 1 and 2, one of channels 3 and 4, and one of channels 5 and 6. Most radios send throttle'
           + ' on 3 and yaw on 4, so one of those two never arrives, most often yaw. Nothing in this'
           + ` page or any other can bring a dropped channel back, calibrating included.${four}`,
+        'Try this first: update Chrome from the Play Store, or install Chrome Beta. Newer Chrome passes'
+          + ' on every channel, and this page reads a radio laid out that way without any setup.',
         'The fix is on the radio. Make a copy of the model you fly the sim with, because the copy'
           + ' gives up its channels 5 and 6, which often carry the arm switch. In the copy, on the'
           + ' Mixes page, clear channels 5 and 6 and give each of them one line whose source is the'

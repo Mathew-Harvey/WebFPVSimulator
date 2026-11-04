@@ -74367,3 +74367,9 @@ Not flown on a phone. Worked out from Chromium's and EdgeTX's source; no Android
 ### Run, in the same turn
 
 - `node scripts/input-selftest.js`: all passed (counts in the PR).
+
+### To main
+
+Mat, 2026-11-04 00:03Z, in the thread: "Push to main". Covers PR 227, the Android guess and the update Chrome line.
+Main was fetched first and was still this branch's base (6d078f1), so it is a fast forward. `lint:input` was run
+once and stopped at its 5 minute timeout with no result; a second run was still going at the push. Not flown.

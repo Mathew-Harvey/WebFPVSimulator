@@ -74469,3 +74469,19 @@ What went wrong: the office's screens stood 0.2 off the paint shop wall (its cen
 Approval, 2026-11-04 04:35Z: Mat, after the round 6 report stated the cost (draw calls flat, about 2.9k triangles more on High and 1.5k on Low), wrote "push to main". That covers round 6 of Thomas More's Shop (sim PR 230). No board change rides with it. Not flown.
 
 Also corrected on the way: rounds 5 and 6 were dated 5 November in their headings here and in the map's comments; both were done on 4 November 2026 (UTC), and the text now says so.
+
+## 2026-11-04: pick your own made up handle in public rooms
+
+Mat's ask, 07:53Z: "we need a way to be able to make rooms where users can have their own name, perhaps in the steam only game, in such a way as to keep it free of abusive names etc". Then 08:01Z: "on steam a user can type in any name they want and its saved in the steam cloud".
+
+What was already there: a room's own name is typed by its host and checked by the board's word list; pilots' typed names show in private rooms; listed, school safe and streamer rooms show a made up handle made from the browser's key, because the youngest pilots are eight.
+
+Built (part 1 of the plan put to Mat): the pilot editor has a seventh tab, Tag, where a pilot picks that made up handle from two closed word lists and a number, or shuffles. `src/net/picks.js` holds the lists, a copy of the board's `PICK_A` and `PICK_B`; the hello and the look message carry `pick: [a, b, n]`, three numbers, never words. The picker opens on the handle the key already gives (`hashPick`, the board's `generatedHandle`). `npm run net:selftest` holds the lists, the spelling and the key's handle equal to the board's; the board's `npm test` tries every pairing with every number against its word list (it caught "Indigo Kestrel", whose letters hold a listed root, and Indigo became Violet).
+
+Not built yet: part 2, Steam pilots shown by their typed, cloud saved name in public rooms, tied to the Steam account by a ticket the board checks so a name report can ban the account. Needs the repack, a Steam Web API key in Render and Mat's pick on the card.
+
+Latency: none. The picker is a menu sheet; the wire change is three integers in the hello and the look message, never in the pose path or the flight loop.
+
+Checks run: `npm run net:selftest` all passed (3 new), board `npm test` all passed (7 new), `lint:boot` 9 of 9, `lint:preload` up to date, `lint:shell` gate checks as before, a shots run of the Tag tab at 1280x720. Not run: `npm run verify` (no physics, plant, ABI or build change), and nobody has flown it in a room with another pilot.
+
+What went wrong: the first shots run opened the meet sheet, not the editor, so its Tag clicks found nothing; it was rerun through Change look. At 1280 wide the seventh tab sits partly off the tab strip's right edge, which scrolls; left as is for Mat's look.

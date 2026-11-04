@@ -107,7 +107,7 @@ export class RoomLink {
    * 'ice', 'pong' and 'race', and 'vote', 'voteRefused' and 'moved'. onPoses(bytes) hears the binary frames.
    */
   constructor({
-    url, key, handle = '', avatar = {}, onEvent = () => {}, onPoses = () => {},
+    url, key, handle = '', avatar = {}, pick = null, onEvent = () => {}, onPoses = () => {},
     WebSocketImpl = globalThis.WebSocket, now = () => Date.now(),
     random = Math.random, connectMs = CONNECT_MS,
   }) {
@@ -115,6 +115,9 @@ export class RoomLink {
     this.key = key;
     this.handle = handle;
     this.avatar = avatar;
+    /* [word, word, number] from the board's PICK_A and PICK_B, or null for
+     * the handle the key's hash makes. */
+    this.pick = pick;
     this.onEvent = onEvent;
     this.onPoses = onPoses;
     this.WebSocketImpl = WebSocketImpl;
@@ -190,7 +193,7 @@ export class RoomLink {
     ws.onopen = () => {
       if (this.ws !== ws) return;
       this.sendJson({
-        v: PROTOCOL, key: this.key, handle: this.handle, avatar: this.avatar, ...msg,
+        v: PROTOCOL, key: this.key, handle: this.handle, avatar: this.avatar, ...(this.pick ? { pick: this.pick } : {}), ...msg,
       });
       if (this.awayOn && msg.t === 'resume') {
         this.sendJson({ t: 'away', on: true });
@@ -516,14 +519,21 @@ export class RoomLink {
   /* A new look from the room's page, and a new name with it if the pilot
    * typed one. Kept for the hello too, so a pilot who drops and comes back
    * comes back as they now look and are called. */
-  look(avatar, handle) {
+  look(avatar, handle, pick) {
     this.avatar = avatar;
-    if (typeof handle !== 'string') {
-      return this.sendJson({ t: 'look', avatar });
+    const msg = { t: 'look', avatar };
+    if (typeof handle === 'string') {
+      /* A new name too, kept for the hello as the look is. */
+      this.handle = handle;
+      msg.handle = handle;
     }
-    /* A new name too, kept for the hello as the look is. */
-    this.handle = handle;
-    return this.sendJson({ t: 'look', avatar, handle });
+    if (Array.isArray(pick)) {
+      /* A new made up handle, picked: the board shows it where a room
+       * gives made up names, and keeps it where it shows own ones. */
+      this.pick = pick;
+      msg.pick = pick;
+    }
+    return this.sendJson(msg);
   }
 
   settings(room) {

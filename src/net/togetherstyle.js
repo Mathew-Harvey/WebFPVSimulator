@@ -537,6 +537,14 @@ export const TOGETHER_CSS = `
 #tg .editor .parts.small .part[aria-pressed="true"]::after { width: 18px; height: 18px; font-size: 11px; line-height: 13px; right: 3px; top: 3px; }
 #tg .editor .part.liv { padding: 6px 4px; background: color-mix(in srgb, var(--sw) 28%, var(--white)); }
 #tg .help.ink { color: var(--ink); font-weight: 700; max-width: 460px; margin: 12px 0 0; }
+#tg .cr-tagline { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 4px 4px 8px; }
+#tg .cr-tag { font: 900 22px/1.1 var(--ui); padding: 6px 12px; background: var(--ink); color: var(--cream); box-shadow: inset 0 -4px 0 var(--sakura); margin-right: 4px; }
+#tg .cr-num { min-width: 40px; height: 38px; border: 3px solid var(--ink); background: var(--white); color: var(--ink); font: 900 18px/1 var(--ui); box-shadow: 2px 3px 0 var(--ink); cursor: pointer; }
+#tg .cr-num.wide { padding: 0 12px; font-size: 14px; }
+#tg .cr-words { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 4px 6px; }
+#tg .cr-words button { border: 2.5px solid var(--ink); background: var(--white); color: var(--ink); font: 800 13px/1 var(--ui); padding: 7px 10px; box-shadow: 2px 2px 0 var(--ink); cursor: pointer; }
+#tg .cr-words button:hover, #tg .cr-num:hover { transform: translate(-1px, -1px); }
+#tg .cr-words button[aria-pressed="true"] { background: var(--ink); color: var(--amber); }
 #tg .swatches { --sws: clamp(30px, 2.7vw, 40px); display: flex; flex-wrap: wrap; gap: 9px; padding: 4px 4px 6px; }
 #tg .swatch {
   position: relative; width: var(--sws); height: var(--sws); border: 3px solid var(--ink); border-radius: 50%;

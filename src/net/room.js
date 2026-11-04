@@ -85,7 +85,7 @@ export class RoomSession {
    * events, after the session has acted on them. now: the frame clock.
    */
   constructor({
-    url, key, handle, avatar, onEvent = () => {}, now = () => performance.now(), WebSocketImpl,
+    url, key, handle, avatar, pick = null, onEvent = () => {}, now = () => performance.now(), WebSocketImpl,
     RTC = globalThis.RTCPeerConnection || null,
   }) {
     this.now = now;
@@ -109,6 +109,7 @@ export class RoomSession {
       key,
       handle,
       avatar,
+      pick,
       WebSocketImpl,
       onEvent: (name, data) => this.heard(name, data),
       onPoses: (bytes) => this.poses(bytes),
@@ -150,8 +151,8 @@ export class RoomSession {
     this.link.away(on);
   }
 
-  look(avatar, handle) {
-    return this.link.look(avatar, handle);
+  look(avatar, handle, pick) {
+    return this.link.look(avatar, handle, pick);
   }
 
   leave() {

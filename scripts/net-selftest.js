@@ -28,7 +28,7 @@
 
 import { spawn } from 'node:child_process';
 import net from 'node:net';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -37,6 +37,9 @@ import {
   POSE_ENTRY_BYTES, POSE_UP_BYTES, SCALES, decodeFrame, decodePoseAt, encodePose, poseFlags,
 } from '../src/net/pose.js';
 import { RemotePilot } from '../src/net/remote.js';
+import {
+  PICK_A, PICK_B, cleanPick, hashPick, pickWords,
+} from '../src/net/picks.js';
 import {
   PROTOCOL, REFUSALS, ROOM_MAX, STREAM_MAX, RoomLink, roomsUrl,
 } from '../src/net/link.js';
@@ -1372,6 +1375,21 @@ if (!boardDir) {
   check('the same quick lines, in the same words', [...QUICK, WAVE].every((q) => board.QUICK_LINES[q.line] === q.text)
     && Object.keys(board.QUICK_LINES).length === QUICK.length + 1);
   check('the same faces', same(board.FACES, EXPRESSIONS));
+  check('the same words to pick a made up handle from, in the same order', same(board.PICK_A, PICK_A) && same(board.PICK_B, PICK_B));
+  let spelled = true;
+  for (let i = 0; i < 300; i += 1) {
+    const p = [i % PICK_A.length, (i * 7) % PICK_B.length, 10 + (i % 90)];
+    if (board.pickedHandle(p) !== pickWords(cleanPick(p))) spelled = false;
+  }
+  check('a pick spells the same handle here as on the board', spelled
+    && cleanPick([0, 0, 9]) === null && board.pickedHandle([0, 0, 9]) === '' && cleanPick([PICK_A.length, 0, 10]) === null);
+  let hashed = true;
+  for (let i = 0; i < 50; i += 1) {
+    const key = randomBytes(16).toString('hex');
+    const want = board.generatedHandle(createHash('sha256').update(key).digest('hex'));
+    if (pickWords(await hashPick(key)) !== want) hashed = false;
+  }
+  check('the picker opens on the handle the board would make from the key', hashed);
   check('the same avatar fields', same(board.AVATAR_FIELDS, AVATAR_FIELDS));
   let kept = true;
   for (let i = 0; i < 500; i += 1) {

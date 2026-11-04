@@ -77,6 +77,9 @@ import { quadMark } from '../ui/gatepages.js';
 import { nameRules, normaliseName, readPilotName, writePilotName } from '../share/pilot.js';
 import { boardOrigin, fetchMapList, fetchTrackList } from '../share/board.js';
 import { raterKey } from '../share/rating.js';
+import {
+  PICK_A, PICK_B, cleanPick, hashPick, pickWords,
+} from './picks.js';
 import { DESKTOP, STEAM_EDITION, allowReach } from '../steam/edition.js';
 
 const STORE_KEY = 'webfpv.together.v1';
@@ -408,6 +411,7 @@ function loadStore() {
     if (raw && typeof raw === 'object') {
       return {
         avatar: raw.avatar ? cleanAvatar(raw.avatar) : null,
+        pick: cleanPick(raw.pick),
         met: raw.met === true,
         consent: raw.consent === true,
         taught: raw.taught === true,
@@ -424,7 +428,7 @@ function loadStore() {
     /* A private window: the avatar lasts the visit. */
   }
   return {
-    avatar: null, met: false, consent: false, taught: false, watchTaught: false, watchRode: false,
+    avatar: null, pick: null, met: false, consent: false, taught: false, watchTaught: false, watchRode: false,
     overviewTaught: false, overviewOffered: false,
   };
 }
@@ -975,6 +979,7 @@ export function createTogether(shell) {
       key: raterKey(),
       handle: readPilotName() || '',
       avatar: withTitle(store.avatar),
+      pick: store.pick,
       onEvent: (name, data) => heard(name, data),
     });
     race = new RoomRace({
@@ -2706,7 +2711,7 @@ export function createTogether(shell) {
    * editor opened on. Q and E (a pad's bumpers) go from tab to tab, R rolls
    * a new pilot, and Z undoes.
    */
-  const EDITOR_TABS = ['Face', 'Hair', 'Eyes', 'Marks', 'Gear', 'Quad'];
+  const EDITOR_TABS = ['Face', 'Hair', 'Eyes', 'Marks', 'Gear', 'Quad', 'Tag'];
   const EXPR_LINES = {
     calm: 'Ready when you are.', hello: 'Hi!', laugh: 'Ha ha ha!', wow: 'Whoa!', smug: 'Too easy.', oops: 'Oops...', fierce: "Let's go!", crash: 'Ouch!',
   };
@@ -2719,6 +2724,7 @@ export function createTogether(shell) {
     Eyes: '<path d="M3 17c3.5-6 8-8.5 13-8.5S25.5 11 29 17c-3.5 5-8 7.5-13 7.5S6.5 22 3 17z"/><circle cx="16" cy="16.5" r="5"/><circle cx="14.2" cy="14.6" r="1.6" fill="currentColor" stroke="none"/><path d="M6 8.5l2.5 2.5M26 8.5L23.5 11"/>',
     Marks: '<path d="M16 4.5l3.3 7.2 7.9.9-5.9 5.3 1.7 7.8L16 21.8l-7 3.9 1.7-7.8-5.9-5.3 7.9-.9z"/>',
     Gear: '<rect x="3" y="11" width="11.5" height="10" rx="4"/><rect x="17.5" y="11" width="11.5" height="10" rx="4"/><path d="M14.5 15.5h3M3 14H1.5M29 14h1.5"/><path d="M6.5 14.5l2.5-1.5" />',
+    Tag: '<path d="M4 9h16l8 7-8 7H4z"/><circle cx="9.5" cy="16" r="2" fill="currentColor" stroke="none"/>',
     Quad: '<circle cx="8" cy="8" r="5"/><circle cx="24" cy="8" r="5"/><circle cx="8" cy="24" r="5"/><circle cx="24" cy="24" r="5"/><path d="M11.5 11.5l9 9M20.5 11.5l-9 9"/><rect x="13" y="13" width="6" height="6" rx="1.5" fill="currentColor" stroke="none"/>',
   };
   const tabIcon = (t) => {
@@ -2749,6 +2755,24 @@ export function createTogether(shell) {
     let reactAt = 0;
     const was = cleanAvatar(store.avatar);
     const wasName = readPilotName() || '';
+    const wasPick = store.pick;
+    /* The made up handle on the Tag tab: the pilot's pick, or until they
+     * make one the handle their key already gives them. */
+    let shownPick = store.pick;
+    if (!shownPick) {
+      hashPick(raterKey()).then((p) => {
+        if (!store.pick) {
+          shownPick = p;
+          if (tab === 'Tag') refresh('editor');
+        }
+      });
+    }
+    const setPick = (p) => {
+      store.pick = cleanPick(p);
+      shownPick = store.pick;
+      save();
+      refresh('editor');
+    };
     const history = [];
     const draft = { name: readPilotName() || '' };
     const commit = (next) => {
@@ -2872,6 +2896,30 @@ export function createTogether(shell) {
           section('Eyes', tiles('eyes', PART_NAMES.eyes, (i) => ({ ...av, eyes: eyesOf(i, beard) }), (i) => eyeStyle === i, 'eyes')),
           section('Eye colour', swatches('eyeColour', 'Eye colour', EYE_COLOURS, EYE_ORDER)),
         ];
+      } else if (tab === 'Tag') {
+        /* Two words and a number, each from a closed list, so it can never
+         * spell anything rude and needs nobody to check it. */
+        const p = shownPick || [0, 0, 10];
+        const words = (k, list, at) => h('div.cr-words', { role: 'group', 'aria-label': k === 'pa' ? 'First word' : 'Second word' }, list.map((w, i) => h('button', {
+          type: 'button', 'aria-pressed': String(at === i), 'data-k': `${k}-${i}`, text: w,
+          on: { click: () => setPick(k === 'pa' ? [i, p[1], p[2]] : [p[0], i, p[2]]) },
+        })));
+        const step = (d) => setPick([p[0], p[1], 10 + ((((p[2] - 10 + d) % 90) + 90) % 90)]);
+        const shuffle = () => {
+          const r = crypto.getRandomValues(new Uint8Array(3));
+          setPick([r[0] % PICK_A.length, r[1] % PICK_B.length, 10 + (r[2] % 90)]);
+        };
+        panel = [
+          section('Your name in public rooms',
+            h('p.help.ink', { text: 'Listed rooms, school safe rooms and streamer rooms never show a typed name. You are shown by this one there, so pick it.' }),
+            h('div.cr-tagline', null,
+              h('strong.cr-tag', { text: pickWords(p), 'aria-live': 'polite' }),
+              h('button.cr-num', { type: 'button', 'data-k': 'pn-down', 'aria-label': 'Number down', text: '\u2212', on: { click: () => step(-1) } }),
+              h('button.cr-num', { type: 'button', 'data-k': 'pn-up', 'aria-label': 'Number up', text: '+', on: { click: () => step(1) } }),
+              h('button.cr-num.wide', { type: 'button', 'data-k': 'pn-shuffle', text: 'Shuffle', on: { click: shuffle } }))),
+          section('First word', words('pa', PICK_A, p[0])),
+          section('Second word', words('pb', PICK_B, p[1])),
+        ];
       } else if (tab === 'Gear') {
         panel = [section('On your head', tiles('acc', PART_NAMES.acc, (i) => ({ ...av, acc: i }), (i) => av.acc === i, 'bust', '.gear', ACC_ORDER))];
       } else {
@@ -2960,10 +3008,16 @@ export function createTogether(shell) {
          * this page included, and the room's list is drawn from that. */
         const now = cleanAvatar(store.avatar);
         const name = readPilotName() || '';
-        if (session && session.inRoom && (JSON.stringify(now) !== JSON.stringify(was) || name !== wasName)) {
+        const pickMoved = JSON.stringify(store.pick) !== JSON.stringify(wasPick);
+        /* Out of a room the next hello carries it. */
+        if (session && !session.inRoom) {
+          session.link.pick = store.pick;
+        }
+        if (session && session.inRoom && (JSON.stringify(now) !== JSON.stringify(was) || name !== wasName || pickMoved)) {
           /* A new name goes with the look: the board shows it where the
-           * room shows pilots' own names (the owner's report of 2026-10-28). */
-          session.look(withTitle(now), name !== wasName ? name : undefined);
+           * room shows pilots' own names (the owner's report of 2026-10-28),
+           * and a new picked handle where it shows made up ones. */
+          session.look(withTitle(now), name !== wasName ? name : undefined, pickMoved && store.pick ? store.pick : undefined);
           oweCard();
         }
         if (after) after();

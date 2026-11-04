@@ -74710,3 +74710,5 @@ What went wrong:
 - The back maple's first top, at 4.65 m, stood in the line of a pilot flying along the upper floor. It came down to about 4 m.
 - Several comparison cameras were too far off or too low to match their frames, and were placed again.
 - One Low run was shot while a second browser was running. Its numbers were a view behind, and it was run again alone.
+
+Approval: Mat, 2026-11-04 22:15Z, "Push to main", after the reply that stated the cost above (draw calls flat indoors, +1 to +4 only looking out over the fences, triangles +3.3k on High and +1.65k on Low). It covered board PR 76 (the thumbnail, pushed first, board main 6d6ae2a) and this round, sim PR 235. Before the push, the board's `npm test` and `node scripts/house-check.js` were run again and passed. Not flown.

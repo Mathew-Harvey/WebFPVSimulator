@@ -56,7 +56,7 @@ function across(o, name, points, m = MARGIN) {
   }, { z: S * (o.h0 + m), name, points }];
 }
 
-/* The reel's tight ones (5 November 2026): the cardboard tube, halfway
+/* The reel's tight ones (4 November 2026): the cardboard tube, halfway
  * down it; the forklift's cab, across it behind the seat; one pane of the
  * white booth's window frame; the black booth's back door. */
 const TUBE_GAP = { x0: TUBE.x0 + 0.05, x1: TUBE.x1 - 0.05, y: (TUBE.y0 + TUBE.y1) / 2, h0: FLOOR0 + 0.05, h1: FLOOR0 + 0.55 };

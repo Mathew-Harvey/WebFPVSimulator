@@ -74424,7 +74424,7 @@ Mat at 03:21Z on 2026-11-04: "push to main", then "then do another round". Board
 
 Mat at 03:21Z: "then do another round". Frame 8.15.09 shows the shelves over the paint shop's desk packed with tins and jars; the photo into the machine room shows flat packed cartons stacked by the second dust collector. Both added as one block each with their lines painted on. `node scripts/warehouse-check.js` all passed after the cartons were moved to meet the last sock (they were 0.15 m off it, a slot). Latency: the views reshot read 93.1k to 93.3k triangles on High, about 0.2k over main, calls unchanged. Thumbnail unchanged (neither room is in its view).
 
-### 2026-11-05: Thomas More's Shop, round 5: the paint shop's door, the workshop floor, the racking full (branch)
+### 2026-11-04: Thomas More's Shop, round 5: the paint shop's door, the workshop floor, the racking full
 
 Mat at 03:28Z on 2026-11-04: "mate, you can do better than this. try again, work harder to match it up". Went back through every frame at full size and drew a top down plan of ours (a scratch script that plots `warehouseLayout()` with the check's lines over it) to compare against.
 
@@ -74440,7 +74440,7 @@ Mat at 03:28Z on 2026-11-04: "mate, you can do better than this. try again, work
 
 Approval, 2026-11-04 04:01Z: Mat, after the round 5 report stated the cost (draw calls flat, about 2.8k triangles more on High and 1.2k on Low), wrote "push to main". That covers rounds 4 and 5 of Thomas More's Shop (sim PR 229) and the board's thumbnail (board PR 72, pushed to main first, 9877428). Not flown.
 
-### 2026-11-05: Thomas More's Shop, round 6: the reel's lines (branch)
+### 2026-11-04: Thomas More's Shop, round 6: the reel's lines
 
 Mat at 04:05Z on 2026-11-04 sent a reel of two packs flown through the shop (233 frames, now in /mnt/project-files/tcmore-warehouse/reel-frames/): "here is heaps more screen shots, please update the map to allow for all these lines". The reel was flown when the phone photos were taken: blue racking and boxed stock where the 2026 frames have crates, and exhibit booths stood on the floor. So it was read for its lines, not its contents, and the walls stay the 2026 frames' (8.11.19 still has the white partition to the roof beside the grey door). Asked on a card whether to build the booths, since the photos' booth was left out on 27 October; Mat picked "Add plain booths" at 04:12Z.
 
@@ -74465,3 +74465,7 @@ Latency, the same 25 views as round 5, headless `__renderStats()`: draw calls un
 The board's picture is unchanged: the card's lens looks across the workshop to the barani corner and sees none of it, so the thumbnail was regenerated, compared and left as it was.
 
 What went wrong: the office's screens stood 0.2 off the paint shop wall (its centre line had been taken for its face), a slot; the coat room's bench and coats 0.28 off its wall, slots; two boxes on the black booth's counter 0.2 apart and off its wall, slots; the white booth line started inside a column; the tube's ends were first painted over its mouth, so it looked solid. All fixed before the check passed.
+
+Approval, 2026-11-04 04:35Z: Mat, after the round 6 report stated the cost (draw calls flat, about 2.9k triangles more on High and 1.5k on Low), wrote "push to main". That covers round 6 of Thomas More's Shop (sim PR 230). No board change rides with it. Not flown.
+
+Also corrected on the way: rounds 5 and 6 were dated 5 November in their headings here and in the map's comments; both were done on 4 November 2026 (UTC), and the text now says so.

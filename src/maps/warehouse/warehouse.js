@@ -13,7 +13,7 @@
  * for the contents too, and a big exhibit booth stood in the shop when they
  * were taken, so nothing the photos show standing on the floor is drawn
  * unless the flight shows it too. No address, no map, no street view.
- * And since 5 November 2026 the reel Mat sent, 233 frames of two packs
+ * And since 4 November 2026 the reel Mat sent, 233 frames of two packs
  * flown through the shop when the photos were taken (in
  * /mnt/project-files/tcmore-warehouse/reel-frames/), for its LINES: every
  * way it flies is a way here, and what a line needs is built for it, the
@@ -146,7 +146,7 @@ const PT = 0.15;
 /* The wall between the spray room (south) and the machine room (north). */
 const RY = 28.5;
 /* The spray room's south wall, its north face: south of it the room the
- * grey door opens into, shut in every frame (5 November 2026 reading of
+ * grey door opens into, shut in every frame (4 November 2026 reading of
  * frames 8.11.19 and 8.15.03: the sliding door opens at the spray room's
  * south west corner, and the grey door is a room of its own). */
 const SHOP_S = 6.5;
@@ -197,7 +197,7 @@ export const OPENINGS = {
    * at the north end. */
   slidingDoor: { y0: 6.7, y1: 8.3, x: PX + PT / 2, h0: FLOOR0, h1: 2.4 },
   barani: { y0: 52.2, y1: 54.7, x: PX + PT / 2, h0: FLOOR0, h1: 3.1 },
-  /* The grey door near the south wall, open since 5 November 2026: the
+  /* The grey door near the south wall, open since 4 November 2026: the
    * reel flies in at it and the length of the print room behind it. */
   greyDoor: { y0: 1.3, y1: 2.3, x: PX + PT / 2, h0: FLOOR0, h1: 2.1 },
   /* The print room's office, its door off the long room. */
@@ -1187,7 +1187,7 @@ function clutter(H) {
 }
 
 /*
- * THE WORKSHOP FLOOR, the fifth pass of 5 November 2026: the big assembly
+ * THE WORKSHOP FLOOR, the fifth pass of 4 November 2026: the big assembly
  * tables the photos are full of, white topped on plywood cupboards, a row
  * of them each side of the clear aisle down the middle (photos 0137 to
  * 0142, frames 8.11.32 and 8.12.45), the white topped table on sawhorses
@@ -1520,7 +1520,7 @@ function machineRoom(H) {
 
 
 /* ------------------------------------------------------------------ */
-/* The reel's lines, 5 November 2026                                    */
+/* The reel's lines, 4 November 2026                                    */
 /* ------------------------------------------------------------------ */
 
 /*
@@ -1643,7 +1643,7 @@ function coatRoom(H) {
 }
 
 /*
- * THE BOOTHS, the owner's pick of 5 November 2026 ("Add plain booths"):
+ * THE BOOTHS, the owner's pick of 4 November 2026 ("Add plain booths"):
  * the reel flies through two exhibit booths stood in the shop, so here
  * they are, with no names, logos or words on them, as nothing on this map
  * has. The white one in the crate block east of the green racking (frames

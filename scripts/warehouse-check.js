@@ -333,7 +333,7 @@ const LINES = [
   ['out the back door', [[23.4, 48.0, 1.2], [23.4, 60.0, 1.2]]],
   ['into the office by its side door', [[16.0, 1.8, 1.4], [8.5, 1.8, 1.4]]],
   ['down the workshop low', [[24.3, 52.0, 0.8], [24.3, 4.0, 0.8]]],
-  /* The reel's lines, 5 November 2026 (its frame numbers in brackets). */
+  /* The reel's lines, 4 November 2026 (its frame numbers in brackets). */
   ['along the south racking into the red carpet corner (2 to 15)', [[22.0, 1.65, 1.0], [29.6, 1.65, 1.0], [30.25, 0.55, 0.8]]],
   ['in the grey door and down the print room (13 to 23)', [[29.6, 1.8, 1.2], [36.0, 1.8, 1.2], [45.6, 1.7, 1.2]]],
   ['up over the office, looking down, and into the long room (18 to 31)', [[36.0, 1.8, 1.2], [36.0, 1.8, 4.2], [38.0, 5.0, 4.2], [44.6, 5.0, 4.2], [44.6, 1.9, 4.2], [44.6, 1.9, 1.6]]],

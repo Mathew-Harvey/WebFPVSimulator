@@ -712,6 +712,17 @@ const DEN_WINS = [[9.85, 10.4], [10.48, 11.52], [11.6, 12.15]].map(([a, b]) => [
 const BAY = { x0: 5.0, x1: 8.0, y1: 9.2 };
 const BAY_OPEN = [BAY.x0 + TX, BAY.x1 - TX, FLOOR0, CEIL0 - 0.15];
 const KITCHEN_WIN = win(12.1, 1.1, 1.05, 2.2)(FLOOR0);
+/* The two Japanese maples' autumn leaves (backYard, front): a dull rusty
+ * brown in the frames, about #8f6a58 in the sun and #422723 in the shade
+ * (v2 68, 119, 160), so the stained wood's brown, which the pergola and
+ * the furniture already draw all round the house. The brick's red was
+ * nearer the eye's idea of a maple and further from the frames, and it
+ * stretched the brick's batch over the back yard: one draw more looking
+ * north from the pavilion. Their trunks are the sash's dark, so a crown
+ * reads apart from its trunk. */
+const MAPLE = 'homeWood';
+/* The upper floor's four back windows, west to east (THE BACK below). */
+const UP_BACK = [win(0.9, 0.7), win(2.8, 1.8), win(6.2, 1.1, 1.1), win(12.1, 1.4)].map((w) => w(FLOOR1));
 const BAY_LIGHTS = [0, 1, 2].map((i) => {
   const a = BAY.x0 + TX + 0.12;
   const w = (BAY.x1 - BAY.x0 - 2 * TX - 0.24 - 2 * 0.08) / 3;
@@ -747,10 +758,14 @@ function exterior(H) {
   H.paint('homeTrim', TALL.x0, FRONT - 0.03, CEIL0 + 0.05, TALL.x1, FRONT - 0.005, CEIL0 + 0.13);
   extWall(H, 'y', BRICK_X1 - TX / 2, FRONT + TX, 0, [], 1, { skin: 'homeBrick' });
 
-  /* The west wall, brick along the brick block and sided behind it, with
-   * the chimney's chase standing out of it. */
-  const westHoles = [win(0.7)(FLOOR0), win(0.7)(FLOOR1), win(7.3)(FLOOR1)];
-  extWall(H, 'y', TX / 2, FRONT + TX, DEP - TX, westHoles, -1, { brick: [FRONT, 3.0] });
+  /* The west wall, brick along the brick block's forward end and sided
+   * from the front wall's line back, with the chimney's chase standing out
+   * of it. Nick's second flight looks down this gable twice from the back
+   * corner (v2 117, 119) and once over the side yard (v2 112): grey siding
+   * from the front corner to the back, a window a storey south of the
+   * chimney and none north of it. */
+  const westHoles = [win(0.7)(FLOOR0), win(0.7)(FLOOR1)];
+  extWall(H, 'y', TX / 2, FRONT + TX, DEP - TX, westHoles, -1, { brick: [FRONT, 0] });
 
   /* The front wall behind the porch: the front door and the front room's
    * window, one storey, the attic over it. */
@@ -763,13 +778,37 @@ function exterior(H) {
   /* THE BACK: the family room's window and its French doors, the
    * breakfast room's bay, opened right through, the kitchen's window over
    * the sink;
-   * above, the master's two windows, the bathroom's, and one each for the
-   * back bedrooms. */
+   * above, four windows and no more, as Nick's second flight sees the
+   * whole wall from the lawn (v2 99) and flies along it at the upper
+   * floor (v2 65 to 69): the master's narrow one by the chimney and its
+   * wide curtained one, the bathroom's two lights in a white box standing
+   * out over the bay's west half, a long blank stretch, and three lights
+   * over the kitchen's window for the end bedroom. Placed by where each
+   * falls along the wall in a render from v2 99's own corner against the
+   * frame, so bedroom 4 has no window of its own: the frames have none. */
   const northHoles = [
-    win(1.2)(FLOOR0), FRENCH, BAY_OPEN, KITCHEN_WIN,
-    win(1.5)(FLOOR1), win(3.4)(FLOOR1), win(5.9, 0.7, 1.1)(FLOOR1), win(8.8)(FLOOR1), win(12.2)(FLOOR1),
+    win(1.2)(FLOOR0), FRENCH, BAY_OPEN, KITCHEN_WIN, ...UP_BACK,
   ];
   extWall(H, 'x', DEP - TX / 2, 0, LEN, northHoles, 1);
+  /* The bathroom window's box, a hand out from the siding: two cheeks, a
+   * head and a sill, in trim, and the lights' mullions in the sash's
+   * dark. */
+  {
+    const [x0, x1, h0, h1] = UP_BACK[2];
+    const y0 = DEP + 0.003;
+    const y1 = DEP + 0.2;
+    H.box('homeTrim', x0 - 0.14, y0, h0 - 0.16, x0, y1, h1 + 0.1, { name: 'window box' });
+    H.box('homeTrim', x1, y0, h0 - 0.16, x1 + 0.14, y1, h1 + 0.1, { name: 'window box' });
+    H.box('homeTrim', x0 - 0.14, y0, h1, x1 + 0.14, y1, h1 + 0.1, { name: 'window box' });
+    H.box('homeTrim', x0 - 0.18, y0, h0 - 0.16, x1 + 0.18, y1 + 0.05, h0, { name: 'window box' });
+  }
+  for (const [i, n] of [[2, 2], [3, 3]]) {
+    const [x0, x1, h0, h1] = UP_BACK[i];
+    for (let k = 1; k < n; k += 1) {
+      const x = x0 + ((x1 - x0) * k) / n;
+      H.paint('homeShutter', x - 0.025, DEP - TX / 2 - 0.01, h0, x + 0.025, DEP - TX / 2 + 0.01, h1);
+    }
+  }
 
   /* THE EAST WALL: one storey behind the porch, where it is the garage's
    * west wall, two from the knee wall back. The door from the back hall
@@ -1964,7 +2003,7 @@ function upperFloor(H) {
     w: [[...kd, f, f + DOOR_H]], e: [KIDS_WIN],
   });
   roomFaces(H, 'homeWallBlue', { x0: TX, y0: 3.8 + TI / 2, x1: BRICK_X1 - TI / 2, y1: DEP - TX }, f, c, {
-    w: [win(7.3)(f)], n: [win(1.5)(f), win(3.4)(f)], e: [[...md, f, f + DOOR_H]], s: [[...b2, f, f + DOOR_H]],
+    n: [UP_BACK[0], UP_BACK[1]], e: [[...md, f, f + DOOR_H]], s: [[...b2, f, f + DOOR_H]],
   });
   roomFaces(H, 'homeWallCream', { x0: BRICK_X1 + TI / 2, y0: KNEE + TI / 2, x1: 7.2, y1: 5.4 - TI / 2 }, f, c, {
     w: [[...md, f, f + DOOR_H]], n: [[...ba, f, f + DOOR_H]], e: false,
@@ -2919,6 +2958,27 @@ function backYard(H) {
   for (const [x, y] of [[11.4, 10.6], [12.4, 11.0], [13.1, 10.3]]) {
     H.cap('homeHedge', [x, y, 0.3], [x, y, 0.3], 0.38, { look: 'capsule', kind: 'tree', seg: 10 });
   }
+  /* The Japanese maple in that bed, in its autumn rust (v2 48, 49,
+   * 160, 251; dark red in the summer flight, v1 313): a low trunk, two
+   * limbs and a wide crown about four metres up, its top under the upper
+   * floor's sills and below a pilot flying along the back wall up there
+   * (v2 67 to 69), over the bed and out toward the path, between the
+   * pergola's east end and the pavilion. In MAPLE, a colour already drawn
+   * back here, so it is no draw more. Every blob stands clear of the lines
+   * out through the kitchen window, along the back wall into the pavilion
+   * and out from under the pergola's east end by more than the craft, and
+   * under the pergola's beam and rafters. */
+  const mp = [12.0, 11.4];
+  H.post('homeShutter', ...mp, 0, 1.3, 0.1, { seg: 7 });
+  for (const tip of [[11.4, 10.9, 2.1], [12.7, 11.9, 2.1]]) {
+    H.cap('homeShutter', [...mp, 1.1], tip, 0.07, { seg: 6 });
+  }
+  for (const [x, y, h, r] of [
+    [12.0, 11.4, 2.9, 1.05], [11.2, 10.8, 2.6, 0.8], [12.8, 12.0, 2.6, 0.85],
+    [12.0, 12.5, 2.7, 0.75], [12.6, 10.6, 2.9, 0.75], [13.2, 12.6, 2.5, 0.7],
+  ]) {
+    H.cap(MAPLE, [x, y, h], [x, y, h], r, { look: 'capsule', kind: 'tree', seg: 8 });
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -3032,6 +3092,22 @@ function front(H) {
   for (const [x, y, r] of shrubs) {
     H.cap('homeHedge', [x, y, r * 0.8], [x, y, r * 0.8], r, { look: 'capsule', kind: 'tree', seg: 10 });
   }
+  /* A second Japanese maple, in the same autumn rust, just off the front
+   * corner of the chimney's gable, in a bed of mulch round the corner from
+   * the front one: its crown up to the upper window's sill, standing in
+   * front of the gable's south end as the flight looks down that side (v2
+   * 99, 112, 117, 119). In MAPLE, as the back one. */
+  const fm = [-1.6, -1.2];
+  H.paint('homeMulch', -2.7, -2.3, 0, -0.8, 0.2, 0.03);
+  H.post('homeShutter', ...fm, 0, 1.3, 0.09, { seg: 7 });
+  for (const tip of [[-2.2, -0.7, 2.0], [-1.05, -1.65, 2.0]]) {
+    H.cap('homeShutter', [...fm, 1.1], tip, 0.06, { seg: 6 });
+  }
+  for (const [x, y, h, r] of [
+    [-1.6, -1.15, 2.6, 1.0], [-2.4, -0.6, 2.1, 0.7], [-1.0, -1.75, 2.35, 0.7], [-1.7, -1.05, 3.3, 0.6],
+  ]) {
+    H.cap(MAPLE, [x, y, h], [x, y, h], r, { look: 'capsule', kind: 'tree', seg: 8 });
+  }
   /* The cul de sac's pavement and kerb, a planted island in it, the street
    * east, its kerbs and pavements. */
   H.discs.push({ m: 'homeAsphalt', px: BULB.x, py: BULB.y, r: BULB.r, h: G_ASPHALT });
@@ -3058,12 +3134,67 @@ function front(H) {
   H.paint('homeDrive', 24.0, -35, 0, 27.5, -31, G_DRIVE);
   neighbour(H, 31, -13, 11, 8, 'homeTrim', 's', true);
   H.paint('homeDrive', 32.5, STREET.y1, 0, 36.0, -13, G_DRIVE);
+
+  /* The houses round the back, past the fences and outside the plot,
+   * which the frames from the back lawn and from up in the trees have
+   * through the bare branches. Next door to the west, past the chimney's
+   * side yard and its picket fence, a two storey a little forward of
+   * Nick's, its gable end to his yard (v2 99, 112). Behind the back fence,
+   * across their own yards, a beige one to the north west (v2 13, 14), a
+   * white one right behind with a chimney on its west end (flying east
+   * along the fence, v2 18, 21, 22), and another toward the tall fence's
+   * corner (v2 24, 26). Only the sides that face his are dressed. Out of
+   * the plot, they are the view, not a place to fly.
+   *
+   * Their colours are ones the house already draws, because a colour's
+   * batch is culled by one sphere round all of it: the tan, from the cul de
+   * sac, stretched over the house drew once more in every room, and the
+   * brick, out to the back maple and this chimney, once more looking north
+   * from the pavilion. So the beige ones are the house's own siding and
+   * that chimney is the roof's dark grey, which at that distance is what
+   * the frames show of it. */
+  westNeighbour(H);
+  neighbour(H, -20, 50, 14, 10, 'homeSiding', 'n', false, { backOnly: true });
+  neighbour(H, 2, 52, 11, 9, 'homeTrim', 'n', false, { backOnly: true, chimney: 'w', chimneyM: 'homeRoof' });
+  neighbour(H, 20, 51, 11, 9, 'homeSiding', 'n', false, { backOnly: true });
+}
+
+/* The house next door to the west: two storeys under a gable roof whose
+ * ridge runs north to south, so its gable end faces Nick's back yard (v2
+ * 101, 106, 109), in his own siding's colour (front() says why). Its east
+ * side, across his side yard, and that gable end have their windows; its
+ * door and drive face the street and nobody in his yard sees them. */
+function westNeighbour(H) {
+  const [x0, x1, y0, y1, h] = [-28.5, -17.5, -13, -1, 5.4];
+  const m = 'homeSiding';
+  H.box(m, x0, y0, 0, x1, y1, h, { name: 'neighbour' });
+  gableRoof(H, 'y', x0, x1, y0, y1, h, h, { gable: m });
+  const pane = (cx, cy, hh, side, w = 0.55) => {
+    for (const [k, mm, ww] of [[0.03, 'homeTrim', w], [0.05, 'homeWindow', w - 0.1]]) {
+      const top = hh + (mm === 'homeTrim' ? 1.5 : 1.4);
+      const bot = mm === 'homeTrim' ? hh - 0.08 : hh;
+      if (side === 'e') {
+        H.paint(mm, x1, cy - ww, bot, x1 + k, cy + ww, top);
+      } else {
+        H.paint(mm, cx - ww, y1, bot, cx + ww, y1 + k, top);
+      }
+    }
+  };
+  for (const hh of [0.95, 3.75]) {
+    for (const cy of [-11.0, -7.0, -3.0]) {
+      pane(0, cy, hh, 'e');
+    }
+    for (const cx of [-25.5, -20.5]) {
+      pane(cx, 0, hh, 'n');
+    }
+  }
+  pane((x0 + x1) / 2, 0, 6.5, 'n', 0.4);
 }
 
 /* A neighbour's house: a two storey box under a gable roof, ridge east to
  * west, its front on side `face`. Solid as the box and the roof's bands.
  * The white one has black shutters, as the white houses round Nick's do. */
-function neighbour(H, x0, y0, w, d, m, face, shutters) {
+function neighbour(H, x0, y0, w, d, m, face, shutters, o = {}) {
   const x1 = x0 + w;
   const y1 = y0 + d;
   const h = 5.4;
@@ -3077,13 +3208,15 @@ function neighbour(H, x0, y0, w, d, m, face, shutters) {
   const out = (yy, ss, k) => [Math.min(yy, yy + ss * k), Math.max(yy, yy + ss * k)];
   for (let i = 0; i < n; i += 1) {
     const cx = x0 + ((i + 0.5) * w) / n;
-    for (const [yy, ss] of [[fy, s], [by, -s]]) {
+    for (const [yy, ss] of o.backOnly ? [[by, -s]] : [[fy, s], [by, -s]]) {
       for (const hh of [0.95, 3.75]) {
         if (yy === fy && hh < 2 && i === Math.floor(n / 2)) {
           continue;
         }
         const [a, b] = out(yy, ss, 0.03);
-        H.paint(frameM, cx - 0.55, a, hh - 0.08, cx + 0.55, b, hh + 1.5);
+        if (!o.backOnly) {
+          H.paint(frameM, cx - 0.55, a, hh - 0.08, cx + 0.55, b, hh + 1.5);
+        }
         const [c, e] = out(yy, ss, 0.05);
         H.paint('homeWindow', cx - 0.45, c, hh, cx + 0.45, e, hh + 1.4);
         if (shutters && yy === fy) {
@@ -3093,6 +3226,16 @@ function neighbour(H, x0, y0, w, d, m, face, shutters) {
         }
       }
     }
+  }
+  if (o.chimney) {
+    /* A brick chimney up its end wall, `o.chimney` 'w' or 'e', above the
+     * ridge. */
+    const cy = (y0 + y1) / 2;
+    const [c0, c1] = o.chimney === 'w' ? [x0 - 0.7, x0] : [x1, x1 + 0.7];
+    H.box(o.chimneyM ?? 'homeBrick', c0, cy - 0.6, 0, c1, cy + 0.6, h + d * 0.5 * PITCH + 1.0, { name: 'neighbour chimney' });
+  }
+  if (o.backOnly) {
+    return;
   }
   const dc = x0 + ((Math.floor(n / 2) + 0.5) * w) / n;
   const [a, b] = out(fy, s, 0.04);

@@ -74666,3 +74666,47 @@ Checks run: `npm run net:selftest` all passed (3 new), board `npm test` all pass
 What went wrong: the first shots run opened the meet sheet, not the editor, so its Tag clicks found nothing; it was rerun through Change look. At 1280 wide the seventh tab sits partly off the tab strip's right edge, which scrolls; left as is for Mat's look.
 
 Approval, 2026-11-04 14:22Z: Mat wrote "Push to main" in the thread "Add custom room names without abuse". That covers the handle picker (board PR 73 first, then this sim PR 231). Steam typed names (part 2) are not covered and not built.
+
+## 2026-11-04: Nick Burns' house, round 4, the outside from the frames we have
+
+Mat at 14:22Z, asked what was left (the upstairs inside has no footage, the red maple, the neighbours): "Do what you can with what you have". So this round is what the outside frames of his two flights show and the model did not, each checked against a render from a camera put where the frame was shot. Sheets in `/mnt/project-files/nick-burns-house/round4/` (outside frames only, cropped clear of anyone on the patio).
+
+- The Japanese maple in the bed between the pergola's east end and the pavilion (v2 48, 49, 160, 251, v1 313): a low trunk, two limbs, six blobs, its top about four metres up, under the upper floor's sills and below a pilot flying along the back wall up there (v2 67 to 69). Clear of the kitchen window line, the line along the back wall into the pavilion and the pergola's beam, by house-check.
+- A second maple just off the front corner of the chimney's gable, in a bed of mulch round the corner from the front one (v2 99, 112, 117, 119).
+- Both maples are the frames' dull rusty brown, sampled at about #8f6a58 in the sun and #422723 in the shade (v2 68, 119, 160), drawn in `homeWood` (`MAPLE`), with trunks in the sash's dark.
+- The neighbours, out of the plot, as the view:
+  - next door to the west, past the side yard's picket fence, a two storey with its gable end to Nick's yard and windows on that end and on its side toward his (v2 99, 101, 106, 109, 112), `westNeighbour()`;
+  - behind the back fence, across their own yards, a beige one to the north west (v2 13, 14), a white one right behind with a chimney on its west end (flying east along the fence, v2 18, 21, 22) and another toward the tall fence's corner (v2 24, 26), `neighbour()` with `backOnly`, glass only on the side that faces his.
+- The upstairs from outside. v2 99 sees the whole back wall from the lawn and v2 65 to 69 fly along it at the upper floor. The wall has four upper windows, not five: the master's narrow one by the chimney, its wide curtained one, the bathroom's two lights in a white box standing out over the bay, a long blank stretch, and three lights over the kitchen's window at the east end. `UP_BACK` holds them, placed by where each falls along the wall in a render from v2 99's corner against the frame. So bedroom 4 has no window of its own, because the frames show none there.
+- The west gable (v2 112, 117, 119) is grey siding from the front corner back, with a window a storey south of the chimney and none north of it. The brick now stops at the brick block's own forward end, and the master's west window is gone.
+- The upstairs sticker moved along the master's north wall to x 1.58, between its two windows. Its old aim went out through the wide window, and house-check failed it ("its line meets nothing").
+- The board's thumbnail changed: the street shot sees the front maple and, in the haze, the houses behind. It was redrawn with `node scripts/boardcards.js --worlds --only house`.
+
+Left as they are, and why:
+- v2 99 suggests the ground floor's French doors and bay sit a metre or more further east than the model has them, and the pergola may be lower than 3.45. Three rounds of matched views agreed with the ground floor from inside, and these two frames are from far off and high, so nothing moved.
+- The neighbours' yards are full of bare trees in every frame, and the model has none out there. Each would be a scaled asset with its own draw. Not done.
+
+Checks:
+- `node scripts/house-check.js`: all passed.
+- `npm run check:bedslot`: 6 passed.
+- `node scripts/yardtrack-check.js`: all passed.
+- `npm run check:career`: 179 pass.
+- check:props, lint:nouns and lint:partners passed.
+- Not run: `npm run verify`, because nothing here touches physics, the plant, the module ABI or the build. Not flown.
+
+Latency, measured headless with `__renderStats()` on main (2eaab4c, in a worktree) and on this branch, 46 views on High and Low: indoors on every floor, round the house, the street, and the new views over the fences. Each outlier was shot again on both, in the same order after a warm view.
+- Draw calls are flat in every room, at the front and the street, and round the pavilion and the patio. The busiest views (98 to 100 on High, 90 on Low) are flat.
+- They rise only looking out over the fences, at the neighbours, which are the map's cheapest views:
+  - +4 looking north from the back lawn (High 25 to 29, 29 to 33 and 31 to 35; Low 17 to 21, 21 to 25, 23 to 27);
+  - +3 looking north west from the side yard (High 36 to 39, Low 28 to 31);
+  - +1 looking west at the house next door (High 31 to 32, Low 23 to 24).
+- Triangles: +3.3k on High (the street 300.9k to 304.2k, about 1.1 percent) and +1.65k on Low (about 1.2 percent) in every view, because every batch of the house's is the whole map's. Looking north it is +6.3k on High and +4.6k on Low.
+- A one draw rise on Low in a few views, and the upstairs views' 13k to 18k jumps on High, were Nick walking into view and his balloon. Shot again in the same order on main and here, they read the same.
+
+What went wrong:
+- The first pass of the neighbours put a white house with a chimney next door to the west. v2 112, 99 and 101 show that house is the one behind the back fence, seen flying east along it, and next door is a gable end in taupe. It was rebuilt.
+- The first measure showed +1 draw in nearly every room. The tan, and then the brick, had their batches' one culling sphere stretched from the cul de sac to the houses behind the back fence. The houses went into the siding's colour, the far chimney into the roof's, and the back maple out of the brick. The first maple red (`homePlay`, the umbrella's) was free but read as a cartoon red against the frames' brown, so it became `homeWood`.
+- The first upstairs pass kept the five window places and only widened them. The render from v2 99's corner put each one off along the wall, so they moved.
+- The back maple's first top, at 4.65 m, stood in the line of a pilot flying along the upper floor. It came down to about 4 m.
+- Several comparison cameras were too far off or too low to match their frames, and were placed again.
+- One Low run was shot while a second browser was running. Its numbers were a view behind, and it was run again alone.

@@ -66,7 +66,7 @@ export const NB_SPOTS = [
   { id: 'family', name: 'In the family room', from: [2.0, 6.4, FLOOR0 + 1.6], dir: 'w', size: 0.24 },
   { id: 'island', name: 'On the kitchen island', from: [10.7, 5.3, FLOOR0 + 0.6], dir: 'n', size: 0.22 },
   { id: 'landing', name: 'At the top of the stair', from: [6.0, 3.6, FLOOR1 + 1.5], dir: 'w', size: 0.24 },
-  { id: 'upstairs', name: 'Upstairs', from: [2.5, 6.0, FLOOR1 + 1.4], dir: 'n', size: 0.24 },
+  { id: 'upstairs', name: 'Upstairs', from: [1.58, 6.0, FLOOR1 + 1.4], dir: 'n', size: 0.24 },
   { id: 'lounge', name: 'In the basement lounge', from: [2.1, 2.5, BF + 1.45], dir: 'w', size: 0.24 },
   { id: 'workshop', name: 'In the workshop', from: [12.0, 4.0, BF + 1.3], dir: 'e', size: 0.26 },
   { id: 'back', name: 'Out the back', from: [2.3, 10.5, FLOOR0 + 1.5], dir: 's', size: 0.3 },

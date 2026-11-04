@@ -525,6 +525,7 @@
     'src/net/fieldwatch.js',
     'src/net/link.js',
     'src/net/peers.js',
+    'src/net/picks.js',
     'src/net/pose.js',
     'src/net/remote.js',
     'src/net/room.js',

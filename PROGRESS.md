@@ -74361,3 +74361,7 @@ Mat's ask of 00:43Z: "match the photos exactly and keep iterating until there is
 - Latency: draw calls flat (High 31 to 42, Low 27 to 38, the same colours). Triangles up about 1.3k on High (91.9k to 93.1k against main's 90.2k to 91.8k) and about 1.1k on Low (69.4k to 70.5k against 68.0k to 69.4k), measured over the same 25 views headless. A rise, so it needs Mat's own word before main.
 - Checks: `node scripts/warehouse-check.js` all passed (lines, gaps, slots, module); lint:partners, lint:nouns, lint:preload, check:props passed; career tests pass file by file. Thumbnail regenerated.
 - What went wrong: the first cut made eight slots (cart shelves 0.15 m off the slab, bins and cartons a hand apart across uprights); the shelves went and the bins and cartons now meet across the uprights.
+
+### 2026-11-04: Thomas More's Shop, the dock wall's cabinets (branch)
+
+Mat at 01:24Z: "And go again, cabinets on the wall not doors", and on the card that followed he picked "Three white dock doors". The dock wall now keeps one roller door, the forklift's, and where the west and east doors were it has runs of tall white two door cabinets stood against the wall, joints painted on. `node scripts/warehouse-check.js` all passed; lint:nouns passed; reshot the dock views. Latency: two roller doors with tracks, headers and joint paint out, two cabinet boxes and their joints in; the dock views measure 91.9k to 92.7k triangles on High, at or under round 2, calls unchanged.

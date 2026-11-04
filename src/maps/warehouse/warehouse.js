@@ -18,7 +18,8 @@
  * under a dark steel deck, open web joists across it and maroon girders
  * along it, a round silver duct down it, long white lights and two ceiling
  * fans, cream block walls and cream round columns. The north wall is the
- * dock wall: three white roller doors shut under grey headers, a green,
+ * dock wall: one white roller door shut under a grey header between tall
+ * white cabinets stood against the wall, a green,
  * white and red stripe along it and orange ladders leant on it, a stack of
  * empty pallets and grey carpet rolls at its east end, and it runs to the
  * barani corner (the phone photo taken by the forklift looks along it, the
@@ -531,17 +532,20 @@ function stripe(H, dir, at, side, a0, a1, holes = []) {
   }
 }
 
-/* The roller doors in the dock wall, west to east. The middle one is the
+/* The roller door in the dock wall, at the
  * crate aisle's end, the forklift parked nose to it (frame 8.12.25 and the
  * phone photo looking up the aisle at the forklift's back). */
-const DOCK_DOORS = [[2.6, 5.8], [8.0, 11.2], [13.4, 16.6]];
+const DOCK_DOORS = [[8.0, 11.2]];
+/* Where the first build drew two more roller doors the wall has tall white
+ * cabinets stood against it (Mat's pick of 4 November 2026). */
+const DOCK_CABINETS = [[2.6, 5.8], [13.4, 16.6]];
 
 function dock(H) {
   const f = FLOOR0;
   /* The dock wall is the north wall, the one that runs from the crates to
    * the barani corner: the phone photo taken by the forklift looks along it,
    * doors on its left, to the taped partition and the barani doorway at its
-   * far end. Three white roller doors, shut: painted on both faces with
+   * far end. One white roller door, shut, the forklift's: painted on both faces with
    * their panel joints, a steel track up each side and the grey header box
    * over. */
   for (const [x0, x1] of DOCK_DOORS) {
@@ -553,6 +557,15 @@ function dock(H) {
     H.box('whSteel', x0 - 0.12, DEP - 0.12, f, x0, DEP, 3.8, { name: 'door track' });
     H.box('whSteel', x1, DEP - 0.12, f, x1 + 0.12, DEP, 3.8, { name: 'door track' });
     H.box('whSteel', x0 - 0.3, DEP - 0.55, 3.75, x1 + 0.3, DEP, 4.25, { name: 'door header' });
+  }
+  /* The tall white cabinets either side of it, a row of two door
+   * cabinets touching, the doors' joints and handles painted on. */
+  for (const [x0, x1] of DOCK_CABINETS) {
+    H.box('whWhite', x0, DEP - 0.6, f, x1, DEP, f + 2.2, { name: 'cabinets' });
+    for (let x = x0 + 0.4; x < x1 - 0.1; x += 0.4) {
+      H.paint('whSteel', x - 0.01, DEP - 0.612, f + 0.05, x + 0.01, DEP - 0.6, f + 2.15);
+    }
+    H.paint('whSteel', x0, DEP - 0.612, f + 0.1, x1, DEP - 0.6, f + 0.13);
   }
   /* The stripe runs from the west wall to the white door; the frame at
    * the barani corner shows the block bare above the plywood. */

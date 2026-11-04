@@ -74365,3 +74365,7 @@ Mat's ask of 00:43Z: "match the photos exactly and keep iterating until there is
 ### 2026-11-04: Thomas More's Shop, the dock wall's cabinets (branch)
 
 Mat at 01:24Z: "And go again, cabinets on the wall not doors", and on the card that followed he picked "Three white dock doors". The dock wall now keeps one roller door, the forklift's, and where the west and east doors were it has runs of tall white two door cabinets stood against the wall, joints painted on. `node scripts/warehouse-check.js` all passed; lint:nouns passed; reshot the dock views. Latency: two roller doors with tracks, headers and joint paint out, two cabinet boxes and their joints in; the dock views measure 91.9k to 92.7k triangles on High, at or under round 2, calls unchanged.
+
+### 2026-11-04: Thomas More's Shop, round 3: the dock end (branch)
+
+Mat at 01:50Z: "Keep going". The photo up the crate aisle and frame 8.11.54 show the dock end busier than ours: a yellow cart against the green racking by the forklift, a red bag and a hand truck on the orange side, and low white cabinets on the slab north of the dock lane. Added in `clutter(H)`, every line kept clear. `node scripts/warehouse-check.js` all passed; lint:nouns passed. Latency: High over the 25 views 92.0k to 93.3k triangles, about 0.2k over round 2, calls unchanged (31 to 42). One shot of the first view read 60 calls and 98k; shot again it read 36 and 93.1k, so it was the page's first frame, not the map.

@@ -1094,6 +1094,24 @@ function clutter(H) {
   H.box(r.pick(['whBoard', 'whWhite']), 26.1, 40.85, f + 0.2, 27.7, 41.15, f + 1.6, { name: 'sheets' });
   fan(23.0, 19.2);
   fan(26.4, 33.0);
+  /* The dock end (frames 8.11.54 and the photo up the crate aisle): a
+   * yellow cart against the green racking by the forklift, a red bag and a
+   * hand truck on the orange side, and low white cabinets on the slab
+   * north of the dock lane. */
+  H.box('whYellow', 9.3, 46.0, f, 10.1, 47.4, f + 0.06, { name: 'cart' });
+  H.box('whYellow', 9.3, 46.0, f + 0.9, 10.1, 47.4, f + 0.96, { name: 'cart' });
+  for (const [cx, cy] of [[9.3, 46.0], [10.04, 46.0], [9.3, 47.34], [10.04, 47.34]]) {
+    H.box('whYellow', cx, cy, f, cx + 0.06, cy + 0.06, f + 1.0, { name: 'cart' });
+  }
+  H.box('whWhite', 9.4, 46.1, f + 0.96, 10.0, 47.3, f + 1.3, { name: 'box' });
+  H.box('whRed', 6.4, 46.4, f, 7.1, 47.6, f + 0.45, { name: 'bag' });
+  H.box('whSteel', 6.4, 47.6, f, 6.46, 47.66, f + 1.2, { name: 'hand truck' });
+  H.box('whSteel', 7.04, 47.6, f, 7.1, 47.66, f + 1.2, { name: 'hand truck' });
+  for (const [x0, x1] of [[12.6, 14.0], [15.0, 16.2]]) {
+    H.box('whWhite', x0, 50.4, f, x1, 51.2, f + 0.9, { name: 'cabinet' });
+    H.paint('whSteel', x0, 50.388, f + 0.08, x1, 50.4, f + 0.11);
+    H.paint('whSteel', (x0 + x1) / 2 - 0.01, 50.388, f + 0.15, (x0 + x1) / 2 + 0.01, 50.4, f + 0.85);
+  }
   /* The racking north of the grey door on the partition's cream face,
    * orange uprights, teal beams, pallets of cartons on the beams (frame
    * 8.11.19's right half). */

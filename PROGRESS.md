@@ -74373,3 +74373,8 @@ Not flown on a phone. Worked out from Chromium's and EdgeTX's source; no Android
 Mat, 2026-11-04 00:03Z, in the thread: "Push to main". Covers PR 227, the Android guess and the update Chrome line.
 Main was fetched first and was still this branch's base (6d078f1), so it is a fast forward. `lint:input` was run
 once and stopped at its 5 minute timeout with no result; a second run was still going at the push. Not flown.
+
+Afterwards, `lint:input` in full: 243 pass, 4 fail on this change (the town load failure row, its report, the Fly
+reload, and the Fly solo card order with Mini games after Builder). The same four failed on main before the change
+(6d078f1, run from a `git archive`), plus one more there (a whoop landing that did not settle). None of them is about
+the stick map.

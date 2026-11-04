@@ -74469,3 +74469,35 @@ What went wrong: the office's screens stood 0.2 off the paint shop wall (its cen
 Approval, 2026-11-04 04:35Z: Mat, after the round 6 report stated the cost (draw calls flat, about 2.9k triangles more on High and 1.5k on Low), wrote "push to main". That covers round 6 of Thomas More's Shop (sim PR 230). No board change rides with it. Not flown.
 
 Also corrected on the way: rounds 5 and 6 were dated 5 November in their headings here and in the map's comments; both were done on 4 November 2026 (UTC), and the text now says so.
+
+### 2026-11-04: Thomas More's Shop, the polish pass: floor plan, rooms, leaks
+
+Mat at 08:01Z on 2026-11-04, through the coordinator: "thomas moor's workshop needs lots of work still lots of polish, start by mapping the actual rooms and floor plan then add the furniture , finall ylook for issus where its possible to fly through walls etc".
+
+The floor plan, read again from the 19 frames, the phone photos (building only) and the reel, is drawn as a picture that marks which walls are read and which are guessed: `/mnt/project-files/tcmore-warehouse/plans/floor-plan-2026-11-04.png`. It went to Mat with a request for Thomas to mark it up. What changed in the map:
+- The roof is turned. The open web joists run north and south every 2 m, and the maroon girders run east and west on the column lines (frames 8.11.32, 8.12.11 and 8.14.08 look along the joists; photo 0132 looks across them). There are none over the white block, and none in the paint shop, whose walls and duct stand where girders would. Two light rows moved off the girder lines (y 18 to 19.6, y 39 to 41). The ducts hang under the girders and the heaters hang with them.
+- The white block, x 11.5 to 18.0 and y 0 to 11.5, is walled to the deck. Its north face is the tall white wall behind the green racking (8.12.11, 8.14.08), and the racking's back is against its west face. The wood lined door is in that west face at y 7.5 to 8.7, in the slot north of the office (8.14.19). Through it a plywood passage runs in and round to the south, with a jacket hung in it, into the coat room (moved inside the block from outside the south wall) and out by the front door (THE WOOD DOOR, where it was). Everything else in the block is solid and not drawn.
+- The office's side door now opens into a 0.7 m slot between the office and the block. The glass cabinet on the office's side is thinner (0.2 m), the work cart stands before the office's corner, and the green ladder leans on the block.
+- The panel rack of 8.14.19 is the green racking's south end bay seen from close, so that is what it is now: panels on edge up to the first beams, paper rolls laid over them. The separate panel rack against the south wall is gone.
+- The red corridor (photos 0151 to 0159). The south racking stands 1.5 m off the wall, x 20.2 to 30.8 in five bays, with plywood over its back. Behind it a red floor runs from the washroom to the grey door, with black boards on the wall and bar clamps on the racking's back. The washroom is a white box at x 18 to 20.2 with its grey door shut. The racking's last bay is still open at the slab: it is the way from the workshop to the grey door and into the corridor.
+- The exit door moved from x 22.8 to 24.0 on the north wall to x 30.2 to 31.4, by the barani corner, with a red frame (photo 0131, frame 8.13.05). The plywood stacks moved west to x 23.4 to 29.2. The gap is still named BACK DOOR, which the Barani Doorway lesson (wl-4) uses; its steps still read right.
+- The green, white and red stripe turns the corner onto the west wall (photos 0105, 0106).
+- Furniture: what stood inside the new walls moved out. A bench went to x 19 to 21.4, y 6 to 7.2; a carcass now touches the block; a rolling bench by the start was dropped; the cart by the start moved 0.4 m north; the big table by the grey door moved north of the racking.
+- Gap added: WOOD LINED DOOR (250). Lines in `scripts/warehouse-check.js` follow the plan: in at the wood lined door, round the passage and out the front door; down the slot to the office's side door; under the racking's open bay and down the red corridor; the two print room lines through the open bay; out the exit door.
+
+The fly through sweep is a new section in `scripts/warehouse-check.js`, "6. leaks". It flood fills the air the craft can reach from the start, in 0.1 m cells, with every solid grown by the craft's radius. Then it asks three things. Does the air leave the hall only by an open door? Is there any air inside a thing drawn thick, or round, that is not solid? Does any drawn sheet have air 6 cm off it on both sides? Run against main, it found one real fault: the dark plinth round the outside of the hall was painted across both open doors, so a pilot flew through a dark strip at the foot of each. That is fixed: the plinth stops at the doors. It found nothing else, on main or on this branch. It is proven to bite: with one of the white block's solids taken out it flagged the block's faces, and with the heaters made not solid it flagged them. The section takes about a second. It is a net for holes, not a ruler: at 0.1 m cells, a gap the craft only just fits may read either way.
+
+Checks: `node scripts/warehouse-check.js` all passed (34 lines, 14 gaps, slots, leaks, module). lint:preload, lint:partners, lint:nouns, check:props and lint:memory passed, and `tests/career/career-maps.test.js` passed 72. Not run: `npm run verify`, because nothing touches physics, the plant, the ABI or the build. Not flown.
+
+Latency, measured on the same 25 views as rounds 5 and 6 with headless `__renderStats()` against main ac23a42:
+- Draw calls are unchanged: High 32 to 42, Low 28 to 38, the same 18 colours.
+- Triangles on High average 98.85k against 98.76k, about 0.08k or 0.1 percent more.
+- Triangles on Low average 73.34k against 73.30k, 38 more.
+- The cost is flat.
+
+The board's picture changes, because the card's lens looks at the barani corner and now sees the moved exit door, the moved stacks and the turned roof. `assets/thumbs/warehouse.jpg` was regenerated, and the board's copy was vendored again on its own branch, to go first.
+
+What went wrong:
+- The first build put the wood lined door in the block's north face, with a panel rack beside it. The renders and a second reading of 8.14.19 and 8.12.11 showed that the panels are the green racking's end bay and the door is in the block's side. So the block grew to y 11.5 and the door moved.
+- The checks found slots, all fixed before they passed: machine room lights 0.25 m under a girder at y 39 (that girder now stops at the partition), the jacket 0.35 m under the passage ceiling, the panel bay 0.1 m off the block, the first yellow cabinet 0.2 m off the washroom, and two carcasses 0.1 m apart.
+- The leak check's first version tested 15 cm off each sheet. On a 15 cm wall that point lands in the air beyond the wall, so the test was wrong. It tests at 6 cm now.

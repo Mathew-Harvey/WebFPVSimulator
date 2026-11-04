@@ -14,7 +14,10 @@
  *               radius: the doors, the aisle, the barani doorway, the rooms
  *   4. gaps     every named gap's window clear by the craft's radius
  *   5. slots    the gap rule (GAP_MIN in src/props/parts.js) inside the hall
- *   6. module   with a build of dist/sim.wasm, the craft lifted off the
+ *   6. leaks    the air the craft can reach from the start, as a grid of
+ *               cells: it leaves the hall only by a door, it is never inside
+ *               a thing drawn thick, and no drawn sheet has it on both sides
+ *   7. module   with a build of dist/sim.wasm, the craft lifted off the
  *               start and held at a metre and a half for three seconds in the
  *               real module, touching nothing, twice to the bit
  *
@@ -46,7 +49,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { loadSim, SIM_OK, simErrorName } from '../tests/lib/simmod.js';
-import { warehouseLayout, S, FLOOR0, worldAt, FRAME } from '../src/maps/warehouse/warehouse.js';
+import { warehouseLayout, S, FLOOR0, worldAt, FRAME, OPENINGS, LEN, DEP, HIGH } from '../src/maps/warehouse/warehouse.js';
 import { warehouseDocument } from '../src/maps/warehouse/yard.js';
 import { MATERIALS as HOME_MATERIALS } from '../src/props/homes.js';
 import { GAP_MIN } from '../src/props/parts.js';
@@ -316,12 +319,12 @@ async function placedBlock(L) {
 const LINES = [
   ['up the crate aisle and in at the office\'s French door', [[8.2, 46.0, 1.6], [8.2, 9.0, 1.6], [9.2, 7.0, 1.6], [9.2, 2.5, 1.6]]],
   ['out through the office window over the tool chest', [[6.9, 3.0, 1.55], [6.9, 8.0, 1.55]]],
-  ['out the wood door into the coat room', [[13.0, 8.0, 1.2], [13.0, -2.6, 1.2]]],
+  ['in the wood lined door, round the passage and out the front door', [[9.0, 8.1, 1.2], [13.0, 8.1, 1.2], [13.0, -2.6, 1.2]]],
   ['down the dock lane past the shut doors', [[1.5, 49.4, 2.0], [17.5, 49.4, 2.0]]],
   ['up the crate aisle to the forklift at the middle door', [[8.2, 9.0, 2.0], [8.2, 48.5, 2.0], [6.6, 52.0, 2.0], [6.6, 54.6, 2.0]]],
   ['down the lane between the west wall crates and the racking', [[4.1, 46.0, 1.8], [4.1, 7.0, 1.8]]],
   ['from the west wall through the racks and crates to the workshop', [[1.5, 21.3, 1.6], [24.0, 21.3, 1.6]]],
-  ['over the crates, under the lights', [[14.5, 7.0, 4.9], [14.5, 48.0, 4.9]]],
+  ['over the crates, under the lights', [[14.5, 12.0, 4.9], [14.5, 48.0, 4.9]]],
   ['through the barani doorway into the machine room', [[26.0, 53.4, 1.8], [40.0, 53.4, 1.8]]],
   ['back out by the barani doorway and down the workshop', [[40.0, 53.4, 2.4], [28.0, 53.4, 2.4], [28.0, 30.0, 2.4]]],
   ['down the machine room past the saws', [[33.4, 52.0, 1.6], [33.4, 33.0, 1.6], [48.0, 35.0, 1.6], [48.0, 52.5, 1.6]]],
@@ -330,14 +333,14 @@ const LINES = [
   ['out of the spray room by the sliding door', [[44.0, 12.0, 1.4], [36.0, 7.5, 1.4], [26.0, 7.5, 1.4]]],
   ['across the workshop between the columns', [[19.0, 34.2, 1.6], [30.0, 34.2, 1.6]]],
   ['under the big table', [[22.2, 10.5, 0.45], [22.2, 14.5, 0.45]]],
-  ['out the back door', [[23.4, 48.0, 1.2], [23.4, 60.0, 1.2]]],
-  ['into the office by its side door', [[16.0, 1.8, 1.4], [8.5, 1.8, 1.4]]],
+  ['out the exit door by the barani corner', [[30.8, 49.0, 2.2], [30.8, 54.0, 1.2], [30.8, 60.0, 1.2]]],
+  ['down the slot by the white block and into the office by its side door', [[9.6, 8.3, 1.4], [11.15, 6.2, 1.4], [11.15, 1.8, 1.4], [8.5, 1.8, 1.4]]],
   ['down the workshop low', [[24.3, 52.0, 0.8], [24.3, 4.0, 0.8]]],
   /* The reel's lines, 4 November 2026 (its frame numbers in brackets). */
-  ['along the south racking into the red carpet corner (2 to 15)', [[22.0, 1.65, 1.0], [29.6, 1.65, 1.0], [30.25, 0.55, 0.8]]],
-  ['in the grey door and down the print room (13 to 23)', [[29.6, 1.8, 1.2], [36.0, 1.8, 1.2], [45.6, 1.7, 1.2]]],
+  ['under the south racking\'s open bay and down the red corridor to the washroom', [[29.7, 4.0, 0.9], [29.7, 0.75, 0.9], [20.6, 0.75, 0.9]]],
+  ['in the grey door and down the print room (13 to 23)', [[29.7, 4.0, 1.2], [29.7, 1.9, 1.2], [36.0, 1.8, 1.2], [45.6, 1.7, 1.2]]],
   ['up over the office, looking down, and into the long room (18 to 31)', [[36.0, 1.8, 1.2], [36.0, 1.8, 4.2], [38.0, 5.0, 4.2], [44.6, 5.0, 4.2], [44.6, 1.9, 4.2], [44.6, 1.9, 1.6]]],
-  ['back out of the print room by the grey door (31 to 33)', [[45.0, 1.9, 1.6], [33.0, 1.8, 1.6], [27.5, 1.8, 1.6]]],
+  ['back out of the print room by the grey door and down the red corridor (31 to 33)', [[45.0, 1.9, 1.6], [33.0, 1.8, 1.4], [30.2, 1.8, 1.2], [30.2, 0.75, 1.2], [21.0, 0.75, 1.2]]],
   ['into the print room\'s office by its door', [[39.5, 1.8, 1.2], [39.5, 4.6, 1.2], [37.2, 4.6, 1.2]]],
   ['out of the west lane under the orange racking (36, 37)', [[4.1, 26.5, 1.2], [8.2, 26.5, 1.2], [8.2, 30.0, 1.2]]],
   ['under the orange racking again further north', [[4.1, 39.4, 1.2], [8.6, 39.4, 1.2]]],
@@ -396,6 +399,190 @@ function gapsBlock(placed, near) {
     }
     check(`${z.name} is clear by the craft's radius`, !hit, hit ? hit.name || hit.kind : `${r3(z.w)} by ${r3(z.h)} m`);
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* 6. Leaks                                                            */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Where a pilot gets through something that looks solid (the owner's ask
+ * of 4 November 2026, "look for issues where it's possible to fly through
+ * walls"). The air the craft can reach is found as a grid of cells a tenth
+ * of a metre on a side over the hall and a margin round it: every solid of
+ * the hall's, grown by the craft's radius, fills the cells whose centres it
+ * covers, and the air is every cell the start reaches through empty ones,
+ * face to face. The margin outside the walls and over the roof is reached
+ * but not gone on from. Then three questions of that air:
+ *
+ *   out      it reaches outside only in front of a door that is open: a
+ *            gap anywhere else in the walls or the roof is a way out
+ *   inside   no air inside a thing drawn thick (all three sides over a
+ *            fifth of a metre, or round and wider than a sixth) that is not
+ *            solid: a pilot would fly through a crate that is only a
+ *            picture of one
+ *   through  no drawn sheet (a face or paint under five centimetres thick
+ *            and a quarter of a square metre or more) has air six
+ *            centimetres off it on both sides: a wall that is only paint
+ *
+ * A gap the craft only just fits may read either way at this grid, so this
+ * is a net for holes and missing solids, not a ruler; the lines and the
+ * gaps above are the rulers.
+ */
+const CELL = 0.1 * S;
+const MARGIN_OUT = 0.6;
+
+function leaksOf(L, own) {
+  const { OX, OZ } = FRAME;
+  const R = CRAFT_WORLD_R;
+  const gx0 = OX - MARGIN_OUT * S;
+  const gz0 = OZ - (DEP + MARGIN_OUT) * S;
+  const nx = Math.ceil(((LEN + 2 * MARGIN_OUT) * S) / CELL);
+  const nz = Math.ceil(((DEP + 2 * MARGIN_OUT) * S) / CELL);
+  const ny = Math.ceil(((HIGH + 0.5) * S) / CELL);
+  const at = (i, j, k) => (k * nz + j) * nx + i;
+  const centre = (i, j, k) => [gx0 + (i + 0.5) * CELL, (k + 0.5) * CELL, gz0 + (j + 0.5) * CELL];
+  const cellOf = (p) => [Math.floor((p[0] - gx0) / CELL), Math.floor((p[2] - gz0) / CELL), Math.floor(p[1] / CELL)];
+  const clampI = (v, n) => Math.max(0, Math.min(n - 1, v));
+  /* 1 solid, 2 air reached, 3 outside reached. */
+  const g = new Uint8Array(nx * ny * nz);
+  for (const s of own) {
+    const lo = s.box ? [s.box[0], s.box[1], s.box[2]] : [Math.min(s.cap[0], s.cap[3]) - s.cap[6], Math.min(s.cap[1], s.cap[4]) - s.cap[6], Math.min(s.cap[2], s.cap[5]) - s.cap[6]];
+    const hi = s.box ? [s.box[3], s.box[4], s.box[5]] : [Math.max(s.cap[0], s.cap[3]) + s.cap[6], Math.max(s.cap[1], s.cap[4]) + s.cap[6], Math.max(s.cap[2], s.cap[5]) + s.cap[6]];
+    const [i0, j0, k0] = cellOf([lo[0] - R, lo[1] - R, lo[2] - R]);
+    const [i1, j1, k1] = cellOf([hi[0] + R, hi[1] + R, hi[2] + R]);
+    for (let k = clampI(k0, ny); k <= clampI(k1, ny); k += 1) {
+      for (let j = clampI(j0, nz); j <= clampI(j1, nz); j += 1) {
+        for (let i = clampI(i0, nx); i <= clampI(i1, nx); i += 1) {
+          const c = centre(i, j, k);
+          if ((s.box ? boxDist(s.box, c) : segDist(s.cap, c)) < R) {
+            g[at(i, j, k)] = 1;
+          }
+        }
+      }
+    }
+  }
+  const outside = (c) => {
+    const px = (c[0] - OX) / S;
+    const py = (OZ - c[2]) / S;
+    return px < -0.3 || px > LEN + 0.3 || py < -0.3 || py > DEP + 0.3 || c[1] / S > HIGH + 0.25;
+  };
+  const start = worldAt(22.0, 4.0, 1.5);
+  const q = new Int32Array(nx * ny * nz);
+  let head = 0;
+  let tail = 0;
+  const s0 = cellOf(start);
+  q[tail++] = at(...s0);
+  g[q[0]] = 2;
+  const outs = [];
+  while (head < tail) {
+    const n = q[head++];
+    const i = n % nx;
+    const j = Math.floor(n / nx) % nz;
+    const k = Math.floor(n / (nx * nz));
+    for (const [di, dj, dk] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) {
+      const a = i + di;
+      const b = j + dj;
+      const c = k + dk;
+      if (a < 0 || b < 0 || c < 0 || a >= nx || b >= nz || c >= ny) {
+        continue;
+      }
+      const m = at(a, b, c);
+      if (g[m] !== 0) {
+        continue;
+      }
+      const p = centre(a, b, c);
+      if (outside(p)) {
+        g[m] = 3;
+        outs.push(p);
+        continue;
+      }
+      g[m] = 2;
+      q[tail++] = m;
+    }
+  }
+  const air = (p) => {
+    const [i, j, k] = cellOf(p);
+    return i >= 0 && j >= 0 && k >= 0 && i < nx && j < nz && k < ny && g[at(i, j, k)] >= 2;
+  };
+  const plan = (p) => [r3((p[0] - OX) / S), r3((OZ - p[2]) / S), r3(p[1] / S)];
+  /* out: in front of an open door, or nowhere. */
+  const doors = Object.values(OPENINGS).filter((o) => o.y !== undefined && (o.y < 0 || o.y > DEP));
+  const ways = new Map();
+  for (const p of outs) {
+    const [px, py, h] = plan(p);
+    const door = doors.some((o) => px > o.x0 && px < o.x1 && h > o.h0 && h < o.h1 && Math.abs(py - o.y) < 0.5);
+    if (!door) {
+      const key = `${Math.round(px)},${Math.round(py)},${Math.round(h)}`;
+      ways.set(key, (ways.get(key) || 0) + 1);
+    }
+  }
+  /* inside and through: the drawn parts that are not solid. */
+  const inside = [];
+  const through = [];
+  for (const p of L.parts) {
+    if (!p.draw || p.solid !== false) {
+      continue;
+    }
+    if (p.t === 'cap') {
+      for (const t of [0.25, 0.5, 0.75]) {
+        const c = [0, 1, 2].map((m) => p.a[m] + (p.b[m] - p.a[m]) * t);
+        if (p.r > 0.08 * S && air(c)) {
+          inside.push(`${p.name || p.m} at ${plan(c).join(', ')}`);
+          break;
+        }
+      }
+      continue;
+    }
+    const lo = p.lo;
+    const hi = p.hi;
+    const d = [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]];
+    if (d.every((v) => v > 0.2 * S)) {
+      const c = [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2];
+      if (air(c)) {
+        inside.push(`${p.name || p.m} at ${plan(c).join(', ')}`);
+      }
+      continue;
+    }
+    const k = d.indexOf(Math.min(...d));
+    const o = [0, 1, 2].filter((m) => m !== k);
+    if (d[k] > 0.05 * S || d[o[0]] * d[o[1]] < 0.25 * S * S) {
+      continue;
+    }
+    /* Six centimetres off each side: inside any wall or board it is
+     * painted on, in the air if there is air there. */
+    const off = d[k] / 2 + 0.06 * S;
+    let hit = null;
+    for (let u = lo[o[0]] + CELL; u < hi[o[0]] - CELL && !hit; u += 2 * CELL) {
+      for (let v = lo[o[1]] + CELL; v < hi[o[1]] - CELL && !hit; v += 2 * CELL) {
+        const c = [0, 0, 0];
+        c[o[0]] = u;
+        c[o[1]] = v;
+        c[k] = (lo[k] + hi[k]) / 2;
+        const a = c.slice();
+        const b = c.slice();
+        a[k] -= off;
+        b[k] += off;
+        if (air(a) && air(b)) {
+          hit = c;
+        }
+      }
+    }
+    if (hit) {
+      through.push(`${p.name || p.m} at ${plan(hit).join(', ')}`);
+    }
+  }
+  return { reached: tail, ways, inside, through };
+}
+
+function leaksBlock(L, own) {
+  console.log('\n6. leaks');
+  const { reached, ways, inside, through } = leaksOf(L, own);
+  console.log(`        ${reached} cells of air reached from the start`);
+  const w = [...ways.entries()].map(([k, n]) => `${k} (${n})`);
+  check('the air leaves the hall only by an open door', w.length === 0, w.slice(0, 8).join('; ') || 'the front door and the exit door');
+  check('no air inside a thing drawn thick and not solid', inside.length === 0, inside.slice(0, 8).join('; ') || 'none');
+  check('no drawn sheet has air on both sides', through.length === 0, through.slice(0, 8).join('; ') || 'none');
 }
 
 /* ------------------------------------------------------------------ */
@@ -572,6 +759,7 @@ async function main() {
   linesBlock(near);
   gapsBlock(placed, near);
   slotsBlock(own);
+  leaksBlock(L, own);
   await moduleBlock(placed);
   console.log(failures ? `\n${failures} failed` : '\nall passed');
   process.exitCode = failures ? 1 : 0;

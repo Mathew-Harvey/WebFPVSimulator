@@ -74501,3 +74501,5 @@ What went wrong:
 - The first build put the wood lined door in the block's north face, with a panel rack beside it. The renders and a second reading of 8.14.19 and 8.12.11 showed that the panels are the green racking's end bay and the door is in the block's side. So the block grew to y 11.5 and the door moved.
 - The checks found slots, all fixed before they passed: machine room lights 0.25 m under a girder at y 39 (that girder now stops at the partition), the jacket 0.35 m under the passage ceiling, the panel bay 0.1 m off the block, the first yellow cabinet 0.2 m off the washroom, and two carcasses 0.1 m apart.
 - The leak check's first version tested 15 cm off each sheet. On a 15 cm wall that point lands in the air beyond the wall, so the test was wrong. It tests at 6 cm now.
+
+Approval, 2026-11-04 09:05Z: Mat wrote "Push to main" in the thread. That covers this polish pass (sim PR 232) and the board's thumbnail (board PR 74), with the cost stated as flat. The board's copy was pushed first, at 4e16ac0.

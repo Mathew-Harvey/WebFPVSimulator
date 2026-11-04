@@ -74647,3 +74647,5 @@ What went wrong:
 - The coat tree's foot and hooks first stood a slot off the wall and moved in to under one.
 - The first measure run's script line ran the branch twice, so main was shot a minute later than planned. The numbers above are from the corrected runs.
 - I read the back wall's corner window as a mistake until v1 295 showed it from the patio.
+
+Approval, 2026-11-04 14:06Z: Mat, after the round 3 report stated the cost (draw calls flat or lower, triangles up about 0.2 percent), wrote "Push to main" in the thread "Make Nick's house match his flights". That covers round 3 of Nick Burns' house (sim PR 234), the inside, and its triangle rise. No board change. Not flown.

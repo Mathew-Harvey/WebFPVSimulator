@@ -151,14 +151,14 @@ export const MATERIALS = {
    * maroon girders in whRed with the stripe's red. Every one but the apron's
    * is two band and takes no shadow, because inside the hall everything is
    * under the roof's, and a crate in the roof's shadow reads lavender. */
-  whConcrete: { c: 0x9d9d9a, tint: 0x6c6a84, noReceive: true },
+  whConcrete: { c: 0xaba69c, tint: 0x6c6a84, noReceive: true },
   whWall: { c: 0xe0d6c1, tint: 0x938aa4, noReceive: true },
   whDeck: { c: 0x50525a, tint: 0x363650, noReceive: true },
   whSteel: { c: 0x6c7078, tint: 0x45455e, noReceive: true },
   whColumn: { c: 0xe9dfc6, tint: 0x9a90a8, noReceive: true },
-  whCrate: { c: 0xc99c62, tint: 0x7c5a62, noReceive: true },
-  whCrateDark: { c: 0x8c6a46, tint: 0x4f3e4c, noReceive: true },
-  whBoard: { c: 0xd9b27a, tint: 0x806066, noReceive: true },
+  whCrate: { c: 0xcfb185, tint: 0x9a8070, noReceive: true },
+  whCrateDark: { c: 0x9a7f5e, tint: 0x66545a, noReceive: true },
+  whBoard: { c: 0xd8c29c, tint: 0x9e867e, noReceive: true },
   whWhite: { c: 0xf0eee8, tint: 0x9a96b2, noReceive: true },
   whBlack: { c: 0x262830, tint: 0x1e2030, noReceive: true },
   whRackTeal: { c: 0x2a7f8c, tint: 0x2e4f6a, noReceive: true },

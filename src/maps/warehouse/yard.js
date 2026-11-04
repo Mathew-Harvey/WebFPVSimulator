@@ -66,7 +66,6 @@ function rows() {
     across(OPENINGS.frenchDoor, 'FRENCH DOOR', 250),
     across(OPENINGS.slidingDoor, 'SLIDING DOOR', 250),
     across(OPENINGS.officeWindow, 'OFFICE WINDOW', 500),
-    across(OPENINGS.sprayDoor, 'PAINT SHOP', 500),
     /* Thomas's favourite, the wide opening into the machine room. */
     across(OPENINGS.barani, 'BARANI DOORWAY', 1000),
   ];

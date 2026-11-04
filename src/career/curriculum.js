@@ -1852,18 +1852,18 @@ export const CHAPTERS = [
         camera: 'fpv',
         world: place('warehouse'),
         briefing: {
-          goal: 'The shop\'s loop: through the paint shop door, up the machine room, back through the Barani Doorway and in again through the sliding door.',
+          goal: 'The shop\'s loop: into the paint shop by the sliding door and out again, up the workshop and through the Barani Doorway, and out by the back door.',
           why: 'Thomas More flies this loop, and the Barani Doorway is his favourite: wide and tall, the place to carry speed. A loop through a building is a lap of a race track with walls.',
           steps: [
-            'East through the paint shop door at the south end.',
-            'North up the machine room, then west through the Barani Doorway.',
-            'South down the workshop and east through the sliding door to finish.',
+            'East through the sliding door into the paint shop, round by the booth and back out.',
+            'North up the workshop and east through the Barani Doorway into the machine room.',
+            'Back out by the doorway and north out of the back door to finish.',
           ],
           sticks: [{ stick: 'throttle', dir: 'hold' }, { stick: 'roll', dir: 'both' }, { stick: 'yaw', dir: 'both' }],
         },
         objectives: [
           {
-            kind: 'gap', text: 'Paint shop, Barani Doorway, sliding door', names: ['PAINT SHOP', 'BARANI DOORWAY', 'SLIDING DOOR'], ordered: true,
+            kind: 'gap', text: 'Sliding door, Barani Doorway, back door', names: ['SLIDING DOOR', 'BARANI DOORWAY', 'BACK DOOR'], ordered: true,
             hint: 'In that order. The marker points at the next one.',
           },
         ],

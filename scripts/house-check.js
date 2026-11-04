@@ -389,15 +389,17 @@ function groundChecks(placed) {
  * one to the next. */
 const LINES = [
   ['in the front door to the hall', [[6.1, -3.0, 1.2], [6.1, 1.6, 1.2]]],
-  ['hall, past the stair foot, into the front room', [[6.5, 1.45, 1.7], [9.5, 1.45, 1.7]]],
-  ['front room through its door into the back hall', [[9.5, 1.45, 1.7], [8.95, 2.4, 1.7], [8.95, 4.3, 1.7]]],
-  ['back hall into the kitchen', [[8.95, 4.3, 1.7], [9.95, 4.3, 1.7], [9.95, 5.6, 1.7]]],
-  ['kitchen along the aisle between the island and the sink', [[9.95, 5.6, 1.7], [10.2, 7.1, 1.4], [12.7, 7.1, 1.4]]],
-  ['kitchen into the breakfast room', [[9.95, 5.6, 1.7], [8.0, 5.75, 1.7]]],
-  ['through the LED cube on the island', [[11.6, 5.3, 1.55], [11.6, 7.3, 1.55]]],
-  ['down into the LED cube under the tin panel', [[11.6, 6.2, 2.55], [11.6, 6.2, 1.5]]],
-  ['breakfast room through the wide opening into the family room', [[8.0, 5.75, 1.7], [6.5, 6.3, 1.7], [2.0, 6.3, 1.7]]],
-  ['breakfast room out the slider onto the patio', [[8.0, 5.75, 1.7], [5.8, 6.6, 1.7], [5.8, 9.6, 1.7]]],
+  ['hall, past the stair, into the front room', [[6.5, 2.1, 1.7], [9.6, 2.1, 1.7]]],
+  ['front room through its door into the back hall', [[9.6, 2.1, 1.7], [9.42, 2.6, 1.7], [9.42, 4.3, 1.7]]],
+  ['back hall straight on into the kitchen', [[9.42, 4.3, 1.7], [9.42, 5.6, 1.7]]],
+  ['into the pantry and out', [[11.75, 5.6, 1.7], [11.75, 4.4, 1.7]]],
+  ['kitchen along the aisle between the island and the sink', [[9.42, 5.6, 1.7], [9.3, 7.13, 1.4], [12.7, 7.13, 1.4]]],
+  ['kitchen into the breakfast room', [[9.42, 5.6, 1.7], [7.0, 5.75, 1.7]]],
+  ['through the LED cube on the island', [[10.7, 5.3, 1.55], [10.7, 7.3, 1.55]]],
+  ['down into the LED cube under the tin panel', [[10.7, 6.275, 2.55], [10.7, 6.275, 1.5]]],
+  ['breakfast room through the opening into the family room', [[8.0, 5.75, 1.7], [6.5, 6.3, 1.7], [2.0, 6.3, 1.7]]],
+  ['family room out the French doors onto the patio', [[2.0, 6.3, 1.7], [3.75, 7.0, 1.7], [3.75, 9.6, 1.7]]],
+  ['breakfast room out through the bay window', [[8.0, 5.75, 1.7], [5.7, 6.6, 1.7], [5.7, 9.6, 1.7]]],
   ['family room through the open wall into the dining room', [[2.0, 6.3, 1.7], [2.0, 4.0, 1.7], [2.35, 2.0, 1.7], [2.35, 0.0, 1.7]]],
   ['dining room out at the stair foot and up the hall to the breakfast room', [[2.35, 0.0, 1.7], [3.4, 0.65, 1.7], [6.0, 0.65, 1.7], [7.2, 2.2, 1.7], [7.2, 5.6, 1.7]]],
   ['dining room out the tall window', [[2.3, 0.5, 1.7], [2.3, -3.0, 1.7]]],
@@ -409,10 +411,10 @@ const LINES = [
   ['master into the front bedroom and out the tall window', [[3.55, 4.9, 4.2], [3.55, 2.6, 4.2], [2.3, 2.6, 4.2], [2.3, -3.0, 4.2]]],
   ['landing into the bathroom', [[5.9, 4.9, 4.2], [5.7, 5.2, 4.2], [5.7, 7.0, 4.2]]],
   ['landing into the end bedroom', [[9.0, 5.2, 4.2], [9.9, 5.47, 4.2], [11.6, 5.47, 4.2], [12.2, 7.4, 4.2]]],
-  ['in the open garage door and through to the back hall', [[18.75, -6.0, 1.2], [18.75, 3.0, 1.2], [15.0, 4.3, 1.2], [12.0, 4.3, 1.2]]],
+  ['in the open garage door and through the back way into the kitchen', [[18.75, -6.0, 1.2], [18.75, 3.0, 1.2], [15.0, 4.3, 1.2], [13.1, 4.3, 1.2], [13.1, 5.6, 1.2]]],
   ['along the porch', [[5.0, -0.8, 1.5], [13.5, -0.8, 1.5]]],
   ['between two porch posts', [[8.2, -4.0, 1.5], [8.2, -0.5, 1.5]]],
-  ['in through the bay window', [[7.4, 13.5, 1.4], [8.25, 9.6, 1.4], [8.25, 8.2, 1.4]]],
+  ['in through the bay window', [[6.5, 13.5, 1.4], [6.5, 8.2, 1.4]]],
   ['out through the kitchen window', [[12.1, 7.2, 1.75], [12.1, 10.5, 1.75]]],
   ['under the pergola', [[1.0, 12.0, 2.2], [11.0, 12.0, 2.2]]],
   ['down between two of the pergola rafters', [[5.5, 10.0, 5.0], [5.5, 10.0, 2.6]]],
@@ -424,16 +426,16 @@ const LINES = [
   ['under the slide, by the tower', [[33.0, 19.75, 0.8], [30.9, 19.75, 0.8]]],
   ['in the basement door and down the stair to its foot, into the lounge', [[5.2, 5.8, 1.2], [5.2, 4.6, 1.2], [5.2, 4.0, 1.05], [5.2, 1.3, -0.9], [5.2, 0.62, -1.35], [3.0, 0.62, -1.35]]],
   ['off the stair over the half wall into the lounge', [[5.2, 1.6, -0.6], [3.4, 1.6, -0.6]]],
-  ['from the lounge round the stair head to the settee', [[3.3, 1.1, -1.2], [4.2, 2.3, -1.2], [4.2, 4.5, -1.2], [5.8, 4.5, -1.2], [5.8, 6.8, -1.2], [5.0, 7.0, -1.2]]],
+  ['from the lounge round the stair head to the red chair', [[3.3, 2.1, -1.2], [4.2, 2.3, -1.2], [4.2, 4.5, -1.2], [5.8, 4.5, -1.2], [5.8, 6.8, -1.2], [5.0, 7.0, -1.2]]],
   ['through the LED cube on the basement table', [[3.6, 4.6, -1.2], [3.6, 6.8, -1.2]]],
   ['down into the LED cube on the basement table', [[3.6, 5.7, -0.2], [3.6, 5.7, -1.4]]],
-  ['from the stair\'s foot past the chairs and the column, behind the sofa to the treadmill', [[4.25, 0.8, -1.5], [4.25, 3.6, -1.5], [1.3, 3.6, -1.5]]],
-  ['through the treadmill under its console and up over the loveseat', [[0.675, 4.25, -1.65], [0.675, 2.25, -1.65], [0.675, 1.3, -1.1]]],
-  ['main room into the hall and through to the workshop', [[6.0, 4.68, -1.2], [10.0, 4.68, -1.2], [11.4, 4.68, -1.2], [11.4, 3.0, -1.2]]],
-  ['hall into the playroom', [[9.0, 4.68, -1.2], [9.0, 2.6, -1.2]]],
+  ['from the stair\'s foot past the ottoman and the column, behind the sofa to the treadmill', [[4.25, 0.8, -1.5], [4.25, 3.6, -1.5], [1.3, 3.6, -1.5]]],
+  ['through the treadmill under its console and up over the armchair', [[0.675, 4.25, -1.65], [0.675, 2.25, -1.65], [0.675, 1.3, -1.1]]],
+  ['main room into the hall and through to the utility room', [[6.0, 4.68, -1.2], [10.0, 4.68, -1.2], [11.4, 4.68, -1.2], [11.4, 3.0, -1.2]]],
   ['hall into the guest room', [[8.9, 4.68, -1.2], [8.9, 6.0, -1.2]]],
-  ['from the stair foot along the front hall into the workshop', [[5.2, 0.62, -1.3], [10.9, 0.8, -1.3], [11.65, 1.0, -1.2], [11.65, 3.0, -1.2]]],
-  ['down the workshop between the shelving and the bench', [[12.2, 1.5, -1.2], [12.2, 6.4, -1.2]]],
+  ['from the stair foot through the utility room door and along it', [[5.2, 0.62, -1.3], [6.4, 0.62, -1.3], [7.2, 1.6, -1.3], [11.65, 1.6, -1.2], [11.65, 3.0, -1.2]]],
+  ['down the utility room past the shelving to the desk', [[12.2, 1.5, -1.2], [12.2, 6.4, -1.2]]],
+  ['over the mat and the weight bench to the furnace', [[6.5, 1.0, -1.5], [7.4, 2.45, -1.5], [7.4, 3.0, -1.5]]],
 ];
 
 function linesBlock(near) {
@@ -504,7 +506,11 @@ const ALLOWED = [
  * Two boxes facing each other: apart along one axis by less than the gap
  * rule and more than the craft is wide, overlapping along the other two by
  * at least twice the craft's width (so it is a slot and not a notch), and
- * nothing solid at the middle of the space between them. Boxes only: the
+ * nothing solid at the middle of the space between them, nor a floor's
+ * slab against either face: a box whose face a slab covers (the basement's
+ * soffit under the ground floor's slab, a chair over it) faces the slab
+ * and not the other box, and the slot, if there is one, is between the
+ * slab and the other box. Boxes only: the
  * house's capsules are legs, posts and lamps' stems, which a pilot sees
  * round. Box against capsule is what the middle point is tested against.
  */
@@ -512,6 +518,7 @@ function slotsOf(solids) {
   const boxes = solids.filter((s) => s.box);
   const inside = (p, skip) => solids.some((q) => q !== skip[0] && q !== skip[1]
     && (q.box ? boxDist(q.box, p) === 0 : segDist(q.cap, p) <= 0));
+  const slab = (p) => solids.some((q) => q.box && FLOORS.has(q.name) && boxDist(q.box, p) === 0);
   const out = [];
   for (let i = 0; i < boxes.length; i += 1) {
     const a = boxes[i].box;
@@ -536,7 +543,10 @@ function slotsOf(solids) {
       const mid = [0, 1, 2].map((m) => (m === k
         ? (a[m + 3] < b[m] ? (a[m + 3] + b[m]) / 2 : (b[m + 3] + a[m]) / 2)
         : (Math.max(a[m], b[m]) + Math.min(a[m + 3], b[m + 3])) / 2));
-      if (inside(mid, [boxes[i], boxes[j]])) {
+      const lo = a[k + 3] < b[k] ? a[k + 3] : b[k + 3];
+      const off = (h) => mid.map((v, m) => (m === k ? h : v));
+      const skip = [boxes[i], boxes[j]];
+      if (inside(mid, skip) || slab(off(lo + 0.01 * sep[k])) || slab(off(lo + 0.99 * sep[k]))) {
         continue;
       }
       out.push({ w: sep[k], axis: k === 1 ? 'up' : 'across', a: boxes[i].name || boxes[i].kind, b: boxes[j].name || boxes[j].kind, mid });

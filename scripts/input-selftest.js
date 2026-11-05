@@ -2697,6 +2697,156 @@ section('the full range step says which rest it is waiting for: bug-6afb51eb');
   check('throttle down: on to the throttle step', rig.view().step === 'throttle', rig.view().step);
 }
 
+/*
+ * A LISTED PAD THAT SENDS NOTHING TOOK THE THROTTLE FROM THE KEYS.
+ *
+ *   bug-ebeecc46, five inch, Firefox 159 on Windows: "throttle got stuck:
+ *   stick showed in the middle, but quad kept going up"
+ *
+ * The report's pad, "beef-046d-Unknown Gamepad", ten axes and four buttons
+ * with no mapping, read exactly 0 on nine axes and 3.29 (a hat at rest) on
+ * the tenth for the whole 56 s flight, and the pilot was on the keys with S
+ * held. The AETR guess read its axis 2 at 0 as half throttle, the keys lay
+ * over a pad only while held, and every release put 0.500 back under a
+ * 0.350 hover. See PAD_WAKE in src/input/input.js. Every latch here is
+ * driven both ways: the pad wakes, and a different pad starts asleep.
+ */
+section('a listed pad that has sent nothing does not fly; the keys do: bug-ebeecc46');
+{
+  const ticketPad = () => makePad([0, 0, 0, 0, 0, 0, 0, 0, 0, 3.2857], 4, 'beef-046d-Unknown Gamepad');
+  const press = (type, code) => globalThis.window.fire(type, {
+    code, repeat: false, target: {}, preventDefault() {}, stopPropagation() {},
+  });
+  /* The keys a pilot used in the ticket: W to climb, let go, S to come
+   * down, let go. One channel record per poll, so two rigs can be compared
+   * to the bit. */
+  const flyKeys = (rig) => {
+    /* An integer clock: the rig's own starts at performance.now(), and two
+     * rigs started a moment apart round (t + 16) - t differently, which is
+     * a difference in the rig and not in the input path. */
+    rig.t = 100000;
+    rig.im.lastWall = rig.t;
+    rig.im.setKeyHover(0.35);
+    rig.im.flying = true;
+    const trace = [];
+    const run = (ms) => {
+      for (let e = 0; e < ms; e += 16) {
+        rig.step(16);
+        trace.push({ ...rig.im.channels });
+      }
+    };
+    run(200);
+    const rest = rig.im.channels.throttle;
+    press('keydown', 'KeyW'); run(1200);
+    press('keyup', 'KeyW'); run(600);
+    const afterW = rig.im.channels.throttle;
+    press('keydown', 'KeyS'); run(300);
+    press('keyup', 'KeyS'); run(600);
+    const afterS = rig.im.channels.throttle;
+    return {
+      rest, afterW, afterS, trace,
+    };
+  };
+
+  const bare = flyKeys(new Rig(null));
+  check('the control: no pad, the keys rest at zero and let go at hover',
+    bare.rest === 0 && bare.afterW === 0.35 && bare.afterS === 0.35, JSON.stringify([bare.rest, bare.afterW, bare.afterS]));
+
+  const rig = new Rig(ticketPad());
+  const flown = flyKeys(rig);
+  check('the ticket\'s pad listed: the keys fly, at rest zero thrust and not 0.500',
+    flown.rest === 0 && rig.im.source === 'the keyboard', `${flown.rest} ${rig.im.source}`);
+  check('letting go of W or S is hover, not the pad\'s 0.500',
+    flown.afterW === 0.35 && flown.afterS === 0.35, JSON.stringify([flown.afterW, flown.afterS]));
+  check('the whole flight is the no pad flight, to the bit',
+    JSON.stringify(flown.trace) === JSON.stringify(bare.trace), `${flown.trace.length} polls`);
+  const silentReport = rig.im.mapReport();
+  check('the report says the pad is silent, and still names it and its guess',
+    silentReport && silentReport.silent === true && silentReport.pad === 'beef-046d-Unknown Gamepad'
+    && silentReport.guess === 'aetr', JSON.stringify(silentReport && { silent: silentReport.silent, pad: silentReport.pad }));
+
+  /* It wakes on the first movement, on that very poll, and stays awake. */
+  rig.ax(2, -1);
+  rig.step(16);
+  check('the throttle moved to its bottom: awake on that poll, a radio, and the pad\'s zero is flown',
+    rig.im.source.startsWith('a radio') && rig.im.channels.throttle === 0 && rig.im.mapReport().silent === false,
+    `${rig.im.source} ${rig.im.channels.throttle}`);
+  rig.ax(2, 0);
+  rig.run(200);
+  check('and it stays awake when the stick comes back: the pad\'s middle is the pad\'s',
+    rig.im.source.startsWith('a radio') && rig.im.channels.throttle === 0.5, `${rig.im.source} ${rig.im.channels.throttle}`);
+
+  /* The bug held in place: the same pad flown, as every listed pad was.
+   * Each rig installs its own pad, so the one above is finished first. */
+  const held = new Rig(ticketPad());
+  held.step(16);
+  if (held.im.padWake) {
+    held.im.padWake.awake = true;
+  }
+  const old = flyKeys(held);
+  check('the old rule, every listed pad flies: 0.500 at rest and after every release (the bug)',
+    old.rest === 0.5 && old.afterW === 0.5 && old.afterS === 0.5, JSON.stringify([old.rest, old.afterW, old.afterS]));
+
+  /* A one step flicker on a 256 level pad is not a hand; two steps are. */
+  const flick = new Rig(ticketPad());
+  flick.im.flying = true;
+  flick.step(16);
+  flick.ax(0, 1 / 128);
+  flick.run(100);
+  check('a one step flicker on a 256 level axis does not wake it', flick.im.source === 'the keyboard', flick.im.source);
+  flick.ax(0, 0.02);
+  flick.step(16);
+  check('a change past PAD_WAKE does', flick.im.source.startsWith('a radio'), flick.im.source);
+
+  /* The hat moving, and a button, are a hand too. */
+  const hat = new Rig(ticketPad());
+  hat.step(16);
+  hat.ax(9, -1);
+  hat.step(16);
+  check('the hat pressed wakes it', hat.im.source.startsWith('a radio'), hat.im.source);
+  const btn = new Rig(ticketPad());
+  btn.step(16);
+  btn.pad.buttons[2] = { pressed: true, value: 1 };
+  btn.pad.timestamp += 1;
+  btn.step(16);
+  check('a button pressed wakes it', btn.im.source.startsWith('a radio'), btn.im.source);
+
+  /* A different pad is a different question: the same one replugged into
+   * another slot is a new index, which is a new device to the browser. */
+  btn.pad.index = 1;
+  btn.pad.buttons[2] = { pressed: false, value: 0 };
+  btn.step(16);
+  const replug = btn.im.mapReport();
+  check('a pad in another slot starts asleep again', btn.im.source === 'the keyboard'
+    && replug && replug.silent === true, `${btn.im.source} ${JSON.stringify(replug && replug.silent)}`);
+}
+{
+  /* What must NOT change. A radio's throttle has no spring, so Firefox
+   * lists it parked at -1 before anybody touches it: that is a stick held,
+   * the pad flies at once, and the guess is seen behaving like a radio on
+   * the first poll, so the front page's row is what it was. */
+  const rig = new Rig(makePad([0, 0, -1, 0, 0, 0, 0, 0], 24, 'Radiomaster Pocket Joystick'));
+  rig.step(16);
+  check('a radio first read with its throttle parked flies at once',
+    rig.im.source === 'a radio' && rig.im.mapUsable() === true && rig.im.mapReport().silent === false,
+    `${rig.im.source} ${rig.im.mapUsable()}`);
+  /* Chrome lists a pad in the middle of the movement that revealed it. */
+  const mid = new Rig(makePad([0.8, 0, -1, 0], 4, 'Revealed mid roll'));
+  mid.step(16);
+  check('a pad first read mid roll flies that roll', mid.im.channels.roll > 0.7, String(mid.im.channels.roll));
+  /* A sprung throttle radio at rest reads the browser's zeros, like the
+   * ticket's pad, and the first touch hands it the sticks. */
+  const sprung = new Rig(makePad([0, 0, 0, 0], 8, 'LiteRadio at rest'));
+  sprung.im.flying = true;
+  sprung.step(16);
+  const asleep = sprung.im.source;
+  sprung.ax(3, 0.4);
+  sprung.step(16);
+  check('a sprung radio nobody holds waits on the keys, and its first touch flies',
+    asleep === 'the keyboard' && sprung.im.source.startsWith('a radio') && sprung.im.channels.yaw > 0.3,
+    `${asleep} then ${sprung.im.source} ${sprung.im.channels.yaw}`);
+}
+
 console.log(failed ?`\n${failed} failed, ${passed} passed` : `\nall ${passed} passed`);
 for (const f of fails) {
   console.log(`  FAIL ${f}`);

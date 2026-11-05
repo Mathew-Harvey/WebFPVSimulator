@@ -460,6 +460,64 @@ const DEAD = {
   ALIVE: 0.4,
 };
 
+/*
+ * A PAD THAT HAS SENT NOTHING IS NOT FLYING ANYTHING. bug-ebeecc46.
+ *
+ * The ticket, five inch on Hibari Yard, Firefox 159 on Windows:
+ *
+ *   "throttle got stuck: stick showed in the middle, but quad kept going up"
+ *
+ * The browser listed one pad, "beef-046d-Unknown Gamepad", ten axes and
+ * four buttons with no mapping, and in 56 s of flight it refreshed at most
+ * twice a second and every one of its axes read exactly 0, all but the
+ * tenth, a hat at its 3.29 rest. The pilot was on the keyboard: the report
+ * caught S held. Any listed pad took the sticks from the keyboard, so this
+ * one was flown on the AETR guess, whose throttle reads axis 2 at 0 as HALF
+ * THROTTLE. The keys lay over a pad only while they are held, so W climbed,
+ * S came down, and letting go of either put the throttle straight back at
+ * 0.500, over the 0.350 hover the report quotes. The stick drawing showed
+ * the throttle in the middle because that is what was being flown.
+ * Reproduced in Node with that pad: 0.500 at rest on the ground and after
+ * every release, against 0.350 on the same keys with no pad.
+ *
+ * A device that has never once changed what it reads, and whose first
+ * reading held nothing away from centre, has given no evidence that anybody
+ * is holding it, so it does not fly: the keys, or the thumbs, do, exactly
+ * as if it were not listed, until any axis moves PAD_WAKE from where it was
+ * first read or any button is pressed. Then it is awake for good, on the
+ * same poll, so the first movement of a real radio is flown and not lost.
+ * Chrome already behaves this way on its own, because it lists no pad until
+ * something on it moves; this makes Firefox, which lists every pad at once,
+ * agree with it.
+ *
+ * A FIRST READING THAT ALREADY HOLDS A STICK IS AWAKE AT ONCE. A radio's
+ * throttle has no spring and is read parked at one end before anybody
+ * touches it, and Chrome reveals a pad in the middle of the movement that
+ * revealed it, so either would otherwise sit out its first steady stretch.
+ * An axis at least PAD_HELD from centre, and inside the -1 to 1 an axis is
+ * allowed, counts. A hat rests outside that range (the ticket's 3.29), so
+ * it does not; a pressed hat reads inside it, and does. A pad that is still
+ * the browser's zeros is what this rule exists to set aside.
+ *
+ * The first reading is the first poll that lists the pad, whatever that
+ * poll is doing, so a pad taken through the wizard or the picker before it
+ * ever flew has been watched moving and is awake when it does fly. The
+ * first draft took it at the first FLYING poll, after the wizard, and nine
+ * input:selftest checks of a freshly calibrated radio failed on it.
+ *
+ * Everything that only WATCHES the pad still watches it while it sleeps: a
+ * Firefox radio at rest reads real values (its throttle parked at -1), and
+ * noteThrottleParked has to see that before the pilot touches anything, or
+ * the front page would call a good guess a bad one until they did.
+ *
+ * Small, because a reading that changes at all is a device sending data,
+ * and the only cost of waking is that the pad flies, which is what it did
+ * before this rule. Under a 256 level gamepad's step it is not: a one step
+ * flicker on a pad nobody holds leaves the keys flying, as they should.
+ */
+const PAD_WAKE = 0.01;
+const PAD_HELD = 0.5;
+
 /* Did this range move like a stick: far enough, and through enough distinct
  * levels that it was not a switch. Shared by the flight's watch and the help
  * screen's, which ask the same question. */
@@ -1713,6 +1771,10 @@ export class InputManager {
     this.btnSpan = null;
     this.deadList = [];
     this.deadAlive = new Set();
+    /* What the chosen pad read when poll first listed it, and whether it
+     * has moved since. Keyed on the pad, so a different pad starts asleep.
+     * See PAD_WAKE and padAwake. */
+    this.padWake = null;
     /* A pad the browser calls a standard gamepad whose stick axis rests off
      * centre like a throttle, which no gamepad does. See
      * noteStandardParked. */
@@ -2844,6 +2906,10 @@ export class InputManager {
       axes: { roll: at('roll'), pitch: at('pitch'), yaw: at('yaw'), throttle: at('throttle') },
       live: Array.from(gp.axes).slice(0, 16).map((v) => Math.round(v * 100) / 100),
       usable: this.mapUsable(),
+      /* True while this pad has not moved once, so the keys were flying and
+       * not it; null if poll has not read it. bug-ebeecc46 could only be
+       * argued from all its axes reading 0. See PAD_WAKE. */
+      silent: this.padWake && this.padWake.key === padKey(gp) ? !this.padWake.awake : null,
       noYaw: this.guessWrongOrder,
       yawParked: this.guessYawParked,
       /*
@@ -4605,6 +4671,9 @@ export class InputManager {
     const pads = listGamepads();
     const gp = this.pickPad(pads);
     this.syncGuess(gp);
+    /* Before the branches below, so the wizard and the picker are watched
+     * moving it too. See PAD_WAKE. */
+    const padAwake = gp ? this.padAwake(gp) : false;
     /*
      * THE ROSTER (hotplug, the picker's queue, a lost radio) at once when the
      * number of pads changes, and otherwise every ROSTER_MS. It builds a Set
@@ -4664,11 +4733,11 @@ export class InputManager {
       next = { roll: 0, pitch: 0, yaw: 0, throttle: 0 };
       this.source = 'the calibration wizard';
     } else if (gp) {
-      next = this.readGamepad(gp, this.map, Boolean(this.mode3d));
+      const pad = this.readGamepad(gp, this.map, Boolean(this.mode3d));
       /* The pad's own reading, before the keys below are laid over it: a
        * yaw flown on A and D is not the radio's yaw arriving. */
       if (this.flying) {
-        this.noteDeadChannels(next, gp, dtMs);
+        this.noteDeadChannels(pad, gp, dtMs);
       }
       this.noteThrottleParked(gp);
       this.noteGuessOrder(gp);
@@ -4681,30 +4750,29 @@ export class InputManager {
       if (this.stickCheck) {
         this.noteStickCheck(gp);
       }
-      this.source = this.mapUsable() ? 'a radio' : 'a radio whose stick order is a guess';
-      /* Keyboard still works while a pad is plugged in: any held stick
-       * key overrides that channel. */
-      const kb = this.readKeyboard(dtMs, false);
-      for (const ch of ['roll', 'pitch', 'yaw']) {
-        if (kb[ch] !== 0) {
-          next[ch] = kb[ch];
+      if (padAwake) {
+        next = pad;
+        this.source = this.mapUsable() ? 'a radio' : 'a radio whose stick order is a guess';
+        /* Keyboard still works while a pad is plugged in: any held stick
+         * key overrides that channel. */
+        const kb = this.readKeyboard(dtMs, false);
+        for (const ch of ['roll', 'pitch', 'yaw']) {
+          if (kb[ch] !== 0) {
+            next[ch] = kb[ch];
+          }
         }
-      }
-      if (this.keys.has(this.throttleKeys.up) || this.keys.has(this.throttleKeys.down)) {
-        next.throttle = kb.throttle;
+        if (this.keys.has(this.throttleKeys.up) || this.keys.has(this.throttleKeys.down)) {
+          next.throttle = kb.throttle;
+        } else {
+          this.kb.throttle = next.throttle;
+        }
       } else {
-        this.kb.throttle = next.throttle;
+        /* Listed, watched above, and silent since it was first read: the
+         * keys or the thumbs fly, as with no pad at all. See PAD_WAKE. */
+        next = this.readPadless(dtMs);
       }
-    } else if (this.hand !== 'keys' && this.touchSource && this.touchSource.active()) {
-      /* The thumbs. Sample every poll, not only on events, because the
-       * spring back to centre is time, not touches, and the sticky
-       * throttle has to keep feeding while no finger is down at all. Not
-       * while the keys have the hand: see takeKeys. */
-      next = this.touchSource.sample(dtMs);
-      this.source = 'the touch sticks';
     } else {
-      next = this.readKeyboard(dtMs, true);
-      this.source = 'the keyboard';
+      next = this.readPadless(dtMs);
     }
     if (this.flying) {
       this.noteFlightTravel(next, dtMs);
@@ -4778,6 +4846,65 @@ export class InputManager {
    */
   isKeyboardPrimary() {
     return this.firstGamepad() === null;
+  }
+
+  /*
+   * Has this pad moved since it was first read, or did its first reading
+   * hold a stick? See PAD_WAKE. Asked on every poll that lists a pad,
+   * whatever the poll is doing. The first reading is kept, not the last, so
+   * a stick creeping a hair a poll still wakes it once it has gone PAD_WAKE
+   * in all. Awake latches until the pad changes: a radio set down on the
+   * desk mid flight is still the radio. The pad is compared by index and id
+   * rather than by padKey, which builds a string, because this runs on
+   * every 2 ms tick (see the roster's note in poll).
+   */
+  padAwake(gp) {
+    let w = this.padWake;
+    if (!w || w.index !== gp.index || w.id !== gp.id) {
+      const axes = Array.from(gp.axes);
+      w = {
+        index: gp.index,
+        id: gp.id,
+        key: padKey(gp),
+        awake: axes.some((v) => Math.abs(v) >= PAD_HELD && Math.abs(v) <= 1),
+        axes,
+        buttons: gp.buttons ? Array.from(gp.buttons, (b) => (b ? b.value : 0)) : [],
+      };
+      this.padWake = w;
+    }
+    if (w.awake) {
+      return true;
+    }
+    const n = Math.min(gp.axes.length, w.axes.length);
+    for (let i = 0; i < n; i += 1) {
+      if (Math.abs(gp.axes[i] - w.axes[i]) > PAD_WAKE) {
+        w.awake = true;
+        return true;
+      }
+    }
+    const b = gp.buttons || [];
+    const m = Math.min(b.length, w.buttons.length);
+    for (let i = 0; i < m; i += 1) {
+      if (b[i] && (b[i].pressed || Math.abs(b[i].value - w.buttons[i]) > PAD_WAKE)) {
+        w.awake = true;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /* The ladder below a pad: the thumbs, then the keys. Sets the source. */
+  readPadless(dtMs) {
+    if (this.hand !== 'keys' && this.touchSource && this.touchSource.active()) {
+      /* The thumbs. Sample every poll, not only on events, because the
+       * spring back to centre is time, not touches, and the sticky
+       * throttle has to keep feeding while no finger is down at all. Not
+       * while the keys have the hand: see takeKeys. */
+      this.source = 'the touch sticks';
+      return this.touchSource.sample(dtMs);
+    }
+    this.source = 'the keyboard';
+    return this.readKeyboard(dtMs, true);
   }
 
   /*

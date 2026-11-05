@@ -74742,3 +74742,5 @@ What went wrong:
 - The first Low timing ran before the FPV lens too, which sets the strength to zero, so its "Strong" was Off. Run again waiting for the lens.
 - Seen in the pictures and left as designed: with the corners pinned, Strong shows less top and bottom (85 degrees vertical becomes about 62), so the prop tips at the bottom of the frame leave the picture. A wider FOV gives them back.
 - Not run: `npm run verify`, because nothing here touches physics, the plant, the module ABI or the build. Not flown.
+
+Approval: Mat, 2026-11-05 03:46Z, "Push to main", after the reply that stated the cost (no draw, pass, target or tap added; Strong about +2.5 percent on the grade and fxaa tail headless, inside the run spread; Off unchanged). Not flown before the push.

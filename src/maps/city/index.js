@@ -47,6 +47,7 @@ import * as THREE from 'three';
 import { PAL } from './vendored/core/palette.js';
 import { Pipeline } from './vendored/core/post.js';
 import { mangaPipeline } from '../../render/manga.js';
+import { fisheyePipeline } from '../../render/fisheye.js';
 import { comicPipeline, setComicQuality } from '../../render/comic.js';
 import { comicSky } from '../../render/comicsky.js';
 import { clumpBlob } from '../../render/clump.js';
@@ -480,6 +481,9 @@ class CityPipeline extends Pipeline {
     /* Stage F's manga layer, folded into the grade and the fxaa pass on
      * this pipeline's own materials: see src/render/manga.js. */
     this.manga = mangaPipeline(this);
+    /* The pilot's fisheye setting, folded into the grade's one fetch: see
+     * src/render/fisheye.js. Off, it reads the coordinate it always read. */
+    this.fisheye = fisheyePipeline(this);
     /* The comic layer's pen and grade: see src/render/comic.js. The
      * blobs option is the ink half of markCanopies' comicBlob. */
     comicPipeline(this, { blobs: true });

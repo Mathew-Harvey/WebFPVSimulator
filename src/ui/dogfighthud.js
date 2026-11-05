@@ -33,6 +33,7 @@
 
 import * as THREE from 'three';
 import { paintCall, INKS } from './lettering.js';
+import { fisheyeNdc } from '../render/fisheye.js';
 import {
   ME, MISSILE, GUN, BOT_NAMES, LOCK_COS,
 } from '../game/dogfight.js';
@@ -365,6 +366,8 @@ export class DogfightHud {
    * the HUD made two objects a pilot a frame, and a collection is a hitch. */
   project(x, y, z, camera, out = null) {
     this.v.set(x, y, z).project(camera);
+    /* Bent the way the picture is, when the pilot's fisheye is on. */
+    fisheyeNdc(this.v);
     const o = out || {};
     o.x = (this.v.x * 0.5 + 0.5) * this.w;
     o.y = (-this.v.y * 0.5 + 0.5) * this.h;

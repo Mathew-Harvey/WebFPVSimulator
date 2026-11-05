@@ -74712,3 +74712,33 @@ What went wrong:
 - One Low run was shot while a second browser was running. Its numbers were a view behind, and it was run again alone.
 
 Approval: Mat, 2026-11-04 22:15Z, "Push to main", after the reply that stated the cost above (draw calls flat indoors, +1 to +4 only looking out over the fences, triangles +3.3k on High and +1.65k on Low). It covered board PR 76 (the thumbnail, pushed first, board main 6d6ae2a) and this round, sim PR 235. Before the push, the board's `npm test` and `node scripts/house-check.js` were run again and passed. Not flown.
+
+## 2026-11-05: a Fisheye row beside the field of view
+
+The ask: Mat, 2026-11-05 02:08Z, "Can we add an option next the fov for this ?", with a pilot's comment that rectilinear sims make them motion sick, that every FOV stop is still rectilinear, and that real FPV cameras have a slight fisheye.
+
+What changed:
+- `src/render/fisheye.js`, new. One projection family, r = f tan(k theta) / k, with k = 1 rectilinear and k toward 0 equidistant; the setting is a strength in percent and k = 1 less it. The screen's corner is pinned to the drawing's corner, so the FOV row's diagonal coverage is unchanged, the edges are squeezed and the middle is bigger (1.28, 1.48 and 1.62 times at 85 degrees on 16:9 for Slight, Medium and Strong).
+- It is folded into the grade, the pass that reads the finished picture on both post chains and every preset: the vendored pipeline's grade is edited on its own material by finding its fetch line, as manga.js does (nothing under vendored/ changes), and the field chain's GradeShader in `src/render/post.js` runs it before its existing mild barrel. No pass, no target, no extra texture tap.
+- `src/render/lens.js` holds the stops (Off, Slight 20, Medium 40, Strong 60) and the centre scale arithmetic, so ui.js still imports no three.js.
+- Settings: `fisheye`, default 0 (off), validated against the stops, a pilot setting rather than a machine one, so not in MACHINE_KEYS and not in a shared tune. The row sits under Field of view in Settings and in the Quad room. Not on the Rates screen.
+- main.js sets it before each draw, on the pilot's own lens only (`fpvLens`, or a replay seen through it): the intro, the finish camera, chase cameras and menus stay rectilinear. The uniform is recomputed only when the strength, fov or aspect moves; nothing allocates per frame.
+- Things drawn at a projected point bend with it through `fisheyeNdc`: the target lock bracket in main.js and every mini game HUD through DogfightHud.project. Points behind the camera are left alone because their callers read a bearing.
+- `src/fresh.js` regenerated for the new module.
+
+Checks:
+- A round trip of the shader's mapping against `fisheyeNdc`, 2000 random pixels at three settings: worst error 5.6e-16, and no pixel samples outside the drawing.
+- Headless pictures, the town on High at every stop from one pose, the town on Low, and Bluegrass Circuit (the field chain) on High: no console errors. The field chain's gate distance label stays under its gate.
+- `npm run lint:preload`: up to date after the regenerate.
+
+Latency, headless and so a proxy only (SwiftShader, the GPU is the CPU): `__manga.cost(4, 3)` times the grade and fxaa tail, the passes this changes, drawn four times over one frame; six interleaved rounds each of Off and Strong in the town at 1280x720, medians.
+- Low: 22.75 ms Off, 23.30 ms Strong (+2.4 percent; Off's own spread was 21.4 to 24.4).
+- High: 92.3 ms Off, 94.7 ms Strong (+2.6 percent; Off's own spread was 90.5 to 96.7).
+- Draw calls, passes, targets and texture taps: unchanged on every preset, on or off. Off, the shader's uniform branch is not taken and the fetch reads the coordinate it always read.
+- On a real GPU the added arithmetic is an atan, a tan and a square root per pixel in one pass; the Input to screen reading on Mat's machine is the final check.
+
+What went wrong:
+- The first set of pictures shot Off before the intro had handed over to the FPV lens, so Off and the rest were different cameras. The second set waits for the lens.
+- The first Low timing ran before the FPV lens too, which sets the strength to zero, so its "Strong" was Off. Run again waiting for the lens.
+- Seen in the pictures and left as designed: with the corners pinned, Strong shows less top and bottom (85 degrees vertical becomes about 62), so the prop tips at the bottom of the frame leave the picture. A wider FOV gives them back.
+- Not run: `npm run verify`, because nothing here touches physics, the plant, the module ABI or the build. Not flown.

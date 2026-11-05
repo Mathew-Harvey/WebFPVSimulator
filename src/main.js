@@ -58,6 +58,7 @@ import { AUTO_FLOOR, autoPresetMove, createAutoScale } from './render/autoscale.
 import { createLatencyMeter } from './render/latency.js';
 import { moveRigid, predictDelta, PREDICT_MAX_MS } from './render/predict.js';
 import { simPosToThree, simQuatToThree, simLenToWorld, threePosToSim, threeDirToSim, WORLD_SCALE, setWorldScale } from './render/frame.js';
+import { setFisheye, fisheyeNdc } from './render/fisheye.js';
 import { CAMERA_LENS_FORWARD, CAMERA_LENS_UP, CAMERA_MOUNT_FORWARD, CAMERA_MOUNT_UP, cameraTiltRad, clampCameraAngle, makeLensShake, fpvLensClear } from './render/lens.js';
 import { MotorAudio } from './render/audio.js';
 import { LapVoice, lapCall } from './render/voice.js';
@@ -10971,6 +10972,8 @@ export async function boot({ loading, bootStart, mapId }) {
       return;
     }
     aimNdc.copy(aim.centre).project(shell.camera);
+    /* Where the fisheye put it, if it is on: see src/render/fisheye.js. */
+    fisheyeNdc(aimNdc);
     /*
      * BEHIND THE CAMERA THE PROJECTION LIES, and it lies plausibly: the
      * divide is by a negative w, so the point reflects through the centre
@@ -13045,6 +13048,12 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     if (worldLive && drawThis) {
       placePropView();
+      /* The pilot's fisheye, on their own lens only (live, held on the
+       * impact frame, or a replay seen through it), never the intro, the
+       * finish camera or a chase camera. A uniform, set only when one of
+       * its inputs moved: see src/render/fisheye.js. */
+      setFisheye(view.post, fpvLens || (replayMode && replayCamera === 'fpv') ? ui.settings.fisheye : 0,
+        shell.camera.fov, shell.camera.aspect);
       view.post.render();
       gpuGate.submitted(performance.now());
     }

@@ -81,6 +81,7 @@ import { separateCoplanar } from '../../props/coplanar.js';
 import { PAL } from '../city/vendored/core/palette.js';
 import { Pipeline } from '../city/vendored/core/post.js';
 import { mangaPipeline } from '../../render/manga.js';
+import { fisheyePipeline } from '../../render/fisheye.js';
 import { comicPipeline, setComicQuality, markGround } from '../../render/comic.js';
 import { comicSky } from '../../render/comicsky.js';
 import { buildSky } from '../city/vendored/core/sky.js';
@@ -382,6 +383,9 @@ export class BuiltPipeline extends Pipeline {
     /* Stage F's manga layer, folded into the grade and the fxaa pass the
      * same way, on this pipeline's own materials: see src/render/manga.js. */
     this.manga = mangaPipeline(this);
+    /* The pilot's fisheye setting, folded into the grade's one fetch: see
+     * src/render/fisheye.js. Off, it reads the coordinate it always read. */
+    this.fisheye = fisheyePipeline(this);
     /* The comic layer's pen and grade: see src/render/comic.js. The
      * blobs option is the ink half of the codes the kit's leaf() gives
      * a tree's canopy blobs (src/props/kit.js). */

@@ -53,6 +53,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { FISHEYE_GLSL } from './fisheye.js';
 import {
   INK_WEIGHT, SIL_STRENGTH, INK_COLOR, AO_GLSL, AO_TINT_GLSL, aoUniforms, updateAoCamera, comicAoOn, comicGL2, SIL_GLSL,
   SIL_REACH,
@@ -335,6 +336,9 @@ const GradeShader = {
     uVibrance: { value: 0.34 },
     /* An S curve about mid grey: the comic layer's harder light. */
     uContrast: { value: 0.16 },
+    /* The pilot's fisheye, off (x = 1) until main.js says otherwise: see
+     * src/render/fisheye.js. */
+    uFish: { value: new THREE.Vector4(1, 0, 1, 1) },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -350,11 +354,14 @@ const GradeShader = {
     uniform float uVignette;
     uniform float uVibrance;
     uniform float uContrast;
+    ${FISHEYE_GLSL}
 
     void main() {
       // FPV lens: mild barrel distortion, zoom compensated so the
-      // corners never sample outside the frame.
-      vec2 uv = vUv - 0.5;
+      // corners never sample outside the frame. The pilot's fisheye goes
+      // first and keeps the corners where they were, so the two compose
+      // without reaching past the edge.
+      vec2 uv = fisheyeUv( vUv ) - 0.5;
       float r2 = dot(uv, uv);
       vec2 duv = 0.5 + uv * (1.0 + uDistort * r2) / (1.0 + uDistort * 0.5);
       vec3 c = texture2D(tDiffuse, duv).rgb;

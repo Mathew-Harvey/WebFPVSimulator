@@ -216,6 +216,9 @@ import {
   CAMERA_ANGLE_DEFAULT,
   cameraTiltRad,
   clampCameraAngle,
+  FISHEYE_LEVELS,
+  FISHEYE_DEFAULT,
+  FISHEYE_NAMES,
 } from '../render/lens.js';
 import { ScoreHud } from './scorehud.js';
 import {
@@ -1614,6 +1617,13 @@ const DEFAULTS = {
   cameraAngle: CAMERA_ANGLE_DEFAULT,
   cameraFov: CAMERA_FOV_DEFAULT,
   /*
+   * THE FISHEYE, strength in percent (src/render/fisheye.js). The pilot's,
+   * not the machine's: it is how they like the picture drawn, like the
+   * crosshair, so it is not in MACHINE_KEYS and a shared tune does not
+   * carry it. Off by default, so nobody's picture changes until they ask.
+   */
+  fisheye: FISHEYE_DEFAULT,
+  /*
    * PROPS IN VIEW and THE CRAFT'S SHADOW (the owner, 2026-10-27: "props in
    * view of the camera, just a little bit ... casting a shadow as physics
    * permits, there should also be an option to turn off props in view").
@@ -2155,6 +2165,7 @@ export function loadSettings() {
     ['link', Object.keys(LINK_PRESETS)],
     ['pacing', PACING_MODES],
     ['cameraFov', CAMERA_FOVS],
+    ['fisheye', FISHEYE_LEVELS],
     ['autoResetS', AUTO_RESET_DELAYS],
     ['renderScale', RENDER_SCALES],
     ['fpsCap', FPS_CAPS],
@@ -7909,6 +7920,19 @@ export class Ui {
     );
   }
 
+  /* The fisheye row, beside the lens row wherever that is, one definition.
+   * The grade applies it at once (setFisheye in src/main.js). */
+  cameraFisheyeRow(s) {
+    return choice(
+      'Fisheye',
+      'Bends the picture the way a real FPV lens does: the corners stay where the field of view puts them, the edges squeeze in and the middle gets bigger. Off is a straight, rectilinear picture. If wide views make you motion sick, try Slight or Medium, and take a wider field of view to get the width back.',
+      FISHEYE_LEVELS,
+      s.fisheye,
+      (n) => FISHEYE_NAMES[n] || `${n}`,
+      (n) => { s.fisheye = n; },
+    );
+  }
+
   /* The camera tilt stepper, shared by the Quad room (where it is the
    * machine's setting) and the Rates screen (where the yaw it rolls into the
    * picture is tuned). One definition, so the two cannot drift. */
@@ -10565,6 +10589,7 @@ export class Ui {
         { label: 'Camera', section: true },
         this.cameraAngleRow(s),
         this.cameraFovRow(s),
+        this.cameraFisheyeRow(s),
         choice(
           'Props and shadow',
           'Props: the front prop tips at the sides of the picture, as a real camera catches them. Shadow: your quad\'s shadow on the ground, cast by the sun, so you can read how low you are. It fades as you climb, and with the sun ahead it falls behind you, as a real one does.',
@@ -10685,6 +10710,7 @@ export class Ui {
         { label: 'Camera', section: true },
         this.cameraAngleRow(s),
         this.cameraFovRow(s),
+        this.cameraFisheyeRow(s),
         { label: 'You', section: true },
         {
           label: 'Your name',

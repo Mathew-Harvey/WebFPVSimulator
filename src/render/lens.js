@@ -81,6 +81,33 @@ export const CAMERA_FOVS = [75, 85, 95, 105, 115];
 export const CAMERA_FOV_DEFAULT = 85;
 
 /*
+ * THE FISHEYE, beside the field of view: see src/render/fisheye.js for the
+ * projection and what it costs. The stops are strength in percent, stored
+ * as a number so a slider can replace the row later without a settings
+ * migration. Strong stops at 60
+ * because past it the middle is magnified well beyond what the render
+ * scale supersamples, and the picture goes soft for little more bend.
+ */
+export const FISHEYE_LEVELS = [0, 20, 40, 60];
+export const FISHEYE_DEFAULT = 0;
+export const FISHEYE_NAMES = { 0: 'Off', 20: 'Slight', 40: 'Medium', 60: 'Strong' };
+
+/* The middle of the frame's magnification over the rectilinear drawing,
+ * for the settings note and the report. 1 when off. */
+export function fisheyeCentreScale(strength, fovDeg, aspect) {
+  if (!(strength > 0)) {
+    return 1;
+  }
+  const k = 1 - Math.min(strength, 95) / 100;
+  const tanV = Math.tan((fovDeg * Math.PI) / 360);
+  const d = Math.sqrt(aspect * aspect + 1);
+  const kf = Math.tan(k * Math.atan(d * tanV)) / d;
+  /* Output r = tan(k th) / kf ~ k th / kf near the axis; the drawing's
+   * r = tan(th) / tanV ~ th / tanV. */
+  return (k / kf) * tanV;
+}
+
+/*
  * CAMERA TILT, degrees up from the airframe.
  *
  * This is the TPU mount angle, not a look-at. Zero is flat: the lens looks

@@ -80,6 +80,8 @@ export const BANNERS = [
   { px: GATE.px + GATE.open / 2 + GATE.tower / 2, py: GATE.y1, face: 'n' },
   { px: 168, py: CASTLE.y1, face: 'n' },
   { px: 192, py: CASTLE.y1, face: 'n' },
+  /* The ninth brand, at the castle's south face east end, past the other four. */
+  { px: 196.2, py: CASTLE.y0, face: 's' },
 ];
 export const BANNER = { w: 3.6, h: 1.4, lift: 2.2 };
 

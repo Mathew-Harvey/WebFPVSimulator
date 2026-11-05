@@ -216,6 +216,20 @@ export const MAP_ONLY_PARTNERS = Object.freeze([
     logo: { colour: 'yourfpv/colour.png', mono: 'yourfpv/mono.png', aspect: 869 / 570 },
     mark: { field: '#f3ead4' },
   }),
+  /* Black artwork on the cream field, which is the brand's own livery. Paid
+   * one-off supporter, agreed 2026-11-05, the YourFPV tier. The aspect is
+   * the cropped stacked mark, 428 by 242 with its padding. */
+  partner({
+    slug: '369drone',
+    name: '369DRONE',
+    short: '369DRONE',
+    about: 'Japanese FPV racing drone brand. Frames, parts and electronics for competitive FPV racing, including the MIROKU frame.',
+    links: [
+      { kind: 'site', label: 'Visit 369DRONE', href: 'https://369drone.jp/' },
+    ],
+    logo: { colour: '369drone/colour.png', mono: '369drone/mono.png', aspect: 428 / 242 },
+    mark: { field: '#f3ead4' },
+  }),
 ]);
 
 /*

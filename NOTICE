@@ -148,6 +148,13 @@ partnership to show.
     April 2027) shown on freestyle maps and the landing page, but not
     counted in the partners list. `yourfpv/mono.png` is made from it by
     scripts/partners.js, every pixel cream and its transparency kept.
+  * `369drone/colour.png` is the stacked 369DRONE logo, supplied by 369DRONE
+    (369DRONE Inc., Japan) by email on 2026-11-05 for use in WebFPV, cropped
+    from a 2133 by 2133 sheet to the artwork (428 by 242 with its padding),
+    black ink on transparency, so it sits on the cream field. 369DRONE is a
+    paid one-off supporter shown on freestyle maps and the landing page, not
+    counted in the partners list. `369drone/mono.png` is made from it by
+    scripts/partners.js, every pixel cream and its transparency kept.
   * `konexdrone/colour.png` is the Konex Drone logo as supplied by the
     owner on 2026-10-12, a 788 by 316 PNG with transparency, cropped to the
     artwork and scaled to 640 by 226 with its colours reduced to 32, to keep

@@ -74744,3 +74744,26 @@ What went wrong:
 - Not run: `npm run verify`, because nothing here touches physics, the plant, the module ABI or the build. Not flown.
 
 Approval: Mat, 2026-11-05 03:46Z, "Push to main", after the reply that stated the cost (no draw, pass, target or tap added; Strong about +2.5 percent on the grade and fxaa tail headless, inside the run spread; Off unchanged). Not flown before the push.
+
+## 2026-11-05 | supporters | 369DRONE added as a map-only supporter (not a partner)
+
+The ask: Mat, 2026-11-05 03:48Z. 369DRONE Inc. (Japan, makers of the MIROKU racing frame, CEO Daichi Sakakibara, https://369drone.jp) is a paid one-off supporter (A$50, agreed 2026-11-05), the YourFPV and Matt's Flooring tier. Logos supplied by 369DRONE by email, passed on by Mat in the thread.
+
+What changed:
+- `src/partners/roster.js`: `369drone` in MAP_ONLY_PARTNERS, after YourFPV. Not in PARTNERS, not in PATRON_MAP_BRANDS. Painted in freestyle maps and findable (stamp, found panel, `score.partner`, the board's `mark` events), with PARTNER_FINDS on. The slug passes SOURCE_RE (`^[a-z0-9-]{2,32}$`) here and in the board's `src/sponsors.js`, a leading digit included, so it is not `drone369`. The "about" line says only what the brand says on its own site: "a brand dedicated to the development and sales of competitive FPV drones", frames, parts and electronics, a MIROKU Frame on sale.
+- `assets/partners/369drone/colour.png`: the stacked "369 / DRONE" mark cropped from the black 2133 by 2133 sheet, black on transparency with 4 px padding, 428 by 242 (the roster aspect). `mono.png` made by `scripts/partners.js` (one line added to its `made` list), `npm run gen:partners`. The Illustrator SVG and the one line mark are not in the repo.
+- `NOTICE`: provenance line.
+- Placement, one spot per hand placed map: Heads' house, the back fence inside, toward its east end; Nick's house, the garage's west wall toward the back; Joshua's house, a new sign on the south face of the stand by the low road, and two stand banners that were repeats (webleedfpv, gds, now three each, still the three the check asks for); Yume Land, a ninth banner on the castle's south face east end (the check wants one banner per brand). Built maps and Hibari Yard take it from the roster in order, after YourFPV, so no earlier partner's wall moves; patrons are chosen after partners, so a patron's wall could move if 369DRONE took it, none dropped. Other plan files that spread MAP_ONLY_PARTNERS picked it up by themselves.
+- The town is untouched: `src/maps/city/places/index.js` loops PARTNERS and PATRON_MAP_BRANDS only, so YourFPV is not in the town either.
+
+Checks run this turn, all green: `lint:partners` 133 of 133, `town-patron-check` 24 of 24, `check:house`, `check:heads`, `check:bardwell`, `check:yume` (it failed first: nine brands, eight banners, fixed), and arctic, alps, factory, kaza, touge, towers, cedar, haikyo, hotaru, dock, sana, sunny, park, shiokaze, fest, concert, hayate, dunes, props; `lint:preload` up to date; `check:career` 179 of 179.
+
+Seen in the real page (shots.js, headless): the sign on Heads' back fence, on Joshua's stand, and in Nick's garage (partly behind a post, not a good picture). A flight on Heads, hovering 5 m from the back fence, fired the real find: the found panel ("369DRONE . FOUND"), the 1,000 point callout, and `marksFound` held 369drone. Pictures are in the project files under `369drone/`, not committed (screenshots are not).
+
+Latency, headless so a proxy only: draw calls and triangles at the spawn view before and after are identical on Heads (78 / 124826), Nick's house (72 / 125958), Hibari Yard (287 / 159301) and Yume Land (50 / 195653). Joshua's house read 69 after and 135 before in one run each, which is the run to run spread of the load, not the change (the heads and house signs share the sign atlas; one more cell, no new draw). The Input to screen reading on a real machine is the final check.
+
+What went wrong:
+- The first find test hovered 10 m from the sign and never fired: the range for a 3.7 m sign is 8 m. The sign is on the fence at z -104.8, not where I first guessed.
+- I took the before numbers with `git stash`, which the capture notes warn against. Nothing of anyone else's was in the stash and it popped clean.
+- Not run: `npm run verify` (nothing here touches physics, the plant, the ABI or the build). Not flown by a person.
+- Steam: the Steam edition's per-partner achievement list is not in this repository; see the PR for what the repack has.

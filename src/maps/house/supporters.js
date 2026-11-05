@@ -83,6 +83,8 @@ export const SUPPORTER_SPOTS = [
   /* Over the shelving on the west wall of its east end, out of sight of
    * the door at the stair's foot, as the other two are. */
   { slug: 'quadconfig', room: 'workshop', from: [12.0, 6.55, BF + 2.05], dir: 'w', w: 1.2 },
+  /* The garage's west wall, toward the back, below the shelving. */
+  { slug: '369drone', room: 'garage', from: [16.0, 3.6, 1.2], dir: 'w', w: 0.9 },
 ];
 
 /*

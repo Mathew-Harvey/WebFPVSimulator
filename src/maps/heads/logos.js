@@ -276,6 +276,8 @@ export const SIGN_SPOTS = [
   { slug: 'konexdrone', from: [-1.2, 3.5, 1.0], dir: 'n', w: 1.6 },
   /* The east fence, outside, to the street. */
   { slug: 'dronefactory', from: [21.5, 8.725, 1.0], dir: 'w', w: 1.6 },
+  /* The back fence, inside, toward its east end, a little off the lawn's line of sight. */
+  { slug: '369drone', from: [13.5, 22.5, 0.95], dir: 'n', w: 1.4 },
 ];
 
 /* Each sign on the first drawn face its line meets, as `markSpots` wants

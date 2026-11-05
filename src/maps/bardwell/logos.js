@@ -183,6 +183,8 @@ export const SIGN_SPOTS = [
   { slug: 'konexdrone', from: [-26.5, 18, 1.15], dir: 'e', w: 2.3 },
   /* The far stand in the south east, to the line back up the field. */
   { slug: 'dronefactory', from: [67.5, -60, 1.15], dir: 'e', w: 2.0 },
+  /* The stand on the low road's side, its south face, to the road. */
+  { slug: '369drone', from: [-10, -70.5, 1.15], dir: 'n', w: 2.0 },
 ];
 
 /* Each sign on the first drawn face its line meets, as `markSpots` wants
@@ -218,7 +220,7 @@ function standFaces(s) {
  * null is the face a sign is hung on. */
 const STAND_BRANDS = [
   [null, 'mattsflooring'], [null, 'yourfpv'], ['quadconfig', null], [null, 'konexdrone'], ['gds', 'mantisfpv'],
-  [null, 'dronefactory'], [null, 'webleedfpv'], ['yourfpv', 'quadconfig'], ['konexdrone', 'gds'], [null, 'dronefactory'],
+  [null, 'dronefactory'], [null, '369drone'], [null, 'quadconfig'], ['konexdrone', '369drone'], [null, 'dronefactory'],
 ];
 
 /* Each decal: the brand, where it is aimed from, which way, how wide, and

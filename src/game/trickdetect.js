@@ -1793,6 +1793,9 @@ class PathRun {
      * the pilot's rotation and nothing else, however the craft tumbles.
      */
     this.windProj = [0, 0, 0];
+    /* The winding those samples added up to, so the lap's own turn can be
+     * taken out in the units it is put back in. See debankLap. */
+    this.windOpen = 0;
     /*
      * The same alignments as MAGNITUDES, which is what decides ownership.
      * Averaging the signed components cannot tell a craft rolling about its
@@ -3366,6 +3369,7 @@ export class TrickDetector {
         run.windProj[AXIS_ROLL] += dTurns * ar;
         run.windProj[AXIS_PITCH] += dTurns * ap;
         run.windProj[AXIS_YAW] += dTurns * ay;
+        run.windOpen += dTurns;
       }
       if (run.open && circling) {
         run.alignSum[AXIS_ROLL] += ar;
@@ -3426,6 +3430,7 @@ export class TrickDetector {
         run.windProj[0] = 0;
         run.windProj[1] = 0;
         run.windProj[2] = 0;
+        run.windOpen = 0;
         run.lastWind = run.windTotal;
         run.lastSide = side;
         run.lastMs = this.nowMs;
@@ -3917,10 +3922,44 @@ export class TrickDetector {
      * it: the lap measured a body rotation of 2 turns about the rail, kept
      * none of it, and a 350 point trick came out a 200 point Powerloop.
      */
+    /*
+     * TAKEN OUT IN THE UNITS IT IS PUT BACK IN, which is the snapped lap.
+     *
+     * The winding is the loop's own turn only while the craft is going
+     * round. A straight line past the rail winds too, up to a quarter turn
+     * for each leg, and the craft does not rotate on a straight line, so
+     * the legs in and out are winding with no rotation in them. windProj
+     * counts every one of those samples, the departure after the lap's high
+     * water mark included, and below the lap's turn is put back as the
+     * SNAPPED count, so subtracting the raw winding and adding the snapped
+     * one left the owner axis short by the difference.
+     *
+     * Measured on bug-385711e7, "SPLIT S IMPOSSIBLE": a Split-S flown on the
+     * sticks through the real plant, in level over the top, half roll, pull
+     * through, out under it going back. Over a rail its lap wound 0.82 turns
+     * after the gate for half a turn of loop, because both legs of a half
+     * lap are on the approach side and add; the body pitched 0.36 in the
+     * window; the residual said the pilot pitched a third of a turn AGAINST
+     * the loop; and the lap read pitch 0.18, which nothing in the Split-S
+     * family matches. Of the clean ones flown on a grid of speed, height,
+     * stick and direction, 4 of 37 over Hibari Yard's billboard and 12 of 68
+     * over its footbridge were named a Split-S; the rest were a 1/2 Roll and
+     * a 1/2 Flip, a Beginner Matty, or nothing. A whole lap has the same
+     * bias at a smaller share: deck-check's Powerloop wound 1.30 after the
+     * gate, pitched 1.13 and read 0.84, inside the band by 0.09, and reads
+     * 1.13 now. Scaling the projection so it removes exactly the snapped
+     * turn keeps every axis's share of it, and so every word above about
+     * which axis owns the turn, and removes the legs. A lap whose open window
+     * wound LESS than the snapped count is left as it was, because there the
+     * gate opened late and the rotation before it is outside the body window
+     * too. scripts/splits-check.js flies it.
+     */
+    const openWound = run.windOpen < 0 ? -run.windOpen : run.windOpen;
+    const share = openWound > size ? size / openWound : 1;
     const out = [
-      raw[0] - conv * run.windProj[0],
-      raw[1] - conv * run.windProj[1],
-      raw[2] - conv * run.windProj[2],
+      raw[0] - conv * run.windProj[0] * share,
+      raw[1] - conv * run.windProj[1] * share,
+      raw[2] - conv * run.windProj[2] * share,
     ];
     run.lastResid = out.slice();
     /* The sign follows whichever component actually carries the turn, which

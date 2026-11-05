@@ -1345,9 +1345,19 @@ export const CHAPTERS = [
         world: built(hibariYard()),
         briefing: {
           goal: 'A Split-S: over an object, half a roll to upside down, then pull through half a loop and out underneath, going back the way you came.',
-          why: 'The Split-S turns you round and drops you in one move. Over a wall or a roof edge it is a trick; on a race track it is how you take a tight turn downwards.',
+          /*
+           * NOT A ROOF EDGE. This said "a roof edge or the billboard", and a
+           * roof edge cannot be a Split-S here: the recogniser judges the
+           * half loop round something the craft can fly under, a rail, a
+           * board or a deck (src/game/obstacles.js), and under a roof edge
+           * is the building. Flown in Node off the office's edge it wound
+           * round nothing and drove into the wall (bug-385711e7,
+           * scripts/splits-check.js). The billboard and the footbridge are
+           * both in the field and both name a Split-S.
+           */
+          why: 'The Split-S turns you round and drops you in one move. Over something you can fly back under, it is a trick; on a race track it is how you take a tight turn downwards.',
           steps: [
-            'Fly over something, a roof edge or the billboard, with height.',
+            'Fly over the billboard or the footbridge, with height.',
             'Half roll to upside down as you pass over it.',
             'Pull back through half a loop and fly out underneath.',
           ],
@@ -1516,7 +1526,7 @@ export const CHAPTERS = [
           why: 'Freestyle is tricks and lines in one flight. The container tunnel is the tightest gap in the yard: two metres wide.',
           steps: [
             'A Powerloop over anything solid.',
-            'A Split-S off a roof edge or the billboard.',
+            'A Split-S over the billboard or the footbridge.',
             'Then line up from far out and fly the container tunnel.',
           ],
           sticks: [{ stick: 'pitch', dir: 'back' }, { stick: 'roll', dir: 'tap' }, { stick: 'throttle', dir: 'hold' }],

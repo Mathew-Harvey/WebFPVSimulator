@@ -53,6 +53,7 @@
     "check:roomfit": "node scripts/roomfit-check.js",
     "check:bedslot": "node scripts/bedslot-check.js",
     "check:deck": "node scripts/deck-check.js",
+    "check:splits": "node scripts/splits-check.js",
     "check:cartrap": "node scripts/cartrap-check.js",
     "check:tuneplant": "node scripts/tuneplant-check.js",
     "check:autoreset": "node scripts/autoreset-check.js",

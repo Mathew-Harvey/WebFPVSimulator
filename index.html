@@ -2644,6 +2644,17 @@
       .gate-card-freestyle-5inch { grid-area: free; }
       .gate-card-builder { grid-area: build; }
       .gate-card-games { grid-area: games; }
+      /* The track of the week (src/ui/ui.js weekCard): a strip across the
+         foot of the solo page, under the five cards, the career beside it,
+         and only while the board has named one. */
+      .gate-page-solo .gate-grid.has-week {
+        grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.62fr);
+        grid-template-areas:
+          "career career career career five five five five whoop whoop whoop whoop"
+          "career career career career free free free build build games games games"
+          "career career career career week week week week week week week week";
+      }
+      .gate-card-week { grid-area: week; }
       .gate-card-mp-host { grid-area: host; }
       .gate-card-mp-find { grid-area: find; }
       .gate-card-mp-code { grid-area: code; }
@@ -4919,6 +4930,7 @@
            and the props stay. */
         .gate-grid,
         .gate-page-solo .gate-grid,
+        .gate-page-solo .gate-grid.has-week,
         .gate-page-together .gate-grid,
         .gate-page-games .gate-grid {
           grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -5020,6 +5032,7 @@
         .gate-grid,
         .gate-page-cover .gate-grid,
         .gate-page-solo .gate-grid,
+        .gate-page-solo .gate-grid.has-week,
         .gate-page-together .gate-grid,
         .gate-page-games .gate-grid {
           grid-template-columns: none;

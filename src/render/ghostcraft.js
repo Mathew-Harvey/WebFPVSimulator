@@ -35,6 +35,7 @@
  */
 
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { buildHeroCraft } from './herocraft.js';
 
 const GHOST_MINT = 0x7dffb4;
@@ -100,6 +101,73 @@ export function buildGhostCraft() {
   }
   for (const g of doomedGeo) {
     g.dispose();
+  }
+
+  /*
+   * TWO DRAWS, NOT EIGHTEEN. Every panel of the lite craft was its own mesh,
+   * so one ghost was 17 draws and its tag, and Board top 3 (three ghosts)
+   * would have been 54. The ghost never moves a part against another (no
+   * blades, no spinning discs), so each material's meshes are baked into
+   * one geometry in the group's own frame: one draw for the body and one
+   * for the discs. Blending is unchanged, because every panel of a material
+   * is the same colour at the same opacity with depth write off, and that
+   * sum does not depend on the order the panels are drawn in. Position only:
+   * a MeshBasicMaterial reads nothing else, and dropping the rest is what
+   * lets panels with different attribute sets merge.
+   */
+  group.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(group.matrixWorld).invert();
+  const parts = new Map([[bodyMat, []], [discMat, []]]);
+  const merged = [];
+  group.traverse((n) => {
+    if (n.isMesh && parts.has(n.material)) {
+      merged.push(n);
+    }
+  });
+  for (const n of merged) {
+    let g = n.geometry.index ? n.geometry.toNonIndexed() : n.geometry.clone();
+    for (const name of Object.keys(g.attributes)) {
+      if (name !== 'position') {
+        g.deleteAttribute(name);
+      }
+    }
+    g.morphAttributes = {};
+    g.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, n.matrixWorld));
+    parts.get(n.material).push(g);
+  }
+  const baked = new Map();
+  for (const [mat, list] of parts) {
+    if (list.length) {
+      baked.set(mat, mergeGeometries(list));
+    }
+    for (const g of list) {
+      g.dispose();
+    }
+  }
+  if ([...baked.values()].every(Boolean)) {
+    const oldGeo = new Set(merged.map((n) => n.geometry));
+    for (const n of merged) {
+      n.removeFromParent();
+    }
+    for (const g of oldGeo) {
+      g.dispose();
+    }
+    for (const [mat, geo] of baked) {
+      geo.computeBoundingSphere();
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.name = mat === discMat ? 'ghost-discs' : 'ghost-body';
+      mesh.renderOrder = 2;
+      mesh.castShadow = false;
+      mesh.receiveShadow = false;
+      group.add(mesh);
+    }
+  } else {
+    /* A panel that would not merge: keep the craft as it was built. */
+    for (const geo of baked.values()) {
+      if (geo) {
+        geo.dispose();
+      }
+    }
   }
 
   /* The name tag. One canvas, redrawn only when the label changes. */

@@ -3849,6 +3849,33 @@ export async function boot({ loading, bootStart, mapId }) {
    */
   shell.keepAcrossMaps(ghostRig.group);
   /*
+   * THE BOARD'S TOP THREE AT ONCE (Ghost, Board top 3; the owner's pick of
+   * 2026-11-05, idea 5 of the sweep). The fastest of them is ghostLap, on
+   * ghostRig, the one the gate gaps are read against; the second and third
+   * fly beside it on two more rigs, built the first time they are wanted, so
+   * a pilot who never picks this pays nothing, not even their geometry. A
+   * parked rig is invisible and draws nothing (setPresence). Picked, each
+   * extra ghost is that rig's draw calls (body panels, discs and its tag),
+   * while it is in the air.
+   */
+  let ghostTop = []; /* the course's top laps with a ghost, fastest first, decoded */
+  let ghostTopBusy = false;
+  const ghostExtraRigs = [];
+  const ghostExtraSample = { px: 0, py: 0, pz: 0, qx: 0, qy: 0, qz: 0, qw: 1, cut: false };
+  function ghostExtraRig(i) {
+    while (ghostExtraRigs.length <= i) {
+      const rig = buildGhostCraft();
+      shell.keepAcrossMaps(rig.group);
+      ghostExtraRigs.push(rig);
+    }
+    return ghostExtraRigs[i];
+  }
+  function parkGhostExtras() {
+    for (const rig of ghostExtraRigs) {
+      rig.setPresence(0);
+    }
+  }
+  /*
    * The front props at the edge of the FPV picture and the craft's shadow
    * on the ground, each behind its own row in Settings. Session lived like
    * the ghost rig, parented into whichever scene holds the craft. Placed
@@ -3917,6 +3944,10 @@ export async function boot({ loading, bootStart, mapId }) {
   }
   const ghostSample = { px: 0, py: 0, pz: 0, qx: 0, qy: 0, qz: 0, qw: 1, cut: false };
   let ghostLap = null; /* the lap being chased, armed at each lap start */
+  /* The lap the gate gaps are read against: the chased lap, or with Ghost
+   * off your best lap, unseen (the owner's pick of 2026-11-05, idea 2 of the
+   * sweep: a split at every gate whether or not a pacer is flying). */
+  let gapLap = null;
   let ghostChased = null; /* the lap the last FINISHED lap was chased against */
   let ghostChoice = 'best'; /* off, best, previous, or board:tm-xxxxxxxx */
   let ghostBoardTimes = null; /* this course's posted times, for the picker */
@@ -3932,7 +3963,7 @@ export async function boot({ loading, bootStart, mapId }) {
   const ghostPrev = { valid: false, simMs: 0, x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 1 };
 
   function normalizeGhostChoice(raw) {
-    return raw === 'off' || raw === 'previous' ? raw : 'best';
+    return raw === 'off' || raw === 'previous' || raw === 'top3' ? raw : 'best';
   }
   ghostChoice = normalizeGhostChoice(ui.settings.ghost);
 
@@ -3959,16 +3990,28 @@ export async function boot({ loading, bootStart, mapId }) {
     if (ghostChoice.startsWith('board:')) {
       return ghostBoardLap && `board:${ghostBoardLap.timeId}` === ghostChoice ? ghostBoardLap : null;
     }
+    if (ghostChoice === 'top3') {
+      return ghostTop[0] || null;
+    }
     const key = ghostCourseKey();
     return ghostChoice === 'previous' ? ghostBook.previous(key) : ghostBook.best(key);
   }
 
   function armGhost() {
     ghostLap = resolveGhost();
+    gapLap = ghostLap || (race.freestyle ? null : ghostBook.best(ghostCourseKey()));
     if (ghostLap) {
       /* Hide label in replay clean mode */
       const label = (replayClean && replayMode) ? '' : ghostLabelFor(ghostLap);
       ghostRig.setLabel(label);
+    }
+    /* The second and third of Board top 3, labelled as the first is. */
+    const extras = ghostChoice === 'top3' && !replayMode ? ghostTop.length - 1 : 0;
+    for (let i = 0; i < extras; i += 1) {
+      ghostExtraRig(i).setLabel(ghostLabelFor(ghostTop[i + 1]));
+    }
+    if (extras <= 0) {
+      parkGhostExtras();
     }
   }
 
@@ -3984,6 +4027,7 @@ export async function boot({ loading, bootStart, mapId }) {
       { id: 'off', label: 'Off' },
       { id: 'best', label: 'Your best lap' },
       { id: 'previous', label: 'Your previous lap' },
+      { id: 'top3', label: 'Board top 3' },
     ];
     for (const t of ghostBoardTimes || []) {
       list.push({ id: `board:${t.id}`, label: `${t.name}  ${formatTime(t.lapMs)}` });
@@ -3993,7 +4037,16 @@ export async function boot({ loading, bootStart, mapId }) {
 
   function ghostRowNote() {
     if (ghostChoice === 'off') {
-      return 'Nobody to chase. Laps still record, so switching this on later has your session to race.';
+      return 'Nobody to chase. Laps still record, so switching this on later has your session to race, and the OSD still reads your gap to your best lap at every gate.';
+    }
+    if (ghostChoice === 'top3') {
+      if (ghostTopBusy) {
+        return 'Fetching the three fastest laps from the board.';
+      }
+      if (!ghostTop.length) {
+        return 'The three fastest laps on the board fly beside you, on any track the board has laps with ghosts for. This one has none yet, or the board could not be reached.';
+      }
+      return `The ${ghostTop.length === 1 ? 'fastest lap' : `${ghostTop.length} fastest laps`} on the board fly beside you as translucent pacers. The OSD reads your gap to the fastest at every gate.`;
     }
     if (ghostChoice.startsWith('board:')) {
       if (ghostBoardBusy) {
@@ -4041,6 +4094,17 @@ export async function boot({ loading, bootStart, mapId }) {
 
   function pickGhost(id) {
     ghostChoice = id;
+    if (id === 'top3') {
+      ui.settings.ghost = id;
+      ui.persistSettings();
+      if (ghostTop.length) {
+        armGhost();
+        syncGhostRow();
+      } else {
+        loadGhostTop();
+      }
+      return;
+    }
     if (id === 'off' || id === 'best' || id === 'previous') {
       ui.settings.ghost = id;
       ui.persistSettings();
@@ -4130,6 +4194,54 @@ export async function boot({ loading, bootStart, mapId }) {
     })();
   }
 
+  /* Board top 3: the course's three fastest laps that carry a recording,
+   * fetched once a course and decoded once. Needs the times first, which
+   * ghostCourseChanged asks for; this is called again when they arrive. */
+  function loadGhostTop() {
+    const listing = ghostListing();
+    if (!listing || !ghostBoardTimes || ghostTopBusy) {
+      syncGhostRow();
+      return;
+    }
+    const picks = [...ghostBoardTimes].sort((a, b) => a.lapMs - b.lapMs).slice(0, 3);
+    if (!picks.length) {
+      syncGhostRow();
+      return;
+    }
+    const key = ghostCourseKey();
+    ghostTopBusy = true;
+    syncGhostRow();
+    (async () => {
+      const laps = [];
+      for (const t of picks) {
+        try {
+          const payload = await fetchGhost(listing.shareId, t.id, listing.board);
+          if (ghostCourseKey() !== key) {
+            return;
+          }
+          const lap = new GhostLap(decodeGhost(ghostFromBase64(payload.ghost)), {
+            label: 'Board lap',
+            name: payload.name || t.name || '',
+            source: 'board',
+          });
+          lap.timeId = t.id;
+          laps.push(lap);
+        } catch (e) {
+          /* One lap the board would not give is one pacer fewer. */
+        }
+      }
+      if (ghostCourseKey() !== key) {
+        return;
+      }
+      ghostTop = laps.sort((a, b) => a.durationMs - b.durationMs);
+      ghostTopBusy = false;
+      if (ghostChoice === 'top3') {
+        armGhost();
+      }
+      syncGhostRow();
+    })();
+  }
+
   function ghostListing() {
     try {
       const listing = inspectCourse();
@@ -4149,11 +4261,15 @@ export async function boot({ loading, bootStart, mapId }) {
   function ghostCourseChanged() {
     ghostRecorder.abort();
     ghostLap = null;
+    gapLap = null;
     ghostChased = null;
     ghostGap = null;
     ghostBoardTimes = null;
     ghostBoardLap = null;
     ghostBoardBusy = false;
+    ghostTop = [];
+    ghostTopBusy = false;
+    parkGhostExtras();
     ghostPrev.valid = false;
     ghostRig.setPresence(0);
     ghostChoice = normalizeGhostChoice(ui.settings.ghost);
@@ -4180,6 +4296,9 @@ export async function boot({ loading, bootStart, mapId }) {
          * menu row; the full table lives on the board page. */
         ghostBoardTimes = times.filter((t) => t.hasGhost && t.id).slice(0, 5);
         syncGhostRow();
+        if (ghostChoice === 'top3') {
+          loadGhostTop();
+        }
         if (ghostQueryId) {
           const wanted = ghostQueryId;
           ghostQueryId = '';
@@ -4212,16 +4331,16 @@ export async function boot({ loading, bootStart, mapId }) {
      * this lap. Reading it after the re-arm compared a finishing lap with
      * itself, which is a proud zero every time it sets a best.
      */
-    if (passedAny && ghostLap && lapStartBefore != null) {
+    if (passedAny && gapLap && lapStartBefore != null) {
       let mine = null;
       let theirs = null;
       if (lapDone) {
         mine = race.lastLapMs;
-        theirs = ghostLap.durationMs;
+        theirs = gapLap.durationMs;
       } else if (race.splits.length) {
         const k = race.splits.length - 1;
         mine = race.splits[k];
-        theirs = ghostLap.splitMs(k);
+        theirs = gapLap.splitMs(k);
       }
       if (mine != null && theirs != null) {
         ghostGap = { deltaMs: mine - theirs, final: lapDone, untilWall: nowWall + 2800 };
@@ -4272,6 +4391,7 @@ export async function boot({ loading, bootStart, mapId }) {
   function ghostFrame(simNow) {
     /* Replay mode: driven by replay clock, not race */
     if (replayMode && ghostLap && replayClock) {
+      parkGhostExtras();
       let t;
       if (replayStepMode) {
         /* Step mode: use virtual time */
@@ -4309,6 +4429,7 @@ export async function boot({ loading, bootStart, mapId }) {
       && (mode === 'flight' || mode === 'paused');
     if (!running) {
       ghostRig.setPresence(0);
+      parkGhostExtras();
       return;
     }
     const t = simNow - race.lapStartMs;
@@ -4331,6 +4452,32 @@ export async function boot({ loading, bootStart, mapId }) {
      * so no load path can strand it in a disposed world. */
     if (presence > 0 && shell.quad.parent && ghostRig.group.parent !== shell.quad.parent) {
       shell.quad.parent.add(ghostRig.group);
+    }
+    /* Board top 3's second and third, on the same lap clock, each fading
+     * in, out past its own finish and across its own recorded recovery. */
+    const extras = ghostChoice === 'top3' && ghostLap === ghostTop[0] ? ghostTop.length - 1 : 0;
+    for (let i = 0; i < ghostExtraRigs.length; i += 1) {
+      const rig = ghostExtraRigs[i];
+      if (i >= extras) {
+        rig.setPresence(0);
+        continue;
+      }
+      const lap = ghostTop[i + 1];
+      let p = t < 400 ? t / 400 : 1;
+      const left = lap.durationMs - t;
+      if (left < 0) {
+        p = Math.max(0, 1 + left / 400);
+      }
+      lap.sample(t, ghostExtraSample);
+      if (ghostExtraSample.cut) {
+        p = Math.min(p, 0.15);
+      }
+      rig.group.position.set(ghostExtraSample.px, ghostExtraSample.py, ghostExtraSample.pz);
+      rig.group.quaternion.set(ghostExtraSample.qx, ghostExtraSample.qy, ghostExtraSample.qz, ghostExtraSample.qw);
+      rig.setPresence(p);
+      if (p > 0 && shell.quad.parent && rig.group.parent !== shell.quad.parent) {
+        shell.quad.parent.add(rig.group);
+      }
     }
   }
 
@@ -6387,6 +6534,8 @@ export async function boot({ loading, bootStart, mapId }) {
    * one compare, and only while armed.
    */
   let autoResetAtMs = -1;
+  /* m/s up, the plant's Z: above it an upright craft is climbing out. */
+  const AUTO_RESET_CLIMB = 0.3;
   let autoResetKind = '';
   /* The deadline has passed and the reset is taken at the next frame's top. */
   let autoResetDue = false;
@@ -6482,6 +6631,69 @@ export async function boot({ loading, bootStart, mapId }) {
     if (typeof audio.event === 'function') {
       audio.event('land');
     }
+  }
+
+  /*
+   * RETRY FROM THE LAST GATE (Settings, Reset to; the owner's pick of
+   * 2026-11-05, idea 4 of the sweep). With it on, R and Auto reset put the
+   * craft on the ground just past the gate this run last credited, facing
+   * the way through it, instead of on the start line, and the running lap
+   * is thrown away (race.retryFrom): the clock starts at the next timing
+   * gate, so a retry never posts a lap it did not fly. Restart run on the
+   * pause menu still goes to the line. Solo races only: never freestyle, a
+   * room (the others race the real lap), the career, a mini game or a
+   * replay. Nothing per frame: it runs only when a reset is taken.
+   */
+  const RETRY_PAST_M = 2.5;
+  function retryWanted() {
+    return ui.settings.resetTo === 'gate'
+      && mode === 'flight'
+      && ui.screen === 'flight'
+      && !race.freestyle
+      && !replayMode
+      && !career
+      && !balloonGame
+      && !fightGame
+      && !(together && together.session && together.session.inRoom);
+  }
+  function retryFromGate() {
+    if (!retryWanted() || !view.colliders || race.lastPassed < 0) {
+      return false;
+    }
+    const g = race.gates[race.lastPassed];
+    if (!g) {
+      return false;
+    }
+    /* Down past the gate along its travel, at the ground there. */
+    const fx = g.az.x;
+    const fz = g.az.z;
+    const flat = Math.hypot(fx, fz) || 1;
+    const px = g.x + (fx / flat) * RETRY_PAST_M;
+    const pz = g.z + (fz / flat) * RETRY_PAST_M;
+    const py = recoverGroundAt(px, pz, g.y + 2) + 0.6;
+    const keepOut = trafficOn ? (view.restKeepOut ?? null) : null;
+    if (!findRestSpot(view.colliders, recoverGroundAt, restW(), px, py, pz, null, restSpot, keepOut)) {
+      return false;
+    }
+    const passed = race.retryFrom('Retry from the last gate', performance.now());
+    if (!passed) {
+      return false;
+    }
+    autoResetAtMs = -1;
+    autoResetDue = false;
+    counterCrash(false);
+    resetCraft({ x: restSpot.x, z: restSpot.z, surface: restSpot.surface, yaw: Math.atan2(-fx, -fz) });
+    stateCurr = readState();
+    statePrev = stateCurr;
+    poseFromState(stateCurr, pCurr);
+    flownThisRun = true;
+    raceHasPrev = false;
+    recoverGraceUntil = performance.now() + CLIP_SPAWN_GRACE_MS;
+    /* The lap being recorded and the gap read against it are gone with the
+     * lap: the next one records from its own first crossing. */
+    ghostRecorder.abort();
+    ghostGap = null;
+    return true;
   }
 
   /*
@@ -6587,6 +6799,16 @@ export async function boot({ loading, bootStart, mapId }) {
       return;
     }
     if (simTimeMs >= autoResetAtMs) {
+      /* Upright and climbing is a pilot flying out, even with a prop still
+       * scraping the wall it is climbing away from: a wall it is SLIDING
+       * DOWN is down, one it is climbing up is not. Before the prop
+       * faceplant armed this (propSmackSeen) the frame's crash met the same
+       * case less often, and reset a pilot already on the way out. */
+      if (autoResetKind === 'bounce' && !landed && !turtleWait && stateCurr
+        && plantUpZ(stateCurr) >= TURTLE_EXIT_UPZ && stateCurr[6] > AUTO_RESET_CLIMB) {
+        autoResetAtMs = -1;
+        return;
+      }
       if (autoResetKind === 'bounce' && !landed && !turtleWait && !(lastGroundHits > 0)
         && !(lastSolidHits > 0)) {
         /* In the air, touching nothing. Upright is flown out of it, and left
@@ -6703,6 +6925,19 @@ export async function boot({ loading, bootStart, mapId }) {
    * turned it on.
    */
   let crashSeen = false;
+  /*
+   * A FACEPLANT ON THE PROPS, FOR AUTO RESET (the owner's pick of 2026-11-05,
+   * idea 3 of the sweep). A knock where only a prop met a solid, at
+   * GRAZE_SPEED_MAX or more (solidContactKnock's prop half), is not a crash
+   * and nothing else about it changes: no crash count, no chase bail, no
+   * career crash. It only arms Auto reset's 'bounce' kind, exactly as a
+   * crash does, so a pilot who flies out upright keeps flying (autoResetTick
+   * disarms it in the air and upright) and one left on the wall's foot is
+   * put back after their own delay, not after stuckTick's 1.5 s and then
+   * the delay. Measured on scripts/autoreset-check.js's shopfront, where
+   * about half the head on runs met the wall props first.
+   */
+  let propSmackSeen = false;
   const dullOut = new Float64Array(3);
   /* Whether a crash read now gets the bounce: the step loop asks it once
    * before it steps. */
@@ -6750,8 +6985,16 @@ export async function boot({ loading, bootStart, mapId }) {
   }
   function crashBounceTick() {
     if (!crashSeen) {
+      if (propSmackSeen) {
+        propSmackSeen = false;
+        if (mode === 'flight' && ui.screen === 'flight' && !poseLock && !launchStaging && !landed
+          && autoResetAtMs < 0) {
+          armAutoReset('bounce');
+        }
+      }
       return;
     }
+    propSmackSeen = false;
     crashSeen = false;
     if (mode !== 'flight' || ui.screen !== 'flight' || poseLock || launchStaging || landed) {
       return;
@@ -10481,7 +10724,10 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     /* Flight only keys. */
     if (code === 'KeyR') {
-      reset();
+      /* Reset to Last gate, when the pilot picked it: see retryFromGate. */
+      if (!retryFromGate()) {
+        reset();
+      }
       return;
     }
     /*
@@ -11360,11 +11606,16 @@ export async function boot({ loading, bootStart, mapId }) {
      * they pressed in flight would become the switch.
      */
     if (input.takeRestart() && ui.screen === 'flight' && mode === 'flight') {
-      reset();
+      if (!retryFromGate()) {
+        reset();
+      }
     }
     if (autoResetDue && ui.screen === 'flight' && mode === 'flight') {
-      reset();
-      notice = { text: 'Auto reset.', untilMs: performance.now() + 1600 };
+      const retried = retryFromGate();
+      if (!retried) {
+        reset();
+      }
+      notice = { text: retried ? 'Auto reset to the last gate.' : 'Auto reset.', untilMs: performance.now() + 1600 };
     }
     if (input.restartCapture && ui.screen !== 'pilot') {
       input.cancelRestartCapture();
@@ -11795,7 +12046,16 @@ export async function boot({ loading, bootStart, mapId }) {
             if (crashed && view.judge && mode === 'flight') {
               view.judge.hear('crash', simTimeMs + i + 1);
             }
-            if (bounces && (crashed || crashJudge.knock(stepRep, stNow))) {
+            const knocked = !crashed && bounces && crashJudge.knock(stepRep, stNow);
+            /* A prop alone into a solid at a smack's closing speed is a knock
+             * and not a crash (solidContactCrash), and it stays one. But a
+             * pilot who turned Auto reset on asked to be put back after a
+             * faceplant, and a head on hit where only the props met the wall
+             * otherwise waited out stuckTick first: see propSmackSeen. */
+            if (knocked && !(stepRep[8] > 0)) {
+              propSmackSeen = true;
+            }
+            if (bounces && (crashed || knocked)) {
               stNow = applyDullBounce(crashed ? crashJudge.stepKind : 'solid', stBefore, stNow, stepRep, !crashed);
               if (i === steps - 2) {
                 statePrev = stNow;
@@ -14782,6 +15042,15 @@ export async function boot({ loading, bootStart, mapId }) {
       scale: ghostRig.group.scale.x,
       gapMs: ghostGap ? ghostGap.deltaMs : null,
       boardTimes: (ghostBoardTimes || []).length,
+      /* Board top 3: the laps fetched and which extra rigs are in the air. */
+      top: ghostTop.map((l) => l.durationMs),
+      extrasVisible: ghostExtraRigs.map((r) => r.group.visible),
+      /* What one rig asks of a frame: its meshes and its tag, each a draw. */
+      rigDraws: (() => {
+        let n = 0;
+        ghostRig.group.traverse((o) => { if ((o.isMesh || o.isSprite) && o.visible) n += 1; });
+        return n;
+      })(),
     };
   };
   /* Arm a ghost from wire base64 directly, the way a board fetch would,

@@ -118,7 +118,7 @@ import {
   setPidsExpert,
 } from '../../configs/pids.js';
 import {
-  boardOrigin, boardPageUrl, fetchMapList, fetchTrackList, fetchTrackTimes, landingOrigin, mapCardUrl, partnersPageUrl,
+  boardOrigin, boardPageUrl, fetchMapList, fetchTrackList, fetchTrackTimes, fetchWeek, landingOrigin, mapCardUrl, partnersPageUrl,
   pickFeaturedTracks,
   pickMaps, pickNewestMaps, tuneCodeFrom, wikiPageUrl,
 } from '../share/board.js';
@@ -1604,6 +1604,13 @@ const DEFAULTS = {
   autoReset: false,
   autoResetS: 1,
   /*
+   * RESET TO, the owner's pick of 2026-11-05 (idea 4 of the sweep): 'start'
+   * is the start line, as R always was; 'gate' puts a solo race back just
+   * past the last gate it flew through and throws the running lap away
+   * (retryFromGate in src/main.js). Restart run still goes to the line.
+   */
+  resetTo: 'start',
+  /*
    * Who the ghost drone chases: 'off', 'best' (your best lap this session)
    * or 'previous' (the lap before this one). Best is the default because a
    * pacer you have to discover in a menu is a pacer nobody meets: the first
@@ -2167,13 +2174,14 @@ export function loadSettings() {
     ['cameraFov', CAMERA_FOVS],
     ['fisheye', FISHEYE_LEVELS],
     ['autoResetS', AUTO_RESET_DELAYS],
+    ['resetTo', ['start', 'gate']],
     ['renderScale', RENDER_SCALES],
     ['fpsCap', FPS_CAPS],
     ['flightStyle', FLIGHT_STYLES],
     ['laps', LAP_COUNTS],
     ['packVoltage', PACK_VOLTAGES],
     ['musicTrack', musicIds()],
-    ['ghost', ['off', 'best', 'previous']],
+    ['ghost', ['off', 'best', 'previous', 'top3']],
     ['freestyleScoring', FREESTYLE_SCORING],
     ['crosshair', CROSSHAIRS],
     ['inView', IN_VIEW],
@@ -5799,6 +5807,10 @@ export class Ui {
      * back to false when the guide has said what it has to. See armGuide. */
     this.guided = false;
     this.boardCourses = [];
+    /* The track of the week, asked for once a session when Fly solo is first
+     * shown (weekCard), and null until the board answers. */
+    this.week = null;
+    this.weekAsked = false;
     /* The pilot's own tracks, read off this browser's library on entry to
      * the Track room. The board's half above it and this one are the two
      * things that room lists. See loadLocalCourses. */
@@ -9807,6 +9819,7 @@ export class Ui {
           ];
         }
         const panel = (id) => SOLO_PANELS[id] || {};
+        const week = this.weekCard();
         return [
           /* Career. First, see CAREER_CARD. */
           {
@@ -9841,6 +9854,8 @@ export class Ui {
             caption: panel(BUILDER_CARD.id).caption,
             action: BUILDER_CARD.action,
           },
+          /* The track of the week, once the board has said which. */
+          ...(week ? [week] : []),
           /* The mini games' one door, under Fly solo (gatepages.js
            * GATE_MINI). Only while rooms are on: the page it opens is
            * reached through the cover, which is not there without them. */
@@ -10643,6 +10658,16 @@ export class Ui {
           (n) => `${n} second${n === 1 ? '' : 's'}`,
           (n) => { s.autoResetS = n; },
         )] : []),
+        choice(
+          'Reset to',
+          s.resetTo === 'gate'
+            ? 'Last gate: R and Auto reset put you down just past the last gate you flew through, facing the next one, so you can practise a section again. The lap you were on is thrown away and the clock starts at the next pass of the start gate. Restart run on the pause menu still goes to the start line. Solo races only.'
+            : 'Start line: R and Auto reset start the race again from the line. Pick Last gate to practise a section from the last gate you flew through.',
+          ['start', 'gate'],
+          s.resetTo === 'gate' ? 'gate' : 'start',
+          (v) => (v === 'gate' ? 'Last gate' : 'Start line'),
+          (v) => { s.resetTo = v; },
+        ),
         /*
          * FLIGHT FEEL TUNING, the mode's switch. On, it adds Air grip and
          * Motor power to the room as rows and to the flight screen as
@@ -13587,7 +13612,9 @@ export class Ui {
       host.textContent = '';
       host.className = `gate-cards gate-page-${page}`;
       host.append(this.gateHead(page));
-      const grid = el('div', 'gate-grid');
+      /* The track of the week takes a strip of its own under the solo
+       * page's two rows (index.html, .gate-grid.has-week). */
+      const grid = el('div', `gate-grid${items.some((it) => it.card === 'week') ? ' has-week' : ''}`);
       this.titleCards = items.map((it, i) => {
         const card = el('div', `gate-card gate-card-${it.card}`);
         card.setAttribute('role', 'button');
@@ -17111,6 +17138,81 @@ export class Ui {
    * the builder as a copy. Only the way to seat a new one is gone, and
    * that is the builder's Load dialog, which never stopped offering them.
    */
+
+  /*
+   * THE TRACK OF THE WEEK on the Fly solo page (the board's src/week.js, the
+   * owner's pick of 2026-11-05, idea 1 of the sweep). Asked once a
+   * session, the first time the Fly solo panels are built, which the title
+   * can do as it boots: one small JSON answer (a few hundred bytes, no
+   * picture; the card wears the five inch card's art, already shipped). No
+   * board, no card.
+   */
+  weekCard() {
+    if (!this.weekAsked) {
+      this.weekAsked = true;
+      fetchWeek().then((w) => {
+        this.week = w && w.track ? w : null;
+        if (this.week && this.onGate() && this.gatePageNow() === 'solo') {
+          this.renderMenu();
+        }
+      }).catch(() => { /* No board today: no card. */ });
+    }
+    const w = this.week;
+    if (!w || !w.track) {
+      return null;
+    }
+    const lead = w.times[0];
+    const way = WAYS.find((x) => x.id === 'race-5inch');
+    return {
+      label: 'Track of the week',
+      card: 'week',
+      art: way ? way.art : 'assets/gate/race.jpg',
+      kicker: 'This week',
+      caption: lead
+        ? `${w.track.name}. ${lead.name} leads at ${formatTime(lead.lapMs)}. The best lap by Monday wins the week.`
+        : `${w.track.name}. Nobody has a lap on it yet this week, so the first one leads.`,
+      action: 'week-fly',
+    };
+  }
+
+  /* Fly it: the five inch seated as its card on this page seats it, the
+   * track fetched and seated as a board card's is, the week's leader armed
+   * as the ghost when their lap carries one, then the starting blocks. */
+  flyWeek() {
+    const w = this.week;
+    if (!w || !w.track || this.openingBoardCourse || !this.onBoardCourse) {
+      return;
+    }
+    if (this.settings.airframe !== '5inch') {
+      seatAirframe(this.settings, '5inch');
+    }
+    this.settings.airframeAsked = true;
+    this.craftGate = false;
+    this.mode = 'race';
+    saveSettings(this.settings);
+    if (this.onSettings) {
+      this.onSettings(this.settings);
+    }
+    const track = { ...w.track, board: boardOrigin() };
+    const lead = w.times.find((x) => x.hasGhost && x.id);
+    if (lead && this.onStandingsGhost) {
+      this.onStandingsGhost(track, lead);
+    }
+    this.openingBoardCourse = true;
+    this.onBoardCourse(track).then((ok) => {
+      this.openingBoardCourse = false;
+      if (!ok) {
+        return;
+      }
+      this.returnTo = 'title';
+      this.act('map:custom');
+      if (seatIsRace(this.settings) && this.onFlySeated) {
+        this.onFlySeated();
+      }
+    }).catch(() => {
+      this.openingBoardCourse = false;
+    });
+  }
 
   /* `failed` hears about a load that did not happen, once the note says why:
    * a card that was showing Loading has to stop. */
@@ -21952,6 +22054,10 @@ export class Ui {
      * one per class, so asking them first would ask about the machine the
      * pilot has just stopped flying.
      */
+    if (action === 'week-fly') {
+      this.flyWeek();
+      return;
+    }
     const way = WAYS.find((w) => w.action === action);
     if (way) {
       /*

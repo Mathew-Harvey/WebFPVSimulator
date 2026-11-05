@@ -477,6 +477,9 @@ export class Race {
 
   reset() {
     this.next = 0;
+    /* The station last credited in this run, for a retry from it: see
+     * retryFrom. -1 with none. */
+    this.lastPassed = -1;
     /* Metres flown since the last credited pass: infinite with none, so
      * the first station of a run is never kept waiting. See LEG_MIN_DEPTHS. */
     this.flownM = Infinity;
@@ -557,6 +560,38 @@ export class Race {
     this.next = 0;
     this.flownM = Infinity;
     this.flash = { text: reason, untilMs: wallMs + 1800 };
+  }
+
+  /*
+   * RETRY FROM THE LAST GATE (the owner's pick of 2026-11-05, idea 4 of the
+   * sweep): practice a section without flying the whole lap to get back to
+   * it. The shell puts the craft down just past the station this run last
+   * credited, and this throws the running lap away, as voidLap does, and
+   * keeps the order where it was: the next station to fly is the one after
+   * that gate. A thrown away lap is logged, so the results say so, and the
+   * clock starts again only at the next timing gate crossing, which is how
+   * a retried section can never post a lap it did not fly.
+   *
+   * Returns the station retried from, or null when there is none to retry
+   * from (nothing credited yet this run, or freestyle).
+   */
+  retryFrom(reason, wallMs) {
+    if (this.freestyle || this.lastPassed < 0 || this.lastPassed >= this.gates.length) {
+      return null;
+    }
+    const g = this.gates[this.lastPassed];
+    if (this.lapStartMs != null) {
+      this.log.push({ n: this.lapNumber(), ms: null, reason });
+    }
+    this.lapStartMs = null;
+    this.mixed = false;
+    this.splits = [];
+    this.next = (this.lastPassed + 1) % this.gates.length;
+    this.flownM = Infinity;
+    this.held = [];
+    this.prevSimMs = null;
+    this.flash = { text: reason, untilMs: wallMs + 1800 };
+    return g;
   }
 
   /*
@@ -819,6 +854,7 @@ export class Race {
     const crossMs = prevSimMs + (simMs - prevSimMs) * t;
     const passed = this.next;
     this.next = (this.next + 1) % this.gates.length;
+    this.lastPassed = passed;
     /* A crossing inside a running lap is a split, timed the same way the
      * lap is: interpolated on the sim clock. The finish is the last one. */
     if (this.lapStartMs != null) {

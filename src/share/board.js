@@ -1165,6 +1165,28 @@ export async function fetchTrackTimes(trackId, origin = boardOrigin()) {
   })).filter((t) => t.lapMs != null);
 }
 
+/*
+ * The track of the week (the board's src/week.js, the owner's pick of
+ * 2026-11-05): { week, startsUtc, endsUtc, track: { id, name, author, ... } or
+ * null, times: the week's best laps, one per pilot }. A few hundred bytes,
+ * asked once a session when the Fly solo page is first shown.
+ */
+export async function fetchWeek(origin = boardOrigin()) {
+  const res = await boardGet(`${trimOrigin(origin)}/api/week`);
+  const body = await readJson(res);
+  if (!body || typeof body !== 'object') {
+    return null;
+  }
+  const t = body.track;
+  return {
+    endsUtc: String(body.endsUtc || ''),
+    track: t && t.id ? { id: String(t.id), name: String(t.name || 'A track'), author: String(t.author || '') } : null,
+    times: Array.isArray(body.times) ? body.times.filter((x) => x && Number.isFinite(Number(x.lapMs))).map((x) => ({
+      id: x.id ? String(x.id) : '', name: String(x.name || ''), lapMs: Number(x.lapMs), hasGhost: Boolean(x.hasGhost),
+    })) : [],
+  };
+}
+
 /* One recorded lap off the board, as { id, name, lapMs, ghost } with ghost
  * still base64; src/share/ghostdata.js decodes it. */
 export async function fetchGhost(trackId, timeId, origin = boardOrigin()) {

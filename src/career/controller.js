@@ -73,6 +73,7 @@ import { createVisuals } from './visuals.js';
 import { sticksIn } from './words.js';
 import { INKS } from '../ui/lettering.js';
 import { liveryById, saveLivery, savedLivery } from '../render/livery.js';
+import { fisheyeNdc } from '../render/fisheye.js';
 
 const KEYS = {
   ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down',
@@ -788,6 +789,10 @@ export function createCareer(shell) {
     const H = canvas ? canvas.clientHeight : window.innerHeight;
     cam.updateMatrixWorld();
     proj.set(m.x, m.y, m.z).project(cam);
+    /* Bent the way the picture is when the pilot's fisheye is on, as the
+     * mini games' markers are (src/render/fisheye.js), or the marker sits
+     * off its target by more the further out it is. A no op while off. */
+    fisheyeNdc(proj);
     const behind = proj.z > 1;
     let x = proj.x;
     let y = proj.y;

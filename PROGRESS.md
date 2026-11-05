@@ -74769,3 +74769,23 @@ What went wrong:
 - Steam: the Steam edition's per-partner achievement list is not in this repository; see the PR for what the repack has.
 
 Approval: Mat, 2026-11-05 06:07Z, "Push to main", in the 369DRONE thread, after the reply that stated the cost (no draw call, pass or target added; draw calls identical before and after on Heads, Nick's house, Hibari Yard and Yume Land, headless proxy) and offered the fly it check. Covers the simulator PR 237, the board PR 77 and the landing PR 28. Not flown by a person before the push.
+
+## 2026-11-05 | bugs | Bug sweep after the fisheye, 369DRONE, Nick's house, the shop, Android yaw and the handle picker (branch claude/project-thread-21myf4)
+
+The ask: Mat, 2026-11-05 13:49Z, "bug sweep time on the game, and consider what we could do to make it better".
+
+Fixed:
+- The career's target marker ignored the fisheye. `src/career/controller.js` projects a lesson's target (a gate, a gap zone, a spot) onto the screen to draw its marker, and was the one projected overlay the fisheye round (f0fd0c3) missed: the target lock and every mini game HUD bend through `fisheyeNdc`, this did not, so with Fisheye on the marker sat off its gate by more the further out the gate was. It now bends its point the same way. A no op while Fisheye is Off. Latency: none; one call per frame that returns at once when Off, and a few multiplies when on, no allocation.
+
+Traced, not changed (the owner's call, offered in the thread):
+- `check:autoreset` "flown out" and "on, 1 s" fail about 2 runs in 4 in this container, alone or in a batch. Not the clock: the sim clock kept pace with the wall (3490 to 3515 ms over each 3500 ms watch). A probe of the crash and reset state frame by frame showed the cause: the check flies head on into the shopfront at about 10 m/s, and whether the frame or only a prop meets the wall first depends on the attitude at the contact, which moves with frame timing. When only a prop meets it, `solidContactCrash` does not call it a crash (by design: "the frame or the lens, not a prop alone"), the knock bounces it, auto reset is never armed, and the craft slides down the wall onto its tail. `stuckTick` sets it down after 1.5 s of stillness and only then does auto reset's own delay start, so the pilot waits about 2.5 s plus their delay instead of their delay. A game change (arm auto reset on a hard prop only knock) would change crash rules, so it is put to Mat rather than built. The check is unchanged.
+- `check:wall` still fails its one line "below the knee the rebound is the law's own saturated value" (0.194 to 0.285 against 0.255), as recorded since 2026-10-21. Not a threshold to move.
+
+Swept clean:
+- All 36 worlds loaded through `__setMap` on Medium with Fisheye Strong and Race time Night set, frames drawn on each: no console error on any (the only errors are the board fetches the harness cannot reach).
+- Read the diffs of the fisheye, 369DRONE, Android yaw, the handle picker and Race time. The fisheye's shader and `fisheyeNdc` agree (the corner maps to the corner); the handle picker's `hashPick` matches the board's `generatedHandle`; Race time builds a fresh course object, so a Day pick does not lose a track's own night.
+- Earlier leftovers: the YourFPV PNG is now read by `scripts/partners.js` (its mono is generated), so that one is closed. The landing page's yard data is in the landing repository, which this session cannot reach.
+
+Checks run this turn, all green unless named above: node self tests gif, ghost, net, dogfight, ribbons, contact, score, lapclock, replay, link, input (419), autoscale, predict, music, stats, support, tune, seat, firstflight, tuneinvite, edge; `lint:nouns`, `lint:partners`, `lint:preload`, `check:fresh`, `check:career` (179), `lint:presets`, `check:community`, `check:town-patrons:selftest`; browser checks house, warehouse, heads, bardwell, balldoor, minigames, room, ball, career:rig, raceline, `lint:boot`, orbit, path, yard, roads, `lint:reset`, crash, bounce, dan, clips, gatesettings, takeoff; the board's `npm test`. `lint:catalog` could not run: `vendor/betaflight` is not checked out in this container. Not run: `npm run verify` (nothing here touches physics, the plant, the ABI or the build). Not flown.
+
+What went wrong: nothing broke; the first probe of the auto reset flake blamed the wall clock, and the numbers said otherwise.

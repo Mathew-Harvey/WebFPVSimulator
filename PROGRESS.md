@@ -74767,3 +74767,5 @@ What went wrong:
 - I took the before numbers with `git stash`, which the capture notes warn against. Nothing of anyone else's was in the stash and it popped clean.
 - Not run: `npm run verify` (nothing here touches physics, the plant, the ABI or the build). Not flown by a person.
 - Steam: the Steam edition's per-partner achievement list is not in this repository; see the PR for what the repack has.
+
+Approval: Mat, 2026-11-05 06:07Z, "Push to main", in the 369DRONE thread, after the reply that stated the cost (no draw call, pass or target added; draw calls identical before and after on Heads, Nick's house, Hibari Yard and Yume Land, headless proxy) and offered the fly it check. Covers the simulator PR 237, the board PR 77 and the landing PR 28. Not flown by a person before the push.

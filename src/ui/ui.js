@@ -2756,6 +2756,20 @@ export function formatRunClock(ms) {
   return `${m}:${sec < 10 ? '0' : ''}${sec}`;
 }
 
+/*
+ * The Laps row's note on a RaceGOW track at Non stop. The board takes a
+ * room's best three in a row at one weight, and a full size track's
+ * fastest lap only (submitBoardTime in src/main.js sends the three for a
+ * room alone, and posting it for a full size track is the board's call),
+ * so the note promises the three to the board only where it goes there
+ * (bugs.md BUG-7).
+ */
+export function racegowNonStopNote(room) {
+  return `Non stop is how a RaceGOW track is flown: as many laps as you like, each one called out with its time as you cross the line, and every time you set a faster three laps in a row at one weight the new best three is called too. Stop from the pause menu. ${room
+    ? 'Your best three posts to the public board like any other run.'
+    : 'On this track the public board takes your fastest lap, and the best three is called for you.'} RaceGOW tracks keep their own pick, so a field track keeps its lap count. Latched when you launch.`;
+}
+
 export function formatTime(ms) {
   if (ms == null || !Number.isFinite(ms)) {
     return '--.--';
@@ -5681,6 +5695,9 @@ const PERF_GRAPH_FRAMES = 3;
 /* The MEM row walks the whole scene (vram.js), so it is read this often
  * and never per frame. */
 const PERF_MEM_MS = 5000;
+/* How soon the track of the week is asked for again after a failed ask,
+ * or once the week it named has ended. See weekCard. */
+const WEEK_RETRY_MS = 30000;
 
 export class Ui {
   /*
@@ -5868,6 +5885,11 @@ export class Ui {
      * shown (weekCard), and null until the board answers. */
     this.week = null;
     this.weekAsked = false;
+    /* When the board was last asked, and whether that ask failed: a failed
+     * ask, or a week that has ended, is asked again (weekCard). */
+    this.weekAskedAt = -Infinity;
+    this.weekFailed = false;
+    this.weekBusy = false;
     /* The pilot's own tracks, read off this browser's library on entry to
      * the Track room. The board's half above it and this one are the two
      * things that room lists. See loadLocalCourses. */
@@ -11371,7 +11393,7 @@ export class Ui {
         this.racegowSeat ? choice(
           'Laps',
           s.racegowLaps === PRACTICE_LAPS
-            ? 'Non stop is how a RaceGOW track is flown: as many laps as you like, each one called out with its time as you cross the line, and every time you set a faster three laps in a row the new best three is called too. Stop from the pause menu. Your best three posts to the public board like any other run. RaceGOW tracks keep their own pick, so a field track keeps its lap count. Latched when you launch.'
+            ? racegowNonStopNote(airframeById(s.airframe).trackClass === 'micro')
             : 'How many laps a run lasts before the result screen. Non stop has no end and keeps calling your best three in a row. RaceGOW tracks keep their own pick, so a field track keeps its lap count. Latched when you launch.',
           LAP_COUNTS,
           s.racegowLaps,
@@ -13798,7 +13820,10 @@ export class Ui {
     }
     const items = this.items().filter((it) => it.card);
     const page = this.onGate() ? this.gatePageNow() : 'solo';
-    const key = `${page}:${items.map((it) => `${it.card}=${it.action}`).join('|')}`;
+    /* The week card's words are in the key too: the week is asked again
+     * after a failure and once it ends (weekCard), and the same card with
+     * this week's track in it has to be drawn again to say so. */
+    const key = `${page}:${items.map((it) => `${it.card}=${it.action}${it.card === 'week' ? `:${it.caption}` : ''}`).join('|')}`;
     if (!this.titleCards || this.titleCardKey !== key) {
       this.titleCardKey = key;
       host.textContent = '';
@@ -17340,14 +17365,32 @@ export class Ui {
    * board, no card.
    */
   weekCard() {
-    if (!this.weekAsked) {
+    /* Asked again, at most every WEEK_RETRY_MS, when the first ask failed
+     * (a board that was down at boot) or the week it named has ended (a
+     * tab left open across Monday 00:00 UTC), so the card never offers
+     * last week's track or stays missing for the whole session (bugs.md
+     * BUG-12). An ask in flight is never doubled. */
+    const now = Date.now();
+    const ended = this.week && Number.isFinite(Date.parse(this.week.endsUtc)) && now >= Date.parse(this.week.endsUtc);
+    const again = !this.weekBusy && (this.weekFailed || ended) && now - this.weekAskedAt >= WEEK_RETRY_MS;
+    if (!this.weekAsked || again) {
       this.weekAsked = true;
+      this.weekBusy = true;
+      this.weekAskedAt = now;
       fetchWeek().then((w) => {
+        this.weekBusy = false;
+        this.weekFailed = false;
+    this.weekBusy = false;
+        const had = this.week;
         this.week = w && w.track ? w : null;
-        if (this.week && this.onGate() && this.gatePageNow() === 'solo') {
+        if ((this.week || had) && this.onGate() && this.gatePageNow() === 'solo') {
           this.renderMenu();
         }
-      }).catch(() => { /* No board today: no card. */ });
+      }).catch(() => {
+        /* No board today: no card, until the next ask. */
+        this.weekBusy = false;
+        this.weekFailed = true;
+      });
     }
     const w = this.week;
     if (!w || !w.track) {
@@ -17386,7 +17429,11 @@ export class Ui {
       this.onSettings(this.settings);
     }
     const track = { ...w.track, board: boardOrigin() };
-    const lead = w.times.find((x) => x.hasGhost && x.id);
+    /* The leader's lap, and only the leader's: when theirs carries no
+     * recording nobody is armed, rather than the next pilot down being
+     * chased under the leader's name (bugs.md BUG-12). */
+    const top = w.times[0];
+    const lead = top && top.hasGhost && top.id ? top : null;
     if (lead && this.onStandingsGhost) {
       this.onStandingsGhost(track, lead);
     }

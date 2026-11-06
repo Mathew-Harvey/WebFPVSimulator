@@ -97,7 +97,7 @@ export class RoomSession {
     this.up = new Uint8Array(POSE_UP_BYTES);
     this.lastSentAt = -Infinity;
     this.last = {
-      flags: -1, ix: 0, iy: 0, iz: 0, qx: 0, qy: 0, qz: 0, qw: 1,
+      flags: -1, ix: 0, iy: 0, iz: 0, qx: 0, qy: 0, qz: 0, qw: 1, still: true,
     };
     this.posesSent = 0;
     this.posesHeard = 0;
@@ -269,7 +269,7 @@ export class RoomSession {
    * This pilot's pose, every frame, in scene world metres, whether the
    * props are turning, and how many times the craft has been put back.
    * Sends at most one pose every POSE_INTERVAL_MS, and none when nothing
-   * changed. Returns true when one went. Positional, so the frame loop
+   * changed but the one copy that says a moving craft stopped. Returns true when one went. Positional, so the frame loop
    * that calls it allocates nothing.
    */
   uplink(px, py, pz, qx, qy, qz, qw, spinning = false, resets = 0) {
@@ -300,7 +300,17 @@ export class RoomSession {
     const iy = Math.round(py * this.units);
     const iz = Math.round(pz * this.units);
     const dot = Math.abs(qx * L.qx + qy * L.qy + qz * L.qz + qw * L.qw);
-    if (flags === L.flags && ix === L.ix && iy === L.iy && iz === L.iz && dot >= SAME_TURN_DOT) {
+    /*
+     * Unchanged since the last one sent: nothing goes, except once. The
+     * reader carries a pilot on along the last segment past the newest
+     * pose (src/net/remote.js, sample), so a craft that stops dead would
+     * be drawn up to 150 ms of its last speed past where it stopped, for
+     * as long as it stays parked. One more copy of the resting pose, with
+     * the time it was still at, makes the last segment a standing one,
+     * and that is all a stop costs: one pose.
+     */
+    const same = flags === L.flags && ix === L.ix && iy === L.iy && iz === L.iz && dot >= SAME_TURN_DOT;
+    if (same && L.still) {
       return false;
     }
     encodePose(this.up, this.units, Math.round(t), flags, px, py, pz, qx, qy, qz, qw);
@@ -314,6 +324,13 @@ export class RoomSession {
       return false;
     }
     this.lastSentAt = t;
+    /* A first pose, or the first after a new unit, is the only one its
+     * readers hold, and one pose is drawn where it is: nothing to resend. */
+    L.still = same || L.flags === -1;
+    if (same) {
+      this.posesSent += 1;
+      return true;
+    }
     L.flags = flags;
     L.ix = ix;
     L.iy = iy;

@@ -633,8 +633,11 @@ async function loadMap(shell, id, loading, options) {
   /* The Gem look, once a world is built: colours and vertex tones only, nothing per frame (look.js). */
   applyLook(map.scene, shell.quad);
   map.shadowsOff = Boolean(options && options.quality && options.quality.shadowsOff);
-  /* The Race time pick this world was built with: see raceTimeOf. */
-  map.raceTime = raceTimeOf(options);
+  /* The Race time pick this world was built with: see raceTimeOf. 'n/a'
+   * on a world the pick cannot change (a whoop room, a freestyle map, any
+   * world but a five inch race track: src/maps/custom.js), so changing it
+   * never rebuilds one to draw the same picture (bugs.md BUG-11). */
+  map.raceTime = map.raceTimeApplies ? raceTimeOf(options) : 'n/a';
   /* The published map a built world was made from, or null for the
    * pilot's own. The world does not say, because to it a document is a
    * document, and the shell has to tell two of them apart: see
@@ -1089,6 +1092,18 @@ export async function boot({ loading, bootStart, mapId }) {
   } catch (e) {
     ui.setBanner(`Could not open that TinyLaps track.\n${e.message ?? e}`, true);
   }
+  /*
+   * THE MOST FLOWN TRACK IS ASKED FOR, NOT WAITED FOR, HERE (core.md CORE-3).
+   * A first visit has nothing seated, which is exactly when the board is
+   * asked for its most flown track: up to 4 s for the list and 8 s for the
+   * document. That used to be awaited here, in line, before the flight
+   * controller was instantiated, its tune fetched and the map's modules
+   * asked for, so a cold board added all of it to the loading screen of
+   * the visit that matters most. The ask now runs beside all of that and is
+   * awaited only where its answer is needed: just before the world is
+   * built, which has to know which track it is building (featuredSettled).
+   */
+  let featuredWait = null;
   try {
     const fromUrl = fromTinyLaps || await adoptShareFromLocation();
     if (fromUrl) {
@@ -1108,14 +1123,41 @@ export async function boot({ loading, bootStart, mapId }) {
       ui.settings.map = 'custom';
       ui.renderMenu();
     } else if (mapById(ui.settings.map).mode !== 'freestyle' && !hasFlyableTrack()) {
-      const featured = await adoptMostFlownTrack(airframeById(ui.settings.airframe).trackClass);
-      if (featured) {
-        ui.settings.map = 'custom';
-        ui.renderMenu();
-      }
+      featuredWait = adoptMostFlownTrack(airframeById(ui.settings.airframe).trackClass).then(
+        (featured) => ({ featured, error: null }),
+        (error) => ({ featured: null, error }),
+      );
+      /* The world it seats is a race track, so its modules are asked for
+       * now, beside the board, rather than after it. */
+      preloadMapModules('custom');
     }
   } catch (e) {
     ui.setBanner(`Could not open that published track.\n${e.message ?? e}`, true);
+  }
+  /* Where the world needs the answer: seat what came back. If it is still
+   * on its way the board stage is named again, so the screen says what is
+   * being waited for (the bar never runs backwards: see aim in loading.js). */
+  async function featuredSettled() {
+    if (!featuredWait) {
+      return;
+    }
+    let pending = true;
+    featuredWait.then(() => { pending = false; });
+    await Promise.resolve();
+    if (pending) {
+      loading.start('board');
+    }
+    const { featured, error } = await featuredWait;
+    featuredWait = null;
+    if (pending) {
+      loading.done('board');
+    }
+    if (error) {
+      ui.setBanner(`Could not open that published track.\n${error.message ?? error}`, true);
+    } else if (featured) {
+      ui.settings.map = 'custom';
+      ui.renderMenu();
+    }
   }
   /*
    * A PUBLISHED FREESTYLE MAP arrives as ?mapshare=id, from the board's Fly
@@ -1506,6 +1548,8 @@ export async function boot({ loading, bootStart, mapId }) {
       ? { document: sharedMap.document, shared: sharedMap }
       : {};
   };
+  /* The most flown track, asked for in the board stage: see featuredWait. */
+  await featuredSettled();
   try {
     view = await loadMap(shell, ui.settings.map, loading, {
       quality: qualityOf(ui.settings),
@@ -3864,6 +3908,10 @@ export async function boot({ loading, bootStart, mapId }) {
    */
   let ghostTop = []; /* the course's top laps with a ghost, fastest first, decoded */
   let ghostTopBusy = false;
+  /* Board top 3 fetched and decoded while a lap was running, held for the
+   * next lap start so a lap is never chased against two different laps
+   * (see takeGhostTop). */
+  let ghostTopPending = null;
   const ghostExtraRigs = [];
   const ghostExtraSample = { px: 0, py: 0, pz: 0, qx: 0, qy: 0, qz: 0, qw: 1, cut: false };
   function ghostExtraRig(i) {
@@ -3994,10 +4042,14 @@ export async function boot({ loading, bootStart, mapId }) {
     if (ghostChoice.startsWith('board:')) {
       return ghostBoardLap && `board:${ghostBoardLap.timeId}` === ghostChoice ? ghostBoardLap : null;
     }
-    if (ghostChoice === 'top3') {
-      return ghostTop[0] || null;
-    }
     const key = ghostCourseKey();
+    /* Board top 3 on a track the board has no ghosts for (the field, the
+     * stock tracks, the career, any track not on the board), or before
+     * they arrive: the pilot's own best flies, rather than nothing, and it
+     * is the lap the gap is read against anyway (bugs.md BUG-8). */
+    if (ghostChoice === 'top3') {
+      return ghostTop[0] || ghostBook.best(key);
+    }
     return ghostChoice === 'previous' ? ghostBook.previous(key) : ghostBook.best(key);
   }
 
@@ -4047,8 +4099,11 @@ export async function boot({ loading, bootStart, mapId }) {
       if (ghostTopBusy) {
         return 'Fetching the three fastest laps from the board.';
       }
+      if (ghostTopPending) {
+        return 'The three fastest laps on the board are here and join you from the next lap.';
+      }
       if (!ghostTop.length) {
-        return 'The three fastest laps on the board fly beside you, on any track the board has laps with ghosts for. This one has none yet, or the board could not be reached.';
+        return 'The three fastest laps on the board fly beside you, on any track the board has laps with ghosts for. This one has none yet, or the board could not be reached, so your best lap flies instead.';
       }
       return `The ${ghostTop.length === 1 ? 'fastest lap' : `${ghostTop.length} fastest laps`} on the board fly beside you as translucent pacers. The OSD reads your gap to the fastest at every gate.`;
     }
@@ -4101,10 +4156,15 @@ export async function boot({ loading, bootStart, mapId }) {
     if (id === 'top3') {
       ui.settings.ghost = id;
       ui.persistSettings();
-      if (ghostTop.length) {
-        armGhost();
-        syncGhostRow();
-      } else {
+      /* Armed now: the board's laps if they are here, the pilot's best
+       * until they are (resolveGhost). Laps held for the next lap start
+       * are taken now only when no lap is running. */
+      if (race.lapStartMs == null) {
+        takeGhostTop();
+      }
+      armGhost();
+      syncGhostRow();
+      if (!ghostTop.length && !ghostTopPending) {
         loadGhostTop();
       }
       return;
@@ -4203,7 +4263,7 @@ export async function boot({ loading, bootStart, mapId }) {
    * ghostCourseChanged asks for; this is called again when they arrive. */
   function loadGhostTop() {
     const listing = ghostListing();
-    if (!listing || !ghostBoardTimes || ghostTopBusy) {
+    if (!listing || !ghostBoardTimes || ghostTopBusy || ghostTopPending) {
       syncGhostRow();
       return;
     }
@@ -4223,6 +4283,12 @@ export async function boot({ loading, bootStart, mapId }) {
           if (ghostCourseKey() !== key) {
             return;
           }
+          /* Decoded in idle time, not on whichever flight frame the answer
+           * lands on (bugs.md BUG-9). */
+          await idleTurn();
+          if (ghostCourseKey() !== key) {
+            return;
+          }
           const lap = new GhostLap(decodeGhost(ghostFromBase64(payload.ghost)), {
             label: 'Board lap',
             name: payload.name || t.name || '',
@@ -4237,13 +4303,38 @@ export async function boot({ loading, bootStart, mapId }) {
       if (ghostCourseKey() !== key) {
         return;
       }
-      ghostTop = laps.sort((a, b) => a.durationMs - b.durationMs);
       ghostTopBusy = false;
-      if (ghostChoice === 'top3') {
+      ghostTopPending = laps.sort((a, b) => a.durationMs - b.durationMs);
+      /* Armed now only when no lap is running; otherwise at the next lap
+       * start, where ghostOnRaceStep arms (bugs.md BUG-9). */
+      if (race.lapStartMs == null && takeGhostTop() && ghostChoice === 'top3') {
         armGhost();
       }
       syncGhostRow();
     })();
+  }
+
+  /* Board top 3's laps become the ones flown, if a fetch left any. True
+   * when they did. */
+  function takeGhostTop() {
+    if (!ghostTopPending) {
+      return false;
+    }
+    ghostTop = ghostTopPending;
+    ghostTopPending = null;
+    return true;
+  }
+
+  /* One turn of the event loop in idle time, so work that can wait does
+   * not land inside a flight frame. */
+  function idleTurn() {
+    return new Promise((resolve) => {
+      if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(() => resolve(), { timeout: 1000 });
+      } else {
+        setTimeout(resolve, 0);
+      }
+    });
   }
 
   function ghostListing() {
@@ -4273,6 +4364,7 @@ export async function boot({ loading, bootStart, mapId }) {
     ghostBoardBusy = false;
     ghostTop = [];
     ghostTopBusy = false;
+    ghostTopPending = null;
     parkGhostExtras();
     ghostPrev.valid = false;
     ghostRig.setPresence(0);
@@ -4379,6 +4471,7 @@ export async function boot({ loading, bootStart, mapId }) {
         pCurr.x, pCurr.y, pCurr.z,
         qPrev.x, qPrev.y, qPrev.z, qPrev.w,
       );
+      takeGhostTop();
       armGhost();
     } else if (race.lapStartMs != null) {
       ghostRecorder.push(
@@ -6331,6 +6424,43 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   /*
+   * THE STEP LOOP'S STATE, READ INTO BUFFERS IT OWNS (core.md CORE-13).
+   * readState above copies the block into a new array, which the loop did
+   * once a step: a thousand arrays and a thousand wrappers a simulated
+   * second for the collector to sweep, in the frames a pilot is flying. In
+   * the loop the only arrays alive across a read are the step before
+   * (stBefore), and the frame's statePrev and stateCurr, which the render
+   * interpolates between and the next frame starts from; nothing the loop
+   * hands a step to keeps one (the crash judge, the counter, the traffic
+   * chase, the film and the trick detector read numbers out and let go).
+   * So four buffers always leave one that none of the three is holding, and
+   * the step reads into it. The values are the same bytes readState copies,
+   * so nothing about the trajectory changes, only who owns the memory.
+   * Everywhere else still calls readState and gets an array of its own.
+   */
+  const stepPool = [];
+  function readStateStep(before) {
+    if (!stepPool.length) {
+      const n = sim.stateLength();
+      for (let k = 0; k < 4; k += 1) {
+        stepPool.push(new Float64Array(Math.max(0, n)));
+      }
+    }
+    let out = stepPool[0];
+    for (let k = 0; k < stepPool.length; k += 1) {
+      out = stepPool[k];
+      if (out !== before && out !== statePrev && out !== stateCurr) {
+        break;
+      }
+    }
+    const code = sim.readStateInto(out);
+    if (code !== SIM_OK) {
+      throw new Error(`sim_state: ${simErrorName(code)}`);
+    }
+    return out;
+  }
+
+  /*
    * Put the craft back at the start line. Hits no longer teleport the
    * craft: R is the pilot asking for a restart, not a recovery from a
    * lockout. `at` reseats the spawn somewhere else first: a crash recovery
@@ -6670,12 +6800,15 @@ export async function boot({ loading, bootStart, mapId }) {
     if (!g) {
       return false;
     }
-    /* Down past the gate along its travel, at the ground there. */
+    /* Down past the gate along its travel, at the ground there, or before
+     * it when it is the timing gate, so the next crossing starts the clock
+     * rather than leaving a whole lap untimed (race.retrySeatsBefore). */
     const fx = g.az.x;
     const fz = g.az.z;
     const flat = Math.hypot(fx, fz) || 1;
-    const px = g.x + (fx / flat) * RETRY_PAST_M;
-    const pz = g.z + (fz / flat) * RETRY_PAST_M;
+    const along = race.retrySeatsBefore() ? -RETRY_PAST_M : RETRY_PAST_M;
+    const px = g.x + (fx / flat) * along;
+    const pz = g.z + (fz / flat) * along;
     const py = recoverGroundAt(px, pz, g.y + 2) + 0.6;
     const keepOut = trafficOn ? (view.restKeepOut ?? null) : null;
     if (!findRestSpot(view.colliders, recoverGroundAt, restW(), px, py, pz, null, restSpot, keepOut)) {
@@ -7963,7 +8096,7 @@ export async function boot({ loading, bootStart, mapId }) {
       && wantQ === view.graphics
       && Boolean(ui.settings.shadowsOff) === Boolean(view.shadowsOff)
       /* Only a race track reads Race time, so only one is rebuilt for it. */
-      && (wantId !== 'custom' || raceTimeOf(ui.settings) === view.raceTime)
+      && (wantId !== 'custom' || view.raceTime === 'n/a' || raceTimeOf(ui.settings) === view.raceTime)
       && wantedCourseKey(wantId) === loadedCourseKey(view);
   }
 
@@ -12016,7 +12149,7 @@ export async function boot({ loading, bootStart, mapId }) {
             /* And the windmills' sails, round where the craft starts it. */
             pushSails(simTimeMs + i, stNow);
             sim.step(1);
-            stNow = readState();
+            stNow = readStateStep(stBefore);
             /* This step's world report and nothing else, for the crash
              * judge; folded into the frame's for everything that reads it
              * once a frame. See readStepReport. */
@@ -14346,11 +14479,42 @@ export async function boot({ loading, bootStart, mapId }) {
     textures: shell.renderer.info.memory.textures,
     programs: shell.renderer.info.programs ? shell.renderer.info.programs.length : 0,
   });
-  /* The Show FPS readout's API label and its MEM row, which walks the live
-   * scene every few seconds: see setPerfSource in ui.js and vram.js. */
+  /*
+   * The Show FPS readout's API label and its MEM row: see setPerfSource in
+   * ui.js and vram.js. The row asks every few seconds from inside the frame,
+   * and the walk it answers with visits every node of the scene and every
+   * key of every material, several hundred thousand visits on the town, so
+   * the readout pilots use to report a hitch would make one. So the walk
+   * runs once per world, on the first ask after it is adopted, and again
+   * only when the renderer's own counts of geometries and textures have
+   * moved (a lazy load, a swap) and the pilot is not flying: in flight the
+   * row keeps the world's figure, which is all it is for. window.__memWalks
+   * counts the walks, for scripts/features-check.js.
+   */
+  let memKeyView = null;
+  let memKeyScene = null;
+  let memKeyGeo = -1;
+  let memKeyTex = -1;
+  let memMB = 0;
+  window.__memWalks = 0;
   ui.setPerfSource({
     api: shell.renderer.capabilities && shell.renderer.capabilities.isWebGL2 ? 'WebGL2' : 'WebGL',
-    memoryMB: () => (view && view.scene ? estimateSceneBytes(view.scene).bytes / 1048576 : 0),
+    memoryMB: () => {
+      if (!view || !view.scene) {
+        return 0;
+      }
+      const mem = shell.renderer.info.memory;
+      const fresh = view !== memKeyView || view.scene !== memKeyScene;
+      if (fresh || (mode !== 'flight' && (mem.geometries !== memKeyGeo || mem.textures !== memKeyTex))) {
+        memMB = estimateSceneBytes(view.scene).bytes / 1048576;
+        memKeyView = view;
+        memKeyScene = view.scene;
+        memKeyGeo = mem.geometries;
+        memKeyTex = mem.textures;
+        window.__memWalks += 1;
+      }
+      return memMB;
+    },
   });
   /* Handles the screenshot harness uses to reach a screen that would
    * otherwise need a flown lap. Nothing in the shell reads them. */
@@ -15128,6 +15292,8 @@ export async function boot({ loading, bootStart, mapId }) {
       boardTimes: (ghostBoardTimes || []).length,
       /* Board top 3: the laps fetched and which extra rigs are in the air. */
       top: ghostTop.map((l) => l.durationMs),
+      /* Fetched while a lap ran, held for the next lap start. */
+      pendingTop: ghostTopPending ? ghostTopPending.length : 0,
       extrasVisible: ghostExtraRigs.map((r) => r.group.visible),
       /* What one rig asks of a frame: its meshes and its tag, each a draw. */
       rigDraws: (() => {
@@ -15249,6 +15415,9 @@ export async function boot({ loading, bootStart, mapId }) {
     reset();
     return WORLD_SCALE;
   };
+  /* The frame's state array itself, not a copy, so a check can see whether
+   * the step loop made a new one (readStateStep): harness only. */
+  window.__stateRef = () => stateCurr;
   window.__craftState = () => ({
     mode,
     flownThisRun,
@@ -16138,6 +16307,9 @@ export async function boot({ loading, bootStart, mapId }) {
    * only; nothing in the shell reads these. */
   window.__map = () => ({
     id: view.id,
+    /* The Race time pick the world was built with, 'n/a' where it cannot
+     * change the picture: see loadMap. */
+    raceTime: view.raceTime,
     /* The key the tune invitation counts this course under: harness only. */
     course: ghostCourseKey(),
     name: view.name,

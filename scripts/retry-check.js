@@ -129,6 +129,27 @@ async function main() {
     const line = JSON.parse(await ev(STATE));
     check('Start line: R goes back to the first station', line.next === 0 && line.lapStartMs == null, `next ${line.next}, lap start ${line.lapStartMs}`);
 
+    /*
+     * bugs.md BUG-10: Last gate taken just after the timing gate, the
+     * commonest crash point, put the craft down PAST it with the clock
+     * stopped, for a whole untimed lap. It goes down before the timing
+     * gate instead, and the next crossing starts the clock.
+     */
+    await ev(through(0));
+    const started = JSON.parse(await ev(STATE));
+    await ev("window.__ui.settings.resetTo = 'gate'; window.__stick(0, 0, 0, 0); return 1;");
+    await pressR();
+    const back = JSON.parse(await ev(STATE));
+    const t0 = back.gates[0];
+    const bAlong = (back.p[0] - t0.x) * t0.az.x + (back.p[2] - t0.z) * t0.az.z;
+    check('Last gate after the timing gate: put down before it, the clock stopped', started.lapStartMs != null && back.lapStartMs == null
+      && bAlong < -0.5 && bAlong > -6 && back.next === 0, `${bAlong.toFixed(2)} m along, next ${back.next}, lap start ${back.lapStartMs}`);
+    await ev(through(0));
+    const again = JSON.parse(await ev(STATE));
+    check('and the next crossing of it starts the clock', again.lapStartMs != null && again.next === 1, `next ${again.next}, lap start ${again.lapStartMs}`);
+    await ev("window.__ui.settings.resetTo = 'start'; return 1;");
+    await pressR();
+
     /* A full lap, then the first gates of the next with Ghost off. */
     const n = line.gates.length;
     const order = [];

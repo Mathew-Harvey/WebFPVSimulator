@@ -132,7 +132,13 @@ async function run(on) {
     await page.until('!!window.__shellReady', 120000);
     const asksBefore = await page.evaluate('window.__weekAsks');
     await page.evaluate("(() => { window.__ui.act('gate-solo'); return 1; })()");
-    await sleep(1500);
+    /* With a board the card is waited for; without one, a card that never
+     * comes can only be given time. */
+    if (on) {
+      await page.until("!!document.querySelector('.gate-card-week')", 20000).catch(() => {});
+    } else {
+      await sleep(1500);
+    }
     const card = await page.evaluate("(() => { const c = document.querySelector('.gate-card-week'); return c ? c.textContent : null; })()");
     if (!on) {
       check('no board: no card', card === null, String(card));
@@ -145,7 +151,12 @@ async function run(on) {
     check('it names the track and the leader', /Week Field/.test(card || '') && /Ajax leads/.test(card || ''), '');
     await page.evaluate("(() => { window.__ui.act('week-fly'); return 1; })()");
     await page.until("(() => { const m = window.__map && window.__map(); return !!(m && m.ready && m.id === 'custom'); })()", 120000);
-    await sleep(2500);
+    /* Wait on the screen, not on a clock. The flight starts from a timer
+     * after the new world's first frame (flyIfLinked), and a headless
+     * software renderer on a loaded machine was measured at four frames in
+     * 2.5 s, so a fixed 2.5 s sleep read the title before that frame had
+     * come. Its line failed the same way on main at 789d264. */
+    await page.until("window.__ui.screen === 'flight' || window.__ui.screen === 'launch'", 60000).catch(() => {});
     const s = await page.evaluate('(() => ({ airframe: window.__ui.settings.airframe, map: window.__ui.settings.map, mode: window.__ui.mode, screen: window.__ui.screen, ghost: window.__ghost() }))()');
     check('the five inch is seated', s.airframe === '5inch', s.airframe);
     check('the week\'s track is seated as a race', s.map === 'custom' && s.mode === 'race', `${s.map} ${s.mode}`);
@@ -193,7 +204,9 @@ async function retried() {
       `${String(third).slice(0, 80)}, ${await page.evaluate('window.__weekAsks')} asks`);
     await page.evaluate("(() => { window.__ui.act('week-fly'); return 1; })()");
     await page.until("(() => { const m = window.__map && window.__map(); return !!(m && m.ready && m.id === 'custom'); })()", 120000);
-    await sleep(2500);
+    /* The ghost is armed before the flight starts, so the flight is what
+     * is waited for, as above. */
+    await page.until("window.__ui.screen === 'flight' || window.__ui.screen === 'launch'", 60000).catch(() => {});
     const g = await page.evaluate('window.__ghost()');
     check('Fly it does not chase the second pilot when the leader\'s lap has no recording', g.choice !== `board:${AJAX.id}`, g.choice);
     const errs = page.errors.filter((e) => !/ERR_CONNECTION_REFUSED|Failed to fetch/.test(e));

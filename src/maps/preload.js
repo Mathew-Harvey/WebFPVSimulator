@@ -609,6 +609,7 @@ export const MAP_PRELOAD = {
     'maps/sunny/yard.js',
     'maps/sunny/signs.js',
     'maps/sunny/fx.js',
+    'maps/built/sea.js',
   ],
   factory: [
     'maps/factory/index.js',
@@ -1098,6 +1099,7 @@ export const MAP_PRELOAD = {
     'maps/yume/coaster.js',
     'maps/yume/yard.js',
     'maps/yume/signs.js',
+    'maps/built/sea.js',
     'maps/yume/track.js',
     'maps/yume/drawrides.js',
   ],

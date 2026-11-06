@@ -41,6 +41,10 @@
  *             is picked and nothing drawn at Off, the track plan's three
  *             quarter view and a freestyle map's plan, every achievement
  *             badge a well formed SVG
+ *   lettering the lettered titles keep their word spaces and kern their
+ *             pairs (ART-1, FUN-10)
+ *   thumbs    every world picture in assets/thumbs is one the generator
+ *             draws with nothing but the world in frame (ART-5)
  *
  * No wall clock timing is asserted: on a software rasteriser under load a
  * frame can take 200 ms, so every wait polls the page with until(). Every
@@ -541,6 +545,39 @@ async function scenarioLoadFail() {
     check('loadfail: and says to allow the CDN', help.steps.some((s) => s.includes('cdn.jsdelivr.net')), help.steps.join(' / ').slice(0, 300));
     check('loadfail: Try again is offered and has the focus', help.buttons.includes('Try again') && help.focused === 'Try again', help.buttons.join(', '));
     check('loadfail: what the page measured is shown', /WebGL2 (yes|no)/.test(help.detail) && /WebAssembly yes/.test(help.detail), help.detail);
+    /* ART-11: the screen is the menus' paper and ink, and it fetched
+     * nothing to be so: the words on a paper panel framed in the ink line,
+     * the joke in a balloon, the bar an ink strip, the failure ink on paper
+     * with the paper reaching its last button, and no font or picture
+     * asked for by the stylesheet. */
+    const look = await json(page, `(() => {
+      const root = document.getElementById('loading');
+      const panel = root.querySelector('.loading-panel');
+      if (!panel) {
+        return { panel: false };
+      }
+      const frame = getComputedStyle(panel, '::before');
+      const cs = (sel) => getComputedStyle(root.querySelector(sel));
+      const pr = panel.getBoundingClientRect();
+      const last = [...root.querySelectorAll('.loading-help button')].pop().getBoundingClientRect();
+      return {
+        panel: true,
+        paper: frame.backgroundColor,
+        border: frame.borderTopWidth + ' ' + frame.borderTopColor,
+        stage: cs('.loading-stage').color,
+        help: cs('.loading-help').color,
+        balloon: cs('.loading-joke').borderTopWidth + ' ' + cs('.loading-joke').backgroundColor,
+        track: cs('.loading-track').borderTopWidth,
+        holds: last.bottom <= pr.bottom && last.top >= pr.top,
+        fetched: performance.getEntriesByType('resource').filter((r) => r.initiatorType === 'css' || /\\.(woff2?|ttf|otf)(\\?|$)/.test(r.name)).map((r) => r.name),
+      };
+    })()`);
+    const ink = 'rgb(11, 17, 22)';
+    check('loadfail: the words sit on a paper panel framed in the ink line', look.panel && look.paper === 'rgb(247, 240, 220)' && look.border === `4px ${ink}`, JSON.stringify(look).slice(0, 200));
+    check('loadfail: the stage and the failure are ink on that paper', look.stage === ink && look.help === ink, `${look.stage}, ${look.help}`);
+    check('loadfail: the joke is a balloon and the bar an ink strip', /^3px rgb\(255, 250, 240\)$/.test(look.balloon || '') && look.track === '3px', `${look.balloon}, ${look.track}`);
+    check('loadfail: the paper reaches the last button', look.holds === true);
+    check('loadfail: the stylesheet fetched no font and no picture', Array.isArray(look.fetched) && look.fetched.length === 0, (look.fetched || []).join(', '));
     await clickText(page, '#loading .loading-actions button', 'Copy the details');
     await page.until("/Copied|Select and copy/.test([...document.querySelectorAll('#loading .loading-actions button')].map((b) => b.textContent).join(' '))", 10000);
     const copied = await json(page, "({ label: document.querySelector('#loading .loading-actions .quiet').textContent, shown: [...document.querySelectorAll('#loading .loading-detail')].map((d) => d.textContent).join(' ') })");
@@ -1084,6 +1121,103 @@ async function scenarioModules() {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* lettering: the titles read as their words                            */
+/* ------------------------------------------------------------------ */
+
+/*
+ * ART-1 and FUN-10: every lettered title lost its word spaces ("THETOWN")
+ * and had holes after L and A ("MUL TIPLA YER"), because each glyph was
+ * measured alone and a space was narrower than the two outlines either
+ * side of it. Asserted on the canvas itself and on the layout:
+ *
+ *   gap    a title of two words, painted by paintTitle, has a run of clear
+ *          paper between the words at least a tenth of its size wide, read
+ *          along the slant (the glyphs are sheared, so a straight column
+ *          would cut through both words even where the eye sees a gap)
+ *   kern   after L, A or an apostrophe's L, the next glyph advances less
+ *          than it does after H, by at least four hundredths of the size:
+ *          the font's own pair kerning, which a glyph measured alone loses
+ */
+async function scenarioLettering() {
+  const page = await openPage({ root, width: 800, height: 600, url: '/scripts/og.html' });
+  try {
+    const r = await json(page, `(async () => {
+      const L = await import('/src/ui/lettering.js');
+      const px = 48;
+      const gapOf = (text) => {
+        const c = document.createElement('canvas');
+        const m = L.paintTitle(c, [{ text, fill: L.INKS.cream }], px);
+        const ctx = c.getContext('2d');
+        const { width: W, height: H } = c;
+        const d = ctx.getImageData(0, 0, W, H).data;
+        const s = W / m.w;
+        const base = m.base * s;
+        /* Clear columns along the slant, and the widest run of them that
+         * has ink on both sides. */
+        const clear = [];
+        for (let x = 0; x < W; x += 1) {
+          let ok = true;
+          for (let y = 0; y < H && ok; y += 1) {
+            const xx = Math.round(x + 0.24 * (base - y));
+            if (xx >= 0 && xx < W && d[(y * W + xx) * 4 + 3] > 24) {
+              ok = false;
+            }
+          }
+          clear.push(ok);
+        }
+        const first = clear.indexOf(false);
+        const last = clear.lastIndexOf(false);
+        let best = 0;
+        let run = 0;
+        for (let x = first; x <= last; x += 1) {
+          run = clear[x] ? run + 1 : 0;
+          best = Math.max(best, run);
+        }
+        return best / s;
+      };
+      const ctx = document.createElement('canvas').getContext('2d');
+      const after = (a, b) => L.wordWidth(ctx, a + b, px) - L.wordWidth(ctx, a, px);
+      return {
+        gaps: ['THE TOWN', 'HOW DO', 'RUN ENDED', 'YOUR MAP'].map((t) => [t, gapOf(t)]),
+        kern: [['L', 'T'], ['A', 'Y'], ['L', 'V'], ['L', "'"]].map(([a, b]) => [a + b, (after('H', b) - after(a, b)) / px]),
+      };
+    })()`);
+    for (const [t, g] of r.gaps) {
+      check(`lettering: "${t}" has clear paper between its words`, g >= 4.8, `${g.toFixed(1)} px at 48 px`);
+    }
+    for (const [pair, k] of r.kern) {
+      check(`lettering: "${pair}" is kerned closer than after H`, k >= 0.04, `${(k * 100).toFixed(1)} hundredths of the size`);
+    }
+    errorsCheck(page, 'lettering');
+  } catch (e) {
+    check('lettering: the scenario ran to the end', false, e.message);
+  } finally {
+    await page.close();
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* thumbs: every shipped world picture comes from the generator          */
+/* ------------------------------------------------------------------ */
+
+/*
+ * ART-5: assets/thumbs/drift.jpg was a screenshot of the shell, with the
+ * music dock and the key hint bar in it, because Drift Matsuri was never
+ * on the list scripts/boardcards.js --worlds draws from orbit.html with
+ * nothing but the world in frame. So every picture in assets/thumbs/ has
+ * to be one that list names, and no world is left to be photographed by
+ * hand. No browser: the list and the folder.
+ */
+async function scenarioThumbs() {
+  const { readFile, readdir } = await import('node:fs/promises');
+  const src = await readFile(`${root}/scripts/boardcards.js`, 'utf8');
+  const listed = new Set([...src.matchAll(/\{ id: '[\w-]+', file: '([\w.-]+)'/g)].map((m) => m[1]));
+  const files = (await readdir(`${root}/assets/thumbs`)).filter((f) => /\.jpg$/.test(f));
+  const loose = files.filter((f) => !listed.has(f));
+  check('thumbs: every picture in assets/thumbs is drawn by boardcards.js --worlds', files.length > 20 && loose.length === 0, loose.length ? `not on its list: ${loose.join(', ')}` : `${files.length} pictures`);
+}
+
 const SCENARIOS = {
   quad: scenarioQuad,
   room: scenarioRoom,
@@ -1095,6 +1229,8 @@ const SCENARIOS = {
   city: scenarioCity,
   logos: scenarioLogos,
   modules: scenarioModules,
+  lettering: scenarioLettering,
+  thumbs: scenarioThumbs,
 };
 
 const t0 = Date.now();

@@ -13741,6 +13741,33 @@ export async function boot({ loading, bootStart, mapId }) {
     } else if (input.stickCheck) {
       input.stopStickCheck();
     }
+    /*
+     * THE JOYSTICK PICKER AND THE CALIBRATION WIZARD HOLD THE STICKS ONLY
+     * WHILE THEIR SCREENS ARE UP, by the same rule as Stick help's watch
+     * above. Each one zeroes every channel in poll() for as long as it runs,
+     * which is right while the pilot is answering it, and each was ended only
+     * by its own screen's buttons (leavePadPick, calibrate-cancel, the loop's
+     * calibrate branch). A door that put another screen up over one left it
+     * running behind the flight: bug-97aa6ae3, two pads at boot queue the
+     * picker, a room's link asks "Join this room?" over it, and Join flies
+     * through the room shell's fly, which takes Fly's own path from any
+     * screen but the pause menu. The pilot flew 155 s on "the joystick
+     * picker", every stick at zero: "inside room I am dead". A room race's
+     * grid() does the same from Settings with the wizard up. So whatever
+     * took the screen, the picker or the wizard behind it is over: the
+     * picker keeps the joystick already chosen, as its Cancel does, and says
+     * which one is flying, and the wizard keeps the mapping already saved,
+     * as its Cancel does. check:roompick flies both doors.
+     */
+    if (input.padPick && ui.screen !== 'padpick') {
+      input.cancelPadPick();
+      input.padPickResult = null;
+      notice = { text: `Flying with ${padSum.using}.\nChoose joystick in Settings to pick another.`, untilMs: nowWall + 3600 };
+    }
+    if (input.calibration && ui.screen !== 'calibrate') {
+      input.cancelCalibration();
+      input.calResult = null;
+    }
     const restartSet = input.takeRestartResult();
     if (restartSet && padSum.restart) {
       notice = restartSet === 'saved'

@@ -54,6 +54,7 @@
     "check:bedslot": "node scripts/bedslot-check.js",
     "check:deck": "node scripts/deck-check.js",
     "check:cartrap": "node scripts/cartrap-check.js",
+    "check:roompick": "node scripts/roompick-check.js",
     "check:tuneplant": "node scripts/tuneplant-check.js",
     "check:autoreset": "node scripts/autoreset-check.js",
     "check:gatesettings": "node scripts/gate-settings-check.js",

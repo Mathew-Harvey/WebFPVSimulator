@@ -6114,7 +6114,12 @@ export async function boot({ loading, bootStart, mapId }) {
      * belly landing does not spin the props down. */
     if (kind !== 'ground' && typeof sim.e.sim_prop_strike === 'function') {
       sim.e.sim_prop_strike(IMPACT_PROP_MAX * u);
-      stateCurr = readState();
+      /* Into the step loop's own buffers (CORE-13), not a fresh copy: a
+       * whoop held against a ceiling strikes a prop every few frames, and
+       * each copy was a new array for the collector in a flying frame. Its
+       * only caller runs after the step loop, where the arrays alive are
+       * statePrev and stateCurr, which readStateStep never hands out. */
+      stateCurr = readStateStep(null);
     }
     if (u > 0.25) {
       padRumble(u);

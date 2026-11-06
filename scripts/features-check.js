@@ -1816,7 +1816,7 @@ async function scenarioResults() {
       ui.boardGhostTimes = null;
       return { first, fastest, top, chased, calls: window.__board.calls.length - before };
     })()`);
-    check('results: the third row chases the nearest faster board lap, by name and gap', rival.first[2] === 'Chase Ana, 0.4 faster', `${rival.first.join(' | ')} (fastest ${rival.fastest})`);
+    check('results: the third row chases the nearest faster board lap, by name and gap', rival.first[2] === 'Chase Ana, 0.4 s faster', `${rival.first.join(' | ')} (fastest ${rival.fastest})`);
     check('results: a pilot ahead of every recorded lap is offered the record', rival.top.includes('Chase the record'), rival.top.join(' | '));
     check('results: pressing it arms that lap by its id, and drawing it asked the board nothing', rival.chased === 'tm-ana' && rival.calls === 0, JSON.stringify({ chased: rival.chased, calls: rival.calls }));
     await page.until("window.__ui.screen === 'flight'", 20000)
@@ -1886,6 +1886,45 @@ async function scenarioFront() {
     await page.until("window.__ui.screen === 'stickhelp'", 5000)
       .then(() => check('front: Controls opens Stick help, where calibrating is', true))
       .catch(async () => check('front: Controls opens Stick help, where calibrating is', false, await page.evaluate('window.__ui.screen')));
+    await page.tap('Escape');
+    await page.until("window.__ui.screen === 'title' && window.__ui.onGate()", 5000).catch(() => {});
+    /*
+     * R3-6: the stamps are a row, so the sticks walk them as one. Pitch up
+     * off the first card into the row, roll right twice to the last stamp
+     * (roll used to press, and pitch walked them as a column), then select.
+     * Driven through the poll's own handler with edges, as pollPad hands
+     * it them.
+     */
+    const padRow = await json(page, `(() => {
+      const ui = window.__ui;
+      const press = (k) => { ui.padPrev = {}; const r = ui.gatePadTools({ [k]: true }); ui.padPrev = { [k]: true }; return r; };
+      ui.cursor = ui.arrowStops(ui.items())[0];
+      const words = ui.gateToolList().map((b) => b.textContent.trim());
+      press('up');
+      const a = ui.gateToolAt;
+      press('right');
+      const b = ui.gateToolAt;
+      const screenAfterRoll = ui.screen;
+      press('right');
+      press('right');
+      const c = ui.gateToolAt;
+      press('left');
+      const d = ui.gateToolAt;
+      press('down');
+      const e = ui.gateToolAt;
+      return { words, a, b, c, d, e, screenAfterRoll };
+    })()`);
+    const lastStamp = padRow.words.length - 1;
+    check('front: on the pad, roll walks the masthead stamps as a row and pitch down leaves them, nothing pressed',
+      padRow.a === 0 && padRow.b === 1 && padRow.screenAfterRoll === 'title' && padRow.c === lastStamp
+        && padRow.d === lastStamp - 1 && padRow.e === -1, JSON.stringify(padRow));
+    await page.evaluate(`(() => { const ui = window.__ui; ui.padPrev = {}; ui.cursor = ui.arrowStops(ui.items())[0];
+      ui.gatePadTools({ up: true }); ui.padPrev = { up: true };
+      const n = ui.gateToolList().length; for (let i = 0; i < n; i += 1) { ui.padPrev = {}; ui.gatePadTools({ right: true }); }
+      ui.padPrev = {}; ui.gatePadTools({ select: true }); ui.padPrev = { select: true }; return 1; })()`);
+    await page.until("window.__ui.screen === 'stickhelp'", 5000)
+      .then(() => check('front: and select presses the stamp it stands on (Controls, the last)', true))
+      .catch(async () => check('front: and select presses the stamp it stands on (Controls, the last)', false, await page.evaluate('window.__ui.screen')));
     await page.tap('Escape');
     await page.until("window.__ui.screen === 'title' && window.__ui.onGate()", 5000).catch(() => {});
     await page.evaluate("(() => { const ui = window.__ui; ui.turnGate('solo'); return 1; })()");

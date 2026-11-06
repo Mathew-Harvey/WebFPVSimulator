@@ -14615,23 +14615,30 @@ export class Ui {
       }
       return true;
     }
-    if (edge('select') || edge('right')) {
+    /* The stamps stand in a ROW, so roll walks them and select presses
+     * one (round 3 R3-6: roll right used to press, so a pilot pushing
+     * right from Settings to reach Controls opened Settings). Pitch down
+     * or back returns to the cards; pitch up has nowhere further to go. */
+    if (edge('select')) {
       const b = list[at];
       this.markGateTool(-1);
       b.click();
       return true;
     }
-    if (edge('back') || edge('left') || (edge('down') && at === list.length - 1)) {
+    if (edge('back') || edge('down')) {
       this.markGateTool(-1);
       if (this.onUiSound) {
         this.onUiSound('move');
       }
       return true;
     }
-    if (edge('down') || edge('up')) {
-      this.markGateTool(Math.max(0, at + (edge('down') ? 1 : -1)));
-      if (this.onUiSound) {
-        this.onUiSound('move');
+    if (edge('left') || edge('right')) {
+      const next = at + (edge('right') ? 1 : -1);
+      if (next >= 0 && next < list.length) {
+        this.markGateTool(next);
+        if (this.onUiSound) {
+          this.onUiSound('move');
+        }
       }
     }
     return true;
@@ -18611,7 +18618,8 @@ export class Ui {
       const gap = mine - t.lapMs;
       const gapText = (gap / 1000).toFixed(gap < 100 ? 2 : 1);
       return {
-        label: `Chase ${who(t)}, ${gapText} faster`,
+        /* With its unit, or the label reads as cut off (round 3 R3-11). */
+        label: `Chase ${who(t)}, ${gapText} s faster`,
         action: `standings-ghost:${t.id}`,
         note: `${who(t)}'s ${formatTime(t.lapMs)} on the board, the nearest lap faster than your ${formatTime(mine)}, flown as a ghost beside you. Straight to the starting blocks.`,
       };
@@ -24434,9 +24442,9 @@ export class Ui {
      * Settings and Controls are buttons, which Tab and a pointer reach, and
      * the pad's cursor walks the cards only, so a radio or pad pilot could
      * not reach them on the gate (round 2 review R2D-12). Pitch up off the
-     * first card goes up into them, pitch steps through them, select or
-     * roll right presses one, and roll left, back or pitch down off the
-     * last goes back to the cards where the cursor was.
+     * first card goes up into them, roll steps along the row, select
+     * presses one, and back or pitch down goes back to the cards where
+     * the cursor was.
      */
     if (this.gatePadTools(now)) {
       this.padPrev = now;

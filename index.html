@@ -223,6 +223,17 @@
       @media (max-height: 760px) {
         .osd.dim .osd-top { display: none; }
       }
+      /* Round 1 gave the pause menu a Ghost row, and on a 1280 by 720
+         window that pushed Quit to title 47 px under the command bar
+         (lint:shell's fold pass). A short window that is not a phone's
+         sideways one (those have their own rules under 560 px) spends less
+         on the heading's gap and on each row's padding, and the whole list
+         is in sight again. The rows stay over 40 px tall. */
+      @media (max-height: 760px) and (min-height: 561px) {
+        .screen-paused h2 { margin-bottom: 6px; }
+        .screen-paused .menu-stage { margin-top: 10px; }
+        .screen-paused .row { padding-top: 7px; padding-bottom: 7px; }
+      }
       /* contain: layout style on the two blocks whose numbers change in
          flight, so a new number lays out its own block and nothing around
          it. */
@@ -7369,6 +7380,10 @@
         right: auto; left: 16px; top: 16px;
         background: rgba(16, 22, 17, 0.38);
       }
+      /* Paused keeps the flight corner, with the status bar shown: the
+         dock sits under the bar, as every chip does, and above the score,
+         whose top is --bar-top plus 58 px. */
+      .bar-shown .music-dock.on-flight { top: calc(var(--bar-top) + 8px); }
       .music-dock.is-muted { opacity: 0.5; }
       /*
        * THE CHIPS FADE IN FLIGHT (POLISH-PLAN.md item 12; the owner,

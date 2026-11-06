@@ -8758,7 +8758,10 @@ export class Ui {
      * rather than as a top in pixels here, so the status bar's own offset
      * stays in the stylesheet with the rest of the stacking. */
     if (this.musicDock) {
-      this.musicDock.classList.toggle('under-chip', Boolean(bug));
+      /* Not while it is in the flight corner, top left, which Paused keeps:
+       * the chip it would be under is on the right, and the second slot
+       * put the dock over the score's SCORE label (round 2 batch S6). */
+      this.musicDock.classList.toggle('under-chip', Boolean(bug) && !this.flying());
     }
     this.syncMusicDock();
     if (this.screen !== 'flight') {

@@ -41,6 +41,18 @@
  *             is picked and nothing drawn at Off, the track plan's three
  *             quarter view and a freestyle map's plan, every achievement
  *             badge a well formed SVG
+ *   results   the race results as a page of the magazine (round 1 FUN-4,
+ *             ART-10, ART-9): paper, a lettered title, the PB and board
+ *             rank stamps from what is in hand (and no board request made
+ *             to draw them), the best lap gate by gate, Next track second
+ *             and pressing it asks the board for that track, Run ended on
+ *             the same paper, and at 844 by 390 and 740 by 360 the page,
+ *             the menu, the bug chip and both bars clear of each other
+ *   front     the gate's masthead (round 1 FUN-15, CORE-10, FUN-18):
+ *             Settings and Controls on every page and each opens its room,
+ *             Fly again for a returning pilot naming the last thing flown
+ *             and none for a new one, F flying it, and the Mini games
+ *             panels wearing the bests this browser keeps
  *
  * No wall clock timing is asserted: on a software rasteriser under load a
  * frame can take 200 ms, so every wait polls the page with until(). Every
@@ -1084,6 +1096,198 @@ async function scenarioModules() {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* results: the magazine's results page                                 */
+/* ------------------------------------------------------------------ */
+
+/* Six gates a lap, as a race keeps them: ms from the lap's start. */
+const RESULTS_LOG = `(() => {
+  const sp = (a) => { let t = 0; return a.map((x) => (t += x)); };
+  return [
+    { n: 1, ms: 15230, splits: sp([2100, 2600, 3100, 2900, 2230, 2300]) },
+    { n: 2, ms: 14800, splits: sp([2000, 2700, 2900, 2800, 2200, 2200]) },
+    { n: 3, ms: null, reason: 'Missed gate 4' },
+  ];
+})()`;
+
+const RESULTS_SEAT = `(() => {
+  const ui = window.__ui;
+  ui.settings.feelAsked = true;
+  ui.share = { id: 'trk-feaA', name: 'Features check track', author: 'Check' };
+  ui.boardCourses = [
+    { id: 'trk-feaA', name: 'Features check track', trackClass: 'micro' },
+    { id: 'trk-feaB', name: 'Kingston Loop', author: 'Ben', trackClass: 'micro' },
+  ];
+  ui.standingsFor = { id: 'trk-feaA' };
+  ui.standingsTimes = [{ lapMs: 13000, threeMs: 40000 }, { lapMs: 14000, threeMs: 42000 }, { lapMs: 14500, threeMs: 43000 }, { lapMs: 15500, threeMs: 47000 }];
+  return 1;
+})()`;
+
+async function resultsPhone(w, h) {
+  const page = await openPage({ root, width: w, height: h, touch: true, seed: [BOARD_STUB, settingsSeed({ hasFlown: true, feelAsked: true })] });
+  try {
+    await page.until('window.__shellReady === true && !!window.__ui', 120000);
+    await page.evaluate(RESULTS_SEAT);
+    await page.evaluate(`(() => { window.__ui.firstRun = false; window.__ui.showResults(${RESULTS_LOG}, 14100, 14100, null, { threeMs: null, trackClass: 'micro' }); return 1; })()`);
+    await page.until("window.__ui.screen === 'results'", 10000);
+    await page.sleep(700);
+    const r = await json(page, `(() => {
+      for (const a of document.getAnimations()) { a.finish(); }
+      const scr = document.querySelector('.screen-results');
+      const box = (n) => { const b = n.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom }; };
+      const hit = (a, b) => a.l < b.r - 1 && b.l < a.r - 1 && a.t < b.b - 1 && b.t < a.b - 1;
+      const top = box(scr.querySelector('.results-top'));
+      const menu = box(scr.querySelector('.menu'));
+      const chipN = document.querySelector('.bug-chip');
+      const chip = chipN && !chipN.hidden ? box(chipN) : null;
+      const barTop = box(document.querySelector('.frame-top'));
+      const barBot = box(document.querySelector('.frame-bot'));
+      const head = box(scr.querySelector('.results-head'));
+      const bad = [];
+      if (hit(top, menu)) bad.push('the page and the menu overlap');
+      if (chip && (hit(chip, top) || hit(chip, menu))) bad.push('the bug chip sits on the page or the menu');
+      if (head.t < barTop.b - 1) bad.push('the title is under the status bar');
+      if (menu.b > barBot.t + 1) bad.push('the menu runs ' + Math.round(menu.b - barBot.t) + ' px under the command bar');
+      if (top.b > barBot.t + 1) bad.push('the page runs under the command bar');
+      if (top.r > innerWidth + 1 || menu.r > innerWidth + 1) bad.push('wider than the glass');
+      const m = scr.querySelector('.menu');
+      const rows = [...m.querySelectorAll('.row')];
+      const last = rows[rows.length - 1];
+      m.scrollTop = m.scrollHeight;
+      if (last && box(last).b > box(m).b + 1) bad.push('the last row cannot be scrolled to');
+      return { bad, paper: getComputedStyle(scr.querySelector('.results-top')).backgroundColor };
+    })()`);
+    check(`results: ${w} by ${h}: the page, the menu, the bug chip and both bars clear of each other`, r.bad.length === 0 && r.paper === 'rgb(247, 240, 220)', r.bad.join('; ') || r.paper);
+    errorsCheck(page, `results ${w}x${h}`);
+  } catch (e) {
+    check(`results: ${w} by ${h}: the scenario ran to the end`, false, e.message);
+  } finally {
+    await page.close();
+  }
+}
+
+async function scenarioResults() {
+  const page = await openPage({
+    root, width: 1600, height: 900,
+    seed: [BOARD_STUB, settingsSeed({ airframe: 'whoop65', hasFlown: true, feelAsked: true },
+      `localStorage.setItem('webfpv.trackbuilder.library.v1', ${JSON.stringify(JSON.stringify({ [ROOM_TRACK.id]: ROOM_TRACK }))});`)],
+  });
+  try {
+    await page.until('window.__shellReady === true && !!window.__ui', 120000);
+    await page.evaluate(`(() => { const ui = window.__ui; ui.firstRun = false; ui.craftGate = false; ui.mode = 'race';
+      ui.show('courses'); ui.act('local:${ROOM_TRACK.id}'); return 1; })()`);
+    await page.until("(() => { const m = window.__map(); return m.id === 'custom' && m.ready && m.mode !== 'freestyle' && m.gates > 0; })()", 120000);
+    await page.evaluate(RESULTS_SEAT);
+    const callsBefore = await page.evaluate('window.__board.calls.length');
+    await page.evaluate(`(() => { window.__ui.osdMode = 'race'; window.__ui.showResults(${RESULTS_LOG}, 14100, 14100, null, { threeMs: null, trackClass: 'full' }); return 1; })()`);
+    await page.until("window.__ui.screen === 'results' && document.querySelector('.screen-results .results-head').classList.contains('is-lettered')", 10000)
+      .catch(() => {});
+    const r = await json(page, `(() => {
+      const ui = window.__ui;
+      const scr = document.querySelector('.screen-results');
+      return {
+        paper: getComputedStyle(scr.querySelector('.results-top')).backgroundColor,
+        lettered: scr.querySelector('.results-head').classList.contains('is-lettered'),
+        stamps: [...scr.querySelectorAll('.results-stamp')].map((n) => n.textContent),
+        cells: [...scr.querySelectorAll('.gate-cell')].map((n) => n.textContent),
+        worst: (scr.querySelector('.gate-cell.is-worst') || { textContent: '' }).textContent,
+        line: (scr.querySelector('.results-gates-line') || { textContent: '' }).textContent,
+        rows: ui.items().map((it) => it.label + (it.value ? '=' + it.value : '')),
+        calls: window.__board.calls.length,
+      };
+    })()`);
+    check('results: the copy is a sheet of paper and its title is lettered', r.paper === 'rgb(247, 240, 220)' && r.lettered, `${r.paper}, lettered ${r.lettered}`);
+    check('results: the board rank stamp, from the standings already in hand', r.stamps.includes('#4On the board'), r.stamps.join(' | '));
+    check('results: and no board request was made to draw the page', r.calls === callsBefore, `${callsBefore} before, ${r.calls} after`);
+    check('results: the best lap gate by gate, the gate that lost the most marked', r.cells.length === 6 && /^2\s*2\.70\+0\.10$/.test(r.worst) && /gate 2/.test(r.line) && /14\.70/.test(r.line), `${r.cells.join(' ')}; worst ${r.worst}; ${r.line}`);
+    check('results: Next track is the second row and names the next board track', r.rows[0] === 'Fly again' && r.rows[1] === 'Next track=Kingston Loop', r.rows.join(' | '));
+    /* A new best puts the gold stamp on. */
+    await page.evaluate(`(() => { window.__ui.showResults(${RESULTS_LOG}, 14800, 15000, null, { trackClass: 'full' }); return 1; })()`);
+    const pb = await json(page, "[...document.querySelectorAll('.screen-results .results-stamp')].map((n) => n.className + ':' + n.textContent)");
+    check('results: a new best wears the gold PB stamp', pb.some((x) => /is-gold/.test(x) && /PB!/.test(x)), pb.join(' | '));
+    /* Next track, pressed: the board is asked for that track. */
+    await page.evaluate(`(() => { const ui = window.__ui; const i = ui.items().findIndex((it) => it.action === 'next-track'); ui.setCursor(i); ui.select(); return 1; })()`);
+    await page.until("window.__board.calls.some((c) => /trk-feaB/.test(c.path))", 10000)
+      .then(() => check('results: pressing Next track asks the board for that track', true))
+      .catch(async () => check('results: pressing Next track asks the board for that track', false, JSON.stringify(await page.evaluate('window.__board.calls.map((c) => c.path)'))));
+    /* Run ended, on the same paper. */
+    await page.evaluate(`(() => { window.__ui.showFreestyleResults({ total: 0, counter: 0, tricks: 0, unique: 0, bestCombo: 0, crashes: 1, bonus: 0, rows: [], timed: false }); return 1; })()`);
+    await page.sleep(300);
+    const ended = await json(page, `(() => {
+      const scr = document.querySelector('.screen-results');
+      return { head: scr.querySelector('.results-head').textContent, paper: getComputedStyle(scr.querySelector('.results-top')).backgroundColor,
+        copy: !!scr.querySelector('.results-top .results-empty'), gates: scr.querySelector('.results-gates').hidden, stamps: scr.querySelectorAll('.results-stamp').length };
+    })()`);
+    check('results: Run ended is on the same paper, with no stale strip or stamp', /^Run ended/.test(ended.head) && ended.paper === 'rgb(247, 240, 220)' && ended.copy && ended.gates && ended.stamps === 0, JSON.stringify(ended));
+    errorsCheck(page, 'results');
+  } catch (e) {
+    check('results: the scenario ran to the end', false, e.message);
+  } finally {
+    await page.close();
+  }
+  await resultsPhone(844, 390);
+  await resultsPhone(740, 360);
+}
+
+/* ------------------------------------------------------------------ */
+/* front: the gate's masthead                                           */
+/* ------------------------------------------------------------------ */
+
+async function scenarioFront() {
+  const page = await openPage({
+    root, width: 1600, height: 900,
+    seed: [BOARD_STUB, settingsSeed({ hasFlown: true, lastFlyMode: 'freestyle', map: 'city', airframeAsked: true },
+      "localStorage.setItem('webfpv.goats.best.goats:x:five', '7'); localStorage.setItem('webfpv.goats.best.goats:y:whoop', '3'); localStorage.setItem('webfpv.drift.best.v1', '1234');")],
+  });
+  try {
+    await page.until('window.__shellReady === true && !!window.__ui', 120000);
+    await page.until("(() => { const m = window.__map(); return m.id === 'city' && m.ready; })()", 120000);
+    /* The cover is there while rooms are on, which the board says; no
+     * board here, so the page is told. */
+    await page.evaluate("(() => { const ui = window.__ui; ui.roomsOn = true; ui.firstRun = false; ui.renderMenu(); return 1; })()");
+    const tools = async () => json(page, `(() => {
+      const ui = window.__ui;
+      const shown = (n) => n && !n.hidden && n.getClientRects().length > 0 && !n.closest('[hidden]');
+      return { page: ui.gatePageNow(), gate: ui.onGate(),
+        words: [...document.querySelectorAll('.screen-title .gate-tool')].filter(shown).map((n) => n.textContent) };
+    })()`);
+    const cover = await tools();
+    check('front: the cover wears Fly again, Settings and Controls', cover.gate && cover.words.length === 3
+      && /^Fly againThe town/.test(cover.words[0]) && cover.words[1] === 'Settings' && cover.words[2] === 'Controls', JSON.stringify(cover));
+    await clickText(page, '.screen-title .gate-tool', 'Settings');
+    await page.until("window.__ui.screen === 'pilot'", 5000)
+      .then(() => check('front: Settings opens Settings', true))
+      .catch(async () => check('front: Settings opens Settings', false, await page.evaluate('window.__ui.screen')));
+    await page.tap('Escape');
+    await page.until("window.__ui.screen === 'title' && window.__ui.onGate()", 5000).catch(() => {});
+    await clickText(page, '.screen-title .gate-tool', 'Controls');
+    await page.until("window.__ui.screen === 'stickhelp'", 5000)
+      .then(() => check('front: Controls opens Stick help, where calibrating is', true))
+      .catch(async () => check('front: Controls opens Stick help, where calibrating is', false, await page.evaluate('window.__ui.screen')));
+    await page.tap('Escape');
+    await page.until("window.__ui.screen === 'title' && window.__ui.onGate()", 5000).catch(() => {});
+    await page.evaluate("(() => { const ui = window.__ui; ui.turnGate('solo'); return 1; })()");
+    const solo = await tools();
+    check('front: and so does the Fly solo page', solo.page === 'solo' && solo.words.length === 3, JSON.stringify(solo));
+    await page.evaluate("(() => { const ui = window.__ui; ui.turnGate('games'); return 1; })()");
+    const bests = await json(page, "[...document.querySelectorAll('.gate-card .gate-chip.is-best')].map((n) => n.closest('.gate-card').className.match(/gate-card-(mg-[a-z]+)/)[1] + '=' + n.textContent)");
+    check('front: the Mini games panels wear this browser\'s bests, the highest of each game\'s', bests.includes('mg-goats=Best 7 goats') && bests.includes('mg-drift=Best reel 1,234') && bests.length === 2, bests.join(' | '));
+    /* A pilot who has never flown has nothing to fly again. */
+    const fresh = await json(page, "(() => { const ui = window.__ui; ui.settings.hasFlown = false; ui.renderMenu(); const n = ui.flyAgainBtn; const out = !n.hidden; ui.settings.hasFlown = true; ui.renderMenu(); return out; })()");
+    check('front: and a pilot who has never flown gets no Fly again', fresh === false);
+    await page.evaluate("(() => { const ui = window.__ui; ui.turnGate('solo'); ui.turnGate('cover'); return 1; })()");
+    await page.tap('KeyF');
+    await page.until("window.__ui.screen === 'flight' && window.__map().id === 'city'", 30000)
+      .then(() => check('front: F on the cover flies the last thing flown, the town', true))
+      .catch(async () => check('front: F on the cover flies the last thing flown, the town', false, await page.evaluate("window.__ui.screen + ' ' + window.__map().id")));
+    errorsCheck(page, 'front');
+  } catch (e) {
+    check('front: the scenario ran to the end', false, e.message);
+  } finally {
+    await page.close();
+  }
+}
+
 const SCENARIOS = {
   quad: scenarioQuad,
   room: scenarioRoom,
@@ -1095,6 +1299,8 @@ const SCENARIOS = {
   city: scenarioCity,
   logos: scenarioLogos,
   modules: scenarioModules,
+  results: scenarioResults,
+  front: scenarioFront,
 };
 
 const t0 = Date.now();

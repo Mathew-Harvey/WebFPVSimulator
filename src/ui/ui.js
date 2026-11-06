@@ -1287,11 +1287,12 @@ function byLine(t) {
   return t && t.author ? `by ${t.author}` : '';
 }
 
-/* What a board map's card says about it, as the board's own card does: its
- * size in pieces, and its named gaps when it has any, which are the lines
- * its builder wants flown. */
+/* What a board map's card says about it: its named gaps when it has any,
+ * which are the lines its builder wants flown. Not its size in pieces any
+ * more (round 1 FUN-13): a count of building blocks is the builder's
+ * bookkeeping, and says nothing a pilot choosing a map can use. */
 function mapFacts(m) {
-  const facts = [`${m.pieces} piece${m.pieces === 1 ? '' : 's'}`];
+  const facts = [];
   if (m.gaps > 0) {
     facts.push(`${m.gaps} named gap${m.gaps === 1 ? '' : 's'}`);
   }
@@ -1458,6 +1459,16 @@ const DEFAULTS = {
    * this key existed has no key at all and still counts as returning.
    */
   hasFlown: false,
+  /*
+   * WHAT WAS FLOWN LAST, 'race' or 'freestyle', or '' (round 1 CORE-10).
+   * The seat itself, the map, the track and the aircraft, is already
+   * kept; the mode was not, because the gate asks it again on every
+   * visit. With it the cover can offer Fly again: the last thing flown,
+   * one press, straight to the starting blocks. Written by flown(), and
+   * only for a race or a freestyle flight: a mini game, a room or a lesson
+   * is not a seat this can put the pilot back in.
+   */
+  lastFlyMode: '',
   /*
    * WHETHER EACH KIND OF PLACE HAS HAD ITS FIRST FLIGHT GUIDE: a five inch
    * race track, a whoop room, a freestyle world. See src/ui/firstflight.js.
@@ -2784,6 +2795,121 @@ function formatDelta(ms) {
     return `+${core}`;
   }
   return core;
+}
+
+/*
+ * THE BEST LAP, GATE BY GATE (round 1 FUN-4: "no breakdown of time by
+ * gate"). Every clean entry of the race's log carries the lap's own gate
+ * times, `splits`, ms from the lap's start, one per crossing in flying
+ * order and ending with the finish (src/game/race.js, the array the gate
+ * gap readout reads). So a lap is a row of segments, gate to gate, and the
+ * run's fastest of each segment is the yardstick: the best lap's segments
+ * against it say where that lap lost time, and the fastest segments added
+ * up are the lap the run had in it.
+ *
+ * Only laps with as many gates as the best lap are compared, which every
+ * lap of one track has; null when no clean lap kept its splits (a log from
+ * before they were kept, or a harness's) or the track is one gate.
+ */
+export function gateBreakdown(log) {
+  const laps = (log || []).filter((e) => e && Number.isFinite(e.ms) && Array.isArray(e.splits) && e.splits.length > 1);
+  if (!laps.length) {
+    return null;
+  }
+  const best = laps.reduce((a, b) => (b.ms < a.ms ? b : a));
+  const n = best.splits.length;
+  const seg = (e) => e.splits.map((t, k) => t - (k ? e.splits[k - 1] : 0));
+  const segs = laps.filter((e) => e.splits.length === n).map(seg);
+  const mine = seg(best);
+  const quickest = mine.map((_, k) => Math.min(...segs.map((x) => x[k])));
+  const gates = mine.map((ms, k) => ({
+    label: k === n - 1 ? 'the finish' : `gate ${k + 1}`,
+    short: k === n - 1 ? 'Fin' : String(k + 1),
+    ms,
+    lostMs: ms - quickest[k],
+  }));
+  let worst = null;
+  for (const g of gates) {
+    if (g.lostMs >= 10 && (!worst || g.lostMs > worst.lostMs)) {
+      worst = g;
+    }
+  }
+  return {
+    gates,
+    laps: segs.length,
+    bestMs: best.ms,
+    idealMs: quickest.reduce((a, b) => a + b, 0),
+    worst,
+  };
+}
+
+/* The lens row's words for its five fields of view (round 1 FUN-13): the
+ * degrees are the camera's business, the pilot picks a look. */
+const FOV_WORDS = { 75: 'Narrow', 85: 'Standard', 95: 'Wide', 105: 'Wider', 115: 'Widest' };
+function fovWord(n) {
+  return FOV_WORDS[n] || `${n} degrees`;
+}
+
+/*
+ * THE MINI GAMES' BESTS, for their panels on the Mini games page (round 1
+ * FUN-18: "the bests are kept, but the door never shows it"). Each game
+ * keeps its best in this browser under a key of its own per place and
+ * quad (src/main.js, fightBestKey, filmBestKey), so a panel's best is the
+ * highest of its keys. Read once when the page is shown, never per frame.
+ * There is no stored target to show beside it: targets are FUN-2, the
+ * owner's progression design, and not built.
+ */
+const GAME_BEST_WORDS = {
+  'mg-dogfight': (n) => `${n} ${n === 1 ? 'pop' : 'pops'}`,
+  'mg-ribbon': (n) => `${n} ${n === 1 ? 'ribbon' : 'ribbons'}`,
+  'mg-goats': (n) => `${n} ${n === 1 ? 'goat' : 'goats'}`,
+  'mg-ball': (n) => `${n} ${n === 1 ? 'goal' : 'goals'}`,
+  'mg-drift': (n) => `reel ${formatScore(n)}`,
+  'mg-moto': (n) => `reel ${formatScore(n)}`,
+};
+
+function gameBestOf(key) {
+  if (key.startsWith('webfpv.dogfight.best.')) {
+    return 'mg-dogfight';
+  }
+  if (key.startsWith('webfpv.ribbons.best.')) {
+    return 'mg-ribbon';
+  }
+  if (key.startsWith('webfpv.goats.best.')) {
+    return 'mg-goats';
+  }
+  if (key.startsWith('webfpv.ball.best.')) {
+    return 'mg-ball';
+  }
+  if (key === 'webfpv.drift.best.v1' || key.startsWith('webfpv.drift.best.drift:')) {
+    return 'mg-drift';
+  }
+  if (key === 'webfpv.moto.best.v1' || key.startsWith('webfpv.drift.best.moto:')) {
+    return 'mg-moto';
+  }
+  return '';
+}
+
+export function readGameBests() {
+  const out = {};
+  try {
+    const store = globalThis.localStorage;
+    for (let i = 0; store && i < store.length; i += 1) {
+      const key = store.key(i) || '';
+      const id = key.startsWith('webfpv.') ? gameBestOf(key) : '';
+      const v = id ? Math.floor(Number(store.getItem(key))) : 0;
+      if (id && Number.isFinite(v) && v > 0 && !(out[id] >= v)) {
+        out[id] = v;
+      }
+    }
+  } catch (e) {
+    /* No storage: no bests to show. */
+  }
+  const words = {};
+  for (const [id, n] of Object.entries(out)) {
+    words[id] = `Best ${GAME_BEST_WORDS[id](n)}`;
+  }
+  return words;
 }
 
 function makeGimbal(caption) {
@@ -4605,7 +4731,7 @@ function craftItem(s, midRun) {
   const other = AIRFRAMES.find((a) => a.id !== s.airframe) || af;
   return choice(
     'Aircraft',
-    `${af.blurb} Each aircraft keeps its own tune, PIDs, pack, weight and camera: changing it brings back that machine's as you left them, or its stock ones the first time, and switches the builder between a ${other.trackClass === 'micro' ? 'sixty metre field and a living room' : 'living room and a sixty metre field'}. Your own rates go with you unless they are still the stock ones.${midRun ? MID_RUN_WARNING : ''}`,
+    `${af.blurb} Each aircraft keeps its own tune, PIDs, pack, weight and camera: changing it brings back that machine's as you left them, or its stock ones the first time, and switches the builder between ${other.trackClass === 'micro' ? 'an outdoor field and a living room' : 'a living room and an outdoor field'}. Your own rates go with you unless they are still the stock ones.${midRun ? MID_RUN_WARNING : ''}`,
     AIRFRAME_IDS,
     s.airframe,
     (id) => airframeById(id).name,
@@ -5494,7 +5620,7 @@ const WAYS = [
     mode: 'race',
     label: 'Five inch racing',
     art: 'assets/gate/race.jpg',
-    blurb: 'A gated track on a sixty metre field, against the clock. A 710 gram 6S quad at forty metres a second, and every lap you finish can go on the public board.',
+    blurb: 'A gated track on an outdoor field, against the clock. A big, fast racing quad, and every lap you finish can go on the public board.',
   },
   {
     id: 'race-whoop65',
@@ -5509,7 +5635,7 @@ const WAYS = [
      * plant nothing selects now. */
     /* 1S, as the five inch's says 6S: bug-eb0552d6, and the cards' fact
      * pills that said it went with the pills on 2026-10-20. */
-    blurb: 'The same clock, indoors. A 65 mm 1S ducted whoop through a track that fits in a living room, on 28 inch gates.',
+    blurb: 'The same clock, indoors. A tiny ducted whoop through a track that fits in a living room.',
   },
   {
     id: 'freestyle-5inch',
@@ -6556,6 +6682,44 @@ export class Ui {
     if (wishlist) {
       chips.append(wishlist);
     }
+    /*
+     * THE GATE'S OWN TOOLS, on every page of it (round 1 FUN-15 and
+     * CORE-10). The gate's pages are cards, and Settings, How to fly and
+     * Calibrate sticks were rows of the old title list that the gate
+     * replaced, so a pilot with a radio could not calibrate before a first
+     * flight and a parent could not turn the sound down from the front.
+     * Settings and Controls are stamps in the masthead now, beside Beta,
+     * Patreon and Steam, and a returning pilot gets one more, Fly again,
+     * which flies the last thing they flew (flyAgain).
+     *
+     * Real buttons, so Tab reaches them; Enter and Space on one are its
+     * own and never also the card under the cursor (the window's key
+     * handler would choose that card on the same press). F is Fly again's
+     * key on the gate. Shown only on the gate (syncGateTools): behind it
+     * the title's list has rows for all three.
+     */
+    const tool = (cls, label, run) => {
+      const b = btn(`gate-tool ${cls}`, '');
+      b.append(el('span', 'gate-tool-word', label));
+      b.addEventListener('click', run);
+      b.addEventListener('keydown', (e) => {
+        if (e.code === 'Enter' || e.code === 'Space') {
+          e.stopPropagation();
+        }
+      });
+      return b;
+    };
+    this.gateTools = el('div', 'gate-tools');
+    this.flyAgainBtn = tool('is-again', 'Fly again', () => this.flyAgain());
+    this.flyAgainWhat = el('span', 'gate-tool-what', '');
+    this.flyAgainBtn.append(this.flyAgainWhat, el('kbd', 'gate-tool-key', 'F'));
+    this.gateTools.append(
+      this.flyAgainBtn,
+      tool('is-settings', 'Settings', () => this.act('pilot')),
+      tool('is-controls', 'Controls', () => this.act('stickhelp')),
+    );
+    this.gateTools.hidden = true;
+    chips.append(this.gateTools);
     this.titleBest = el('div', 'brand-best', '');
     brand.append(this.titleBest);
     /*
@@ -7346,6 +7510,7 @@ export class Ui {
     const results = el('div', 'screen screen-results');
     const resultsCopy = el('div', 'results-copy');
     const resultsTop = el('div', 'results-top');
+    this.resultsTop = resultsTop;
     this.resultsKicker = el('div', 'results-kicker', '');
     this.resultsHead = el('h2', 'results-head', 'Run complete');
     this.resultsHero = el('div', 'results-hero');
@@ -7355,11 +7520,26 @@ export class Ui {
     this.resultsHero.append(this.resultsHeroCap, this.resultsHeroTime, this.resultsHeroMeta);
     this.resultsBody = el('div', 'results');
     this.resultsNote = el('p', 'results-note', '');
+    /*
+     * THE MAGAZINE'S RESULTS PAGE (round 1 FUN-4, ART-10). The copy is a
+     * sheet of paper with ink on it, as the career's results are, rather
+     * than thin type straight over a lit world: the stamps in its corner
+     * are the medal and the board's rank when either is known, and the
+     * gate strip under the laps is where the best lap won and lost its
+     * time. All of it is built once, when the screen opens, from what the
+     * run already kept (showResults, paintResultStamps); nothing on this
+     * page is touched per frame and nothing on it is fetched.
+     */
+    this.resultsStamps = el('div', 'results-stamps');
+    this.resultsGates = el('div', 'results-gates');
+    this.resultsGates.hidden = true;
     resultsTop.append(
+      this.resultsStamps,
       this.resultsKicker,
       this.resultsHead,
       this.resultsHero,
       this.resultsBody,
+      this.resultsGates,
       this.resultsNote,
     );
     /* The course that lap was flown on, drawn the way the board and the
@@ -7368,14 +7548,16 @@ export class Ui {
     this.resultsPlanWrap = el('div', 'results-plan');
     this.resultsPlan = planCanvas(null, 'Track plan');
     this.resultsPlanWrap.append(this.resultsPlan);
-    resultsTop.append(this.resultsPlanWrap);
+    /* Beside the page now, not in it: the course is the page's picture,
+     * framed in the open side where the world was (index.html). */
+    const resultsPlanHost = this.resultsPlanWrap;
     const resultsBlock = wrapMenu();
     this.resultsMenu = resultsBlock.menu;
     this.resultsHelp = resultsBlock.help;
     const resultsFoot = el('div', 'results-foot');
     resultsFoot.append(resultsBlock.stage);
     resultsCopy.append(resultsTop, resultsFoot);
-    results.append(resultsCopy);
+    results.append(resultsCopy, resultsPlanHost);
     /*
      * THE MANGA PAGE (FREESTYLE-MAPS-PLAN.md section 3.2 item 6): a freestyle
      * run's results as three to five panels, down the open side of the
@@ -8042,10 +8224,10 @@ export class Ui {
   cameraFovRow(s) {
     return choice(
       'Field of view',
-      'Wider sees more, narrower magnifies. 75 matches what an FPV lens does to the middle of the frame; 85 gives some of that back for width; 115 is the widest this projection can honestly offer, about 145 degrees corner to corner, and the gates will look smaller for it.',
+      'Wider sees more, narrower magnifies. Narrow matches what an FPV lens does to the middle of the frame; Standard gives some of that back for width; Widest is as wide as this picture can honestly go, and the gates will look smaller for it.',
       CAMERA_FOVS,
       s.cameraFov,
-      (n) => `${n} degrees vertical`,
+      fovWord,
       (n) => { s.cameraFov = n; },
     );
   }
@@ -9927,6 +10109,12 @@ export class Ui {
          * not knowing which way a double click would go (the owner,
          * 2026-10-31). */
         if (page === 'games') {
+          /* Read when the page is first drawn after a flight or the title
+           * came up (show resets it), not on every call. */
+          if (!this.gameBests) {
+            this.gameBests = readGameBests();
+          }
+          const bests = this.gameBests;
           return [
             ...GATE_GAMES.map((c) => ({
               label: c.label,
@@ -9935,6 +10123,7 @@ export class Ui {
               kicker: c.kicker,
               caption: c.caption,
               chips: c.chips,
+              best: bests[c.id] || '',
               action: `mg-play:${c.id}`,
             })),
             ...tail,
@@ -11902,8 +12091,18 @@ export class Ui {
        * greyed, because it is news. One Edit row, the right one of three.
        */
       const onBoard = Boolean(listing.shareId || listing.published || this.coursePublished);
+      /* Next track, second, when the track came from the Tracks room's
+       * board list and there is another of its kind after it (round 1
+       * FUN-4). Fetched when it is pressed, as its card would be. */
+      const next = this.nextBoardTrack();
       return [
         { label: 'Fly again', action: 'restart', primary: true },
+        ...(next ? [{
+          label: 'Next track',
+          value: next.name,
+          action: 'next-track',
+          note: `${next.name}${byLine(next) ? `, ${byLine(next)}` : ''}, the next track in the Tracks room. Straight to the starting blocks.`,
+        }] : []),
         ...applicableRows([
           uploadAction(listing, {
             row: this.resultsBoard,
@@ -12339,6 +12538,7 @@ export class Ui {
       /* The gate is one question, so the lines that describe a seat the
        * pilot has not chosen to fly yet come off the screen behind it. */
       this.screens.title.classList.toggle('is-gate', gate);
+      this.syncGateTools(gate);
     }
     const host = {
       title: this.titleMenu,
@@ -13798,7 +13998,7 @@ export class Ui {
     }
     const items = this.items().filter((it) => it.card);
     const page = this.onGate() ? this.gatePageNow() : 'solo';
-    const key = `${page}:${items.map((it) => `${it.card}=${it.action}`).join('|')}`;
+    const key = `${page}:${items.map((it) => `${it.card}=${it.action}${it.best ? `=${it.best}` : ''}`).join('|')}`;
     if (!this.titleCards || this.titleCardKey !== key) {
       this.titleCardKey = key;
       host.textContent = '';
@@ -13810,7 +14010,7 @@ export class Ui {
       this.titleCards = items.map((it, i) => {
         const card = el('div', `gate-card gate-card-${it.card}`);
         card.setAttribute('role', 'button');
-        card.setAttribute('aria-label', it.caption ? `${it.label}. ${it.caption}` : it.label);
+        card.setAttribute('aria-label', `${it.caption ? `${it.label}. ${it.caption}` : it.label}${it.best ? ` ${it.best}.` : ''}`);
         const art = el('div', `gate-card-art${it.burst ? ` is-burst burst-${it.burst}` : ''}`);
         if (it.arts) {
           /* A page of panels: the first picture large, the rest stacked
@@ -13879,6 +14079,11 @@ export class Ui {
           const chips = el('div', 'gate-card-chips');
           for (const c of it.chips) {
             chips.append(el('span', `gate-chip${c === 'Bots' ? ' is-bots' : c === 'Friends' ? ' is-friends' : ''}`, c));
+          }
+          /* The pilot's own best at this game, kept in this browser: a
+           * stamp in the gold a record is printed in (readGameBests). */
+          if (it.best) {
+            chips.append(el('span', 'gate-chip is-best', it.best));
           }
           nm.append(chips);
         }
@@ -14120,6 +14325,67 @@ export class Ui {
     ttl.append(title);
     head.append(ttl, el('span', 'gate-folio', `P. ${info.folio}`));
     return head;
+  }
+
+  /*
+   * FLY AGAIN (round 1 CORE-10): what the cover would fly, or null. The
+   * last mode flown, and the seat that is still in this browser for it: a
+   * race needs a gated track seated, a freestyle flight a world. Named the
+   * way the title's Track and Map rows name them.
+   */
+  lastFlight() {
+    const s = this.settings;
+    if (!s.hasFlown || this.firstRun || this.roomInfo) {
+      return null;
+    }
+    if (s.lastFlyMode === 'race' && seatIsRace(s)) {
+      const seat = s.map === 'custom' ? activeCourseSummary() : null;
+      const m = MAPS.find((x) => x.id === s.map);
+      const name = seat ? seat.name : (m && m.id !== 'custom' ? m.name : '');
+      return name ? { mode: 'race', name } : null;
+    }
+    if (s.lastFlyMode === 'freestyle') {
+      const world = seatedFreestyleMap(s);
+      const shared = world && world.id === 'built' ? this.sharedMap : null;
+      return world ? { mode: 'freestyle', name: shared ? shared.name : world.name } : null;
+    }
+    return null;
+  }
+
+  /* One press into the air: the gate answered with what was flown last,
+   * then Fly, with the launch card counted as seen because a returning
+   * pilot has read it. Everything else keeps its full path. */
+  flyAgain() {
+    const last = this.lastFlight();
+    if (!last || !this.onGate()) {
+      return;
+    }
+    if (this.onUiSound) {
+      this.onUiSound('select');
+    }
+    this.craftGate = false;
+    this.settings.airframeAsked = true;
+    this.mode = last.mode;
+    if (last.mode === 'race') {
+      markLaunchCardSeen(this.settings);
+    }
+    this.renderMenu();
+    this.act('fly');
+  }
+
+  /* The masthead's tools: only on the gate, and Fly again only when there
+   * is a last flight to fly. */
+  syncGateTools(gate) {
+    if (!this.gateTools) {
+      return;
+    }
+    this.gateTools.hidden = !gate;
+    const last = gate ? this.lastFlight() : null;
+    this.flyAgainBtn.hidden = !last;
+    if (last) {
+      this.flyAgainWhat.textContent = last.name;
+      this.flyAgainBtn.setAttribute('aria-label', `Fly again: ${last.name}. Key F.`);
+    }
   }
 
   /* The gate's first page: the cover while rooms are on, the solo page
@@ -16822,6 +17088,11 @@ export class Ui {
 
   show(screen) {
     this.closeDrop();
+    /* A flight is the only thing that moves a mini game's best, and the
+     * title is where the panels show them: read again on the next draw. */
+    if (screen === 'flight' || screen === 'title') {
+      this.gameBests = null;
+    }
     if (this.hostPick && !isCardScreen(screen)) {
       this.endHostPick();
     }
@@ -17861,6 +18132,109 @@ export class Ui {
    * `trackClass`, because which of the two metrics is the headline is a
    * property of the track, not of the run.
    */
+  /*
+   * The stamps in the results page's corner, each a word and a line under
+   * it, in an ink ring and a tone: gold for a new best, silver for a match,
+   * mint for a clean run, ink for a rank. Built once per results screen.
+   */
+  paintResultStamps(stamps) {
+    const host = this.resultsStamps;
+    host.textContent = '';
+    for (const st of stamps.slice(0, 2)) {
+      const stamp = el('div', `results-stamp is-${st.tone}`);
+      stamp.append(el('b', null, st.big), el('span', null, st.small));
+      host.append(stamp);
+    }
+    host.hidden = !host.childElementCount;
+  }
+
+  /* The gate strip under the laps: see gateBreakdown. */
+  paintGateStrip(b) {
+    const host = this.resultsGates;
+    host.textContent = '';
+    host.hidden = !b || b.gates.length < 2;
+    this.screens.results.classList.toggle('has-gates', !host.hidden);
+    if (host.hidden) {
+      return;
+    }
+    host.append(el('div', 'results-gates-head', b.laps > 1 ? 'Best lap, gate by gate' : 'Your lap, gate by gate'));
+    const strip = el('div', 'results-gates-strip');
+    for (const g of b.gates) {
+      const lost = b.laps > 1 && g.lostMs >= 10;
+      const cell = el('div', `gate-cell${lost ? ' is-lost' : ' is-best'}${g === b.worst ? ' is-worst' : ''}`);
+      cell.title = `${g.label}: ${(g.ms / 1000).toFixed(2)}${lost ? `, ${formatDelta(g.lostMs)} on your fastest there` : ''}`;
+      cell.append(el('b', null, g.short), el('span', null, (g.ms / 1000).toFixed(2)));
+      if (lost) {
+        cell.append(el('i', null, formatDelta(g.lostMs)));
+      }
+      strip.append(cell);
+    }
+    host.append(strip);
+    let line = '';
+    if (b.laps < 2) {
+      line = 'One clean lap, so this is what it was made of. Fly another and the strip shows where it lost time.';
+    } else if (b.worst) {
+      line = `Most time lost at ${b.worst.label}, ${formatDelta(b.worst.lostMs)} on your fastest there.`;
+      if (b.idealMs < b.bestMs - 10) {
+        line += ` Your fastest of every gate adds up to ${formatTime(b.idealMs)}.`;
+      }
+    } else {
+      line = 'Your best lap was your fastest through every gate.';
+    }
+    host.append(el('p', 'results-gates-line', line));
+  }
+
+  /*
+   * WHERE THIS TIME WOULD STAND, from times the shell already holds for the
+   * track flown: the standings, when they were opened for it, or the track
+   * of the week's, when it is the week's. Never a fetch: the results path
+   * makes no round trip it did not already make. Null when neither is in
+   * hand, or the board's list is empty.
+   */
+  boardRankFor(lapMs, threeMs, micro) {
+    const id = this.share && this.share.id;
+    if (!id) {
+      return null;
+    }
+    let times = null;
+    let where = 'On the board';
+    if (this.standingsFor && this.standingsFor.id === id && Array.isArray(this.standingsTimes)) {
+      times = this.standingsTimes;
+    } else if (this.week && this.week.track && this.week.track.id === id && Array.isArray(this.week.times)) {
+      times = this.week.times;
+      where = 'This week';
+    }
+    const mine = micro ? threeMs : lapMs;
+    if (!times || !times.length || !Number.isFinite(mine)) {
+      return null;
+    }
+    const key = micro ? 'threeMs' : 'lapMs';
+    const ahead = times.filter((t) => Number.isFinite(t[key]) && t[key] < mine).length;
+    return { rank: ahead + 1, where };
+  }
+
+  /*
+   * NEXT TRACK: the board track after the one just flown, in the order the
+   * Tracks room listed them, of the same kind (a room after a room, a
+   * field after a field). Null when the track did not come from that list.
+   */
+  nextBoardTrack() {
+    const id = this.share && this.share.id;
+    const list = this.boardCourses || [];
+    const at = id ? list.findIndex((t) => t && t.id === id) : -1;
+    if (at < 0) {
+      return null;
+    }
+    const kind = list[at].trackClass || 'full';
+    for (let i = 1; i < list.length; i += 1) {
+      const t = list[(at + i) % list.length];
+      if (t && t.id !== id && (t.trackClass || 'full') === kind) {
+        return t;
+      }
+    }
+    return null;
+  }
+
   showResults(log, best, recordAtStart, ghostNote = null, opts = {}) {
     this.resultsBody.textContent = '';
     this.resultsNote.textContent = '';
@@ -17876,7 +18250,12 @@ export class Ui {
     const matched = fastest != null && hadRecord && fastest === recordAtStart;
     const screen = this.screens.results;
     screen.classList.toggle('is-record', Boolean(isRecord));
+    screen.classList.toggle('is-matched', Boolean(matched));
+    screen.classList.toggle('is-clean', clean.length > 0 && clean.length === log.length);
     screen.classList.toggle('is-empty', !clean.length);
+    this.resultsStamps.textContent = '';
+    this.resultsGates.textContent = '';
+    this.resultsGates.hidden = true;
     /* A race's results have a course to draw, not a manga page: a page
      * left from a freestyle run would sit over the course plate. */
     screen.classList.remove('has-manga');
@@ -18013,6 +18392,23 @@ export class Ui {
     if (ghostNote) {
       this.resultsBody.append(el('p', 'results-ghost', ghostNote));
     }
+    this.paintGateStrip(gateBreakdown(log));
+    /* The stamps in the page's corner: the medal this run earned against
+     * this browser's record, and where its time would stand among times
+     * the shell already holds for this track. Never a fetch of its own. */
+    const stamps = [];
+    if (isRecord) {
+      stamps.push({ tone: 'gold', big: 'PB!', small: hadRecord ? 'New best' : 'First record' });
+    } else if (matched) {
+      stamps.push({ tone: 'silver', big: '= PB', small: 'Matched' });
+    } else if (clean.length && clean.length === log.length) {
+      stamps.push({ tone: 'mint', big: 'Clean', small: clean.length === 1 ? 'No void' : 'No voids' });
+    }
+    const rank = fastest != null ? this.boardRankFor(fastest, Number.isFinite(opts.threeMs) ? opts.threeMs : null, opts.trackClass === 'micro') : null;
+    if (rank) {
+      stamps.push({ tone: 'ink', big: `#${rank.rank}`, small: rank.where });
+    }
+    this.paintResultStamps(stamps);
     /* The note is about the course that was FLOWN. It used to read
      * inspectCourse unconditionally, so a lap on the race field came back
      * with a line about whatever course happened to be on the builder's
@@ -18082,6 +18478,7 @@ export class Ui {
     this.resultsPlan.planData = plan;
     this.resultsPlanWrap.hidden = !plan;
     this.show('results');
+    this.resultsTop.scrollTop = 0;
     if (plan) {
       requestAnimationFrame(() => drawPlan(this.resultsPlan, plan, { scaleBar: true }));
     }
@@ -19135,6 +19532,16 @@ export class Ui {
    * rather than staying on the verb. */
   markRunPosted(posted) {
     this.runPosted = posted || { ok: true };
+    /* The board's answer carries the run's rank, which is a stamp on the
+     * page: the post was the pilot's press, so this is not a fetch the
+     * results screen made. */
+    if (this.screen === 'results' && this.runPosted.rank != null && this.resultsStamps
+      && !this.resultsStamps.querySelector('.is-ink')) {
+      const stamp = el('div', 'results-stamp is-ink');
+      stamp.append(el('b', null, `#${this.runPosted.rank}`), el('span', null, 'On the board'));
+      this.resultsStamps.append(stamp);
+      this.resultsStamps.hidden = false;
+    }
     if (this.screen === 'results') {
       this.renderMenu();
     }
@@ -19178,8 +19585,22 @@ export class Ui {
     const counter = summary.counter != null ? summary.counter : summary.total;
     const scored = summary.tricks > 0 || counter > 0;
     const clean = summary.crashes === 0 && scored;
-    screen.classList.toggle('is-record', clean);
+    /* The medal, from what the run already says: a new best for the map
+     * (the counter's own, kept in this browser) or a run with no crash.
+     * is-record is the gold page now, so it is the new best's; it was the
+     * clean run's when the page only had a green head to give. */
+    const pb = scored && summary.counter != null && summary.counterImproved && localBestOf(summary) > 0;
+    screen.classList.toggle('is-record', pb);
+    screen.classList.toggle('is-matched', false);
+    screen.classList.toggle('is-clean', clean);
     screen.classList.toggle('is-empty', !scored);
+    this.resultsGates.textContent = '';
+    this.resultsGates.hidden = true;
+    screen.classList.remove('has-gates');
+    this.paintResultStamps(!scored ? [] : [
+      pb ? { tone: 'gold', big: 'PB!', small: 'Best on this map' }
+        : (clean ? { tone: 'mint', big: 'Clean', small: 'No crashes' } : null),
+    ].filter(Boolean));
     screen.classList.remove('is-in');
     void screen.offsetWidth;
     screen.classList.add('is-in');
@@ -19294,6 +19715,7 @@ export class Ui {
     this.mangaPanels = this.manga ? mangaPanels(summary) : [];
     screen.classList.toggle('has-manga', this.mangaPanels.length > 0);
     this.show('results');
+    this.resultsTop.scrollTop = 0;
     this.showMangaPage();
     this.maybeAskTune(this.resultsTune);
   }
@@ -21672,6 +22094,14 @@ export class Ui {
   }
 
   flown() {
+    /* What the cover's Fly again flies: see lastFlyMode. Read before the
+     * flags below are cleared, because a mini game is one of them. */
+    const game = Boolean(this.mapGamePick || this.dogfight || this.fightPick || this.roomInfo || this.quitToGames);
+    const lastMode = !game && (this.mode === 'race' || this.mode === 'freestyle') ? this.mode : '';
+    if (lastMode && this.settings.lastFlyMode !== lastMode) {
+      this.settings.lastFlyMode = lastMode;
+      saveSettings(this.settings);
+    }
     /* In the air, so Back from a later picker is the picker's own again. */
     this.mapGamePick = false;
     /* Before the early return: this is the one place every door to the air
@@ -22853,6 +23283,23 @@ export class Ui {
      * Custom map with nothing loaded is not a map yet: Current map stays
      * on the submenu instead of building an empty field.
      */
+    /* Results' Next track: the board track after this one, opened as its
+     * card in the Tracks room opens it, and flown once its world is up. */
+    if (action === 'next-track') {
+      const t = this.nextBoardTrack();
+      if (!t || this.openingBoardCourse) {
+        return;
+      }
+      this.resultsNote.textContent = `Loading ${t.name}`;
+      this.openBoardCourse(t.id, () => {
+        if (this.onFlySeated) {
+          this.onFlySeated();
+        }
+      }, () => {
+        this.resultsNote.textContent = `${t.name} could not be loaded from the board.`;
+      });
+      return;
+    }
     if (action.startsWith('map:')) {
       const id = action.slice(4);
       if (id === 'custom' && !hasLoadedTrack()) {
@@ -23093,6 +23540,11 @@ export class Ui {
       }
     }
     this.lastInput = 'key';
+    /* Fly again's key, on the gate only (syncGateTools). */
+    if (code === 'KeyF' && this.onGate() && this.flyAgainBtn && !this.flyAgainBtn.hidden) {
+      this.flyAgain();
+      return true;
+    }
     if (PICKER_KEYS[code] && this.pickerNav(PICKER_KEYS[code])) {
       return true;
     }

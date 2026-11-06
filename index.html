@@ -2508,6 +2508,51 @@
         margin-top: 14px;
       }
       .brand-chips .beta-note, .brand-chips .brand-patreon { margin: 0; }
+      /*
+       * THE GATE'S TOOLS (round 1 FUN-15, CORE-10): Fly again, Settings and
+       * Controls, stamps cut like Steam's sticker in the shell's own ink,
+       * in the masthead row on every page of the gate. Fly again is mint,
+       * the colour the bar's primary is, and names what it flies.
+       */
+      .gate-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; }
+      .gate-tools[hidden], .gate-tool[hidden] { display: none; }
+      .gate-tool {
+        appearance: none; display: inline-flex; align-items: center; gap: 7px;
+        height: 28px; padding: 0 11px; box-sizing: border-box;
+        background: #f7f0dc; color: var(--ink-line);
+        border: 2.5px solid var(--ink-line); border-radius: 0;
+        box-shadow: 3px 3px 0 var(--ink-line);
+        font: italic 900 11.5px/1 var(--ui-font); letter-spacing: 0.06em; text-transform: uppercase;
+        transform: skewX(-8deg); cursor: pointer; pointer-events: auto; white-space: nowrap;
+        transition: transform 0.12s ease, box-shadow 0.12s ease;
+      }
+      .gate-tool:hover, .gate-tool:focus-visible {
+        transform: skewX(-8deg) translate(-2px, -2px);
+        box-shadow: 0 0 0 2px var(--sakura), 5px 5px 0 2px var(--ink-line);
+        outline: none;
+      }
+      .gate-tool.is-again { background: var(--mint); }
+      .gate-tool-what {
+        max-width: 16em; overflow: hidden; text-overflow: ellipsis;
+        font-style: normal; font-weight: 800; text-transform: none; letter-spacing: 0.01em;
+      }
+      .gate-tool-key {
+        padding: 1px 5px; background: var(--ink-line); color: var(--cream);
+        font: 800 10px/1.3 var(--ui-font); font-style: normal;
+      }
+      @media (pointer: coarse) { .gate-tool-key { display: none; } }
+      /* One row with Beta, Patreon and Steam, so the cards below keep their
+         height: the brand's measure is the copy's, and the gate has none. */
+      .screen-title.is-gate .brand { max-width: none; }
+      .screen-title.is-gate .brand-chips { flex-wrap: nowrap; }
+      @media (max-width: 1100px) {
+        .gate-tool-what { display: none; }
+      }
+      @media (max-width: 900px) {
+        .gate-tools { gap: 6px; }
+        .gate-tool { padding: 0 8px; font-size: 10.5px; }
+        .screen-title.is-gate .brand-chips { gap: 6px 8px; }
+      }
       .beta-tag { cursor: help; }
       .beta-tag {
         flex: 0 0 auto;
@@ -2755,6 +2800,8 @@
       }
       .gate-chip.is-bots { background: var(--mint); }
       .gate-chip.is-friends { background: var(--gc-ink); color: var(--cream); border-color: var(--cream); }
+      /* A mini game's best, the pilot's own: a gold stamp, cocked. */
+      .gate-chip.is-best { background: var(--amber); transform: rotate(-3deg); box-shadow: 2px 2px 0 var(--gc-ink); text-transform: none; letter-spacing: 0.04em; font-size: 11px; }
       .gp-ribbon { right: 3%; top: 4%; width: 46%; max-width: 300px; }
       /* In a card a third of the page wide, the quad rides the right half,
          clear of the title and caption on the left. */
@@ -6349,6 +6396,251 @@
          page at its full size. */
       @media (max-width: 760px) and (max-height: 520px) {
         .results-manga { display: none; }
+      }
+
+      /*
+       * THE RESULTS PAGE IS A PAGE OF THE MAGAZINE (round 1, FUN-4, ART-10
+       * and ART-9). The copy used to be thin cream type straight over the
+       * world, a dark settings list beside a lit building; the career's
+       * results were a manga page and the two finishes in the game looked
+       * like two products. So the copy is a sheet of paper now, the
+       * career's paper with its dot screen, in an ink frame with a hard
+       * shadow: the kicker an ink band, the title lettered, the laps ink
+       * ruled panels, the medal and the rank stamps in its corner, and the
+       * gate strip under the laps. The course is the page's picture, framed
+       * in the open side. The menu stays the ink panel every menu is.
+       *
+       * Static paint: a background, borders and offset shadows, built when
+       * the screen opens. No backdrop-filter, no animation but the one the
+       * copy already had on arrival, nothing redrawn per frame, no file.
+       */
+      .screen-results .results-top {
+        position: relative;
+        box-sizing: border-box;
+        /* The ink frame is a ring of shadow, not a border: the lettering
+           measures the page's padding box to place the title, and a border
+           there read as a page wider than its text and centred it. */
+        margin: 4px 12px 4px 4px;
+        padding: 14px 18px 14px;
+        background-color: #f7f0dc;
+        background-image: radial-gradient(rgba(11, 17, 22, 0.09) 1px, transparent 1.3px);
+        background-size: 6px 6px;
+        box-shadow: 0 0 0 4px var(--ink-line), 8px 8px 0 4px var(--ink-line);
+        color: var(--ink-line);
+        scrollbar-color: rgba(11, 17, 22, 0.45) transparent;
+      }
+      .screen-results .results-top * { text-shadow: none; }
+      .screen-results .results-kicker {
+        display: inline-flex; max-width: 100%;
+        padding: 4px 10px; gap: 0;
+        background: var(--ink-line); color: var(--cream);
+        font-size: 12px; font-weight: 800; letter-spacing: 0.16em;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      }
+      .screen-results .results-kicker::before { display: none; }
+      /* The head is lettered in its colour (letterHeading): sakura for a
+         run, gold for a record, silver for a match, mint for a clean one,
+         slate for a run that ended with nothing. */
+      .screen-results .results-head { color: var(--sakura); }
+      .screen-results.is-clean .results-head { color: var(--mint); }
+      .screen-results.is-matched .results-head { color: #c9d3dc; }
+      .screen-results.is-record .results-head { color: var(--amber); }
+      .screen-results.is-empty .results-head { color: var(--slate); }
+      .screen-results .results-hero-cap { color: #4a5560; font-weight: 700; }
+      .screen-results .results-hero-time,
+      .screen-results.is-record .results-hero-time {
+        color: var(--ink-line);
+        text-shadow: 4px 4px 0 rgba(232, 168, 184, 0.75);
+      }
+      .screen-results.is-record .results-hero-time { text-shadow: 4px 4px 0 rgba(255, 212, 92, 0.95); }
+      .screen-results .results-hero-meta { color: #3d4852; font-weight: 600; }
+      .screen-results .results-hero-meta.gain { color: #0c7040; }
+      .screen-results .results-hero-meta.off { color: #a8324f; }
+      /* The laps, ink ruled panels sharing their rules, the fastest in mint. */
+      .screen-results .result-row {
+        padding: 5px 10px 6px;
+        border: 2.5px solid var(--ink-line);
+        background: #fffaf0;
+      }
+      .screen-results .result-row + .result-row { margin-top: -2.5px; }
+      .screen-results .result-row.fastest { background: var(--mint); }
+      .screen-results .result-row.total { margin-top: 6px; background: var(--ink-line); }
+      .screen-results .result-row.total .result-label { color: var(--cream); }
+      .screen-results .result-row.total .result-time { color: var(--sakura); }
+      .screen-results .result-label { color: #3d4852; font-weight: 600; }
+      .screen-results .result-time { color: var(--ink-line); font-weight: 800; }
+      .screen-results .result-tag { color: var(--ink-line); font-weight: 800; }
+      .screen-results .result-row.void .result-time { color: #6b7682; }
+      .screen-results .result-why { color: #5b6570; }
+      .screen-results .result-row.result-more .result-label,
+      .screen-results .result-row.result-more .result-time { color: #5b6570; }
+      .screen-results .result-bar { background: rgba(11, 17, 22, 0.12); box-shadow: none; height: 4px; margin-top: 5px; }
+      .screen-results .result-bar-fill { background: var(--ink-line); }
+      .screen-results .result-row.fastest .result-bar-fill { background: var(--ink-line); }
+      .screen-results .results-empty { color: #2b333b; font-size: 15px; }
+      .screen-results .results-ghost { color: #0c7040; font-weight: 600; }
+      .screen-results .results-note { color: #2b333b; }
+      /* The stamps: a word in an ink ring, cocked as a hand stamp is. */
+      .results-stamps {
+        float: right; display: flex; gap: 8px;
+        margin: 2px -4px 6px 12px;
+      }
+      .results-stamps[hidden] { display: none; }
+      .results-stamp {
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        width: 78px; height: 78px; box-sizing: border-box; border-radius: 50%;
+        border: 3px solid var(--ink-line); box-shadow: 3px 3px 0 var(--ink-line);
+        background: #fffaf0; color: var(--ink-line);
+        transform: rotate(-9deg); text-align: center;
+      }
+      .results-stamp + .results-stamp { transform: rotate(7deg); }
+      .results-stamp b { font: italic 900 22px/1 var(--ui-font); letter-spacing: 0.01em; }
+      .results-stamp span { margin-top: 3px; font: 800 9px/1.1 var(--ui-font); letter-spacing: 0.08em; text-transform: uppercase; max-width: 64px; }
+      .results-stamp.is-gold { background: var(--amber); }
+      .results-stamp.is-silver { background: #dfe5ea; }
+      .results-stamp.is-mint { background: var(--mint); }
+      .results-stamp.is-ink { background: var(--ink-line); color: var(--cream); border-color: var(--ink-line); box-shadow: 3px 3px 0 var(--sakura); }
+      /* The gate strip: the best lap gate by gate, mint where it was the
+         run's fastest through that gate, sakura where it lost time. */
+      .results-gates { margin-top: 10px; }
+      .results-gates[hidden] { display: none; }
+      .results-gates-head {
+        display: inline-block; padding: 3px 8px;
+        background: var(--ink-line); color: var(--cream);
+        font: 800 11px/1.2 var(--ui-font); letter-spacing: 0.14em; text-transform: uppercase;
+      }
+      .results-gates-strip { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+      .gate-cell {
+        display: flex; flex-direction: column; align-items: center;
+        min-width: 3.4em; padding: 3px 4px 4px; box-sizing: border-box;
+        border: 2px solid var(--ink-line); background: #fffaf0;
+        font-variant-numeric: tabular-nums;
+      }
+      .gate-cell b { font: 900 10px/1 var(--ui-font); letter-spacing: 0.06em; color: #4a5560; }
+      .gate-cell span { margin-top: 2px; font: 800 13px/1.1 var(--ui-font); color: var(--ink-line); }
+      .gate-cell i { font: italic 800 10px/1 var(--ui-font); color: #a8324f; }
+      .gate-cell.is-best { background: #d8fbe7; }
+      .gate-cell.is-lost { background: #fbe3ea; }
+      .gate-cell.is-worst { background: var(--sakura); box-shadow: 2px 2px 0 var(--ink-line); }
+      .results-gates-line { margin: 6px 0 0; color: #2b333b; font-size: 13.5px; line-height: 1.45; }
+      /*
+       * WITH A GATE STRIP, THE PAGE IS TWO COLUMNS on a window wide and tall
+       * enough for it: the time and the laps on the left, the stamps and
+       * the strip on the right, the note across the foot. One column, the
+       * strip under the laps sat below the fold of the copy at 1600 by 900.
+       */
+      @media (min-width: 1100px) and (min-height: 600px) {
+        .screen-results.has-gates .results-copy { width: min(60em, 62vw); }
+        .screen-results.has-gates .results-foot { width: min(100%, 38em); }
+        .screen-results.has-gates .results-top {
+          display: grid; column-gap: 22px; align-content: start;
+          grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+          grid-template-areas:
+            "kick stamps"
+            "head stamps"
+            "hero gates"
+            "laps gates"
+            "note note";
+        }
+        .screen-results.has-gates .results-kicker { grid-area: kick; justify-self: start; }
+        .screen-results.has-gates .results-head { grid-area: head; }
+        .screen-results.has-gates .results-stamps { grid-area: stamps; float: none; justify-self: end; align-self: start; margin: -8px -6px 0 0; }
+        .screen-results.has-gates .results-hero { grid-area: hero; }
+        .screen-results.has-gates .results-hero-time { font-size: clamp(56px, min(6vw, 10vh), 96px); }
+        .screen-results.has-gates .results { grid-area: laps; }
+        .screen-results.has-gates .results-gates { grid-area: gates; align-self: start; margin-top: 8px; }
+        .screen-results.has-gates .results-note { grid-area: note; }
+        .screen-results.has-gates .results-plan { left: calc(4vw + min(60em, 62vw) + 4vw); }
+      }
+      /* On a short laptop window the page gives back what its frame and
+         panels took, so the rows and the best line stay above its fold
+         (lint:devices, the freestyle results page at 1280 by 720). */
+      @media (max-height: 800px) and (min-width: 861px) {
+        .screen-results .results-top { padding-top: 10px; padding-bottom: 10px; }
+        .screen-results .results-hero-time { font-size: clamp(40px, min(9vw, 8.4vh), 112px); }
+        .screen-results .result-row { padding-top: 3px; padding-bottom: 4px; }
+        .screen-results .result-bar { margin-top: 3px; }
+        .screen-results .results-head { margin-top: 4px; }
+      }
+      @media (min-height: 801px) and (min-width: 861px) {
+        .screen-results .result-row { padding-top: 4px; padding-bottom: 5px; }
+      }
+      /* The help line over the menu sits on the world, not on the paper. */
+      .screen-results .menu-help { color: var(--cream); }
+      /*
+       * THE COURSE, THE PAGE'S PICTURE. A panel in the open side, in the
+       * same ink frame, under the chips and clear of the copy column, with
+       * the course's name band over it. Only where there is room for it.
+       */
+      .screen-results .results-plan {
+        position: absolute; z-index: 1;
+        top: calc(var(--bar-top) + 92px);
+        left: calc(4vw + min(38em, 46vw) + 4vw); right: 4vw;
+        max-width: 760px; margin: 0 0 0 auto; width: auto;
+        border-radius: 0; overflow: visible;
+        border: 4px solid var(--ink-line);
+        box-shadow: 8px 8px 0 var(--ink-line);
+        background: #f7f0dc;
+      }
+      .screen-results .results-plan::before {
+        content: "The track"; position: absolute; left: -4px; top: -26px;
+        padding: 4px 10px; background: var(--ink-line); color: var(--cream);
+        font: 800 11px/1.2 var(--ui-font); letter-spacing: 0.16em; text-transform: uppercase;
+      }
+      @media (max-height: 560px), (max-width: 860px) {
+        .screen-results .results-plan { display: none; }
+      }
+      /*
+       * ON A PHONE ON ITS SIDE (ART-9): the page and the menu side by side.
+       * Stacked, the bar's crumb overprinted the title, the bug chip sat on
+       * the copy, the copy ran under the menu and Back to title went under
+       * the hint bar. So the page takes the left and scrolls in itself, the
+       * menu takes the right from under the bug chip and scrolls in itself,
+       * and both stop above the command bar. No manga page here: its
+       * counter's bests go in the list, as on a narrow phone (showMangaPage).
+       */
+      /* Upright, too: 2.6vh of padding put the title under the bar's crumb
+         and the last row under the command bar. */
+      @media (max-width: 860px) {
+        .screen-results {
+          padding-top: calc(var(--bar-top) + 8px);
+          padding-bottom: calc(var(--bar-bot) + 6px);
+        }
+      }
+      @media (max-height: 520px) {
+        .screen-results {
+          padding: calc(var(--bar-top) + 4px) max(12px, 3vw) calc(var(--bar-bot) + 6px);
+        }
+        .screen-results .results-copy {
+          flex-direction: row; align-items: stretch; gap: 14px;
+          width: 100%; height: 100%;
+        }
+        .screen-results .results-top {
+          flex: 1 1 0; min-width: 0; max-height: calc(100% - 10px);
+          margin: 3px 8px 6px 3px;
+          padding: 8px 12px 10px; box-shadow: 0 0 0 3px var(--ink-line), 5px 5px 0 3px var(--ink-line);
+        }
+        .screen-results .results-kicker { display: inline-flex; font-size: 10.5px; padding: 3px 8px; }
+        .screen-results .results-head { margin-top: 4px; font-size: 20px; }
+        .screen-results .results-stamps { margin-bottom: 2px; }
+        .screen-results .results-stamp { width: 58px; height: 58px; border-width: 2.5px; }
+        .screen-results .results-stamp b { font-size: 16px; }
+        .screen-results .results-stamp span { font-size: 7.5px; max-width: 48px; }
+        .screen-results .results-note { display: block; font-size: 12.5px; }
+        .screen-results .results { max-height: none; }
+        .screen-results .results-foot {
+          flex: 0 0 min(44%, 380px); width: auto; min-height: 0;
+          margin-top: 0; padding-top: 42px; justify-content: flex-start;
+        }
+        .screen-results .menu-stage { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; }
+        .screen-results .menu {
+          flex: 0 1 auto; min-height: 0; box-sizing: border-box;
+          min-width: 0; max-height: 100%; overflow-y: auto; overscroll-behavior: contain;
+          scrollbar-width: thin;
+        }
+        .screen-results .menu-help { display: none; }
+        .screen-results .results-manga { display: none; }
+        .screen-results.has-manga .results-top { width: auto; }
       }
 
       /* Loading. This markup is STATIC, and that is the point: it paints on

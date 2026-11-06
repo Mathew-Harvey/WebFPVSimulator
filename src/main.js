@@ -252,6 +252,11 @@ const GROUND_CUE_GAP_MS = 220;
  * only; nothing in the flight reads it.
  */
 const PAD_FLYING_STICK = 0.12;
+/* The throttle still down on the pad, for the stick cluster's ink plate
+ * (R2M-11): the gimbals are dead until it moves, and while they wait they
+ * sit small, on ink, rather than over the strip of world a 30 degree
+ * camera leaves a pilot on the ground. */
+const PAD_WAIT_THROTTLE = 0.02;
 /*
  * How long after a takeoff the contact cues stay muted, on the WALL clock.
  *
@@ -13875,6 +13880,9 @@ export async function boot({ loading, bootStart, mapId }) {
             || Math.abs(ch.pitch) > PAD_FLYING_STICK
             || Math.abs(ch.yaw) > PAD_FLYING_STICK),
         touch: touchFlying,
+        /* On the pad, before this run's first takeoff and with the throttle
+         * still down: the cluster sits on a small ink plate (R2M-11). */
+        padWait: !aloft && !flownThisRun && ch.throttle <= PAD_WAIT_THROTTLE,
       });
       /* The chips fade on the same test: see syncChipFade. */
       ui.syncChipFade(aloft, nowWall);
@@ -16651,6 +16659,9 @@ export async function boot({ loading, bootStart, mapId }) {
   /* To the title, quietly: the career's screens are over it. */
   function careerToTitle() {
     ui.setCareerLesson(null);
+    if (ui.osd) {
+      ui.osd.classList.remove('osd-simple');
+    }
     if (mode !== 'title') {
       mode = 'title';
       reset();
@@ -17380,6 +17391,12 @@ export async function boot({ loading, bootStart, mapId }) {
     setCamera(c) {
       careerCamera = c === 'chase' ? 'chase' : null;
       careerChaseCam.atMs = -1;
+    },
+    /* The first lessons' simple OSD (R2M-10): one class, CSS does the rest. */
+    simpleOsd(on) {
+      if (ui.osd) {
+        ui.osd.classList.toggle('osd-simple', Boolean(on));
+      }
     },
     get camera() {
       return shell.camera;

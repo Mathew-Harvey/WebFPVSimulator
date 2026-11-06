@@ -1671,6 +1671,36 @@
         border-radius: 2px;
       }
       .osd .osd-gimbal-cap { width: fit-content; margin-inline: auto; }
+      /*
+       * ON THE PAD, ON A PLATE (R2M-11). With the 30 degree camera on the
+       * ground the world is the bottom fifth of the frame, and the stick
+       * cluster sat in the middle of it, which is where the course leads
+       * off. Until the throttle first moves the gimbals have nothing to
+       * show, so the cluster sits smaller and lower on one ink plate
+       * (main.js PAD_WAIT_THROTTLE puts is-pad on it), and the first
+       * throttle takes it back to its flying size. A class and a
+       * transform: no draw call, no pass, nothing per frame.
+       */
+      .osd-sticks.is-pad {
+        bottom: 6px;
+        transform: translateX(-50%) scale(0.72);
+        transform-origin: 50% 100%;
+        padding: 6px 10px 4px;
+        border-radius: 4px;
+        background: rgba(11, 17, 22, 0.55);
+      }
+      /*
+       * THE FIRST LESSONS FLY A SIMPLE OSD (R2M-10). While a trunk lesson
+       * before the Rookie Licence runs, src/career/controller.js puts
+       * osd-simple on the OSD: the pack's volts (its bar stays), the height
+       * in words, the mode word and the Weight and Camera sliders step
+       * aside, because the lesson's own coach and altitude say what a first
+       * hover needs. The checkride and everything after it fly the full OSD.
+       */
+      .osd.osd-simple .osd-left .osd-value,
+      .osd.osd-simple .osd-alt,
+      .osd.osd-simple .osd-mode,
+      .osd.osd-simple .osd-air { display: none; }
       .osd .osd-air-cap:empty { background: none; }
       /* The corners' small lines (Pack, the height, Throttle) keep their
          place and take the 2 px edge, which holds over light ground where

@@ -1877,6 +1877,19 @@ async function scenarioEye() {
     await answerQuadPicker(page, 60000).catch(() => {});
     await page.until("window.__ui.screen === 'flight'", 60000);
     /*
+     * R2M-11: on the pad before the first throttle the stick cluster sits
+     * on its ink plate, and the first throttle takes it back to its flying
+     * size. Read off the element's own class, then a held throttle.
+     */
+    const padBefore = await page.until("document.querySelector('.osd-sticks').classList.contains('is-pad')", 20000)
+      .then(() => true).catch(() => false);
+    await page.evaluate('(window.__stick(0, 0, 0, 0.6), 1)');
+    const padAfter = await page.until("!document.querySelector('.osd-sticks').classList.contains('is-pad')", 20000)
+      .then(() => true).catch(() => false);
+    await page.evaluate('(window.__stick(), 1)');
+    check('eye: on the pad the sticks sit on the ink plate, and the first throttle takes it off', padBefore && padAfter,
+      JSON.stringify({ padBefore, padAfter, cls: await page.evaluate("document.querySelector('.osd-sticks').className") }));
+    /*
      * The cost, in the town, which has the most colliders of any map: the
      * frame's own call on the segments a fast frame makes, 0.33 m (25 ms
      * at 20 m/s) in every direction from points along the streets near the

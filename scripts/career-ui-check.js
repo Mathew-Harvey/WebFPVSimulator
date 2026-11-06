@@ -458,6 +458,15 @@ async function run(size) {
     check('the display names the lesson and its first objective', hud.kicker.includes(first.title) && hud.obj === first.objectives[0].text, `${hud.kicker} / ${hud.obj}`);
     check('every objective is listed, and the clock waits for takeoff', hud.list === first.objectives.length && /TAKE OFF TO START/.test(hud.timer), `${hud.list} listed, ${hud.timer}`);
     check('the display is visible', hud.shown === 'visible', hud.shown);
+    /* R2M-10: a trunk lesson before the Rookie Licence flies a simple OSD. */
+    const osd = await page.evaluate(`(() => {
+      const o = document.querySelector('.osd');
+      const shown = (sel) => { const n = o.querySelector(sel); return Boolean(n && n.getClientRects().length); };
+      return { simple: o.classList.contains('osd-simple'), volts: shown('.osd-left .osd-value'), bar: shown('.osd-left .bar'),
+        alt: shown('.osd-alt'), mode: shown('.osd-right .osd-mode'), air: shown('.osd-air'), speed: shown('.osd-right .osd-value') };
+    })()`);
+    check('a first lesson flies the simple OSD: no volts, height words, mode word or sliders; the pack bar and speed stay',
+      osd.simple && !osd.volts && osd.bar && !osd.alt && !osd.mode && !osd.air && osd.speed, JSON.stringify(osd));
 
     /* The pause menu is the lesson's. */
     await tap('Escape');
@@ -689,6 +698,8 @@ async function run(size) {
     await page.until(state('flight'), 60000);
     const ob = await page.evaluate("document.querySelector('#career .cr-hud .cr-obj-text').textContent");
     check('R flies it again, from its first objective', ob === check10.objectives[0].text, ob);
+    const full = await page.evaluate("(() => { const o = document.querySelector('.osd'); const n = o.querySelector('.osd-left .osd-value'); return { simple: o.classList.contains('osd-simple'), volts: Boolean(n && n.getClientRects().length) }; })()");
+    check('a lesson past the trunk flies the full OSD', !full.simple && full.volts, JSON.stringify(full));
     await tap('Escape');
     await page.until("window.__ui.screen === 'paused'");
     await pauseRow('career-hub');

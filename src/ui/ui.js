@@ -6476,7 +6476,7 @@ export class Ui {
     /* The height as a number and two tails: the desk's "above the ground"
      * and the phone's "up", which fits beside the speed on a small phone
      * held sideways. The sheet shows one; only the number is written. */
-    this.osdAlt = el('div', 'osd-sub', '');
+    this.osdAlt = el('div', 'osd-sub osd-alt', '');
     this.osdAltNum = el('span', '', '');
     this.osdAlt.append(this.osdAltNum, el('span', 'osd-alt-long', ' above the ground'), el('span', 'osd-alt-short', ' up'));
     this.osdThrBar = el('div', 'bar-fill warm');
@@ -20622,12 +20622,12 @@ export class Ui {
    * after some air, sitting still with the slider under it and a thumb
    * free, and it retires, remembered, on the next takeoff.
    */
-  setAirSlider(show, ready = true, { airMs = 0 } = {}) {
+  setAirSlider(show, ready = true, { airMs = 0, padWait = false } = {}) {
     const air = this.osdAir;
     if (!air) {
       return;
     }
-    Ui.klass(this.osdSticks, show ? 'osd-sticks' : 'osd-sticks is-off');
+    Ui.klass(this.osdSticks, show ? (padWait ? 'osd-sticks is-pad' : 'osd-sticks') : 'osd-sticks is-off');
     if (!show) {
       Ui.klass(air.box, 'osd-air is-off');
       return;

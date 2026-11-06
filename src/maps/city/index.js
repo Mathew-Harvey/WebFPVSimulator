@@ -71,7 +71,7 @@ import { disposeSceneGraph } from '../../render/shell.js';
 import { SESSION_TEXTURES } from '../../render/session-textures.js';
 import { cityAnimation, findBoomBlocks } from './animation.js';
 import {
-  bakeCity, loadSimplifier, buildCullGrid, chunkInstanced, fogFloor, thinFoliage,
+  bakeCity, loadSimplifier, buildCullGrid, chunkInstanced, fogFloor, thinFoliage, freezeStill,
 } from './bake.js';
 import { cityReferences, boomColliderExtent } from './references.js';
 import { buildPlaces } from './places/index.js';
@@ -2684,6 +2684,15 @@ export async function buildMap(shell, onProgress, options) {
     ? roundCanopiesNear(cull.cells, q.city.leafClumps === true, leafSwapped)
     : { meshes: 0, sets: 0, clumps: false };
   const leafR2 = leafRound * leafRound;
+  /*
+   * Last of the passes that add to the tree, so the chunks, the proxies and
+   * the fog floor are frozen with the rest: see freezeStill in ./bake.js.
+   * The near canopies swap geometry, never matrices, so they freeze too.
+   * The scene's own flag goes with it, because a scene that recomposes
+   * forces every child (the note there says why).
+   */
+  const frozen = freezeStill(world.root, baked.moving);
+  scene.matrixAutoUpdate = false;
   const anim = cityAnimation(world, colliders, boomIndices, trainCars);
   let placeStep = 0;
   /* Measured AFTER cityAnimation has seated the booms at step zero, so it is
@@ -3002,6 +3011,9 @@ export async function buildMap(shell, onProgress, options) {
       ...thinned,
       ...baked.stats,
       ...chunked,
+      /* Nodes whose matrices the frame no longer recomputes, and the ones
+       * it still does: see freezeStill in ./bake.js. */
+      frozen,
       shadowExtent: half,
       pipelineScale: pipeline.scale,
       pipelineSize: { x: pipeline.size.x, y: pipeline.size.y },

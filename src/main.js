@@ -13991,6 +13991,12 @@ export async function boot({ loading, bootStart, mapId }) {
     if (mode === 'flight' && ui.screen === 'flight' && !replayMode) {
       flightPerf.note(dt, blockMs);
     }
+    /* The Show FPS readout counts the frames that were DRAWN, here, where
+     * the draw's condition is known, and not the callbacks: see notePerf
+     * and the note above PERF_TEXT_MS in ui.js. Off is this one test. */
+    if (ui.settings.showFps === true && (ui.screen === 'flight' || ui.screen === 'paused')) {
+      ui.notePerf(worldLive && drawThis, blockMs, gpuGate.state, latency);
+    }
     /* Every frame, for the display's period, which Auto and the guard
      * measure against: see latency.js. A live world says the GPU could have
      * been pacing this frame whether or not it drew: a draw the guard or the

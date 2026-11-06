@@ -5629,6 +5629,43 @@ function clearLocationHash() {
  */
 const OSD_NUMBERS_MS = 62;
 const OSD_CLOCK_MS = 31;
+/*
+ * THE PERFORMANCE READOUT (the Show FPS row), what each number is and is
+ * not, because the owner's ask of 2026-11-06 was "ensure the frame count is
+ * accurate" after a pilot read 58 fps on a flight that looked choppy.
+ *
+ * The old readout counted the frame callbacks. A callback is not a frame: a
+ * frame the GPU guard held back, a frame the cap skipped and a frame the
+ * timer loop ran between two refreshes were all counted, so a saturated GPU
+ * that was really showing thirty frames a second read as sixty. FPS here
+ * is the frames this page DREW, counted at the draw, over the last
+ * PERF_TEXT_MS. The frame time is the interval between drawn frames, and
+ * the one in a hundred slowest of the last PERF_RING of them is the "1%
+ * low" the hardware videos show. CPU is the share of wall time the frame
+ * callback took on this page's main thread, this page's and not the
+ * machine's: a browser's page cannot read the machine's load, and saying
+ * "CPU 31%" of a machine that is at 90% from a stream encoder would be a
+ * lie. GPU is likewise an estimate and labelled as one in the row's note:
+ * the guard's fence time is how long the GPU took to finish each frame
+ * after it was sent, everything else on the GPU included, so drawn frames
+ * a second times that time is the share of the second the GPU was on this
+ * page's frames, clamped at 100. A GPU shared with a stream encoder reads
+ * high here while the fps reads fine, which is the shape of the report
+ * that asked for this.
+ *
+ * Cost: nothing when the row is off (one boolean test a frame in main.js).
+ * On, one canvas copy and one rectangle a drawn frame for the graph, four
+ * text writes twice a second, no allocation per frame.
+ */
+const PERF_TEXT_MS = 500;
+/* Drawn frames kept for the 1% low and the worst frame: three seconds at
+ * sixty. */
+const PERF_RING = 180;
+/* The graph, in CSS pixels: one column a drawn frame, two seconds at
+ * sixty, the height three times the frame the guard measures against. */
+const PERF_GRAPH_W = 120;
+const PERF_GRAPH_H = 32;
+const PERF_GRAPH_FRAMES = 3;
 
 export class Ui {
   /*
@@ -6279,12 +6316,39 @@ export class Ui {
     this.osdCross = el('div', 'osd-cross is-off');
     this.osdCross.append(el('i', 'xh-l'), el('i', 'xh-r'), el('i', 'xh-t'), el('i', 'xh-b'), el('i', 'xh-dot'));
     this.osdCrossShape = 'off';
-    /* The FPS readout, counted in setOsd and shown by syncFps. */
-    this.osdFps = el('div', 'osd-fps');
-    this.osdFps.hidden = true;
-    this.osdFpsFrames = 0;
-    this.osdFpsAt = 0;
-    this.osd.append(this.osdFps, this.osdCross, top, packBlock, flightBlock, sticks, this.osdLaunch, this.buildTargetLock());
+    /* The performance readout, top left: fed by notePerf, shown and reset
+     * by syncPerf. Built once; the numbers are rewritten twice a second and
+     * the graph shifts one column a drawn frame, and only while the Show
+     * FPS row is on. */
+    this.osdPerf = el('div', 'osd-perf');
+    this.osdPerf.hidden = true;
+    const perfRow = (label) => {
+      const row = el('div', 'perf-row');
+      const v = el('b', 'perf-v', '');
+      const x = el('span', 'perf-x', '');
+      row.append(el('span', 'perf-k', label), v, x);
+      this.osdPerf.append(row);
+      return [v, x];
+    };
+    [this.perfFps, this.perfFpsX] = perfRow('fps');
+    [this.perfMs, this.perfMsX] = perfRow('frame');
+    [this.perfGpu, this.perfGpuX] = perfRow('gpu');
+    [this.perfCpu, this.perfCpuX] = perfRow('cpu');
+    this.perfGraph = el('canvas', 'perf-graph');
+    this.osdPerf.append(this.perfGraph);
+    this.perfCtx = null;
+    this.perfDpr = 0;
+    this.perfInk = null;
+    this.perfAt = 0;
+    this.perfCalls = 0;
+    this.perfDrawn = 0;
+    this.perfBusyMs = 0;
+    this.perfLastDraw = 0;
+    this.perfRing = new Float32Array(PERF_RING);
+    this.perfSort = new Float32Array(PERF_RING);
+    this.perfRingN = 0;
+    this.perfRingI = 0;
+    this.osd.append(this.osdPerf, this.osdCross, top, packBlock, flightBlock, sticks, this.osdLaunch, this.buildTargetLock());
     r.append(this.osd);
 
     /*
@@ -11046,8 +11110,8 @@ export class Ui {
         toggle(
           'Show FPS',
           s.showFps
-            ? 'On: the frame rate is drawn in the top corner while you fly, updated twice a second. It is the rate the browser is drawing at, so it reads the display, not the physics.'
-            : 'Off: no frame rate on screen. Turn it on to see how smoothly this machine is drawing the flight.',
+            ? 'On: a readout in the top corner while you fly, updated twice a second. FPS is the frames this page drew in the last half second, with the slowest one in a hundred beside it and the display\'s refresh rate. Frame is the time between drawn frames, with the worst recent one. GPU is an estimate from how long the graphics card takes to finish each frame, everything else it is doing included, so a stream encoder on the same card shows here. CPU is the share of time this page\'s frame work takes on its own thread, not the whole machine\'s. The graph is the last two seconds of frame times: mint fits the display\'s frame, amber is over it, pink is over two of them. None of it reads the physics, which runs at its own fixed rate.'
+            : 'Off: no frame rate on screen. Turn it on to see how smoothly this machine is drawing the flight, and whether the graphics card or this page is the busy one.',
           s.showFps,
           (v) => { s.showFps = v; },
         ),
@@ -16972,7 +17036,7 @@ export class Ui {
     /* A toggle, not a className: setOsd keeps is-free on the same node. */
     this.osd.classList.toggle('dim', screen === 'paused');
     this.syncCrosshair();
-    this.syncFps();
+    this.syncPerf();
     this.pauseAirSlider(screen);
     /* The score follows the OSD onto and off the screen, but only in
      * freestyle: a race has no score and an empty Score 0 over a lap timer
@@ -18245,7 +18309,6 @@ export class Ui {
 
   setOsd({ mode, lapMs, lastLapMs, gate, gateCount, gateCue, volts, packFrac, altitude, speedKph, throttle, flightMode, bounces, launchState, launchPitch, ghostGapMs, ghostFinal, runState, runRemainMs, runTimed, runScored }) {
     const freestyle = mode === 'freestyle';
-    this.countFps();
     /* Whether the continuous readouts are due this frame: see
      * OSD_NUMBERS_MS. A running clock waits for its tick; a clock that has
      * just stopped, started or changed what it counts is written at once,
@@ -18503,36 +18566,158 @@ export class Ui {
   }
 
   /*
-   * The FPS readout follows the Show FPS row. Called from show() for the
-   * same reason syncCrosshair is. The count restarts on every show so a
-   * pause does not read as one very slow frame.
+   * The performance readout follows the Show FPS row. Called from show()
+   * for the same reason syncCrosshair is. The counts restart on every show
+   * so a pause does not read as one very slow frame, and the graph's
+   * backing store is sized to the device pixel ratio here, once, because
+   * sizing a canvas clears it.
    */
-  syncFps() {
-    if (!this.osdFps) {
+  syncPerf() {
+    if (!this.osdPerf) {
       return;
     }
     const on = this.settings.showFps === true;
-    this.osdFps.hidden = !on;
-    this.osdFpsFrames = 0;
-    this.osdFpsAt = 0;
+    this.osdPerf.hidden = !on;
+    /* The freestyle score stands in the same corner: perf-on on the root
+     * moves it down under the readout (index.html, .score-total). */
+    this.root.classList.toggle('perf-on', on);
+    this.perfAt = 0;
+    this.perfCalls = 0;
+    this.perfDrawn = 0;
+    this.perfBusyMs = 0;
+    this.perfLastDraw = 0;
+    this.perfRingN = 0;
+    this.perfRingI = 0;
+    if (!on) {
+      return;
+    }
+    const dpr = Math.min(3, Math.max(1, Math.round(window.devicePixelRatio || 1)));
+    if (!this.perfCtx || dpr !== this.perfDpr) {
+      this.perfDpr = dpr;
+      this.perfGraph.width = PERF_GRAPH_W * dpr;
+      this.perfGraph.height = PERF_GRAPH_H * dpr;
+      this.perfCtx = this.perfGraph.getContext('2d');
+      /* The OSD's own inks, read once: mint is the good news here as it is
+       * on the ghost gap, amber the warning, sakura the frame that took
+       * more than two. */
+      const cs = getComputedStyle(this.osdPerf);
+      const ink = (name, fallback) => (cs.getPropertyValue(name) || '').trim() || fallback;
+      this.perfInk = {
+        mint: ink('--mint', '#7dffb4'),
+        amber: ink('--amber', '#ffd45c'),
+        sakura: ink('--sakura', '#e8a8b8'),
+        line: 'rgba(243, 234, 212, 0.4)',
+      };
+    } else if (this.perfCtx) {
+      this.perfCtx.clearRect(0, 0, this.perfGraph.width, this.perfGraph.height);
+    }
+    for (const n of [this.perfFps, this.perfFpsX, this.perfMs, this.perfMsX, this.perfGpu, this.perfGpuX, this.perfCpu, this.perfCpuX]) {
+      Ui.text(n, '');
+    }
   }
 
-  /* One frame drawn: counts, and rewrites the number twice a second. */
-  countFps() {
-    if (this.settings.showFps !== true || !this.osdFps) {
+  /*
+   * One frame callback, from the frame loop, after the draw: `drew` is
+   * whether this frame was drawn, `blockMs` the callback's own length,
+   * `gate` the GPU guard's state (gpugate.js) and `meter` the latency
+   * meter (latency.js), for the display's period and refresh. See the note
+   * above PERF_TEXT_MS for what each number means. Allocation free per
+   * frame; the sort for the 1% low runs twice a second on PERF_RING floats.
+   */
+  notePerf(drew, blockMs, gate, meter) {
+    if (this.settings.showFps !== true || !this.osdPerf || this.osdPerf.hidden) {
       return;
     }
     const now = performance.now();
-    if (this.osdFpsAt === 0) {
-      this.osdFpsAt = now;
+    if (this.perfAt === 0) {
+      this.perfAt = now;
+      this.perfLastDraw = drew ? now : 0;
       return;
     }
-    this.osdFpsFrames += 1;
-    if (now - this.osdFpsAt >= 500) {
-      Ui.text(this.osdFps, `${Math.round((this.osdFpsFrames * 1000) / (now - this.osdFpsAt))} FPS`);
-      this.osdFpsFrames = 0;
-      this.osdFpsAt = now;
+    this.perfCalls += 1;
+    this.perfBusyMs += blockMs;
+    const target = meter.targetMs();
+    if (drew) {
+      this.perfDrawn += 1;
+      if (this.perfLastDraw > 0) {
+        const ms = now - this.perfLastDraw;
+        /* A second or more between draws was a stall or a tab away, not
+         * a frame: the window's count already says what the second cost. */
+        if (ms < 1000) {
+          this.perfRing[this.perfRingI] = ms;
+          this.perfRingI = (this.perfRingI + 1) % PERF_RING;
+          if (this.perfRingN < PERF_RING) {
+            this.perfRingN += 1;
+          }
+          this.perfGraphBar(ms, target, meter.displayPeriodMs());
+        }
+      }
+      this.perfLastDraw = now;
     }
+    const span = now - this.perfAt;
+    if (span < PERF_TEXT_MS) {
+      return;
+    }
+    const fps = (this.perfDrawn * 1000) / span;
+    Ui.text(this.perfFps, Math.round(fps));
+    const hz = meter.refreshHz();
+    let low = '';
+    let frame = '';
+    let worst = '';
+    const n = this.perfRingN;
+    if (n >= 10) {
+      this.perfSort.set(this.perfRing.subarray(0, n));
+      const s = this.perfSort.subarray(0, n);
+      s.sort();
+      const p99 = s[Math.min(n - 1, Math.floor(n * 0.99))];
+      low = `1% ${Math.round(1000 / p99)}`;
+      frame = `${s[n >> 1].toFixed(1)} ms`;
+      worst = `max ${Math.round(s[n - 1])}`;
+    }
+    Ui.text(this.perfFpsX, hz > 0 ? `${low}  ${Math.round(hz)} Hz` : low);
+    Ui.text(this.perfMs, frame);
+    Ui.text(this.perfMsX, worst);
+    if (gate && gate.on && gate.samples > 0) {
+      const share = Math.min(100, Math.round((fps * gate.gpuMs) / 10));
+      Ui.text(this.perfGpu, `${share}%`);
+      Ui.text(this.perfGpuX, `${gate.gpuMs.toFixed(1)} ms`);
+    } else {
+      Ui.text(this.perfGpu, 'n/a');
+      Ui.text(this.perfGpuX, '');
+    }
+    Ui.text(this.perfCpu, `${Math.min(100, Math.round((100 * this.perfBusyMs) / span))}%`);
+    Ui.text(this.perfCpuX, this.perfCalls > 0 ? `${(this.perfBusyMs / this.perfCalls).toFixed(1)} ms` : '');
+    this.perfAt = now;
+    this.perfCalls = 0;
+    this.perfDrawn = 0;
+    this.perfBusyMs = 0;
+  }
+
+  /*
+   * One column of the graph for one drawn frame: the strip shifts left by
+   * a column and the new frame's bar goes in at the right, with a tick at
+   * the display's period on it so the bars are read against the frame they
+   * had to fit. A canvas drawn onto itself is copied first by the browser,
+   * so the shift is one copy, not a read back.
+   */
+  perfGraphBar(ms, target, period) {
+    const ctx = this.perfCtx;
+    if (!ctx) {
+      return;
+    }
+    const c = this.perfGraph;
+    const d = this.perfDpr;
+    const w = c.width;
+    const h = c.height;
+    ctx.drawImage(c, -d, 0);
+    ctx.clearRect(w - d, 0, d, h);
+    const full = PERF_GRAPH_FRAMES * target;
+    const bar = Math.max(d, Math.round((Math.min(ms, full) / full) * h));
+    ctx.fillStyle = ms <= target * 1.05 ? this.perfInk.mint : (ms <= target * 2 ? this.perfInk.amber : this.perfInk.sakura);
+    ctx.fillRect(w - d, h - bar, d, bar);
+    const y = Math.round(h - (Math.min(period, full) / full) * h);
+    ctx.fillStyle = this.perfInk.line;
+    ctx.fillRect(w - d, y, d, 1);
   }
 
   /*

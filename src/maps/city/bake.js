@@ -1751,6 +1751,8 @@ export function* bakeCitySteps(world, {
 
   return {
     merged,
+    /* What the probe and the markers found moving, for freezeStill. */
+    moving: animated,
     proxies,
     stats: {
       trimmed,
@@ -2304,4 +2306,73 @@ export function trimAttributes(root) {
   });
   stats.MB = +(stats.bytes / 1e6).toFixed(1);
   return stats;
+}
+
+/*
+ * FREEZE WHAT DOES NOT MOVE.
+ *
+ * WHY. three recomputes the whole scene graph's matrices every frame: for
+ * every node with matrixAutoUpdate on it composes the local matrix from
+ * position, rotation and scale, which marks the world matrix dirty, and a
+ * dirty node forces every descendant to multiply too. Measured on the town
+ * at Low (2026-11-06, headless CPU profile, so a proxy): 4,275 nodes under
+ * the scene, 4,069 of them auto, and updateMatrixWorld plus its multiplies
+ * were about 1.2 ms of a 9 ms frame callback, as much as the submission of
+ * all 330 draws. Of those nodes about a hundred ever move: the train, the
+ * traffic, the booms, the lake's rigs. The other four thousand (the merged
+ * town, the instanced chunks, the shadow proxies, the empty groups the
+ * clutter strip left behind) were being recomposed sixty times a second to
+ * the same numbers.
+ *
+ * HOW. Every object that findAnimated found moving, and every ancestor of
+ * one up to the root, stays live. Everything else gets matrixAutoUpdate off,
+ * so its local matrix is never recomposed, and matrixWorldAutoUpdate off,
+ * so the per frame walk skips it and its whole subtree. That is three's
+ * own contract for a static object ("checked by the renderer"). The root
+ * itself keeps matrixWorldAutoUpdate on, so its live children are still
+ * visited, but its matrixAutoUpdate goes off too: a node that recomposes
+ * marks itself dirty, and a dirty node FORCES its children whatever their
+ * flag says, so one auto ancestor would quietly undo the whole freeze. The
+ * caller does the same to the scene for the same reason.
+ *
+ * WHAT IT COULD BREAK, AND THE CHECK THAT SEES IT. A frozen node that code
+ * later moves stays where it was drawn, and a node added UNDER a frozen one
+ * after this never gets a world matrix at all. Neither is detectable from
+ * the picture in a glance, which is why scripts/freeze-check.js flies the
+ * real loop on the real town and then recomposes every frozen node by
+ * force and compares: any difference is a mover that was frozen, named by
+ * its path. Anything that must move a still node after this calls
+ * updateMatrixWorld(true) on it, as fogFloor and the merged meshes already
+ * do for themselves. The moving set is the bake's own, which the probe in
+ * findAnimated measured and the planetRigid markers widened, so the rule
+ * here is a measurement and not a list of names.
+ *
+ * Render only: nothing here touches a collider or the plant.
+ */
+export function freezeStill(root, moving) {
+  root.updateMatrixWorld(true);
+  const live = new Set();
+  for (const o of moving) {
+    for (let p = o; p; p = p.parent) {
+      live.add(p);
+    }
+  }
+  let frozen = 0;
+  let kept = 0;
+  root.traverse((o) => {
+    if (o === root) {
+      return;
+    }
+    if (live.has(o)) {
+      kept += 1;
+      return;
+    }
+    o.matrixAutoUpdate = false;
+    o.matrixWorldAutoUpdate = false;
+    /* Read by scripts/freeze-check.js, and by nothing else. */
+    o.userData.still = true;
+    frozen += 1;
+  });
+  root.matrixAutoUpdate = false;
+  return { frozen, kept };
 }

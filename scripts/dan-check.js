@@ -50,7 +50,7 @@ import {
   DAN_LINES, STARE_HOLD_MS, QUIET_MS, QUIET_LAP_MS, CLEAN_EXIT_MS, TIDY_GATES, makeJudge, danState, danAt,
 } from '../src/maps/dan/dan.js';
 import { Race } from '../src/game/race.js';
-import { courseFromDocument } from '../src/game/trackdoc.js';
+import { courseFromDocument, isRaceGowCourse } from '../src/game/trackdoc.js';
 import { presetById } from '../src/trackbuilder/presets.js';
 import { normalize } from '../src/trackbuilder/model.js';
 
@@ -264,7 +264,11 @@ console.log('\n5. loading');
   bare.name = 'RaceGOW6 Track 2 sponsored by BetaFPV';
   check('the course carries its name, so an uncredited RaceGOW6 track is known by it', /^racegow/i.test(courseFromDocument(normalize(bare).doc).name));
   const custom = readFileSync(join(root, 'src/maps/custom.js'), 'utf8');
-  check('custom.js reaches him by a dynamic import only', /await import\('\.\/dan\/index\.js'\)/.test(custom) && /course\.name/.test(custom) && !/^import .*\/dan\//m.test(custom));
+  /* The series or name rule moved into isRaceGowCourse in trackdoc.js on
+   * 2026-11-06, so the non stop default reads the same one: the name half
+   * is checked on the rule itself rather than by finding course.name here. */
+  check('custom.js reaches him by a dynamic import only', /await import\('\.\/dan\/index\.js'\)/.test(custom) && /isRaceGowCourse\(course\)/.test(custom) && !/^import .*\/dan\//m.test(custom));
+  check('and the rule it asks knows an uncredited RaceGOW6 track by its name', isRaceGowCourse(courseFromDocument(normalize(bare).doc)) && !isRaceGowCourse(courseFromDocument(own)));
   const main = readFileSync(join(root, 'src/main.js'), 'utf8');
   check('main.js never imports him', !/^import .*\/dan\//m.test(main));
   const size = statSync(join(root, 'assets/dan/dan-manga.webp')).size;

@@ -45,14 +45,22 @@ const RATE = 1.1;
  * is said in words, "Lap 3, 1 minute 3.20", because "1:03.20" is a string
  * a speech engine is free to read as a time of day.
  */
-export function lapCall(n, ms, record = false) {
-  /* The flash's arithmetic: hundredths first, then the minute carried, so
-   * a 59.996 s lap is "1 minute 0.00" and never "60.00". */
+export function lapCall(n, ms, record = false, threeMs = null) {
+  /* A new best three in a row in this run (lastThreeBest in
+   * src/game/race.js) rides on the same call, after the lap, because
+   * say() cancels a call still going and a second one would cut off the
+   * lap time it follows. */
+  const three = threeMs != null && Number.isFinite(threeMs) ? `. Best three, ${spoken(threeMs)}` : '';
+  return `Lap ${n}, ${spoken(ms)}${record ? '. New track record' : ''}${three}`;
+}
+
+/* The flash's arithmetic: hundredths first, then the minute carried, so
+ * a 59.996 s lap is "1 minute 0.00" and never "60.00". */
+function spoken(ms) {
   const cs = Math.round(ms / 10);
   const m = Math.floor(cs / 6000);
   const s = ((cs - m * 6000) / 100).toFixed(2);
-  const time = m > 0 ? `${m} minute${m === 1 ? '' : 's'} ${s}` : s;
-  return `Lap ${n}, ${time}${record ? '. New track record' : ''}`;
+  return m > 0 ? `${m} minute${m === 1 ? '' : 's'} ${s}` : s;
 }
 
 /*

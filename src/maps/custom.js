@@ -43,7 +43,7 @@ import { yieldToPaint } from '../ui/loading.js';
 /* The composer wrap and its dispose live with the field map, which is the
  * same world this one dresses with a designed course. */
 import { attachComposer } from './field.js';
-import { courseFromDocument } from '../game/trackdoc.js';
+import { courseFromDocument, isRaceGowCourse } from '../game/trackdoc.js';
 import { readAutosave } from '../trackbuilder/storage.js';
 import { activeTrackClass, courseSeatKey, readShareImport } from '../share/session.js';
 import { tuningFor } from '../trackbuilder/elements.js';
@@ -119,9 +119,16 @@ export async function buildMap(shell, onProgress, options) {
    * a RaceGOW track, his picture included: see src/maps/dan/index.js. A track
    * is one by its credited series or by its name, because the board's
    * RaceGOW6 tracks were published with no series. */
-  if (/^racegow/i.test(course.series || '') || /^racegow/i.test(course.name || '')) {
-    const { attachDan } = await import('./dan/index.js');
-    await attachDan(shell, map);
+  if (isRaceGowCourse(course)) {
+    /* Dan stands in a room, two metres in from its walls, so a full size
+     * track with RaceGOW in its name gets the laps and not him. */
+    if (course.trackClass === 'micro') {
+      const { attachDan } = await import('./dan/index.js');
+      await attachDan(shell, map);
+    }
+    /* And the run's default: a RaceGOW track flies non stop unless the
+     * pilot picked a lap count for them (racegowLaps in src/ui/ui.js). */
+    map.racegow = true;
   }
   map.share = share
     ? { id: share.id, name: share.name || doc.name, author: share.author, board: share.board }

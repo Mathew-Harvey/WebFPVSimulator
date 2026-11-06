@@ -270,6 +270,8 @@ export class Race {
      * gates.
      */
     this.micro = trackClass === 'micro';
+    /* Set by the shell on a RaceGOW track of any size: see lastThreeBest. */
+    this.callThree = false;
     /*
      * THE WEIGHT THE LAPS ARE FLOWN AT, the shell's Weight slider, stamped on
      * every clean lap in the log so the board is told the weight of the lap
@@ -491,6 +493,21 @@ export class Race {
     this.mixed = false;
     this.lastLapMs = null;
     this.lastLapRecord = false; /* whether lastLapMs set the record */
+    /*
+     * THE RUN'S BEST THREE IN A ROW, as it is flown (the owner, 2026-11-06:
+     * "best three laps called as you get a new 3 lap record and have it
+     * just keep picking your best 3 laps"). A room is scored on three
+     * consecutive clean laps, so on a micro track every lap that closes a
+     * faster window of three than any before it in this run sets
+     * lastThreeBest to that total, and the flash and the spoken call say
+     * so. Null on every other lap, and always on the field, which is scored
+     * on one lap, unless the shell sets callThree for a RaceGOW track
+     * (lapsForRun's rule in src/main.js). Kept as a running total rather than read with
+     * fastestThreeConsecutive on each lap, because a lap only ever closes
+     * one new window: the last three entries of the log.
+     */
+    this.runThreeMs = null;
+    this.lastThreeBest = null;
     this.prevSimMs = null;
     this.flash = null; /* { text, untilMs } on the wall clock */
     /*
@@ -893,6 +910,18 @@ export class Race {
             requestIdleCallback(store, { timeout: 2000 });
           } else {
             setTimeout(store, 0);
+          }
+        }
+        this.lastThreeBest = null;
+        if ((this.micro || this.callThree) && this.log.length >= 3) {
+          const w = this.log.slice(-3);
+          if (w[0].ms != null && w[1].ms != null && w[2].ms != null) {
+            const total = w[0].ms + w[1].ms + w[2].ms;
+            if (this.runThreeMs == null || total < this.runThreeMs) {
+              this.runThreeMs = total;
+              this.lastThreeBest = total;
+              msgText += `\nBest three   ${fmt(total)}`;
+            }
           }
         }
         this.flash = { text: msgText, untilMs: wallMs + 2600 };

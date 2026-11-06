@@ -233,7 +233,7 @@ export const CHAPTERS = [
         camera: 'chase',
         world: built(trainingField('trk-c4a91011', 'Training Field')),
         briefing: {
-          goal: 'Lift the quad off the pad, hold it between one and three metres for five seconds, then land.',
+          goal: 'Lift the quad off the pad, hold it at about head height for five seconds, then land.',
           why: 'Throttle is the first thing every pilot learns, because it is the one stick that never lets go of you. Smooth throttle is what everything else is built on.',
           steps: [
             'Push {throttle} up slowly until the quad lifts.',
@@ -246,7 +246,7 @@ export const CHAPTERS = [
         objectives: [
           { kind: 'takeoff', text: 'Take off', hint: 'Push {throttle} up, slowly.' },
           {
-            kind: 'hold', text: 'Hold between 1 and 3 m', seconds: 5,
+            kind: 'hold', text: 'Hold it about head height', seconds: 5,
             zone: { kind: 'cylinder', at: [FIELD_SPAWN.x, FIELD_SPAWN.y], r: 9, z0: 1, z1: 3 },
             hint: 'Small throttle moves. The gauge on the right shows your height.',
           },
@@ -317,7 +317,7 @@ export const CHAPTERS = [
         camera: 'fpv',
         world: built(trainingField('trk-c4a91014', 'Training Field')),
         briefing: {
-          goal: 'Fly to the circle thirty metres ahead, stop in it for three seconds, then fly back and land on the pad.',
+          goal: 'Fly to the circle out ahead, stop in it for three seconds, then fly back and land on the pad.',
           why: 'Going is easy; stopping where you meant to is flying. A quad has no brakes: you stop it by leaning back.',
           steps: [
             '{Pitch} forward to go. A little throttle keeps your height.',
@@ -327,7 +327,7 @@ export const CHAPTERS = [
           sticks: [{ stick: 'pitch', dir: 'forward' }, { stick: 'pitch', dir: 'back' }, { stick: 'yaw', dir: 'both' }],
         },
         objectives: [
-          { kind: 'takeoff', text: 'Take off', hint: 'Climb to a couple of metres.' },
+          { kind: 'takeoff', text: 'Take off', hint: 'Climb to about head height.' },
           {
             kind: 'hold', text: 'Stop in the circle for 3 s', seconds: 3, maxSpeed: 2,
             zone: { kind: 'cylinder', at: [80, 55], r: 3.2, z0: 0.8, z1: 6 },
@@ -566,7 +566,7 @@ export const CHAPTERS = [
           goal: 'Up the field and back, through every ring, all at the same height.',
           why: 'Level flight in Acro is a balance of tilt and throttle. Here you find the throttle that holds a height at speed.',
           steps: [
-            'Fly up the left line at four metres.',
+            'Fly up the left line at rooftop height.',
             'Turn round at the top with yaw and roll together.',
             'Come back down the right line at the same height.',
           ],
@@ -589,7 +589,7 @@ export const CHAPTERS = [
         camera: 'fpv',
         world: built(trainingField('trk-c4a91034', 'Training Field', pylon)),
         briefing: {
-          goal: 'Circle the pylon twice, between seven and sixteen metres from it.',
+          goal: 'Circle the pylon twice, wide of its arms but never far from it.',
           why: 'A coordinated turn is roll and yaw together, with a little pitch to hold it in. It is how every gate after this one is reached.',
           steps: [
             'Fly towards the pylon and pass it on your left.',
@@ -605,7 +605,7 @@ export const CHAPTERS = [
           },
         ],
         medals: { gold: 26000, silver: 40000 },
-        crashTip: 'The pylon is big and its arms reach out. Keep at least seven metres from its middle.',
+        crashTip: 'The pylon is big and its arms reach out. Give it plenty of room.',
       },
       {
         id: '3-5',
@@ -645,7 +645,7 @@ export const CHAPTERS = [
         camera: 'fpv',
         world: built(gapSchool()),
         briefing: {
-          goal: 'Through the eight metre gap between the container stacks, then turn round and through it again.',
+          goal: 'Through the wide gap between the container stacks, then turn round and through it again.',
           why: 'A gap is a gate somebody forgot to paint. Look at the space, not at the walls: the quad goes where you look.',
           steps: [
             'Line up from a long way back, level and steady.',
@@ -670,14 +670,14 @@ export const CHAPTERS = [
           goal: 'Under the footbridge, then under the billboard.',
           why: 'Low gaps are about height as much as line. Settle low early, then fly flat.',
           steps: [
-            'Come down to two metres well before the bridge.',
+            'Come down low, about head height, well before the bridge.',
             'Fly flat and steady through.',
             'The billboard is to the right of the bridge, between its legs.',
           ],
           sticks: [{ stick: 'throttle', dir: 'hold' }, { stick: 'pitch', dir: 'tap' }],
         },
         objectives: [
-          { kind: 'gap', text: 'Under the bridge', names: ['UNDER THE BRIDGE'], hint: 'Two metres up, flat.' },
+          { kind: 'gap', text: 'Under the bridge', names: ['UNDER THE BRIDGE'], hint: 'Low and flat.' },
           { kind: 'gap', text: 'Under the billboard', names: ['BILLBOARD GAP'], hint: 'Between its legs, low.' },
         ],
         medals: { gold: 18000, silver: 32000 },
@@ -690,8 +690,8 @@ export const CHAPTERS = [
         camera: 'fpv',
         world: built(gapSchool()),
         briefing: {
-          goal: 'Up the line of container gaps in order: eight metres, six, then four.',
-          why: 'Each gap is narrower than the last, so each asks for a straighter line. By the four metre gap you will be flying it on purpose.',
+          goal: 'Up the line of container gaps in order: wide, narrower, then narrowest.',
+          why: 'Each gap is narrower than the last, so each asks for a straighter line. By the narrowest gap you will be flying it on purpose.',
           steps: [
             'Fly up the middle of the plot.',
             'Under the bridge on the way: it is between the gaps.',
@@ -718,8 +718,8 @@ export const CHAPTERS = [
           goal: 'Through the arcade under the office, the building to the west.',
           why: 'A gap with a roof feels much smaller than it is. Trust the line you set up outside.',
           steps: [
-            'Fly west towards the office and drop to two metres.',
-            'Line up with the arcade from at least twenty metres out.',
+            'Fly west towards the office and drop low, about head height.',
+            'Line up with the arcade from well back.',
             'Through it in one smooth line, no corrections inside.',
           ],
           sticks: [{ stick: 'yaw', dir: 'left' }, { stick: 'throttle', dir: 'hold' }],
@@ -772,10 +772,10 @@ export const CHAPTERS = [
         camera: 'fpv',
         world: built(trainingField('trk-c4a91051', 'Training Field')),
         briefing: {
-          goal: 'One full flip, nose over, above five metres, and fly away from it.',
+          goal: 'One full flip, nose over, with plenty of height under you, and fly away from it.',
           why: 'A flip is commitment. Punch up for height, cut the throttle, flip, and catch it with throttle when the horizon comes back.',
           steps: [
-            'Climb to at least eight metres.',
+            'Climb well up, higher than the rooftops.',
             'Throttle low, then {pitch} fully forward and hold it.',
             'Let go as the horizon comes round, and add throttle to catch it.',
           ],
@@ -798,10 +798,10 @@ export const CHAPTERS = [
         camera: 'fpv',
         world: built(trainingField('trk-c4a91052', 'Training Field')),
         briefing: {
-          goal: 'One full roll, either way, above five metres.',
+          goal: 'One full roll, either way, with plenty of height under you.',
           why: 'A roll is the same commitment on the other axis. Moving forward while you roll keeps the quad from sinking.',
           steps: [
-            'Fly forward at eight metres or more.',
+            'Fly forward, well up above the rooftops.',
             'Throttle low, {roll} fully to one side and hold.',
             'Centre it as you come level, and throttle up.',
           ],
@@ -827,7 +827,7 @@ export const CHAPTERS = [
           goal: 'A full flip backwards, nose up and over.',
           why: 'The same flip the other way round. It feels different because the ground disappears behind you instead of in front.',
           steps: [
-            'Climb to eight metres and slow down.',
+            'Climb well up, higher than the rooftops, and slow down.',
             'Throttle low, {pitch} fully back and hold.',
             'Catch it with throttle as the horizon comes back.',
           ],
@@ -880,7 +880,7 @@ export const CHAPTERS = [
           goal: 'Two full turns without stopping: a double flip or a double roll.',
           why: 'Twice round needs twice the height and the nerve to hold the stick for longer than feels right.',
           steps: [
-            'Climb to twelve metres.',
+            'Climb high, well above the rooftops.',
             'Throttle low, full stick, and keep holding through the first turn.',
             'Let go on the second, and catch it.',
           ],
@@ -940,7 +940,7 @@ export const CHAPTERS = [
           goal: 'Half a roll to upside down, hold it for a second, and half a roll back.',
           why: 'Upside down, throttle pushes you at the ground. Hang there with the throttle low, then come back.',
           steps: [
-            'Climb high: at least ten metres.',
+            'Climb high, well above the rooftops.',
             'Half roll and stop, throttle low.',
             'Half roll back and catch it with throttle.',
           ],
@@ -990,7 +990,7 @@ export const CHAPTERS = [
           goal: 'A flip in two halves: half a flip, a clear stop upside down, then the other half the same way.',
           why: 'The same discipline on the pitch axis, where the stop is harder because the nose points at the ground.',
           steps: [
-            'Climb high, fifteen metres or more, then half a flip forward and stop, upside down.',
+            'Climb really high, higher than for any trick before, then half a flip forward and stop, upside down.',
             'Hold a beat.',
             'The second half, the same direction, then catch it.',
           ],
@@ -1513,7 +1513,7 @@ export const CHAPTERS = [
         world: built(hibariYard()),
         briefing: {
           goal: 'In one run: a Powerloop, a Split-S, and the container tunnel.',
-          why: 'Freestyle is tricks and lines in one flight. The container tunnel is the tightest gap in the yard: two metres wide.',
+          why: 'Freestyle is tricks and lines in one flight. The container tunnel is the tightest gap in the yard.',
           steps: [
             'A Powerloop over anything solid.',
             'A Split-S off a roof edge or the billboard.',
@@ -1524,10 +1524,10 @@ export const CHAPTERS = [
         objectives: [
           { kind: 'trick', text: 'Land a Powerloop', need: [{ names: ['Powerloop', 'Inverted 360 Powerloop'] }], hint: 'Up and over something solid.' },
           { kind: 'trick', text: 'Land a Split-S', need: [{ names: ['Split-S'] }], hint: 'Over it, half roll, pull through.' },
-          { kind: 'gap', text: 'The container tunnel', names: ['CONTAINER TUNNEL'], hint: 'Line up from twenty metres out.' },
+          { kind: 'gap', text: 'The container tunnel', names: ['CONTAINER TUNNEL'], hint: 'Line up from well back.' },
         ],
         medals: { gold: 45000, silver: 80000 },
-        crashTip: 'The tunnel is two metres wide. Slow and straight beats fast and sideways.',
+        crashTip: 'The tunnel is narrow. Slow and straight beats fast and sideways.',
       },
       {
         id: '10-4',
@@ -1692,7 +1692,7 @@ export const CHAPTERS = [
         world: race(careerTrack('river-bend')),
         briefing: {
           goal: 'One lap of River Bend through the rings that line you up for every gate.',
-          why: 'The racing line is decided before the gate, not in it. Each ring sits a few metres short of its gate, square to it: be through the ring and the gate is easy.',
+          why: 'The racing line is decided before the gate, not in it. Each ring sits just short of its gate, square to it: be through the ring and the gate is easy.',
           steps: [
             'Look at the ring, not the gate behind it.',
             'Turn early so you come out of the turn already square.',
@@ -1917,7 +1917,7 @@ export const CHAPTERS = [
         laps: 3,
         briefing: {
           goal: 'Three laps of Sabj\'s race night room, fifteen gates, against the board\'s times.',
-          why: 'A room from a real race night, from the board. Fifteen gates in a ten by twelve metre room is turn after turn: the line through them is the race.',
+          why: 'A room from a real race night, from the board. Fifteen gates in one small room is turn after turn: the line through them is the race.',
           steps: [
             'Lap one to learn the order of the gates.',
             'Then look one gate ahead all the way round.',

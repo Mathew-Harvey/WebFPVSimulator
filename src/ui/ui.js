@@ -892,6 +892,10 @@ export function clampWeight(v, airframeId) {
  * 4.2 V: ten metres of fall with the throttle cut, the balloon after a
  * 400 ms punch at 60 percent stick, and hover off the same bisection as
  * configs/rates.js. The five inch row is the sentence as it always read.
+ * Since 2026-11-06 the hint says the fall and the balloon in words, because
+ * metres and seconds are not player text (round 1 FUN-13); their figures
+ * stay here as the measurement the words were written from, and only the
+ * hover percentages are quoted.
  */
 const WEIGHT_FEEL = {
   '5inch': { fall: ['1.20', '1.01'], balloon: ['1.6', '0.7'], hover: ['35.0', '42.7'] },
@@ -9464,7 +9468,7 @@ export class Ui {
       airHint.hidden = !show;
       if (show) {
         const f = WEIGHT_FEEL[af] ?? WEIGHT_FEEL['5inch'];
-        airHint.textContent = `The Weight slider between the sticks on the flight screen is this exact complaint: it scales the weight the quad carries, so it drops when you chop the throttle instead of hanging. Yours is at ${weight} percent. From a hover with the throttle cut, the stock quad falls ${f.drop || '10'} metres in ${f.fall[0]} s and balloons ${f.balloon[0]} m after a short punch; at ${top} percent that is ${f.fall[1]} s and ${f.balloon[1]} m. Hover moves up the stick with it, ${f.hover[0]} percent at stock to ${f.hover[1]} at ${top}. Worth dragging before you wait on us, and a lap flown on it goes on the public board with its weight beside your name.`;
+        airHint.textContent = `The Weight slider between the sticks on the flight screen is this exact complaint: it scales the weight the quad carries, so it drops when you chop the throttle instead of hanging. Yours is at ${weight} percent. Further right it falls quicker when you cut the throttle and floats up less after a short punch. Hover moves up the stick with it, ${f.hover[0]} percent at stock to ${f.hover[1]} at ${top}. Worth dragging before you wait on us, and a lap flown on it goes on the public board with its weight beside your name.`;
       }
     };
     const refreshCapHint = () => {

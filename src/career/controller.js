@@ -678,7 +678,7 @@ export function createCareer(shell) {
         return null;
       case 'trick':
         if (d === 'low') {
-          return { text: `Higher: above ${o.minHeight} m.`, tone: 'warn' };
+          return { text: 'Higher. Climb more before the trick.', tone: 'warn' };
         }
         if (d === 'sloppy') {
           return { text: 'Clean it up: one smooth rotation.', tone: 'info' };
@@ -692,7 +692,7 @@ export function createCareer(shell) {
         return null;
       case 'segmented':
         if (d === 'low') {
-          return { text: `Higher: above ${o.minHeight} m before you start.`, tone: 'warn' };
+          return { text: 'Higher. Climb more before you start.', tone: 'warn' };
         }
         if (d === 'nostop') {
           return { text: 'Stop between the halves: count "one", then go.', tone: 'info' };

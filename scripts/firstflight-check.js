@@ -303,6 +303,10 @@ await scenario('C the town by link', { url: '/index.html?map=city&craft=5inch&fl
    * inch the town recommends, which is what a newcomer gets. */
   await answerQuadPicker(page, 240000);
   await launched(page, 240000);
+  /* The banner is written by the first flight frame after the launch, and
+   * on a loaded machine that frame came after this read: a probe saw the
+   * guide's line 0.7 s later (round 2 batch S6). Waited for, not slept. */
+  await page.until("window.__ui.banner.textContent !== ''", 30000).catch(() => {});
   const s0 = await state(page);
   const pre = await banner(page);
   check('C: the town gets the freestyle guide and the banner leads with the throttle key',
@@ -542,7 +546,9 @@ const SLOW_BOARD_SEED = `(() => {
     if (!url.startsWith(board)) {
       return realFetch(input, opts);
     }
-    const path = url.slice(board.length);
+    /* Without the query: the list is asked as /api/tracks?plans=0, since
+     * the cold boot draws no plan (round 2 batch S6). */
+    const path = url.slice(board.length).split('?')[0];
     if (path === '/api/tracks') {
       return new Promise((resolve) => setTimeout(() => {
         window.__listAnsweredAt = performance.now();
@@ -563,7 +569,7 @@ await scenario('J first visit with a slow board', {
   await page.until('window.__shellReady === true', 150000);
   const r = JSON.parse(await page.evaluate(`JSON.stringify((() => {
     const tune = window.__reqLog.find(([u]) => /configs\\/[^/]+\\.diff/.test(u));
-    const list = window.__reqLog.find(([u]) => /\\/api\\/tracks$/.test(u));
+    const list = window.__reqLog.find(([u]) => /\\/api\\/tracks(\\?|$)/.test(u));
     return { tuneAt: tune ? Math.round(tune[1]) : null, listAskedAt: list ? Math.round(list[1]) : null,
       listAnsweredAt: window.__listAnsweredAt ? Math.round(window.__listAnsweredAt) : null,
       map: window.__map().id, name: window.__map().name, course: window.__map().course, setting: window.__ui.settings.map };

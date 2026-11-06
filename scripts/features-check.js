@@ -1774,6 +1774,47 @@ async function scenarioResults() {
     check('results: and no board request was made to draw the page', r.calls === callsBefore, `${callsBefore} before, ${r.calls} after`);
     check('results: the best lap gate by gate, the gate that lost the most marked', r.cells.length === 6 && /^2\s*2\.70\+0\.10$/.test(r.worst) && /gate 2/.test(r.line) && /14\.70/.test(r.line), `${r.cells.join(' ')}; worst ${r.worst}; ${r.line}`);
     check('results: Next track is the second row and names the next board track', r.rows[0] === 'Fly again' && r.rows[1] === 'Next track=Kingston Loop', r.rows.join(' | '));
+    /* R2M-9: the nearest faster board lap with a ghost is the third row,
+     * from the times main.js already holds, and pressing it arms that lap
+     * and flies. The pilot's fastest in RESULTS_LOG is 14.80: Ana's 14.40
+     * is the nearest faster, Bo's 12.00 is the record, Cy's 14.90 is slower. */
+    const rival = await json(page, `(() => {
+      const ui = window.__ui;
+      ui.boardGhostTimes = [
+        { id: 'tm-bo', name: 'Bo', lapMs: 12000, hasGhost: true },
+        { id: 'tm-ana', name: 'Ana', lapMs: 14400, hasGhost: true },
+        { id: 'tm-cy', name: 'Cy', lapMs: 14900, hasGhost: true },
+      ];
+      const before = window.__board.calls.length;
+      ui.showResults(${RESULTS_LOG}, 14100, 14100, null, { threeMs: null, trackClass: 'full' });
+      const rows = ui.items().map((it) => ({ label: it.label, action: it.action }));
+      const first = rows.slice(0, 3).map((r) => r.label);
+      const fastest = ui.resultsFastest;
+      ui.boardGhostTimes = [{ id: 'tm-cy', name: 'Cy', lapMs: 14900, hasGhost: true }];
+      ui.showResults(${RESULTS_LOG}, 14100, 14100, null, { threeMs: null, trackClass: 'full' });
+      const top = ui.items().map((it) => it.label);
+      ui.boardGhostTimes = [
+        { id: 'tm-bo', name: 'Bo', lapMs: 12000, hasGhost: true },
+        { id: 'tm-ana', name: 'Ana', lapMs: 14400, hasGhost: true },
+      ];
+      ui.showResults(${RESULTS_LOG}, 14100, 14100, null, { threeMs: null, trackClass: 'full' });
+      const real = ui.onChaseRival;
+      let chased = null;
+      ui.onChaseRival = (t) => { chased = t.id; };
+      const i = ui.items().findIndex((it) => /^Chase /.test(it.label));
+      ui.setCursor(i);
+      ui.select();
+      ui.onChaseRival = real;
+      ui.boardGhostTimes = null;
+      return { first, fastest, top, chased, calls: window.__board.calls.length - before };
+    })()`);
+    check('results: the third row chases the nearest faster board lap, by name and gap', rival.first[2] === 'Chase Ana, 0.4 faster', `${rival.first.join(' | ')} (fastest ${rival.fastest})`);
+    check('results: a pilot ahead of every recorded lap is offered the record', rival.top.includes('Chase the record'), rival.top.join(' | '));
+    check('results: pressing it arms that lap by its id, and drawing it asked the board nothing', rival.chased === 'tm-ana' && rival.calls === 0, JSON.stringify({ chased: rival.chased, calls: rival.calls }));
+    await page.until("window.__ui.screen === 'flight'", 20000)
+      .then(() => check('results: and flies again', true))
+      .catch(async () => check('results: and flies again', false, await page.evaluate('window.__ui.screen')));
+    await page.evaluate(RESULTS_SEAT);
     /* A new best puts the gold stamp on. */
     await page.evaluate(`(() => { window.__ui.showResults(${RESULTS_LOG}, 14800, 15000, null, { trackClass: 'full' }); return 1; })()`);
     const pb = await json(page, "[...document.querySelectorAll('.screen-results .results-stamp')].map((n) => n.className + ':' + n.textContent)");

@@ -4366,6 +4366,7 @@ export async function boot({ loading, bootStart, mapId }) {
     ghostChased = null;
     ghostGap = null;
     ghostBoardTimes = null;
+    ui.boardGhostTimes = null;
     ghostBoardLap = null;
     ghostBoardBusy = false;
     ghostTop = [];
@@ -4397,6 +4398,8 @@ export async function boot({ loading, bootStart, mapId }) {
         /* The five fastest recorded laps are plenty of rivals for one
          * menu row; the full table lives on the board page. */
         ghostBoardTimes = times.filter((t) => t.hasGhost && t.id).slice(0, 5);
+        /* The results' rival row reads the same five (R2M-9). */
+        ui.boardGhostTimes = ghostBoardTimes;
         syncGhostRow();
         if (ghostChoice === 'top3') {
           loadGhostTop();
@@ -10525,6 +10528,13 @@ export async function boot({ loading, bootStart, mapId }) {
       return;
     }
     ghostQueryId = time.id;
+  };
+  /* The results' rival row (R2M-9): the course flown is seated, so its lap
+   * is picked as the ghost row would pick it, fetched once and armed. */
+  ui.onChaseRival = (time) => {
+    if (time && time.id) {
+      pickGhost(`board:${time.id}`);
+    }
   };
 
   /*

@@ -7142,6 +7142,31 @@
       }
       .qp-name .qp-alt { color: var(--qp-red); }
       .qp-page .qp-name.is-five { color: var(--amber); }
+      /*
+       * THE SAME PANELS, SMALL, as the quad room's Aircraft row (round 2
+       * R2M-6, makeCraftCards in src/ui/ui.js): the picker's two pictures on
+       * white in an ink frame, the chosen one ringed in amber and the other
+       * greyed by the rules above, the name in the picker's capitals on the
+       * paper under it. Static DOM and CSS in a menu: nothing in flight.
+       */
+      .qp-mini-row { display: flex; gap: 12px; flex-shrink: 0; }
+      .qp-panel.qp-mini {
+        display: flex; flex-direction: column; align-items: stretch;
+        width: 138px; height: 78px; padding: 0; font: inherit; color: var(--ink-line);
+        border-width: 3px; border-radius: 0;
+      }
+      .qp-panel.qp-mini.is-chosen { box-shadow: 0 0 0 3px var(--amber), 4px 4px 0 3px var(--ink-line); }
+      .qp-panel.qp-mini:focus-visible { box-shadow: 0 0 0 3px var(--amber), 0 0 0 6px var(--ink-line); }
+      .qp-mini .qp-art { width: 100%; height: auto; flex: 1 1 0; min-height: 0; filter: none; }
+      .qp-panel.qp-mini:not(.is-chosen) .qp-art { filter: grayscale(0.6) opacity(0.75); }
+      .qp-mini-name {
+        padding: 2px 6px 3px; background: #f7f0dc; border-top: 3px solid var(--ink-line);
+        font: italic 900 13px/1 var(--ui-font); letter-spacing: 0.06em; text-transform: uppercase;
+        color: var(--ink-line); text-align: left;
+      }
+      .qp-mini-name .qp-alt { color: #c8423a; }
+      .qp-panel.qp-mini.is-chosen .qp-mini-name { background: var(--amber); }
+      .row.row-cards { padding-top: 8px; padding-bottom: 8px; }
       .qp-pic {
         position: relative; display: flex; align-items: center; justify-content: center;
         min-height: 0; overflow: hidden;

@@ -4769,14 +4769,16 @@ function tunePickItem(s, midRun) {
 function craftItem(s, midRun) {
   const af = airframeById(s.airframe);
   const other = AIRFRAMES.find((a) => a.id !== s.airframe) || af;
-  return choice(
+  /* Drawn as the quad picker's two picture panels (round 2 R2M-6), not as
+   * a pill: makeCraftCards. The choice is the same item underneath. */
+  return { cards: true, ...choice(
     'Aircraft',
     `${af.blurb} Each aircraft keeps its own tune, PIDs, pack, weight and camera: changing it brings back that machine's as you left them, or its stock ones the first time, and switches the builder between ${other.trackClass === 'micro' ? 'an outdoor field and a living room' : 'a living room and an outdoor field'}. Your own rates go with you unless they are still the stock ones.${midRun ? MID_RUN_WARNING : ''}`,
     AIRFRAME_IDS,
     s.airframe,
     (id) => airframeById(id).name,
     (id) => { seatAirframe(s, id); },
-  );
+  ) };
 }
 
 /*
@@ -6288,6 +6290,8 @@ export class Ui {
     this.freestyleRun = null;
     this.runPosted = null;
     this.resultsFastest = null;
+    /* The seated course's board laps with a ghost, from main.js (rivalRow). */
+    this.boardGhostTimes = null;
     /* What the results screen offers the board: { lapMs, threeMs, weight }
      * from the race's boardRow, the lap it would post and the weight it was
      * flown at, or null. resultsFastest stays the run's fastest lap, which
@@ -12214,6 +12218,7 @@ export class Ui {
        * board list and there is another of its kind after it (round 1
        * FUN-4). Fetched when it is pressed, as its card would be. */
       const next = this.nextBoardTrack();
+      const rival = this.rivalRow();
       return [
         { label: 'Fly again', action: 'restart', primary: true },
         ...(next ? [{
@@ -12222,6 +12227,8 @@ export class Ui {
           action: 'next-track',
           note: `${next.name}${byLine(next) ? `, ${byLine(next)}` : ''}, the next track in the Tracks room. Straight to the starting blocks.`,
         }] : []),
+        /* The board lap to chase next, third (round 2 R2M-9). */
+        ...(rival ? [rival] : []),
         ...applicableRows([
           uploadAction(listing, {
             row: this.resultsBoard,
@@ -12781,6 +12788,9 @@ export class Ui {
         row.append(this.makeSearch(it, i));
       } else if (it.sw) {
         row.append(this.makeSwitch(it, i));
+      } else if (it.cards && it.options && it.options.every((o) => QUAD_PICK_CRAFT.some((c) => c.id === o.value))) {
+        row.classList.add('row-cards');
+        row.append(this.makeCraftCards(it, i));
       } else if (fitsAsSegments(it)) {
         row.append(this.makeSegments(it, i));
       } else if (it.options) {
@@ -13456,6 +13466,55 @@ export class Ui {
         this.setSwitch(it, seg);
       });
       wrap.append(b);
+    }
+    return wrap;
+  }
+
+  /*
+   * THE AIRCRAFT AS PICTURES (round 2 R2M-6). The quad room's Aircraft row
+   * was a FIVE INCH | WHOOP pill on a dark panel while the quad picker beside
+   * it already drew the two machines as illustrated paper panels. These are
+   * those panels, small: the same two pictures (assets/quads, 42 KB, already
+   * fetched by the picker and cached), the same white panel, ink border,
+   * amber ring on the chosen one and grey on the other (.qp-panel in
+   * index.html), and the name in the picker's heavy capitals. A click picks,
+   * as a segment does; Left, Right and Enter still go through the row's own
+   * adjust and pick, so a radio and a keyboard are unchanged.
+   */
+  makeCraftCards(it, i) {
+    const wrap = el('div', 'row-control qp-mini-row');
+    wrap.setAttribute('role', 'radiogroup');
+    wrap.setAttribute('aria-label', it.label);
+    for (const opt of it.options) {
+      const c = QUAD_PICK_CRAFT.find((x) => x.id === opt.value);
+      const live = String(opt.value) === String(it.current);
+      const card = el('button', `qp-panel qp-mini${live ? ' is-chosen' : ''}`);
+      card.type = 'button';
+      card.tabIndex = -1;
+      card.dataset.craft = c.id;
+      card.setAttribute('role', 'radio');
+      card.setAttribute('aria-checked', String(live));
+      card.setAttribute('aria-label', opt.label);
+      const img = el('img', 'qp-art');
+      img.src = c.art;
+      img.alt = '';
+      img.decoding = 'async';
+      const name = el('span', 'qp-mini-name');
+      name.append(document.createTextNode(c.name[0]));
+      if (c.name[1]) {
+        name.append(document.createTextNode(' '), el('span', 'qp-alt', c.name[1]));
+      }
+      card.append(img, name);
+      card.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.cursor = i;
+        this.syncCursor(false);
+        if (live || it.disabled || it.info) {
+          return;
+        }
+        this.pick(opt.value);
+      });
+      wrap.append(card);
     }
     return wrap;
   }
@@ -18444,6 +18503,41 @@ export class Ui {
   }
 
   /*
+   * A RIVAL TO CHASE (round 2 R2M-9): the nearest board lap faster than this
+   * run's fastest that carries a recording, from the times main.js already
+   * fetched for the seated course (boardGhostTimes, the five fastest with a
+   * ghost). The pilot who is ahead of all of them is offered the record. Never
+   * a fetch here: the lap is fetched when the row is pressed, as a pick on
+   * the ghost row would fetch it. Null when there is nothing to chase.
+   */
+  rivalRow() {
+    const times = Array.isArray(this.boardGhostTimes) ? this.boardGhostTimes : [];
+    const mine = this.resultsFastest;
+    const rec = times.filter((t) => t && t.id && t.hasGhost && Number.isFinite(t.lapMs));
+    if (!rec.length || !Number.isFinite(mine)) {
+      return null;
+    }
+    const who = (t) => t.name || 'an unnamed pilot';
+    const ahead = rec.filter((t) => t.lapMs < mine).sort((a, b) => b.lapMs - a.lapMs);
+    if (ahead.length) {
+      const t = ahead[0];
+      const gap = mine - t.lapMs;
+      const gapText = (gap / 1000).toFixed(gap < 100 ? 2 : 1);
+      return {
+        label: `Chase ${who(t)}, ${gapText} faster`,
+        action: `standings-ghost:${t.id}`,
+        note: `${who(t)}'s ${formatTime(t.lapMs)} on the board, the nearest lap faster than your ${formatTime(mine)}, flown as a ghost beside you. Straight to the starting blocks.`,
+      };
+    }
+    const top = [...rec].sort((a, b) => a.lapMs - b.lapMs)[0];
+    return {
+      label: 'Chase the record',
+      action: `standings-ghost:${top.id}`,
+      note: `Faster than every recorded lap on the board. ${who(top)}'s ${formatTime(top.lapMs)} is the record's ghost, flown beside you to stay ahead of.`,
+    };
+  }
+
+  /*
    * NEXT TRACK: the board track after the one just flown, in the order the
    * Tracks room listed them, of the same kind (a room after a room, a
    * field after a field). Null when the track did not come from that list.
@@ -23041,9 +23135,21 @@ export class Ui {
      * track's times are read at seat time, so there is one code path for a
      * ghost picked here and a ghost picked from a shared link.
      */
-    if (action === 'standings-ghost') {
+    if (action === 'standings-ghost' || (typeof action === 'string' && action.startsWith('standings-ghost:'))) {
+      /* An id names the lap to chase (the results' rival row, R2M-9); none
+       * is the standings' Chase the record, the first with a ghost. */
+      const id = action.length > 'standings-ghost:'.length ? action.slice('standings-ghost:'.length) : '';
+      if (id && this.screen === 'results') {
+        /* The course flown is still seated: arm that lap and fly again. */
+        const rival = (this.boardGhostTimes || []).find((x) => x && x.id === id && x.hasGhost);
+        if (rival && this.onChaseRival) {
+          this.onChaseRival(rival);
+          this.act('restart');
+        }
+        return;
+      }
       const times = this.standingsTimes || [];
-      const top = times.find((x) => x.hasGhost && x.id);
+      const top = times.find((x) => x.hasGhost && x.id && (!id || x.id === id));
       const t = this.standingsFor;
       if (!top || !t || !t.id) {
         return;

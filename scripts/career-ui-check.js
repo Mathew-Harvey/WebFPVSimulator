@@ -291,6 +291,20 @@ async function run(size) {
     requestAnimationFrame(tick);
   })`);
 
+
+  /* Where a button is on the first view, and whether a key bar is up
+   * (round 3 R3-4). */
+  const firstView = (sel) => page.evaluate(`(() => {
+    const n = [...document.querySelectorAll(${JSON.stringify(sel)})].find((x) => x.getClientRects().length);
+    if (!n) { return null; }
+    const r = n.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return {
+      top: Math.round(r.top), bottom: Math.round(r.bottom), vh: innerHeight, hit: Boolean(hit && n.contains(hit)),
+      hands: document.getElementById('career').dataset.hands,
+      bars: [...document.querySelectorAll('#career .cr-legend')].filter((x) => x.getClientRects().length).length,
+    };
+  })()`);
   try {
     await page.until('!!window.__shellReady', 180000);
     const mapBefore = await page.evaluate('window.__ui.settings.map');
@@ -325,6 +339,13 @@ async function run(size) {
     check('the title is lettered on a canvas', cover.lettered);
     check('the cursor starts on Start', /^Start/.test(v.focus || ''), v.focus);
     fits(v, 'the cover');
+    /* A phone on its side: Start is on the first view and nothing names a
+     * key, because the career has heard nothing but a finger (R3-4). */
+    if (size.touch) {
+      const go = await firstView('#career .cr-cover .cr-continue .cr-btn');
+      check('phone: the cover\'s Start is on the first view, uncovered, with no key bar', go && go.bottom <= go.vh && go.top >= 0 && go.hit
+        && go.hands === 'touch' && go.bars === 0, JSON.stringify(go));
+    }
     /* On a desktop the cover's foot, Back and the save note, is above the
      * key bar on the first view, not under it (core.md CORE-21: clipped at
      * 1280x720). A phone's cover is a list that scrolls, and is not asked. */
@@ -425,6 +446,16 @@ async function run(size) {
     check('its steps and its stick drawing are there', brief.steps === first.briefing.steps.length && brief.sticks > 0, `${brief.steps} steps, ${brief.sticks} drawings`);
     check('opened from the tree, Back goes to the tree', brief.back.includes('Back to the tree'), brief.back.join(', '));
     fits(v, 'the briefing');
+    if (size.touch) {
+      /* The check reached it on keys; a finger on the page is touch again. */
+      await page.evaluate("window.__career.hands('touch')");
+      const fly = await firstView('#career .cr-brief .cr-btn.primary');
+      check('phone: the briefing\'s Fly is on the first view, uncovered, with no key bar', fly && fly.bottom <= fly.vh && fly.top >= 0 && fly.hit
+        && fly.hands === 'touch' && fly.bars === 0, JSON.stringify(fly));
+      await page.evaluate("window.__career.hands('keys')");
+      const keyed = await firstView('#career .cr-brief .cr-btn.primary');
+      check('phone: and with a key pressed the bar is back and Fly sits above it', keyed && keyed.hit && keyed.bars === 1 && keyed.bottom <= keyed.vh - 30, JSON.stringify(keyed));
+    }
     await page.until("(() => { const b = document.querySelector('#career .cr-brief .cr-btn.primary'); return b && !b.disabled; })()", 120000);
     const ready = await page.evaluate("document.querySelector('#career .cr-load').textContent");
     check('Fly is offered once the field is ready', /^Ready/.test(ready), ready);

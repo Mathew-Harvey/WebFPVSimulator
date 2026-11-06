@@ -335,8 +335,21 @@ export class CareerScreens {
     this.treeAt = 'c1';
     this.zone = 'parts';
     this.lessonAt = 0;
-    /* 'keys' or 'pad': what the keycaps and legends name. */
-    this.hands = 'keys';
+    /*
+     * 'keys', 'pad' or 'touch': what the keycaps and legends name. A touch
+     * screen that has heard from no keyboard and no pad starts on 'touch',
+     * as the shell's own command bar does (ui.js hints), and a finger on
+     * the page puts it back there: the key bar and the buttons' keycaps are
+     * put away, because a phone has no Enter to press (round 3 R3-4). A key
+     * or a pad brings them back the moment it is used.
+     */
+    this.hands = typeof navigator !== 'undefined' && (navigator.maxTouchPoints || 0) > 0 ? 'touch' : 'keys';
+    this.root.dataset.hands = this.hands;
+    this.root.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'touch') {
+        this.setHands('touch');
+      }
+    }, { passive: true });
     this.buildHud();
     /* The paper is cut round the windows again when the window changes
      * size. A redraw, not a loop: the paper scrolls with its face. */
@@ -350,11 +363,12 @@ export class CareerScreens {
 
   /* The hands changed: every cap and legend on the page says so. */
   setHands(hands) {
-    const h = hands === 'pad' ? 'pad' : 'keys';
+    const h = hands === 'pad' || hands === 'touch' ? hands : 'keys';
     if (h === this.hands) {
       return;
     }
     this.hands = h;
+    this.root.dataset.hands = h;
     this.paintHands();
   }
 

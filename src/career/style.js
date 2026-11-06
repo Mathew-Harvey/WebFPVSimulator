@@ -196,6 +196,10 @@ body.career-flight:not(.career-score) #ui .score-combo { visibility: hidden; }
 }
 #career .cr-legend .cr-legend-key { color: var(--c-cream); font-weight: 800; margin-right: 6px; }
 #career .cr-legend span[hidden] { display: none; }
+/* A finger is the hands (screens.js, hands): no key bar and no keycap on a
+   button, because there is no key to press (round 3 R3-4). */
+#career[data-hands="touch"] .cr-legend,
+#career[data-hands="touch"] .cr-btn .cr-key { display: none; }
 
 #career .cr-stars { display: inline-flex; gap: 2px; align-items: center; }
 #career .cr-stars .cr-star { width: 20px; height: 20px; }
@@ -736,9 +740,29 @@ body.career-score #career .cr-obj { top: 150px; }
   #career .cr-continue { min-height: clamp(240px, 60vh, 420px); }
   #career .cr-brief-page {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: "hero" "coach" "job" "sticks" "go";
+    grid-template-areas: "hero" "coach" "job" "sticks" "medals" "go";
     grid-template-rows: minmax(clamp(200px, 46vh, 360px), auto);
   }
+  /* Fly rides along the foot of the briefing, as the paint tray does, so
+     a phone on its side has it on the first view and not four screens down
+     (round 3 R3-4). The go column comes apart into its two parts, so the
+     row's sticky box is the whole page's and not the column's. */
+  #career .cr-brief-go { display: contents; }
+  #career .cr-brief-medals { grid-area: medals; }
+  #career .cr-brief-go > .cr-row {
+    grid-area: go; position: sticky; bottom: 0; z-index: 2;
+    margin: 0 calc(-1 * clamp(16px, 3vw, 52px)); padding: 10px clamp(16px, 3vw, 52px);
+    background-color: var(--c-paper); border-top: 4px solid var(--c-ink);
+  }
+  #career .cr-brief { scroll-padding-bottom: 130px; }
+  #career[data-hands="touch"] .cr-screen.has-paper { padding-bottom: 12px; }
+  #career[data-hands="touch"] .cr-screen.has-paper.cr-brief { padding-bottom: 0; }
+  /* The cover's Start (or Continue) is the foot of a tall window, so it
+     rides at the foot of the view while that window is on it, for the same
+     reason. Its own ink and drop carry it over the caption. */
+  #career .cr-continue .cr-btn { position: sticky; bottom: 10px; z-index: 2; }
+  #career[data-hands="touch"] .cr-tree { padding-bottom: 12px; }
+  #career[data-hands="touch"] .cr-screen.has-paper.cr-paint > .cr-paint-side { bottom: -12px; padding-bottom: 12px; }
   #career .cr-brief-coach { flex-direction: row-reverse; align-items: center; gap: 14px; }
   #career .cr-brief-coach .cr-balloon { margin: 0; }
   #career .cr-brief-coach .cr-balloon::after { right: auto; left: -18px; bottom: 26px; transform: rotate(135deg); }

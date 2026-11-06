@@ -627,8 +627,9 @@ export function ratesShort(r) {
  * (bug-6f04ebea "the hoverpoint is ~ at 70% throttle", bug-e4571129 "the
  * throttle half way and the quad not taking off ... if i drop the throttle
  * to zero the drone motors spins and drags the drone downward", bug-9c9d953e
- * "if im upside down i will fall to the sky") are 3D mode, word for word:
- * mid stick is no thrust, the bottom is full reverse, and flown through the
+ * "if im upside down i will fall to the sky") each read as 3D mode, though
+ * no report could say so: mid stick is no thrust, the bottom is full
+ * reverse, and flown through the
  * shell's own config on dist/sim.wasm a stock five inch in 3D hovers at 70.8
  * percent of stick, and inverted at the bottom of the stick climbs at a
  * steady 26 to 33 m/s, where the same craft in normal mode falls at 22 to 28.

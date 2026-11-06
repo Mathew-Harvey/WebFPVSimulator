@@ -412,6 +412,11 @@ const WORLDS = [
   /* Hanabi Sound, added 2 November 2026: the crowd, the stage and the
    * fireworks over it, from behind the desk. */
   { id: 'concert', file: 'concert.jpg', name: 'Hanabi Sound', shot: { tp: 0.22, tr: 0.6, ta: 3.14 } },
+  /* Drift Matsuri, added here 6 November 2026 (ART-5): its picture had
+   * been a screenshot of the shell, with the music dock and the key hint
+   * bar in it, because it was never on this list. From its default orbit,
+   * like the other worlds that name no shot. */
+  { id: 'drift', file: 'drift.jpg', name: 'Drift Matsuri' },
 ];
 
 async function drawWorlds(opts) {

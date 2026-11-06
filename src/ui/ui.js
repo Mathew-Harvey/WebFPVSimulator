@@ -14508,6 +14508,76 @@ export class Ui {
     this.act('fly');
   }
 
+  /* The gate's stamps the pad can stand on, in the order drawn. */
+  gateToolList() {
+    if (!this.gateTools || this.gateTools.hidden) {
+      return [];
+    }
+    return Array.from(this.gateTools.querySelectorAll('.gate-tool')).filter((b) => !b.hidden);
+  }
+
+  /* Which stamp the pad stands on, or none (-1). */
+  markGateTool(at) {
+    const list = this.gateToolList();
+    this.gateToolAt = at >= 0 && at < list.length ? at : -1;
+    for (const [i, b] of list.entries()) {
+      b.classList.toggle('is-pad', i === this.gateToolAt);
+    }
+    if (this.gateTools) {
+      for (const b of this.gateTools.querySelectorAll('.gate-tool.is-pad')) {
+        if (!list.includes(b)) {
+          b.classList.remove('is-pad');
+        }
+      }
+    }
+  }
+
+  /* The pad on the masthead's stamps: see pollPad. True when it took the
+   * poll. Edges only, so a held stick steps once. */
+  gatePadTools(now) {
+    const edge = (k) => now[k] && !this.padPrev[k];
+    const list = this.onGate() ? this.gateToolList() : [];
+    const at = Number.isInteger(this.gateToolAt) ? this.gateToolAt : -1;
+    if (at >= 0 && (!list.length || at >= list.length)) {
+      this.markGateTool(-1);
+      return false;
+    }
+    if (at < 0) {
+      if (!list.length || !edge('up')) {
+        return false;
+      }
+      const stops = this.arrowStops(this.items());
+      if (!stops.length || this.cursor !== stops[0]) {
+        return false;
+      }
+      this.markGateTool(0);
+      if (this.onUiSound) {
+        this.onUiSound('move');
+      }
+      return true;
+    }
+    if (edge('select') || edge('right')) {
+      const b = list[at];
+      this.markGateTool(-1);
+      b.click();
+      return true;
+    }
+    if (edge('back') || edge('left') || (edge('down') && at === list.length - 1)) {
+      this.markGateTool(-1);
+      if (this.onUiSound) {
+        this.onUiSound('move');
+      }
+      return true;
+    }
+    if (edge('down') || edge('up')) {
+      this.markGateTool(Math.max(0, at + (edge('down') ? 1 : -1)));
+      if (this.onUiSound) {
+        this.onUiSound('move');
+      }
+    }
+    return true;
+  }
+
   /* The masthead's tools: only on the gate, and Fly again only when there
    * is a last flight to fly. */
   syncGateTools(gate) {
@@ -14515,6 +14585,9 @@ export class Ui {
       return;
     }
     this.gateTools.hidden = !gate;
+    if (!gate && this.gateToolAt >= 0) {
+      this.markGateTool(-1);
+    }
     const last = gate ? this.lastFlight() : null;
     this.flyAgainBtn.hidden = !last;
     if (last) {
@@ -24249,6 +24322,19 @@ export class Ui {
         this.padPrev = now;
         return;
       }
+    }
+    /*
+     * THE MASTHEAD'S STAMPS FROM THE STICKS (round 2 batch S6). Fly again,
+     * Settings and Controls are buttons, which Tab and a pointer reach, and
+     * the pad's cursor walks the cards only, so a radio or pad pilot could
+     * not reach them on the gate (round 2 review R2D-12). Pitch up off the
+     * first card goes up into them, pitch steps through them, select or
+     * roll right presses one, and roll left, back or pitch down off the
+     * last goes back to the cards where the cursor was.
+     */
+    if (this.gatePadTools(now)) {
+      this.padPrev = now;
+      return;
     }
     const rollAdjusts = Boolean(it && it.adjust) && !this.cardScreen();
     if (now.up && !this.padPrev.up) {

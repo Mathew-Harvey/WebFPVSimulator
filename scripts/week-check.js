@@ -68,8 +68,16 @@ function boardSeed(on) {
     track: { id: TRACK.id, name: TRACK.name, author: 'week-check', trackClass: 'full' },
     times: [{ id: AJAX.id, name: 'Ajax', lapMs: AJAX.lapMs, hasGhost: true }],
   };
+  /* 'retry': the first ask fails, the second names a week that has ended,
+   * and the third this week's, whose leader's lap has no recording and
+   * whose second pilot's has. */
+  const ended = { ...week, endsUtc: '2020-01-06T00:00:00.000Z', track: { ...week.track, name: 'Last Week Field' } };
+  const noLeadGhost = { ...week, times: [{ id: 'tm-0000lead', name: 'Ajax', lapMs: AJAX.lapMs, hasGhost: false }, { ...week.times[0], name: 'Bo', lapMs: AJAX.lapMs + 50 }] };
   return `(() => {
     const on = ${JSON.stringify(on)};
+    const retry = on === 'retry';
+    const ended = ${JSON.stringify(ended)};
+    const noLeadGhost = ${JSON.stringify(noLeadGhost)};
     const board = ${JSON.stringify(BOARD)};
     const base = '/api/tracks/' + ${JSON.stringify(TRACK.id)};
     const doc = ${JSON.stringify({ id: TRACK.id, name: TRACK.name, author: 'week-check', document: TRACK })};
@@ -89,7 +97,14 @@ function boardSeed(on) {
         return Promise.reject(new TypeError('Failed to fetch'));
       }
       const path = url.slice(board.length);
-      if (path === '/api/week') { window.__weekAsks += 1; return answer(week); }
+      if (path === '/api/week') {
+        window.__weekAsks += 1;
+        if (retry) {
+          if (window.__weekAsks === 1) return Promise.reject(new TypeError('Failed to fetch'));
+          return answer(window.__weekAsks === 2 ? ended : noLeadGhost);
+        }
+        return answer(week);
+      }
       if (path === base + '/document') return answer(doc);
       if (path === base) return answer({ id: doc.id, times: [{ id: ghost.id, name: ghost.name, lapMs: ghost.lapMs, hasGhost: true }] });
       if (path === base + '/times/' + ghost.id + '/ghost') return answer(ghost);
@@ -143,7 +158,53 @@ async function run(on) {
   }
 }
 
+/*
+ * bugs.md BUG-12: a failed first ask was never retried, a tab left open
+ * across Monday kept offering last week's track, and Fly it armed the first
+ * lap with a recording rather than the leader's. The card is asked again
+ * after a failure and after its week ends (no sooner than 30 s after the
+ * last ask), and Fly it arms the leader's lap or none.
+ */
+async function retried() {
+  console.log('\na board that failed, then a week that ended, then a leader with no recording');
+  const page = await openPage({ root: ROOT, width: 1280, height: 720, url: `/index.html?board=${encodeURIComponent(BOARD)}`, seed: [boardSeed('retry')] });
+  const cardText = "(() => { const c = document.querySelector('.gate-card-week'); return c ? c.textContent : null; })()";
+  /* Open the Fly solo page, which is what asks, and give the answer time
+   * to arrive and the page time to redraw with it. */
+  const solo = async (want = null) => {
+    await page.evaluate("(() => { window.__ui.act('gate-solo'); return 1; })()");
+    if (want) {
+      await page.until(`(() => { const c = document.querySelector('.gate-card-week'); return !!c && ${want}.test(c.textContent); })()`, 20000).catch(() => {});
+    } else {
+      await sleep(3000);
+    }
+    return page.evaluate(cardText);
+  };
+  try {
+    await page.until('!!window.__shellReady', 120000);
+    const first = await solo();
+    check('the first ask failed: no card', first === null && (await page.evaluate('window.__weekAsks')) === 1, String(first));
+    await sleep(31000);
+    const second = await solo('/Last Week Field/');
+    check('asked again after the failure, the card is there', /Last Week Field/.test(second || ''), `${String(second).slice(0, 80)}, ${await page.evaluate('window.__weekAsks')} asks`);
+    await sleep(31000);
+    const third = await solo('/^(?!.*Last Week).*Week Field/');
+    check('and asked again once that week has ended, it names this week\'s', /Week Field/.test(third || '') && !/Last Week/.test(third || ''),
+      `${String(third).slice(0, 80)}, ${await page.evaluate('window.__weekAsks')} asks`);
+    await page.evaluate("(() => { window.__ui.act('week-fly'); return 1; })()");
+    await page.until("(() => { const m = window.__map && window.__map(); return !!(m && m.ready && m.id === 'custom'); })()", 120000);
+    await sleep(2500);
+    const g = await page.evaluate('window.__ghost()');
+    check('Fly it does not chase the second pilot when the leader\'s lap has no recording', g.choice !== `board:${AJAX.id}`, g.choice);
+    const errs = page.errors.filter((e) => !/ERR_CONNECTION_REFUSED|Failed to fetch/.test(e));
+    check('no errors', errs.length === 0, errs.slice(0, 3).join(' | ') || 'none');
+  } finally {
+    await page.close();
+  }
+}
+
 await run(true);
 await run(false);
+await retried();
 console.log(`\nweek-check: ${fails} failed`);
 process.exit(fails);

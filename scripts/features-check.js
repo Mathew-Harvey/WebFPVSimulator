@@ -625,6 +625,22 @@ async function scenarioRoom() {
     await page.until('window.__raceLine().state.shown === true', 20000)
       .then(() => check('room: in flight the line\'s dots are in the picture, through the next gates', true))
       .catch(() => check('room: in flight the line\'s dots are in the picture, through the next gates', false, JSON.stringify(page.evaluate('window.__raceLine().state'))));
+    /* The step loop reads the state into buffers it owns (core.md
+     * CORE-13): every frame of flight runs its steps, a thousand a second,
+     * and the frame's state is one of the same four arrays throughout, not
+     * a new one a step. Read over forty drawn frames in flight, and the sim
+     * clock in the state has to have moved, or no step ran to be judged. */
+    await page.evaluate('window.__stick(0, 0, 0, 0.62), 1');
+    await page.until('window.__craftState().flownThisRun === true', 30000).catch(() => {});
+    const pooled = await json(page, `(async () => {
+      const seen = new Set();
+      const t0 = window.__stateRef()[0];
+      for (let k = 0; k < 40; k += 1) { await new Promise((r) => requestAnimationFrame(r)); seen.add(window.__stateRef()); }
+      return { arrays: seen.size, simS: window.__stateRef()[0] - t0 };
+    })()`);
+    check('room: forty frames of flight hold their state in at most four arrays, never a new one a step',
+      pooled.simS > 0.05 && pooled.arrays <= 4, JSON.stringify(pooled));
+    await page.evaluate('window.__stick(0, 0, 0, 0), 1');
     const shown = await json(page, `(() => {
       let pts = null;
       window.__mapScene().traverse((o) => { if (o.isPoints && o.visible && o.geometry && o.geometry.drawRange) pts = o; });
@@ -664,6 +680,15 @@ async function scenarioRoom() {
       .then(() => check('room: turned off, the dots go', true))
       .catch(() => check('room: turned off, the dots go', false));
 
+    /* Race time is night on a five inch race track only, so on a whoop
+     * room a change to it must not rebuild the room to draw the same
+     * picture (bugs.md BUG-11). The scene is marked, the pick is changed
+     * the way Settings changes it, and the mark is looked for after. */
+    await page.evaluate("(() => { window.__mapScene().userData.featMark = 11; window.__ui.settings.raceTime = 'night'; window.__ui.writeSettings(); return 1; })()");
+    await page.sleep(4000);
+    const kept = await json(page, "(() => { const m = window.__map(); return { mark: window.__mapScene().userData.featMark || null, ready: m.ready, raceTime: m.raceTime }; })()");
+    check('room: changing Race time on a whoop room keeps the room as it is', kept.mark === 11 && kept.ready, JSON.stringify(kept));
+
     /* The results screen of a course draws its plan, with the scale bar. */
     await page.evaluate("(() => { window.__ui.showResults([{ n: 1, ms: 30000 }, { n: 2, ms: 29500 }, { n: 3, ms: 29800 }], 29500, null, null, {}); return 1; })()");
     await page.until("window.__ui.screen === 'results' && !window.__ui.resultsPlanWrap.hidden && window.__ui.resultsPlan.getBoundingClientRect().width > 8", 20000);
@@ -696,7 +721,7 @@ async function scenarioRoom() {
 
 async function scenarioCapture() {
   const page = await openPage({
-    root, width: 540, height: 960, url: '/index.html?capture=1&map=ball&craft=5inch&fly=1&seed=7', seed: [settingsSeed({})],
+    root, width: 540, height: 960, url: '/index.html?capture=1&map=ball&craft=5inch&fly=1&seed=7', seed: [settingsSeed({ showFps: true })],
   });
   try {
     await page.until('!!window.__capture', 60000);
@@ -714,6 +739,17 @@ async function scenarioCapture() {
       `${c.f - b.f} frames, ${(c.t - b.t).toFixed(6)} ms`);
     const game = await json(page, '(() => { const g = window.__dogfight(); return g ? { ok: true, kind: g.constructor.name } : null; })()');
     check('capture: the ball game is running under it', Boolean(game && game.ok), JSON.stringify(game));
+    /* Show FPS is on: its MEM row walks the whole scene for its figure,
+     * and that walk ran inside the flight frame every 5 s (bugs.md BUG-5).
+     * Twenty seconds of flight on the virtual clock is four asks; the
+     * figure cannot move unless something was uploaded or freed, so it
+     * may walk once, for the first, and not again. */
+    const walks0 = await page.evaluate('window.__memWalks');
+    await page.evaluate('window.__capture.step(1200).then(() => 1)');
+    const mem = await json(page, '({ walks: window.__memWalks, mb: window.__ui.perfMem.mb.textContent, shown: !window.__ui.perfMem.row.hidden })');
+    check('capture: Show FPS asks for MEM through twenty seconds of flight and walks the scene at most once',
+      Number.isInteger(walks0) && mem.shown && /^\d+$/.test(mem.mb) && mem.walks - walks0 <= 1 && mem.walks >= 1,
+      `${walks0} then ${mem.walks} walks, row ${JSON.stringify(mem)}`);
     const fault = await page.evaluate('window.__frameFault || null');
     check('capture: no frame faulted', !fault, String(fault));
     errorsCheck(page, 'capture');

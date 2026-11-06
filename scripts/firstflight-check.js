@@ -92,8 +92,9 @@ const KEYS = { device: 'keys', stickMode: 2, angle: true };
  * a blob that says they have not flown yet is a first run whatever else is
  * stored beside it (detectFirstRun).
  */
-function seedFor({ settings, keys = {} }) {
-  return `try {
+function seedFor({ settings, keys = {}, extra = '' }) {
+  return `${extra}
+  try {
     if (!sessionStorage.getItem('ff-seeded')) {
       sessionStorage.setItem('ff-seeded', '1');
       localStorage.setItem(${JSON.stringify(SETTINGS_KEY)}, JSON.stringify(${JSON.stringify({
@@ -516,6 +517,64 @@ for (const [w, h] of [[1280, 720], [960, 540]]) {
       r.bad.length === 0, r.bad.slice(0, 3).join(' | ') || `tallest ${r.tallest} px, widest ${r.widest} px`);
   });
 }
+
+/* ---- J: a first visit, and a board slow to name its most flown track ---- */
+
+/*
+ * core.md CORE-3. A newcomer has nothing seated, so the boot asks the board
+ * for its most flown track: up to 4 s for the list and 8 s for the document.
+ * That was awaited in line, in front of the flight controller's tune and
+ * the world's modules. Here the board takes 3 s to list its tracks, and the
+ * tune must have been asked for before it answered, and the world built
+ * must still be the track it named.
+ */
+const SLOW_BOARD = 'http://127.0.0.1:3100';
+const FEATURED = { id: 'trk-feat0001', name: 'Featured Field' };
+const SLOW_BOARD_SEED = `(() => {
+  const board = ${JSON.stringify(SLOW_BOARD)};
+  const doc = ${JSON.stringify({ ...FULL_DOC, id: FEATURED.id, name: FEATURED.name })};
+  const realFetch = window.fetch.bind(window);
+  window.__reqLog = [];
+  const answer = (body) => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+  window.fetch = (input, opts = {}) => {
+    const url = String(input && input.url ? input.url : input);
+    window.__reqLog.push([url.replace(location.origin, ''), performance.now()]);
+    if (!url.startsWith(board)) {
+      return realFetch(input, opts);
+    }
+    const path = url.slice(board.length);
+    if (path === '/api/tracks') {
+      return new Promise((resolve) => setTimeout(() => {
+        window.__listAnsweredAt = performance.now();
+        resolve(answer({ tracks: [{ id: ${JSON.stringify(FEATURED.id)}, name: ${JSON.stringify(FEATURED.name)}, author: 'firstflight', trackClass: 'full', gates: 4, times: 9 }] }));
+      }, 3000));
+    }
+    if (path === '/api/tracks/' + ${JSON.stringify(FEATURED.id)} + '/document') {
+      return Promise.resolve(answer({ id: ${JSON.stringify(FEATURED.id)}, name: ${JSON.stringify(FEATURED.name)}, author: 'firstflight', document: doc }));
+    }
+    return Promise.reject(new TypeError('Failed to fetch'));
+  };
+  navigator.sendBeacon = () => true;
+})();`;
+
+await scenario('J first visit with a slow board', {
+  url: `/index.html?board=${encodeURIComponent(SLOW_BOARD)}`, settings: { ...NEWCOMER, airframe: '5inch', airframeAsked: true }, extra: SLOW_BOARD_SEED,
+}, async (page) => {
+  await page.until('window.__shellReady === true', 150000);
+  const r = JSON.parse(await page.evaluate(`JSON.stringify((() => {
+    const tune = window.__reqLog.find(([u]) => /configs\\/[^/]+\\.diff/.test(u));
+    const list = window.__reqLog.find(([u]) => /\\/api\\/tracks$/.test(u));
+    return { tuneAt: tune ? Math.round(tune[1]) : null, listAskedAt: list ? Math.round(list[1]) : null,
+      listAnsweredAt: window.__listAnsweredAt ? Math.round(window.__listAnsweredAt) : null,
+      map: window.__map().id, name: window.__map().name, course: window.__map().course, setting: window.__ui.settings.map };
+  })())`));
+  check('J: the tune is asked for while the board is still thinking, not after it answers',
+    r.tuneAt != null && r.listAnsweredAt != null && r.listAskedAt != null && r.tuneAt < r.listAnsweredAt,
+    `list asked at ${r.listAskedAt} ms, answered at ${r.listAnsweredAt} ms, tune asked at ${r.tuneAt} ms`);
+  check('J: and the world built is the track the board named', r.map === 'custom' && r.setting === 'custom'
+    && (/Featured Field/.test(r.name || '') || /trk-feat0001/.test(r.course || '')),
+    `${r.map} ${r.setting} ${JSON.stringify(r.name)} ${JSON.stringify(r.course)}`);
+});
 
 /* ---- report ------------------------------------------------------------- */
 

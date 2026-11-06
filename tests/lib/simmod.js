@@ -208,6 +208,37 @@ export class Sim {
     return { code, state: this.stateView.slice() };
   }
 
+  // The state block copied into `out`, a Float64Array this caller owns and
+  // reuses, so the 1 kHz step loop allocates nothing (core.md CORE-13).
+  // Returns the module's code, or the block's length as a negative code
+  // when `out` is not its size; on any code but SIM_OK `out` is untouched.
+  readStateInto(out) {
+    const n = this.ensureStateBuffer();
+    if (n <= 0) {
+      return n;
+    }
+    if (!out || out.length !== n) {
+      return -n;
+    }
+    const code = this.e.sim_state(this.statePtr);
+    if (code !== SIM_OK) {
+      return code;
+    }
+    const buf = this.e.memory.buffer;
+    if (this.stateView === undefined || this.stateViewBuf !== buf || this.stateView.length !== n) {
+      this.stateView = new Float64Array(buf, this.statePtr, n);
+      this.stateViewBuf = buf;
+    }
+    out.set(this.stateView);
+    return code;
+  }
+
+  // The number of doubles in the state block, for a caller sizing its own
+  // buffers for readStateInto.
+  stateLength() {
+    return this.ensureStateBuffer();
+  }
+
   // Returns { code, bytes } with the raw little-endian state block bytes,
   // used for trace hashing so no float formatting is involved.
   readStateBytes() {

@@ -2259,9 +2259,19 @@ async function freestylePage(page) {
    *     row is labelled Map since the second world arrived.
    * ------------------------------------------------------------------ */
   section('freestyle: a town that failed to load leaves a way in, not a room with nothing to press');
+  /*
+   * Only the page's own frame is counted and failed. Since the owner's
+   * "if click on free style i should see freestyle maps" (2026-11-01) the
+   * Freestyle card opens the room's picker, whose cards preview their worlds
+   * in orbit.html iframes, and a preview that took the dropped request
+   * failed where the page never saw it: the town then loaded fine, nothing
+   * failed, and this section went red as if for fonts (bugs.md BUG-15).
+   */
+  const mainFrame = (await page.cdp.send('Page.getFrameTree', {}, page.sessionId)).frameTree.frame.id;
   let townRequests = 0;
   page.cdp.onEvent((msg) => {
     if (msg.sessionId === page.sessionId && msg.method === 'Fetch.requestPaused'
+      && msg.params.frameId === mainFrame
       && /\/src\/maps\/city\/index\.js/.test(msg.params.request.url)) {
       townRequests += 1;
       if (townRequests === 1) {
@@ -2278,9 +2288,15 @@ async function freestylePage(page) {
   const cards = await ev("if (ui.onGate()) { ui.turnGate('solo'); } return JSON.stringify(ui.items().map((it) => it && it.action));").then(JSON.parse);
   await ev(`ui.setCursor(${cards.indexOf('way-freestyle-5inch')}); return 1;`);
   await page.tap('Enter');
+  /* The card opens the Freestyle room's picker, and the town is pressed in
+   * it, which is the load that fails. */
+  await page.until("window.__ui.screen === 'freestyle'", 30000).catch(() => {});
+  await ev("ui.act('map:city'); return 1;");
   /* Settled: the fallback has built the track and adopted it. */
   await page.until(`(() => { const m = window.__map(); const ui = window.__ui;
     return m.ready && m.id === 'custom' && ui.settings.map === 'custom' && !!ui.loadFailure; })()`, 60000).catch(() => {});
+  /* The row is the title's. */
+  await ev("ui.show('title'); return 1;");
   const left = await ev(`const town = ui.items().find((x) => x && x.label === 'Map');
     return JSON.stringify({ mode: ui.mode, map: ui.settings.map, screen: ui.screen,
       value: town && town.value, note: town && town.note, failure: ui.bugSnapshot().loadFailure || null });`).then(JSON.parse);
@@ -2505,8 +2521,11 @@ async function builderChooserPages() {
         at: items.findIndex((it) => it.action === 'builder') }); })()`).then(JSON.parse);
     /* Builder, its one name since MENUS-PLAN.md 4.1: this card said Map
      * builder and the builder's own bar said Track builder. */
-    check('the gate\'s Fly solo page carries a last card, Builder, after the career and the three ways in',
-      gate.cards.join() === 'Career,Five inch racing,Whoop racing,Freestyle,Builder' && gate.at === 4, JSON.stringify(gate));
+    /* And Mini games after it, since the owner's "i should see single player
+     * or multiplayer, no mini games" moved that door off the cover to the
+     * end of this page (2026-11-01, GATE_MINI in src/ui/gatepages.js). */
+    check('the gate\'s Fly solo page carries Builder after the career and the three ways in, then Mini games',
+      gate.cards.join() === 'Career,Five inch racing,Whoop racing,Freestyle,Builder,Mini games' && gate.at === 4, JSON.stringify(gate));
     await page.evaluate(`(() => { window.__ui.setCursor(${gate.at}); return 1; })()`);
     await page.tap('Enter');
     await page.until("location.pathname.endsWith('/src/trackbuilder/index.html') && !!window.trackBuilder", 60000).catch(() => {});

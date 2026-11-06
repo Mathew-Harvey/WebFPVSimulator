@@ -591,7 +591,19 @@ export class Race {
    *
    * Returns the station retried from, or null when there is none to retry
    * from (nothing credited yet this run, or freestyle).
+   *
+   * EXCEPT AT THE TIMING GATE. When the station last credited is the one
+   * that starts and ends the lap, which it is from the first crossing of
+   * every lap to the second gate, a seat past it would leave the clock
+   * stopped for a whole untimed lap before the next timing crossing. So the
+   * shell seats the craft just BEFORE it instead (retrySeatsBefore), and the
+   * next station to fly is that gate itself: the next crossing starts the
+   * clock, as a run's first does.
    */
+  retrySeatsBefore() {
+    return this.lastPassed === this.timingIdx;
+  }
+
   retryFrom(reason, wallMs) {
     if (this.freestyle || this.lastPassed < 0 || this.lastPassed >= this.gates.length) {
       return null;
@@ -603,7 +615,7 @@ export class Race {
     this.lapStartMs = null;
     this.mixed = false;
     this.splits = [];
-    this.next = (this.lastPassed + 1) % this.gates.length;
+    this.next = this.retrySeatsBefore() ? this.timingIdx : (this.lastPassed + 1) % this.gates.length;
     this.flownM = Infinity;
     this.held = [];
     this.prevSimMs = null;
@@ -919,7 +931,11 @@ export class Race {
         this.lastThreeBest = null;
         if ((this.micro || this.callThree) && this.log.length >= 3) {
           const w = this.log.slice(-3);
-          if (w[0].ms != null && w[1].ms != null && w[2].ms != null) {
+          /* Three clean laps at ONE weight, the rule boardRow keeps, so the
+           * total called is one the board would take: a Weight moved
+           * between laps makes three laps that are not one run of three. */
+          if (w[0].ms != null && w[1].ms != null && w[2].ms != null
+            && w[0].weight === w[2].weight && w[1].weight === w[2].weight) {
             const total = w[0].ms + w[1].ms + w[2].ms;
             if (this.runThreeMs == null || total < this.runThreeMs) {
               this.runThreeMs = total;

@@ -319,11 +319,10 @@ async function drawsNear(page, at, r = 0.6, ms = 15000) {
 const holdAt = (page, p) => page.evaluate(`window.__holdCraft(${p[0]}, ${p[1]}, ${p[2]}, 0) ? 1 : 0`);
 /*
  * Fly the held craft from `a` to `b` and slow to a stop there, as a pilot
- * parks. Not a jump: a pilot who stops sends nothing more, and the other
- * pages draw them 150 ms along their last velocity for as long as they are
- * parked (src/net/remote.js, sample), so a craft that stopped dead is drawn
- * past where it stopped. That is recorded in PROGRESS.md as a finding of
- * 2026-11-06; this check asserts the drawing of a pilot who slows down.
+ * parks. A craft that stops dead is drawn where it stopped too, since the
+ * sender's uplink sends one copy of the resting pose (src/net/room.js), and
+ * scripts/net-selftest.js asserts that; this check asserts the drawing of
+ * a pilot who slows down.
  */
 async function moveTo(page, a, b, steps = 24) {
   for (let k = 1; k <= steps; k += 1) {

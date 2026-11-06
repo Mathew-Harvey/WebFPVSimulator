@@ -14125,10 +14125,15 @@ export class Ui {
     }
     const items = this.items().filter((it) => it.card);
     const page = this.onGate() ? this.gatePageNow() : 'solo';
-    /* The week card's words are in the key too: the week is asked again
-     * after a failure and once it ends (weekCard), and the same card with
-     * this week's track in it has to be drawn again to say so. */
-    const key = `${page}:${items.map((it) => `${it.card}=${it.action}${it.best ? `=${it.best}` : ''}${it.card === 'week' ? `:${it.caption}` : ''}`).join('|')}`;
+    /* Rebuilt when anything a card draws changes, and only then: the key
+     * is every card's action, words and pictures. It held only the week
+     * card's words once (the week is asked again after a failure and once
+     * it ends, weekCard), so any other card whose label, caption or picture
+     * changed kept its old face until the set of cards changed. A probe of
+     * the solo, games and together pages showed no rebuild on five renders
+     * in a row before and after this (round 2 batch S6). Built on a menu
+     * render, never per frame. */
+    const key = `${page}:${items.map((it) => `${it.card}=${it.action}=${it.label}=${it.caption || ''}=${it.best || ''}=${it.art || ''}=${it.arts ? it.arts.join(',') : ''}=${it.burst || ''}`).join('|')}`;
     if (!this.titleCards || this.titleCardKey !== key) {
       this.titleCardKey = key;
       host.textContent = '';

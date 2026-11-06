@@ -60,7 +60,7 @@ import { createLatencyMeter } from './render/latency.js';
 import { moveRigid, predictDelta, PREDICT_MAX_MS } from './render/predict.js';
 import { simPosToThree, simQuatToThree, simLenToWorld, threePosToSim, threeDirToSim, WORLD_SCALE, setWorldScale } from './render/frame.js';
 import { setFisheye, fisheyeNdc } from './render/fisheye.js';
-import { CAMERA_LENS_FORWARD, CAMERA_LENS_UP, CAMERA_MOUNT_FORWARD, CAMERA_MOUNT_UP, cameraTiltRad, clampCameraAngle, makeLensShake, fpvLensClear } from './render/lens.js';
+import { CAMERA_LENS_FORWARD, CAMERA_LENS_UP, CAMERA_MOUNT_FORWARD, CAMERA_MOUNT_UP, cameraTiltRad, clampCameraAngle, makeLensShake, fpvLensClear, fpvFov } from './render/lens.js';
 import { MotorAudio } from './render/audio.js';
 import { LapVoice, lapCall } from './render/voice.js';
 import { ClipVoice } from './render/clips.js';
@@ -8969,8 +8969,10 @@ export async function boot({ loading, bootStart, mapId }) {
     /* Vertical field of view. The default 100 keeps every measured budget
      * comparable; the setting exists because how roomy a course feels is a
      * pilot preference on real quads too, set by lens choice. */
-    if (shell.camera.fov !== s.cameraFov) {
-      shell.camera.fov = s.cameraFov;
+    /* Held to the 16:9 width on a wider screen: fpvFov in src/render/lens.js. */
+    const lensFov = fpvFov(s.cameraFov, shell.camera.aspect);
+    if (shell.camera.fov !== lensFov) {
+      shell.camera.fov = lensFov;
       shell.camera.updateProjectionMatrix();
     }
     /* Render scale changes are free, no world rebuild. See
@@ -13176,7 +13178,8 @@ export async function boot({ loading, bootStart, mapId }) {
       const narrow = shell.camera.aspect < 0.95;
       shell.camera.translateX((narrow ? 0 : -0.20) * dist * pull);
       shell.camera.translateY((narrow ? -0.14 : -0.04) * dist * pull);
-      const fov = ui.settings.cameraFov + (FINISH_FOV - ui.settings.cameraFov) * pull;
+      const lensFov = fpvFov(ui.settings.cameraFov, shell.camera.aspect);
+      const fov = lensFov + (FINISH_FOV - lensFov) * pull;
       if (Math.abs(shell.camera.fov - fov) > 0.05) {
         shell.camera.fov = fov;
         shell.camera.updateProjectionMatrix();
@@ -13279,7 +13282,7 @@ export async function boot({ loading, bootStart, mapId }) {
 
       const fovMid = 46;
       const fov = zoomU > 0
-        ? fovMid + (ui.settings.cameraFov - fovMid) * zoomU
+        ? fovMid + (fpvFov(ui.settings.cameraFov, shell.camera.aspect) - fovMid) * zoomU
         : INTRO_FOV + (fovMid - INTRO_FOV) * approachU;
       if (Math.abs(shell.camera.fov - fov) > 0.05) {
         shell.camera.fov = fov;
@@ -13292,7 +13295,7 @@ export async function boot({ loading, bootStart, mapId }) {
         shell.quad.visible = false;
         shell.camera.position.copy(fpvPos);
         shell.camera.quaternion.copy(fpvQuat);
-        shell.camera.fov = ui.settings.cameraFov;
+        shell.camera.fov = fpvFov(ui.settings.cameraFov, shell.camera.aspect);
         shell.camera.updateProjectionMatrix();
       }
     } else {
@@ -13306,8 +13309,9 @@ export async function boot({ loading, bootStart, mapId }) {
           replayScratchTilt.setFromAxisAngle(AXIS_X, cameraTiltRad(camTilt));
           shell.camera.position.copy(replayScratchPos);
           shell.camera.quaternion.copy(replayScratchQuat).multiply(replayScratchTilt);
-          if (shell.camera.fov !== ui.settings.cameraFov) {
-            shell.camera.fov = ui.settings.cameraFov;
+          const lensFov = fpvFov(ui.settings.cameraFov, shell.camera.aspect);
+          if (shell.camera.fov !== lensFov) {
+            shell.camera.fov = lensFov;
             shell.camera.updateProjectionMatrix();
           }
         } else {
@@ -13376,8 +13380,9 @@ export async function boot({ loading, bootStart, mapId }) {
          * moves the eye it sizes the plane there, and the mount's answer
          * would be thrown away (R3-9). See the foot of predictView. */
         fpvNearAt = held ? manga.holdPos : fpvPos;
-        if (shell.camera.fov !== ui.settings.cameraFov) {
-          shell.camera.fov = ui.settings.cameraFov;
+        const lensFov = fpvFov(ui.settings.cameraFov, shell.camera.aspect);
+        if (shell.camera.fov !== lensFov) {
+          shell.camera.fov = lensFov;
           shell.camera.updateProjectionMatrix();
         }
       }
@@ -15798,7 +15803,7 @@ export async function boot({ loading, bootStart, mapId }) {
     fpvQuat.copy(qPrev).multiply(qTilt);
     shell.camera.position.copy(fpvPos);
     shell.camera.quaternion.copy(fpvQuat);
-    shell.camera.fov = ui.settings.cameraFov;
+    shell.camera.fov = fpvFov(ui.settings.cameraFov, shell.camera.aspect);
     shell.camera.updateProjectionMatrix();
     return window.__craftState();
   };
@@ -17387,7 +17392,7 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   function watchFrame(nowWall) {
-    watchHome.fov = ui.settings.cameraFov;
+    watchHome.fov = fpvFov(ui.settings.cameraFov, shell.camera.aspect);
     if (ovOn && ovCam) {
       overviewFrame(nowWall);
     }
@@ -17653,7 +17658,7 @@ export async function boot({ loading, bootStart, mapId }) {
       subject: captureSubject,
       /* 0 gives the lens back to the shell. */
       fov: (v) => {
-        const want = v > 0 ? v : ui.settings.cameraFov;
+        const want = v > 0 ? v : fpvFov(ui.settings.cameraFov, shell.camera.aspect);
         if (shell.camera.fov !== want) {
           shell.camera.fov = want;
           shell.camera.updateProjectionMatrix();

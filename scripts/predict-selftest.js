@@ -32,6 +32,8 @@
 import { moveRigid, mulQuat, predictDelta, rotateVec } from '../src/render/predict.js';
 import { simQuatToThree } from '../src/render/frame.js';
 import { Colliders } from '../src/game/collide.js';
+import { CAMERA_FOVS, fpvFov } from '../src/render/lens.js';
+import { readFileSync } from 'node:fs';
 
 let passed = 0;
 let failed = 0;
@@ -225,6 +227,32 @@ section('prediction composes, and a camera stays on its mount');
   check('along a wall a hand off its face: open', along === -1, String(along));
   const still = c.sweepPoint(0.995, 1, 0, 0.995, 1, 0, r);
   check('a point already within the radius, not moving: 0', still === 0, String(still));
+}
+
+/*
+ * THE LENS ON A WIDER SCREEN (R2M-2): fpvFov keeps the 16:9 horizontal
+ * field above 16:9 and leaves 16:9 and narrower alone, to the bit, so every
+ * desktop's picture and every budget measured at 16:9 are what they were.
+ */
+{
+  section('fpvFov: the 16:9 width held on a wider screen');
+  const deg = Math.PI / 180;
+  const across = (v, aspect) => 2 * Math.atan(Math.tan((v * deg) / 2) * aspect) / deg;
+  const same = CAMERA_FOVS.every((v) => fpvFov(v, 16 / 9) === v && fpvFov(v, 1280 / 720) === v && fpvFov(v, 4 / 3) === v && fpvFov(v, 9 / 19.5) === v);
+  check('16:9, 4:3 and a portrait phone: the setting, unchanged to the bit', same);
+  for (const [name, aspect] of [['a phone on its side, 844 by 390', 844 / 390], ['21:9', 21 / 9], ['32:9', 32 / 9]]) {
+    const worst = Math.max(...CAMERA_FOVS.map((v) => Math.abs(across(fpvFov(v, aspect), aspect) - across(v, 16 / 9))));
+    check(`${name}: every stop is as wide across as it is on 16:9`, worst < 1e-9, `${worst} degrees off`);
+    check(`${name}: and narrower vertically than the setting`, CAMERA_FOVS.every((v) => fpvFov(v, aspect) < v));
+  }
+  const d85 = across(fpvFov(85, 844 / 390), 844 / 390);
+  check('the default 85 on a phone is 116.9 degrees across, as on 16:9, where it was 126.5', Math.abs(d85 - 116.91) < 0.01 && Math.abs(across(85, 844 / 390) - 126.48) < 0.01, `${d85.toFixed(2)} against ${across(85, 844 / 390).toFixed(2)}`);
+  check('a nonsense setting or aspect gives a sane lens', fpvFov(NaN, 2) === 85 && fpvFov(85, NaN) === 85 && fpvFov(85, 0) === 85 && fpvFov(85, Infinity) === 85);
+  /* Every site in the shell that sets the pilot's lens from the setting goes
+   * through it, so no camera path is left on the raw vertical figure. */
+  const main = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const raw = main.split('\n').map((l, i) => [i + 1, l]).filter(([, l]) => /\b(?:ui\.settings|s)\.cameraFov\b/.test(l) && !/fpvFov\((?:ui\.settings|s)\.cameraFov,/.test(l));
+  check('src/main.js reads the lens setting only through fpvFov', raw.length === 0, raw.map(([n, l]) => `${n}: ${l.trim()}`).join(' | '));
 }
 
 console.log(failed ? `\n${failed} failed, ${passed} passed` : `\nall ${passed} passed`);

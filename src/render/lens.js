@@ -81,6 +81,39 @@ export const CAMERA_FOVS = [75, 85, 95, 105, 115];
 export const CAMERA_FOV_DEFAULT = 85;
 
 /*
+ * THE LENS ON A WIDER SCREEN (R2M-2, the owner's word of 2026-11-06).
+ *
+ * The setting is a VERTICAL field of view, because that is what Three.js's
+ * camera takes, and a vertical figure held fixed widens the picture with
+ * the screen: 85 is 117 degrees across on 16:9, 126 on a phone on its side
+ * (2.16:1), 130 on 21:9 and 146 on 32:9. So the middle of the frame, where
+ * the next gate is, shrinks on exactly the screens with the least height to
+ * spare. Above 16:9 this returns the vertical field that keeps the 16:9
+ * horizontal: tan(v'/2) = tan(v/2) * (16/9) / aspect. At 16:9 and anything
+ * narrower (4:3, a portrait phone) it returns the setting unchanged, so a
+ * desktop's picture is what it was to the bit.
+ *
+ * Render side only: the physics never sees a field of view, and the trig
+ * here is the browser's, which is allowed outside the physics path. Pure,
+ * so the same two numbers give the same answer and a frame that compares
+ * it against the camera's fov does not touch the projection when nothing
+ * changed.
+ */
+export const FOV_REFERENCE_ASPECT = 16 / 9;
+
+export function fpvFov(setting, aspect) {
+  const v = Number(setting);
+  if (!(v > 0 && v < 180)) {
+    return CAMERA_FOV_DEFAULT;
+  }
+  if (!(aspect > FOV_REFERENCE_ASPECT) || !Number.isFinite(aspect)) {
+    return v;
+  }
+  const t = Math.tan((v * Math.PI) / 360) * (FOV_REFERENCE_ASPECT / aspect);
+  return (Math.atan(t) * 360) / Math.PI;
+}
+
+/*
  * THE FISHEYE, beside the field of view: see src/render/fisheye.js for the
  * projection and what it costs. The stops are strength in percent, stored
  * as a number so a slider can replace the row later without a settings

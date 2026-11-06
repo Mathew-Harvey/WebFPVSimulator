@@ -88,6 +88,7 @@ export const TRACKS = [
   rec('ground-effect', 'Ground Effect'),
   rec('hypnotic-arpeggio', 'Hypnotic Arpeggio'),
   rec('gritty-breaks', 'Gritty Breaks'),
+  rec('polyrhythmic-build', 'Polyrhythmic Build'),
 ];
 
 /*

@@ -1779,9 +1779,14 @@ async function touchLaptopPage(page) {
   await finger('touchMove', zone.x + 90, zone.y);
   await page.sleep(250);
   const drag = JSON.parse(await ev(snap));
+  const moved = await ev("const t = window.__touch(); return JSON.stringify({ raw: t.rawMoves, moves: t.moves, offered: 'onpointerrawupdate' in window });").then(JSON.parse);
   await finger('touchEnd');
   check('and a thumb on the plate flies it: roll follows the drag',
     drag.ch.roll > 0.2 && drag.source === 'the touch sticks', JSON.stringify(drag));
+  /* CORE-16, round 1: where the browser offers the raw move, the plate is
+   * flown by it and not by the frame aligned pointermove. */
+  check('the drag reached the plate as a raw move, not one held to the frame',
+    moved.offered && moved.raw && moved.moves.raw > 0 && moved.moves.frame === 0, JSON.stringify(moved));
 
   const again = await hold('KeyD', 'input.channels.yaw > 0.2');
   check('and a stick key takes the sticks again, the other way',

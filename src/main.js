@@ -10316,7 +10316,9 @@ export async function boot({ loading, bootStart, mapId }) {
     kind: '', step: null, device: '', stickMode: 0, angle: false, text: '',
   };
   const guideLine = (kind, step) => {
-    const device = input.isTouchPrimary() ? 'touch' : (input.firstGamepad() ? 'pad' : 'keys');
+    /* One list of the pads, not two (round 2 review R2D-5's reasoning,
+     * applied to the guided frames). */
+    const device = input.primaryKind();
     const stickMode = ui.settings.stickMode;
     const m = guideMemo;
     if (m.kind !== kind || m.step !== step || m.device !== device

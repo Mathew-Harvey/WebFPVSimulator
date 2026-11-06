@@ -4114,7 +4114,7 @@ export class App {
       if (typeof navigator !== 'undefined' && navigator.onLine === false) {
         throw new Error('This device is offline.');
       }
-      tracks = (await fetchTrackList(origin)).filter((t) => t.trackClass === 'full');
+      tracks = (await fetchTrackList(origin, { plans: false })).filter((t) => t.trackClass === 'full');
     } catch (e) {
       if (!shown.box.isConnected) {
         return;

@@ -193,7 +193,7 @@ export async function findBoardTwin({ doc, name, trackClass, origin } = {}) {
     return { found: null, sameName: null };
   }
   const board = origin || boardOrigin();
-  const list = await fetchTrackList(board);
+  const list = await fetchTrackList(board, { plans: false });
   const cls = trackClass === 'micro' ? 'micro' : 'full';
   const wanted = String(name || '').trim().toLowerCase();
   const pool = list

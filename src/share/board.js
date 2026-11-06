@@ -242,9 +242,19 @@ async function readJson(res) {
     body = null;
   }
   if (!res.ok) {
-    const message = (body && body.error) || text || `The board answered ${res.status}.`;
+    let message = (body && body.error) || text || `The board answered ${res.status}.`;
+    /* A name, a track's or a map's words, or a tune's, refused by the
+     * board's closed list of words (code WORDS, its src/validate.js). The
+     * board's sentence names the field and never the word; this says it
+     * plainly, in the field's own words, for whoever shows err.message. */
+    const words = Boolean(body && body.code === 'WORDS');
+    if (words) {
+      const what = /^(.+?) has a word in it/.exec(String(body.error || ''));
+      message = `${what ? what[1] : 'That name'} is not allowed. Pick another.`;
+    }
     const err = new Error(message);
     err.status = res.status;
+    err.words = words;
     err.conflict = Boolean(body && body.conflict) || res.status === 409;
     /* The board's refusal for a track an admin has marked official: a 403
      * that is neither a collision (conflict) nor a wrong key, and which the
@@ -325,9 +335,17 @@ function msOrNull(v) {
   return v == null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v);
 }
 
-export async function fetchTrackList(origin = boardOrigin()) {
+/*
+ * `plans: false` asks the board for the list without each track's plan
+ * drawing (?plans=0, which the board has served since round 1: the plans
+ * are most of the answer). Only a caller that draws plans asks for them,
+ * the Race room and the Freestyle room; one that wants ids, names or
+ * documents does not. A board from before ?plans=0 ignores it and sends
+ * the plans anyway, which costs bytes and nothing else.
+ */
+export async function fetchTrackList(origin = boardOrigin(), { plans = true } = {}) {
   const board = trimOrigin(origin);
-  const res = await boardGet(`${board}/api/tracks`);
+  const res = await boardGet(`${board}/api/tracks${plans ? '' : '?plans=0'}`);
   const body = await readJson(res);
   const tracks = body && Array.isArray(body.tracks) ? body.tracks : [];
   return tracks.map((t) => ({
@@ -464,7 +482,7 @@ export async function adoptMostFlownTrack(cls) {
      * particular course should not wait the full eight seconds to find out
      * the board is asleep. A Fly link, which DID name a course, gets the
      * full deadline through fetchTrackDocument. */
-    const res = await boardGet(`${trimOrigin(origin)}/api/tracks`, 4000);
+    const res = await boardGet(`${trimOrigin(origin)}/api/tracks?plans=0`, 4000);
     const body = await readJson(res);
     const tracks = body && Array.isArray(body.tracks) ? body.tracks : [];
     const list = tracks.map((t) => ({
@@ -855,9 +873,9 @@ export async function fetchMapDocument(id, origin = boardOrigin()) {
  * today and never a broken room, so every caller treats a rejection that
  * way.
  */
-export async function fetchMapList(origin = boardOrigin()) {
+export async function fetchMapList(origin = boardOrigin(), { plans = true } = {}) {
   const board = trimOrigin(origin);
-  const res = await boardGet(`${board}/api/maps`);
+  const res = await boardGet(`${board}/api/maps${plans ? '' : '?plans=0'}`);
   const body = await readJson(res);
   const maps = body && Array.isArray(body.maps) ? body.maps : [];
   return maps.map((m) => ({

@@ -1543,6 +1543,7 @@ async function scenarioOffline() {
   const seatOf = `JSON.parse(localStorage.getItem(${JSON.stringify(SEAT)}) || 'null')`;
   const page = await openPage({ root, width: 1280, height: 720, seed: [settingsSeed({ airframe: '5inch', map: 'custom' })] });
   let held = null;
+  let flown = null;
   try {
     await page.until('window.__shellReady === true && !!window.__ui', 120000);
     await page.until("(() => { const m = window.__map && window.__map(); return m && m.ready && m.id === 'custom'; })()", 120000);
@@ -1554,6 +1555,20 @@ async function scenarioOffline() {
     held = r.seat;
     check('offline: with no board the Track map seats a shipped track, as a stand in', Boolean(r.seat && r.seat.standIn && r.seat.stock && r.seat.document), r.seat ? `${r.seat.name}, standIn ${r.seat.standIn}` : 'nothing seated');
     check('offline: and the field has its gates', r.gates > 0, `${r.gates} gates`);
+    /*
+     * R2D-6, the owner's call of 2026-11-06: once the pilot has launched on
+     * the stand in it is their seat. A real launch through the shell's Fly
+     * and the launch card; the mark is cleared and nothing else is.
+     */
+    await page.evaluate(PAST_GATE);
+    await page.evaluate("(() => { const ui = window.__ui; ui.mode = 'race'; ui.show('title'); ui.act('fly'); return 1; })()");
+    await page.until("window.__ui.screen === 'launch'", 30000).then(() => page.tap('Enter')).catch(() => {});
+    await answerQuadPicker(page, 20000).catch(() => {});
+    await page.until("window.__ui.screen === 'flight'", 60000);
+    const flownSeat = await json(page, seatOf);
+    check('offline: a launch on the stand in makes it the pilot\'s seat: the mark is cleared, the track and stock kept',
+      Boolean(flownSeat && !flownSeat.standIn && flownSeat.stock && flownSeat.id === r.seat.id), flownSeat ? `${flownSeat.name}, standIn ${flownSeat.standIn}, stock ${flownSeat.stock}` : 'nothing seated');
+    flown = flownSeat;
     errorsCheck(page, 'offline');
   } catch (e) {
     check('offline: the scenario ran to the end', false, e.message);
@@ -1582,6 +1597,30 @@ async function scenarioOffline() {
     check('offline: the board back scenario ran to the end', false, e.message);
   } finally {
     await again.close();
+  }
+  if (!flown) {
+    return;
+  }
+  /* The same board answering, on a profile that has flown its stand in: the
+   * seat stays, and the cover's Fly again names the track they flew. */
+  const kept = await openPage({
+    root, width: 1280, height: 720,
+    seed: [BOARD_STUB, routes, settingsSeed({ airframe: '5inch', map: 'custom', hasFlown: true, lastFlyMode: 'race' }, `localStorage.setItem(${JSON.stringify(SEAT)}, ${JSON.stringify(JSON.stringify(flown))});`)],
+  });
+  try {
+    await kept.until('window.__shellReady === true && !!window.__ui', 120000);
+    await kept.until("(() => { const m = window.__map && window.__map(); return m && m.ready && m.id === 'custom'; })()", 120000);
+    /* Long enough for the board's answer to have landed, had it been asked. */
+    await kept.until(`(() => { const s = ${seatOf}; return s && s.id === 'trk-feat0001'; })()`, 8000).catch(() => {});
+    const seat = await json(kept, seatOf);
+    check('offline: a flown stand in is kept when the board answers', Boolean(seat && seat.id === flown.id && !seat.standIn), seat ? `${seat.id}, standIn ${seat.standIn}` : 'nothing seated');
+    const again2 = await json(kept, "(() => { const ui = window.__ui; ui.firstRun = false; ui.show('title'); ui.renderMenu(); const n = ui.flyAgainBtn; return { hidden: n.hidden, label: n.getAttribute('aria-label') || '' }; })()");
+    check('offline: and Fly again names it', !again2.hidden && again2.label.includes(flown.name), JSON.stringify(again2));
+    errorsCheck(kept, 'offline, flown stand in');
+  } catch (e) {
+    check('offline: the flown stand in scenario ran to the end', false, e.message);
+  } finally {
+    await kept.close();
   }
 }
 

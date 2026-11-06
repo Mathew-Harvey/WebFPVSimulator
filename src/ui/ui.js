@@ -191,6 +191,7 @@ import {
    * the pilot's own track. See seatLocal. A board track's seat is written
    * by main.js, which owns the fetch. */
   clearShareImport,
+  keepStandIn,
 } from '../share/session.js';
 import {
   clipKeyForMap,
@@ -22602,6 +22603,12 @@ export class Ui {
     if (lastMode && this.settings.lastFlyMode !== lastMode) {
       this.settings.lastFlyMode = lastMode;
       saveSettings(this.settings);
+    }
+    /* A race launched on the offline stand in makes it the pilot's seat
+     * (R2D-6): see keepStandIn. Only on the seated track itself, so a lesson
+     * or a mini game does not claim it on the pilot's behalf. */
+    if (lastMode === 'race' && this.settings.map === 'custom') {
+      keepStandIn();
     }
     /* In the air, so Back from a later picker is the picker's own again. */
     this.mapGamePick = false;

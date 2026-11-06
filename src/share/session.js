@@ -214,6 +214,25 @@ export function shareSeatIsStandIn(cls) {
   return Boolean(seat && seat.standIn);
 }
 
+/*
+ * THE STAND IN BECOMES THE PILOT'S SEAT (R2D-6, the owner's call of
+ * 2026-11-06). A stand in is a placeholder only until somebody flies it.
+ * Once the pilot has launched on it, the laps and the bests they set there
+ * are theirs, and the next boot that reaches the board must not swap Fly
+ * again over to a track they never chose. So the first launch on a stand in
+ * clears the mark and keeps everything else, stock included: it is still a
+ * shipped track that takes no board time. Returns whether a mark was
+ * cleared. Nothing in flight reads it; it is one storage write on the press
+ * that launches.
+ */
+export function keepStandIn(cls) {
+  const seat = readShareImport(cls);
+  if (!seat || !seat.standIn) {
+    return false;
+  }
+  return writeShareImport({ ...seat, standIn: false });
+}
+
 export function clearShareImport(cls) {
   try {
     localStorage.removeItem(importKey(cls));

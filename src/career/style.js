@@ -34,6 +34,11 @@
  * with WebFPV. If not, see <https://www.gnu.org/licenses/>.
  */
 
+/* The small window: a phone, or a window too short for seven rows. The
+ * tree is a list there (see below), and screens.js reads the same query so
+ * a hover never chooses a part in the list. */
+export const SMALL_WINDOW = '(max-width: 760px), (max-height: 560px)';
+
 export const CAREER_CSS = `
 #career {
   --c-cream: var(--cream, #f3ead4);
@@ -711,7 +716,7 @@ body.career-score #career .cr-obj { top: 150px; }
 /* A phone, or a window too short for seven rows: the tree is a list, up
    the trunk and then each branch, with the chosen part's lessons under it,
    and every page is one column. */
-@media (max-width: 760px), (max-height: 560px) {
+@media ${SMALL_WINDOW} {
   /* The key row is fixed over the foot of a page that scrolls, so the page
      ends clear of it and a key's scroll stops above it. */
   #career .cr-screen.has-paper { padding-bottom: 52px; scroll-padding-bottom: 52px; }

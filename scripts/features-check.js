@@ -17,6 +17,8 @@
  *             tune by its code, lists what is in it, rates it, puts it on
  *             and puts the pilot's own back; Share this tune posts the
  *             snapshot and the code it gets back takes it down again
+ *   lazy      the tunes dialog and the career, their code blocked before
+ *             it is fetched: the press says so, and nothing is unhandled
  *   room      a whoop track with Race line on: the line is solved off the
  *             flight and its dots are in the picture in flight; the results
  *             screen draws the course's plan
@@ -161,7 +163,8 @@ const BOARD_STUB = `(() => {
     if (!answer) {
       throw new TypeError('Failed to fetch');
     }
-    const a = typeof answer === 'function' ? answer(body) : answer;
+    /* A function may answer later, as a slow link does. */
+    const a = await (typeof answer === 'function' ? answer(body) : answer);
     return new Response(JSON.stringify(a.body ?? null), {
       status: a.status ?? 200, headers: { 'content-type': 'application/json' },
     });
@@ -387,19 +390,113 @@ async function scenarioQuad() {
     })`);
     check('quad: a tune this browser shared can be taken down with its key, and is forgotten',
       down.call && down.call.body.editKey === 'k'.repeat(32) && down.kept === 0, JSON.stringify(down));
-    /* Taking it down empties the preview and the focus with it (see the
-     * report of 2026-11-06 in PROGRESS.md), so the way out is Close. */
+    /* Taking it down empties the preview. It used to empty the focus with
+     * it, to the body, where the dialog's Escape is not heard (PROGRESS.md,
+     * 2026-11-06); the focus stays in the dialog now, and Escape works. */
+    const after = await json(page, "(() => { const a = document.activeElement; return { tag: a ? a.tagName : '', inDialog: Boolean(a && a.closest && a.closest('.name-dialog')) }; })()");
+    check('quad: after Take my tune down the focus is still in the dialog', after.inDialog, after.tag);
+    await page.tap('Escape');
+    const escaped = await page.until("document.querySelector('.name-dialog').hidden && window.__ui.screen === 'quad'", 5000).then(() => true, () => false);
+    check('quad: and Escape closes the dialog after Take my tune down', escaped, escaped ? '' : 'still open');
+    if (!escaped) {
+      await clickText(page, '.name-dialog button', 'Close');
+      await page.until("document.querySelector('.name-dialog').hidden", 5000);
+    }
+    /* Close, with the mouse. */
+    await clickText(page, '.screen-quad .row', 'Load a tune');
+    await page.until("!!document.querySelector('.tune-code-field') && !document.querySelector('.name-dialog').hidden", 10000);
     await clickText(page, '.name-dialog button', 'Close');
     await page.until("document.querySelector('.name-dialog').hidden", 5000);
     check('quad: Close closes the Load dialog', true);
+
     await clickText(page, '.screen-quad .row', 'Load a tune');
     await page.until("(() => { const d = document.querySelector('.name-dialog'); return !d.hidden && document.activeElement === document.querySelector('.tune-code-field'); })()", 10000);
     await page.tap('Escape');
     await page.until("document.querySelector('.name-dialog').hidden && window.__ui.screen === 'quad'", 5000);
     check('quad: Escape closes the Load dialog', true);
+
+    /* A board track that lands after the pilot left (bugs.md BUG-4). The
+     * fetch is held until the pilot has walked away, then let go: nothing
+     * may be seated, the pilot is not sent to the title or flown, and
+     * their seat and share are as they were. Track of the week's Fly it
+     * first, then a board card's open with its Fly it to follow. */
+    const late = { ...presetsForClass('micro')[0], id: 'trk-fea7late', name: 'Late track' };
+    await page.evaluate(`(() => {
+      window.__lateGo = [];
+      window.__board.routes['GET /api/tracks/trk-fea7late/document'] = () => new Promise((go) => {
+        window.__lateGo.push(() => go({ body: { id: 'trk-fea7late', name: 'Late track', author: 'Checker', document: ${JSON.stringify(late)} } }));
+      });
+      return 1;
+    })()`);
+    const seatOf = "({ screen: window.__ui.screen, map: window.__ui.settings.map, mode: window.__ui.mode, airframe: window.__ui.settings.airframe, share: window.__ui.share ? window.__ui.share.id : null, opening: Boolean(window.__ui.openingBoardCourse) })";
+    for (const way of ['week', 'card']) {
+      await page.evaluate("window.__ui.show('quad'), 1");
+      const before = await json(page, seatOf);
+      await page.evaluate(`(() => {
+        const ui = window.__ui;
+        window.__lateThen = false;
+        if (${JSON.stringify(way)} === 'week') {
+          ui.week = { track: { id: 'trk-fea7late', name: 'Late track' }, times: [] };
+          ui.flyWeek();
+        } else {
+          ui.boardCourses = [{ id: 'trk-fea7late', name: 'Late track', board: 'http://127.0.0.1:3100' }];
+          ui.openBoardCourse('trk-fea7late', () => { window.__lateThen = true; });
+        }
+        return 1;
+      })()`);
+      await page.until('window.__lateGo.length > 0', 10000);
+      /* The pilot leaves for the Pilot room, then the track lands. */
+      await page.evaluate("window.__ui.show('pilot'), 1");
+      await page.evaluate('(window.__lateGo.shift())(), 1');
+      await page.until('!window.__ui.openingBoardCourse', 10000);
+      await page.sleep(300);
+      const after = await json(page, `(() => { const s = ${seatOf}; s.then = window.__lateThen; return s; })()`);
+      check(`quad: a board load (${way === 'week' ? 'Track of the week' : 'a board card'}) that lands after the pilot left seats nothing and moves nobody`,
+        after.screen === 'pilot' && after.map === before.map && after.mode === before.mode && after.airframe === before.airframe
+          && after.share === before.share && !after.then,
+        `${JSON.stringify(before)} then ${JSON.stringify(after)}`);
+    }
     errorsCheck(page, 'quad');
   } catch (e) {
     check('quad: the scenario ran to the end', false, e.message);
+  } finally {
+    await page.close();
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* lazy: a menu chunk that will not fetch                               */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The tunes dialogs and the career are fetched on the press. A chunk that
+ * will not fetch (a flaky link, a deploy mid session) used to leave an
+ * unhandled rejection and a press that did nothing (bugs.md BUG-13). Each
+ * is blocked here before its first fetch and pressed: the pilot is told,
+ * and nothing is left unhandled. A browser keeps a failed module fetch
+ * for the page's life, which is why the words say to reload.
+ */
+async function scenarioLazy() {
+  const page = await openPage({ root, width: 1280, height: 800, seed: [BOARD_STUB, settingsSeed({ airframe: '5inch', map: 'city' })] });
+  try {
+    await page.until('window.__shellReady === true && !!window.__ui', 120000);
+    await page.cdp.send('Network.enable', {}, page.sessionId);
+    await page.cdp.send('Network.setBlockedURLs', { urls: ['*/src/ui/tunesdialog.js*', '*/src/career/controller.js*'] }, page.sessionId);
+    await page.evaluate(PAST_GATE);
+    await page.evaluate("window.__ui.show('quad'), 1");
+    const notice = "((document.querySelector('.menu-notice') || {}).textContent || '')";
+    await clickText(page, '.screen-quad .row', 'Load a tune');
+    const tunes = await page.until(`/did not open/.test(${notice})`, 15000).then(() => true, () => false);
+    check('lazy: Load a tune whose dialog will not fetch says so', tunes, await page.evaluate(notice));
+    /* The career card's press, as the gate routes it. */
+    await page.evaluate("window.__ui.act('career'), 1");
+    const career = await page.until(`/Could not open the career/.test(${notice})`, 15000).then(() => true, () => false);
+    check('lazy: the career whose code will not fetch says so', career, await page.evaluate(notice));
+    const loose = page.errors.filter((e) => /^uncaught/.test(e));
+    check('lazy: neither leaves an unhandled rejection', loose.length === 0, loose.slice(0, 2).join(' | '));
+    errorsCheck(page, 'lazy');
+  } catch (e) {
+    check('lazy: the scenario ran to the end', false, e.message);
   } finally {
     await page.close();
   }
@@ -1086,6 +1183,7 @@ async function scenarioModules() {
 
 const SCENARIOS = {
   quad: scenarioQuad,
+  lazy: scenarioLazy,
   room: scenarioRoom,
   capture: scenarioCapture,
   loadfail: scenarioLoadFail,

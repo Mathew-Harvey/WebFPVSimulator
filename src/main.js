@@ -4822,7 +4822,7 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   if (mpOn) {
-    ui.roomsOn = true;
+    ui.turnRoomsOn();
     ui.onFlyTogether = (entry) => {
       loadTogether().then((t) => t && t.openHost(entry));
     };
@@ -10207,8 +10207,14 @@ export async function boot({ loading, bootStart, mapId }) {
    * write the share seat, tell the shell which course it is now holding. The
    * screen then acts map:custom and the world builds around it.
    */
-  ui.onBoardCourse = async (track) => {
+  /* `wanted` is the press's own question, still asked when the track
+   * lands: a pilot who has left the screen that asked gets nothing seated
+   * (ui.boardAsker), and their share seat is not overwritten. */
+  ui.onBoardCourse = async (track, wanted = null) => {
     const payload = await fetchTrackDocument(track.id, track.board);
+    if (wanted && !wanted()) {
+      return false;
+    }
     const doc = payload.document || payload;
     const share = {
       id: payload.id || track.id,
@@ -10249,6 +10255,9 @@ export async function boot({ loading, bootStart, mapId }) {
   };
   /* Menu clicks. The key handler has already woken the audio context by
    * the time the menu moves, so the first keypress is audible too. */
+  /* A line the menus want the pilot to read (a dialog that would not
+   * fetch). mpSay is the notice every screen shows. */
+  ui.onNotice = (text) => mpSay(text, 6000);
   ui.onUiSound = (kind) => {
     if (typeof audio.ui === 'function') {
       audio.ui(kind);
@@ -10739,9 +10748,11 @@ export async function boot({ loading, bootStart, mapId }) {
     if (together && together.handleKey(code, repeat)) {
       return;
     }
-    /* Steam edition: career. Its screens take the keys while they are up. */
+    /* Steam edition: career. Its screens take the keys while they are up.
+     * True back to input.js, which then keeps Enter from also clicking a
+     * career button the mouse left focused: one press, one choice. */
     if (career && career.handleKey(code, repeat)) {
-      return;
+      return true;
     }
     /*
      * NOT WHILE A WORLD BUILDS. The loading screen covers the menu that was
@@ -16375,12 +16386,23 @@ export async function boot({ loading, bootStart, mapId }) {
    * swap is started by applySettings and may queue behind one in flight, so
    * this nudges syncWorld once the way is clear, as the swap's own tail
    * does. */
+  /* Waits still polling, for career-ui-check.js (window.__career.waits). */
+  let careerWaits = 0;
   function careerWaitWorld(key, timeoutMs = 90000) {
     const t0 = performance.now();
+    careerWaits += 1;
     return new Promise((resolve, reject) => {
       const tick = () => {
         if (careerFailed === key) {
           reject(new Error('This lesson\'s world could not be built.'));
+          return;
+        }
+        /* A later lesson asked for another world: this one will never be
+         * the one built, so the wait ends now rather than polling on to its
+         * timeout, which used to land in the career as an error 90 s after
+         * the pilot had moved on. The career drops it (its load token). */
+        if (careerWorld && careerWorld.key !== key) {
+          reject(new Error('This lesson\'s world was replaced by another.'));
           return;
         }
         if (mapReady && !swapInFlight) {
@@ -16399,6 +16421,8 @@ export async function boot({ loading, bootStart, mapId }) {
         setTimeout(tick, 40);
       };
       tick();
+    }).finally(() => {
+      careerWaits -= 1;
     });
   }
 
@@ -17192,7 +17216,14 @@ export async function boot({ loading, bootStart, mapId }) {
   }
   ui.onCareer = (action) => {
     if (action === 'career') {
-      loadCareer().then((c) => c.openHub());
+      /* The pilot's press. A chunk that will not fetch (a flaky link, a
+       * deploy mid session) says so, as loadTogether does, rather than
+       * leaving an unhandled rejection and a card that does nothing. The
+       * harness hooks below keep the rejection, which is their answer. */
+      loadCareer().then((c) => c.openHub(), (e) => {
+        console.warn('career did not load', e);
+        mpSay('Could not open the career. Check the connection, then reload the page.', 6000);
+      });
     } else if (career && action === 'career-briefing') {
       career.briefing();
     } else if (career && action === 'career-hub') {
@@ -17214,6 +17245,9 @@ export async function boot({ loading, bootStart, mapId }) {
     fly: () => career.fly(),
     state: () => (career ? career.state() : null),
     status: () => (career ? career.status() : null),
+    /* Lesson world waits still polling: none once every load the pilot
+     * walked away from has let go. */
+    waits: () => careerWaits,
     leave: () => career.leave(),
     /* The keycaps in a pad player's hands or a keyboard player's. */
     hands: (h) => loadCareer().then((c) => c.hands(h)),

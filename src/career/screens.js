@@ -61,7 +61,7 @@ import {
 } from './icons.js';
 import { sticksHtml } from './sticks.js';
 import { sticksIn } from './words.js';
-import { injectCareerStyle } from './style.js';
+import { SMALL_WINDOW, injectCareerStyle } from './style.js';
 import { achievementSvg } from '../steam/achievementart.js';
 import { LIVERIES, cssOf, liveryById } from '../render/livery.js';
 
@@ -143,6 +143,10 @@ function modeTag(mode) {
 }
 
 /* The medals' names as the player reads them: finishing is the bronze. */
+/* The tree is a list in a small window (style.js). Read on a hover, never
+ * per frame. */
+const LIST_TREE = typeof matchMedia === 'function' ? matchMedia(SMALL_WINDOW) : { matches: false };
+
 const MEDAL_NAME = { gold: 'Gold', silver: 'Silver', bronze: 'Finish' };
 const STAR_COUNT = { gold: 3, silver: 2, bronze: 1 };
 
@@ -753,6 +757,15 @@ export class CareerScreens {
       }
       node.append(foot);
       node.addEventListener('mouseenter', () => {
+        /* In the list a small window gets, choosing a part moves the sheet
+         * under it and scrolls the part to the top, so a hover that chose
+         * would move the list under the pointer: a tap's mouseenter
+         * scrolled the part away and its click landed on whatever came up
+         * under the finger. There a hover chooses nothing and the click
+         * does it all. */
+        if (LIST_TREE.matches) {
+          return;
+        }
         if (this.treeAt !== part.id) {
           this.treeAt = part.id;
           this.zone = 'parts';

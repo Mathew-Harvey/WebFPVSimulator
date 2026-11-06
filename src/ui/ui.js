@@ -5936,6 +5936,9 @@ export class Ui {
     this.reopenCard = null;
     this.sheetAfterKey = null;
     this.onAction = null;    /* (action, settings) => void */
+    /* (text) => void: a line for the pilot, shown by main.js as its notice
+     * (over a menu, above the command bar). */
+    this.onNotice = null;
     this.onSettings = null;  /* (settings) => void */
     /* () => void. Fly what was just seated from the starting blocks, now if
      * its world is on screen and after the load if one is building. main.js
@@ -8422,12 +8425,30 @@ export class Ui {
       return;
     }
     dropLinkParam('tune');
-    tunesDialog().then((m) => m.openTuneLoad(this, { code }));
+    this.withTunes((m) => m.openTuneLoad(this, { code }));
   }
 
   /* The Tracks and Maps rooms' Rate action: one rating dialog for either. */
   rateItem(kind, item, after) {
-    tunesDialog().then((m) => m.openRate(this, { kind, item, onRated: after }));
+    this.withTunes((m) => m.openRate(this, { kind, item, onRated: after }));
+  }
+
+  /*
+   * The tune and rating dialogs, fetched on the press. A chunk that will
+   * not fetch (a flaky link, a deploy mid session) used to leave an
+   * unhandled rejection and a button that did nothing; now the pilot is
+   * told, through main.js's notice, as the rooms are when they will not
+   * load.
+   */
+  withTunes(open) {
+    /* The fetch's failure only: an error in the dialog itself is a bug
+     * and stays loud. */
+    tunesDialog().then(open, (e) => {
+      console.warn('tunes dialog did not load', e);
+      if (this.onNotice) {
+        this.onNotice('That did not open. Check the connection, then reload the page.');
+      }
+    });
   }
 
   closeNameDialog(value) {
@@ -14132,6 +14153,23 @@ export class Ui {
     return this.roomsOn ? (this.gatePage || 'cover') : 'solo';
   }
 
+  /*
+   * Rooms are switched on by main.js after the gate's first paint, and that
+   * turns the gate's first page from the solo page into the two card cover.
+   * The constructor's first cursor is an index into the solo page's cards
+   * (Career first, then WAYS), so left as it was, a returning pilot whose
+   * seat is the first way opened on card 1 of the cover, Multiplayer, and
+   * Enter took them to the rooms. So the first page is picked again here,
+   * by titleStop, which knows the cover lands on Fly solo.
+   */
+  turnRoomsOn() {
+    this.roomsOn = true;
+    if (this.onGate() && !this.gatePage) {
+      this.cursor = this.titleStop();
+      this.renderMenu();
+    }
+  }
+
   /* Turn to a page of the gate: the cursor lands where that page starts,
    * and the page swings in from the side it is on. */
   turnGate(page) {
@@ -16821,6 +16859,11 @@ export class Ui {
   }
 
   show(screen) {
+    /* Counts the screens the pilot has been on, for a board load that
+     * lands after they left the one that asked (boardStillWanted). */
+    if (screen !== this.screen) {
+      this.screenSeq = (this.screenSeq || 0) + 1;
+    }
     this.closeDrop();
     if (this.hostPick && !isCardScreen(screen)) {
       this.endHostPick();
@@ -17305,8 +17348,15 @@ export class Ui {
       this.boardNote.textContent = `${track.name} could not be loaded from the board.`;
       return;
     }
-    this.onBoardCourse(track).then((ok) => {
+    /* The same token as openBoardCourse: a pilot who left before the track
+     * landed is not sent to the builder with it. */
+    const wanted = this.boardAsker();
+    this.onBoardCourse(track, wanted).then((ok) => {
       this.openingBoardCourse = false;
+      if (!wanted()) {
+        this.boardNote.textContent = '';
+        return;
+      }
       if (!ok) {
         this.boardNote.textContent = `${track.name} could not be loaded from the board.`;
         return;
@@ -17314,7 +17364,7 @@ export class Ui {
       go();
     }).catch((err) => {
       this.openingBoardCourse = false;
-      this.boardNote.textContent = `${track.name} could not be loaded. ${err.message ?? err}`;
+      this.boardNote.textContent = wanted() ? `${track.name} could not be loaded. ${err.message ?? err}` : '';
     });
   }
 
@@ -17375,26 +17425,37 @@ export class Ui {
     if (!w || !w.track || this.openingBoardCourse || !this.onBoardCourse) {
       return;
     }
-    if (this.settings.airframe !== '5inch') {
-      seatAirframe(this.settings, '5inch');
-    }
-    this.settings.airframeAsked = true;
-    this.craftGate = false;
-    this.mode = 'race';
-    saveSettings(this.settings);
-    if (this.onSettings) {
-      this.onSettings(this.settings);
-    }
     const track = { ...w.track, board: boardOrigin() };
-    const lead = w.times.find((x) => x.hasGhost && x.id);
-    if (lead && this.onStandingsGhost) {
-      this.onStandingsGhost(track, lead);
-    }
+    const wanted = this.boardAsker();
     this.openingBoardCourse = true;
-    this.onBoardCourse(track).then((ok) => {
+    /* Nothing of the pilot's changes until the track is here and they are
+     * still on the page that asked: the five inch, the race mode and the
+     * ghost used to be seated at the press, so a load that failed or that
+     * the pilot walked away from had already changed their seat. */
+    this.onBoardCourse(track, wanted).then((ok) => {
       this.openingBoardCourse = false;
-      if (!ok) {
+      if (!wanted()) {
         return;
+      }
+      if (!ok) {
+        if (this.onNotice) {
+          this.onNotice(`${track.name} could not be loaded from the board.`);
+        }
+        return;
+      }
+      if (this.settings.airframe !== '5inch') {
+        seatAirframe(this.settings, '5inch');
+      }
+      this.settings.airframeAsked = true;
+      this.craftGate = false;
+      this.mode = 'race';
+      saveSettings(this.settings);
+      if (this.onSettings) {
+        this.onSettings(this.settings);
+      }
+      const lead = w.times.find((x) => x.hasGhost && x.id);
+      if (lead && this.onStandingsGhost) {
+        this.onStandingsGhost(track, lead);
       }
       this.returnTo = 'title';
       this.act('map:custom');
@@ -17403,7 +17464,28 @@ export class Ui {
       }
     }).catch(() => {
       this.openingBoardCourse = false;
+      if (wanted() && this.onNotice) {
+        this.onNotice(`${track.name} could not be loaded from the board.`);
+      }
     });
+  }
+
+  /*
+   * A board track is fetched over the network, and the pilot can leave
+   * while it is in the air: Escape, the title, another card, Fly. A load
+   * that landed after that used to seat the track anyway, which sent the
+   * pilot to the title and swapped the world under them, even out of a
+   * flight they had started since (bugs.md BUG-4). So each press takes a
+   * token, and what lands is acted on only while it is still the latest
+   * press and the pilot is on the screen (and gate page) that made it.
+   * main.js's onBoardCourse asks the same before it writes the share seat.
+   */
+  boardAsker() {
+    const at = (this.boardSeq = (this.boardSeq || 0) + 1);
+    const screens = this.screenSeq || 0;
+    const page = this.onGate() ? this.gatePageNow() : '';
+    return () => at === this.boardSeq && screens === (this.screenSeq || 0)
+      && page === (this.onGate() ? this.gatePageNow() : '');
   }
 
   /* `failed` hears about a load that did not happen, once the note says why:
@@ -17424,8 +17506,22 @@ export class Ui {
       }
       return;
     }
-    this.onBoardCourse(track).then((ok) => {
+    const wanted = this.boardAsker();
+    /* A load the pilot walked away from says nothing and seats nothing:
+     * the note is cleared and the card's Loading stopped, so coming back
+     * finds the room as it was. */
+    const dropped = () => {
+      this.boardNote.textContent = '';
+      if (failed) {
+        failed();
+      }
+    };
+    this.onBoardCourse(track, wanted).then((ok) => {
       this.openingBoardCourse = false;
+      if (!wanted()) {
+        dropped();
+        return;
+      }
       if (!ok) {
         this.boardNote.textContent = `${track.name} could not be loaded from the board.`;
         if (failed) {
@@ -17440,6 +17536,10 @@ export class Ui {
       }
     }).catch((err) => {
       this.openingBoardCourse = false;
+      if (!wanted()) {
+        dropped();
+        return;
+      }
       this.boardNote.textContent = `${track.name} could not be loaded. ${err.message ?? err}`;
       if (failed) {
         failed();
@@ -22636,7 +22736,7 @@ export class Ui {
       return;
     }
     if (action === 'tune-share') {
-      tunesDialog().then((m) => m.openTuneShare(this));
+      this.withTunes((m) => m.openTuneShare(this));
       return;
     }
     if (action === 'quad-ask-again') {
@@ -22647,7 +22747,7 @@ export class Ui {
       return;
     }
     if (action === 'tune-load') {
-      tunesDialog().then((m) => m.openTuneLoad(this));
+      this.withTunes((m) => m.openTuneLoad(this));
       return;
     }
     if (action === 'fc') {

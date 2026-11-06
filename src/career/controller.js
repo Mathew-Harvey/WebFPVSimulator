@@ -391,8 +391,11 @@ export function createCareer(shell) {
         airframe: lesson.airframe || '5inch',
       });
     } catch (e) {
-      console.error(e);
+      /* A load the pilot walked away from (Esc, or another lesson opened)
+       * is nobody's error: its world wait runs on to its timeout and lands
+       * here long after, so it is dropped silently, as a success would be. */
       if (token === loadToken && state === 'briefing') {
+        console.error(e);
         screens.setReady(false, `${e && e.message ? e.message : 'This lesson could not be loaded.'} Back to the career and try again.`);
       }
       return;

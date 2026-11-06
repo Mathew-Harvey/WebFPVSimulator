@@ -1015,8 +1015,30 @@ export class Race {
     return fastestLap(this.laps);
   }
 
+  /* At ONE weight as well, the rule the running call and boardRow keep:
+   * three clean laps with the Weight slider moved between them are not one
+   * run of three, so the results screen used to show a best three the call
+   * had not made and the board would not take. fastestThreeConsecutive in
+   * track.js stays the MultiGP rule it cites, and is used when the log
+   * names no weight, which is a log from before weights were kept. */
   bestThreeMs() {
-    return fastestThreeConsecutive(this.log);
+    if (!this.log.some((e) => e.weight != null)) {
+      return fastestThreeConsecutive(this.log);
+    }
+    let best = null;
+    for (let i = 2; i < this.log.length; i += 1) {
+      const a = this.log[i - 2];
+      const b = this.log[i - 1];
+      const c = this.log[i];
+      if (a.ms == null || b.ms == null || c.ms == null || a.weight !== c.weight || b.weight !== c.weight) {
+        continue;
+      }
+      const total = a.ms + b.ms + c.ms;
+      if (best == null || total < best) {
+        best = total;
+      }
+    }
+    return best;
   }
 
   /*

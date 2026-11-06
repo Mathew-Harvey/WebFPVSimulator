@@ -2367,6 +2367,23 @@ function suiteCrashRule() {
   }
   check('but a full size RaceGOW track does, from its third lap',
     field3g.lastThreeBest != null && field3g.lastThreeBest === field3g.bestThreeMs(), String(field3g.lastThreeBest));
+  /* The results screen's best three keeps the call's one weight rule: a
+   * Weight moved after the first lap leaves laps two to four as the only
+   * run of three (round 1 leftover, round 2 batch S6). */
+  const field3w = new Race(roomGate, 'full');
+  field3w.callThree = true;
+  field3w.setWeight(100);
+  field3w.update(airSeg.prev, airSeg.curr, 0, 0);
+  field3w.update(airSeg.prev, airSeg.curr, 500, 500);
+  field3w.setWeight(120);
+  for (let k = 1; k <= 3; k += 1) {
+    field3w.update(airSeg.prev, airSeg.curr, 500 + k * 1000, 500 + k * 1000);
+  }
+  const w3 = field3w.log.map((e) => `${e.ms}@${e.weight}`).join(' ');
+  check('the results best three is three laps at one weight, as the call is',
+    field3w.log.length === 4 && field3w.bestThreeMs() === field3w.runThreeMs
+    && field3w.bestThreeMs() === field3w.log[1].ms + field3w.log[2].ms + field3w.log[3].ms,
+    `${field3w.bestThreeMs()} ${field3w.runThreeMs} [${w3}]`);
   check('a RaceGOW track is one by its series or, with none, by its name',
     isRaceGowCourse({ series: 'RaceGOW5', name: 'Track 1' })
     && isRaceGowCourse({ series: '', name: 'RaceGOW6 Track 2' })

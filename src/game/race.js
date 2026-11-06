@@ -270,6 +270,8 @@ export class Race {
      * gates.
      */
     this.micro = trackClass === 'micro';
+    /* Set by the shell on a RaceGOW track of any size: see lastThreeBest. */
+    this.callThree = false;
     /*
      * THE WEIGHT THE LAPS ARE FLOWN AT, the shell's Weight slider, stamped on
      * every clean lap in the log so the board is told the weight of the lap
@@ -499,7 +501,8 @@ export class Race {
      * faster window of three than any before it in this run sets
      * lastThreeBest to that total, and the flash and the spoken call say
      * so. Null on every other lap, and always on the field, which is scored
-     * on one lap. Kept as a running total rather than read with
+     * on one lap, unless the shell sets callThree for a RaceGOW track
+     * (lapsForRun's rule in src/main.js). Kept as a running total rather than read with
      * fastestThreeConsecutive on each lap, because a lap only ever closes
      * one new window: the last three entries of the log.
      */
@@ -910,7 +913,7 @@ export class Race {
           }
         }
         this.lastThreeBest = null;
-        if (this.micro && this.log.length >= 3) {
+        if ((this.micro || this.callThree) && this.log.length >= 3) {
           const w = this.log.slice(-3);
           if (w[0].ms != null && w[1].ms != null && w[2].ms != null) {
             const total = w[0].ms + w[1].ms + w[2].ms;

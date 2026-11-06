@@ -354,15 +354,17 @@ function plantImportedHeights(doc) {
 /*
  * IS THIS A RACEGOW TRACK? One copy of the rule, read by Dan's corner
  * (src/maps/custom.js) and by the run's default lap count (racegowLaps in
- * src/ui/ui.js). A track is one by its credited series or by its name,
- * because the board's RaceGOW6 Track 1 and 2 were published with no series.
+ * src/ui/ui.js). A track is one when RaceGOW is anywhere in its credited
+ * series or its name (the owner, 2026-11-06: "any track with racegow in the
+ * name"), because the board's RaceGOW6 Track 1 and 2 were published with no
+ * series and a pilot's own copy can carry the word anywhere in its name.
  * Takes the course this file builds, or anything with a series and a name.
  */
 export function isRaceGowCourse(course) {
   if (!course) {
     return false;
   }
-  return /^racegow/i.test(course.series || '') || /^racegow/i.test(course.name || '');
+  return /racegow/i.test(course.series || '') || /racegow/i.test(course.name || '');
 }
 
 /*

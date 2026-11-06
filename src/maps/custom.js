@@ -120,10 +120,14 @@ export async function buildMap(shell, onProgress, options) {
    * is one by its credited series or by its name, because the board's
    * RaceGOW6 tracks were published with no series. */
   if (isRaceGowCourse(course)) {
-    const { attachDan } = await import('./dan/index.js');
-    await attachDan(shell, map);
-    /* And the run's default: a RaceGOW room flies non stop unless the pilot
-     * picked a lap count for these rooms (racegowLaps in src/ui/ui.js). */
+    /* Dan stands in a room, two metres in from its walls, so a full size
+     * track with RaceGOW in its name gets the laps and not him. */
+    if (course.trackClass === 'micro') {
+      const { attachDan } = await import('./dan/index.js');
+      await attachDan(shell, map);
+    }
+    /* And the run's default: a RaceGOW track flies non stop unless the
+     * pilot picked a lap count for them (racegowLaps in src/ui/ui.js). */
     map.racegow = true;
   }
   map.share = share

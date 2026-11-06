@@ -2359,9 +2359,18 @@ function suiteCrashRule() {
     fieldCalled = fieldCalled || field3.lastThreeBest != null;
   }
   check('a field track never calls a best three', !fieldCalled);
+  const field3g = new Race(roomGate, 'full');
+  field3g.callThree = true;
+  field3g.update(airSeg.prev, airSeg.curr, 0, 0);
+  for (let k = 1; k <= 3; k += 1) {
+    field3g.update(airSeg.prev, airSeg.curr, k * 1000, k * 1000);
+  }
+  check('but a full size RaceGOW track does, from its third lap',
+    field3g.lastThreeBest != null && field3g.lastThreeBest === field3g.bestThreeMs(), String(field3g.lastThreeBest));
   check('a RaceGOW track is one by its series or, with none, by its name',
     isRaceGowCourse({ series: 'RaceGOW5', name: 'Track 1' })
     && isRaceGowCourse({ series: '', name: 'RaceGOW6 Track 2' })
+    && isRaceGowCourse({ series: '', name: 'My RaceGOW copy' })
     && !isRaceGowCourse({ series: '', name: 'WCMRC Round 5' })
     && !isRaceGowCourse(null));
 

@@ -3640,6 +3640,7 @@ export async function boot({ loading, bootStart, mapId }) {
   /* The race: gate order, lap clock, best lap. On a freestyle map it is a
    * real object with no gates in it and it scores nothing. */
   let race = new Race(view.gates, view.trackClass ?? 'full');
+  race.callThree = Boolean(view.racegow);
   /*
    * THE YARD TRACK, a RaceGOW track standing in a house map's yard
    * (src/maps/yardtrack/, src/game/yardrace.js), timed beside the run and
@@ -7879,6 +7880,7 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     if (!keepPlace) {
       race = new Race(view.gates, view.trackClass ?? 'full');
+      race.callThree = Boolean(view.racegow);
       yard = view.yardTrack ? new YardRace(view.yardTrack) : null;
       race.setWeight(runWeight);
       race.setTuned(offStock());

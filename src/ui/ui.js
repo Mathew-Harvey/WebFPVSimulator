@@ -11349,8 +11349,8 @@ export class Ui {
         this.racegowSeat ? choice(
           'Laps',
           s.racegowLaps === PRACTICE_LAPS
-            ? 'Non stop is how a RaceGOW room is flown: as many laps as you like, each one called out with its time as you cross the line, and every time you set a faster three laps in a row the new best three is called too. Stop from the pause menu. Your best three posts to the public board like any other run. RaceGOW rooms keep their own pick, so a field track keeps its lap count. Latched when you launch.'
-            : 'How many laps a run lasts before the result screen. Non stop has no end and keeps calling your best three in a row. RaceGOW rooms keep their own pick, so a field track keeps its lap count. Latched when you launch.',
+            ? 'Non stop is how a RaceGOW track is flown: as many laps as you like, each one called out with its time as you cross the line, and every time you set a faster three laps in a row the new best three is called too. Stop from the pause menu. Your best three posts to the public board like any other run. RaceGOW tracks keep their own pick, so a field track keeps its lap count. Latched when you launch.'
+            : 'How many laps a run lasts before the result screen. Non stop has no end and keeps calling your best three in a row. RaceGOW tracks keep their own pick, so a field track keeps its lap count. Latched when you launch.',
           LAP_COUNTS,
           s.racegowLaps,
           (n) => lapsLabel(n, true),

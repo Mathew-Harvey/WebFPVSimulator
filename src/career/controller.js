@@ -505,7 +505,14 @@ export function createCareer(shell) {
     toTree(lesson && partOf(lesson.id) ? partOf(lesson.id).id : null);
   }
 
-  async function leave() {
+  /*
+   * Out of the career. `keepWorld` is for a flight that is not the
+   * career's own starting while a lesson is up (round 3 R3-13): the
+   * lesson's display, checklist, objective, mode and camera all go, as
+   * they do here always, but the world and the aircraft the pilot just
+   * picked are left where they are rather than swapped back.
+   */
+  async function leave({ keepWorld = false } = {}) {
     loadToken += 1;
     state = 'idle';
     if (shell.simpleOsd) {
@@ -518,7 +525,11 @@ export function createCareer(shell) {
     shell.setCamera(null);
     shell.setFlightMode(null);
     screens.screen = '';
-    await shell.leaveWorld();
+    if (keepWorld && shell.dropWorld) {
+      shell.dropWorld();
+    } else {
+      await shell.leaveWorld();
+    }
     shell.presence({ steam_display: '#Menu' });
   }
 

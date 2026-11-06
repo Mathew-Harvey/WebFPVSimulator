@@ -10662,6 +10662,18 @@ export async function boot({ loading, bootStart, mapId }) {
   });
 
   ui.onAction = (action, s) => {
+    /*
+     * A FLIGHT THAT IS NOT THE LESSON'S (round 3 R3-13). A lesson flies
+     * through careerFly, never through this action, so a Fly arriving here
+     * while the career is up is some other door: a map from the picker, a
+     * board track, a room. The lesson's checklist, gauge, clock, coach and
+     * objective must not ride along onto it and go on judging, so the
+     * career lets go first, keeping the world just picked. Its synchronous
+     * part runs before the settings below are applied.
+     */
+    if (action === 'fly' && career && career.active()) {
+      career.leave({ keepWorld: true });
+    }
     if (s) {
       applySettings(s);
     }
@@ -16790,6 +16802,23 @@ export async function boot({ loading, bootStart, mapId }) {
     return view;
   }
 
+  /* Out of the career with the world as it now stands: the lesson's hold
+   * on the mode, the camera, the simple OSD and the pause menu is let go,
+   * and the pilot's own world is not put back, because they have just
+   * chosen another one (R3-13). careerSaved goes with it: the pick made
+   * since is the pilot's own now. */
+  function careerDropWorld() {
+    careerWorld = null;
+    careerFlightMode = null;
+    careerCamera = null;
+    careerSaved = null;
+    ui.setCareerLesson(null);
+    if (ui.osd) {
+      ui.osd.classList.remove('osd-simple');
+    }
+    syncAngleMode();
+  }
+
   async function careerLeaveWorld() {
     careerWorld = null;
     careerFlightMode = null;
@@ -17481,6 +17510,7 @@ export async function boot({ loading, bootStart, mapId }) {
   const careerShell = {
     enterWorld: careerEnterWorld,
     leaveWorld: careerLeaveWorld,
+    dropWorld: careerDropWorld,
     fly: careerFly,
     freeze: careerFreeze,
     idle: careerToTitle,

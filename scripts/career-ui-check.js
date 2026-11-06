@@ -814,6 +814,28 @@ async function run(size) {
     await page.until(state('cover'), 60000);
     const kept = await page.evaluate("[document.querySelector('#career .cr-continue-title .cr-title-text').textContent, document.querySelector('#career .cr-licence-line').textContent.trim(), document.querySelector('#career .cr-paintcard .cr-panel-line').textContent]");
     check('and the career opens where it was left, paint and all', kept[0] === check10.title && /, \d+ of \d+ lessons$/.test(kept[1]) && !/^0 stars/.test(kept[1]) && kept[2].startsWith(`${rookie.name} paint.`), kept.join(' / '));
+
+    /* ---------------- another door while a lesson flies (R3-13) ---------------- */
+    /* A Fly that is not the lesson's, here the shell's own, as a map picked
+     * from the picker would send: the lesson lets go of the display and
+     * the judging, and the world just flown is not swapped back. */
+    await page.evaluate("window.__career.open('1-1')");
+    await page.until(state('briefing'), 60000);
+    await page.until("(() => { const b = document.querySelector('#career .cr-brief .cr-btn.primary'); return b && !b.disabled; })()", 90000);
+    await page.evaluate('window.__career.fly()');
+    await page.until(state('flight'), 60000);
+    const lessonMap = await page.evaluate('window.__ui.settings.map');
+    const during = await page.evaluate("({ simple: document.querySelector('.osd').classList.contains('osd-simple'), lesson: !!window.__ui.careerLesson })");
+    await page.evaluate("(() => { const ui = window.__ui; ui.mode = 'freestyle'; ui.act('fly'); return 1; })()");
+    await page.until("window.__career.state() === 'idle' && window.__ui.screen === 'flight'", 60000).catch(() => {});
+    const away = await page.evaluate(`({ state: window.__career.state(), screen: window.__ui.screen,
+      simple: document.querySelector('.osd').classList.contains('osd-simple'), lesson: !!window.__ui.careerLesson,
+      careerShown: !document.getElementById('career').hidden, flightBody: document.body.classList.contains('career-flight'),
+      map: window.__ui.settings.map })`);
+    check('a Fly from another door ends the lesson: no lesson display, pause menu or judging rides along',
+      away.state === 'idle' && away.screen === 'flight' && !away.simple && !away.lesson && !away.careerShown && !away.flightBody,
+      JSON.stringify({ during, away }));
+    check('and the world just flown is kept, not swapped back to the pilot\'s own', away.map === lessonMap, `${away.map} (lesson ${lessonMap})`);
   } catch (e) {
     check('the walk ran to its end', false, e.message.slice(0, 300));
   } finally {

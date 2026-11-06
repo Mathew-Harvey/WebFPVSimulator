@@ -8393,9 +8393,16 @@ export async function boot({ loading, bootStart, mapId }) {
       sim.setAngleMode(want);
     }
     if (ui.setCraftCaption && !(showcase && showcase.failed)) {
-      ui.setCraftCaption(want
+      /* Which of the Quad room's two mode rows decides, said in the
+       * caption: on the keyboard a race flies Keyboard races, not Flight
+       * mode, so the room showed Acro lit over a quad captioned Angle and
+       * a beginner could not tell which one they would fly (fun.md
+       * FUN-21). The words are compared before they are written (Ui.text),
+       * so the frame loop writes nothing while they stand. */
+      const keys = !careerFlightMode && flightModeSetting() === 'keyRaceMode';
+      ui.setCraftCaption(`${keys ? 'Keyboard races fly ' : ''}${want
         ? 'Angle. Sticks are tilt. Hands off levels.'
-        : 'Acro. Sticks are rates. Hands off holds.');
+        : 'Acro. Sticks are rates. Hands off holds.'}`);
     }
   }
 

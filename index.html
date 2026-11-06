@@ -2032,6 +2032,14 @@
        * device, and the row is the one control on that screen.
        */
       .osd.dim .osd-air-row, .osd.dim .osd-air-cap, .osd.dim .osd-tune-reset { visibility: hidden; }
+      /* And the live readings, which say nothing while the quad is held:
+         the speed, the mode, the height and the throttle in the right hand
+         corner, the gimbals and the crosshair. Dimmed, they ghosted behind
+         the pause menu and beside it on a phone (art.md ART-24). What a
+         pilot pauses to read stays: the clock and the records at the top,
+         the pack at the bottom left. Visibility, so nothing moves on the
+         way back into flight. */
+      .osd.dim .osd-right, .osd.dim .osd-sticks, .osd.dim .osd-cross { visibility: hidden; }
       /* Portrait is the hinted-away state, but it still has to be tidy:
          the plates go back to the single size, because two doubled plates
          are wider than the screen. The two lines ride just above the
@@ -2759,7 +2767,11 @@
       /* In a card a third of the page wide, the quad rides the right half,
          clear of the title and caption on the left. */
       .gate-card-mg-dogfight .gp-dog { left: auto; right: 4%; top: 6%; width: 46%; }
-      .gate-card-mg-dogfight .gp-dog-sfx, .gate-card-games .gp-dog-sfx { top: 12%; left: 52%; }
+      .gate-card-mg-dogfight .gp-dog-sfx { top: 12%; left: 52%; }
+      /* The Mini games panel wears the NEW! sticker in its top right
+         corner, so its POW! sits on the left, under the kicker, and the
+         two never overprint (fun.md FUN-22). */
+      .gate-card-games .gp-dog-sfx { top: 15%; left: 4%; }
       .gate-card {
         position: relative;
         min-width: 0;

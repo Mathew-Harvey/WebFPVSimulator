@@ -38,6 +38,17 @@ const MIME = new Map([
      extension table and that table says video/webm, so the harness has to
      say it too or check 14 measures a page the public never gets. */
   ['.webm', 'video/webm'],
+  /* The images, as scripts/serve.js and the deploy serve them. Without
+     these the harness served the credits' SVG logos as
+     application/octet-stream, the browser refused them, and every capture
+     of the loading screen showed a broken image the public never sees
+     (art.md ART-23). */
+  ['.svg', 'image/svg+xml'],
+  ['.png', 'image/png'],
+  ['.jpg', 'image/jpeg'],
+  ['.jpeg', 'image/jpeg'],
+  ['.webp', 'image/webp'],
+  ['.ico', 'image/x-icon'],
 ]);
 
 /*

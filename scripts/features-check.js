@@ -533,6 +533,24 @@ async function scenarioRoom() {
     check('room: with Race line on, the whoop track\'s line is solved', line.phase === 'ready' && line.crumbs > 50 && line.lapS > 0 && line.wanted,
       `${line.phase}${line.reason ? ` (${line.reason})` : ''}, ${line.crumbs} crumbs, ${line.lapS.toFixed ? line.lapS.toFixed(1) : line.lapS} s a lap`);
 
+    /* The Quad room on a race seated, on the keyboard: the preview's
+     * caption says which of the two mode rows this flight follows, so it
+     * never says Angle under a Flight mode row lit Acro without saying why
+     * (fun.md FUN-21). */
+    await page.evaluate("window.__ui.show('quad'), 1");
+    const modes = await json(page, `(async () => {
+      for (let i = 0; i < 50 && !/Keyboard races|^(Acro|Angle)/.test(window.__ui.craftCaption.textContent); i += 1) {
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      await new Promise((r) => setTimeout(r, 300));
+      const s = window.__ui.settings;
+      return { caption: window.__ui.craftCaption.textContent, flightMode: s.flightMode, keyRaceMode: s.keyRaceMode };
+    })()`);
+    const keyWord = modes.keyRaceMode === 'acro' ? 'Acro' : 'Angle';
+    check('quad room, a race on keys: the caption names Keyboard races and the mode it flies',
+      modes.caption.startsWith(`Keyboard races fly ${keyWord}.`), `${modes.caption} (Flight mode ${modes.flightMode}, Keyboard races ${modes.keyRaceMode})`);
+    await page.evaluate("window.__ui.show('courses'), 1");
+
     await page.evaluate("window.__ui.act('fly'), 1");
     await page.until("window.__ui.screen === 'launch'", 30000);
     await page.tap('Enter');
@@ -546,6 +564,20 @@ async function scenarioRoom() {
       return pts ? { count: pts.geometry.drawRange.count, all: pts.geometry.attributes.position.count } : null;
     })()`);
     check('room: and only part of the lap is drawn at once', shown && shown.count > 0 && shown.count < shown.all, JSON.stringify(shown));
+    /* Paused, the live readings are put away and the pack stays (art.md
+     * ART-24): dimmed, they ghosted behind the pause menu. */
+    await page.tap('Escape');
+    await page.until("window.__ui.screen === 'paused'", 20000);
+    const ghost = await json(page, `(() => {
+      const vis = (sel) => { const n = document.querySelector(sel); return n ? getComputedStyle(n).visibility : 'none'; };
+      return { right: vis('.osd .osd-right'), sticks: vis('.osd .osd-sticks'), pack: vis('.osd .osd-left'), top: vis('.osd .osd-top') };
+    })()`);
+    check('room: paused, the speed corner and the gimbals are put away and the pack stays',
+      ghost.right === 'hidden' && ghost.sticks === 'hidden' && ghost.pack === 'visible', JSON.stringify(ghost));
+    await page.evaluate("window.__ui.act('resume'), 1");
+    await page.until("window.__ui.screen === 'flight'", 20000);
+    const back = await json(page, "(() => getComputedStyle(document.querySelector('.osd .osd-right')).visibility)()");
+    check('room: and back in flight they are shown again', back === 'visible', back);
     await page.evaluate("(() => { window.__ui.settings.raceLine = false; window.__ui.writeSettings(); return 1; })()");
     await page.until('window.__raceLine().state.shown === false', 20000)
       .then(() => check('room: turned off, the dots go', true))
@@ -1029,6 +1061,45 @@ async function scenarioModules() {
   try {
     await page.until('window.__shellReady === true && !!window.__ui', 120000);
 
+    /* THE HARNESS SERVES IMAGES AS IMAGES (art.md ART-23): the credits'
+     * SVG logo under Powered by was application/octet-stream here, so
+     * every capture of the loading screen showed it broken. */
+    const logo = await json(page, `(async () => {
+      const r = await fetch('/assets/credits/betaflight-mono.svg');
+      const img = new Image();
+      img.src = '/assets/credits/betaflight-mono.svg';
+      const drawn = await img.decode().then(() => img.naturalWidth > 0, () => false);
+      return { type: r.headers.get('content-type'), drawn };
+    })()`);
+    check('modules: the harness serves an SVG as image/svg+xml, and it decodes', logo.type === 'image/svg+xml' && logo.drawn, JSON.stringify(logo));
+
+    /* A GAME HUD'S 'select' IS THE MENU CLICK (fun.md FUN-5). Quad Ball's
+     * kick off, overtime and reset, a goal against, the dogfight and the
+     * ribbons send 'select' to audio.event, and it used to play the
+     * landing thump. The real class, its voices stubbed, so what is read
+     * is which path the call took. */
+    const cue = await json(page, `(async () => {
+      const { MotorAudio } = await import('/src/render/audio.js');
+      const a = new MotorAudio();
+      const touched = [];
+      const param = (name) => ({
+        cancelScheduledValues() { touched.push(name); }, setValueAtTime() {}, exponentialRampToValueAtTime() {}, linearRampToValueAtTime() {}, setTargetAtTime() {},
+      });
+      a.ctx = { currentTime: 0 };
+      a.mix = { ...a.mix, effects: 1 };
+      a.cueGain = { gain: param('cueGain') };
+      a.cueOsc = { frequency: param('cueOsc') };
+      a.crashGain = { gain: param('crashGain') };
+      a.crashLp = { frequency: param('crashLp'), Q: param('crashLpQ') };
+      a.duckFlight = () => touched.push('duck');
+      a.music = { duckNow: () => touched.push('duckMusic') };
+      const ui = [];
+      a.ui = (k) => ui.push(k);
+      a.event('select');
+      return { ui, touched };
+    })()`);
+    check('modules: audio.event(\'select\') plays the menu click, not the landing thump', cue.ui.join() === 'select' && cue.touched.length === 0, JSON.stringify(cue));
+
     /* THE TRAILS, from a real FieldWatch fed two pilots' poses, drawn by a
      * renderer of its own looking down on them. */
     const trails = await json(page, `(async () => {
@@ -1173,6 +1244,26 @@ async function scenarioModules() {
     })()`);
     check('modules: badges: every achievement glyph, earned and not, parses as SVG', badges.glyphs > 5 && badges.bad.length === 0, `${badges.n} drawings, ${badges.bad.slice(0, 3).join('; ')}`);
     check('modules: badges: unearned is not the earned picture', badges.differ);
+    /* THE SOLO PAGE'S MINI GAMES PANEL (fun.md FUN-22, FUN-14): its POW!
+     * and its NEW! sticker do not overprint, and the Quad Ball caption
+     * names nobody else's game. */
+    const { GATE_GAMES } = await import('../src/ui/gatepages.js');
+    const ball = GATE_GAMES.find((g) => g.id === 'mg-ball');
+    check('modules: the Quad Ball caption names no other company\'s game', ball && !/rocket league/i.test(ball.caption), ball && ball.caption);
+    await page.evaluate("window.__ui.turnGate('solo'), 1");
+    const stick = await json(page, `(async () => {
+      const box = (sel) => { const n = document.querySelector(sel); if (!n) { return null; } const r = n.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom }; };
+      let a = null; let b = null;
+      for (let i = 0; i < 100; i += 1) {
+        a = box('.gate-card-games .gp-dog-sfx');
+        b = box('.gate-card-games .gp-dog-sticker');
+        const card = box('.gate-card-games');
+        if (a && b && card && card.r <= window.innerWidth + 1) { break; }
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      return { a, b, over: Boolean(a && b && a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b) };
+    })()`);
+    check('modules: on the solo page the Mini games POW! and NEW! do not overlap', stick.a && stick.b && !stick.over, JSON.stringify(stick));
     errorsCheck(page, 'modules');
   } catch (e) {
     check('modules: the scenario ran to the end', false, e.message);

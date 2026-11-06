@@ -557,13 +557,19 @@ const ROOM_TRACK = {
   modifiedUtc: '2026-11-06T00:00:00.000Z',
 };
 
+const INITIAL_CARD = "window.__board.routes['GET /api/tracks'] = { body: { tracks: [{ id: 'trk-fea7init', name: 'Initial on a card', author: 'Pilot', gates: 6, times: 0, trackClass: 'micro' }] } };";
+
 async function scenarioRoom() {
   const page = await openPage({
     root,
     width: 1280,
     /* Over 720 px high: below it the results screen puts its plan away. */
     height: 900,
-    seed: [BOARD_STUB, settingsSeed({ airframe: 'whoop65', raceLine: true },
+    /* One board track with neither a picture nor a plan, so the shelf has a
+     * card that still falls back to its initial: since FUN-17 every track
+     * in this browser's library draws its plan over it (see the ART-15
+     * check below). */
+    seed: [BOARD_STUB, INITIAL_CARD, settingsSeed({ airframe: 'whoop65', raceLine: true },
       `localStorage.setItem('webfpv.trackbuilder.library.v1', ${JSON.stringify(JSON.stringify({ [ROOM_TRACK.id]: ROOM_TRACK }))});`)],
   });
   try {
@@ -579,7 +585,9 @@ async function scenarioRoom() {
 
     /* A card with no picture shows the track's initial, and it never
      * prints through the card's lettered name (art.md ART-15). Read on the
-     * Tracks cards: the initial's own glyphs against each name line. */
+     * Tracks cards: the initial's own glyphs against each name line. A card
+     * whose plan is drawn has lost its initial (FUN-17), so the one read is
+     * the board's INITIAL_CARD, which has no plan to draw. */
     await page.evaluate("window.__ui.show('courses'), 1");
     const initials = await json(page, `(async () => {
       let cards = [];

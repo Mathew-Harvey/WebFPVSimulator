@@ -199,8 +199,19 @@ export function writeShareImport(payload) {
      * as a copy. Written as a boolean so a stale seat cannot smuggle
      * anything else in under the name. */
     stock: Boolean(payload.stock),
+    /* A shipped track seated only because the board did not answer a cold
+     * boot (ART-20, adoptMostFlownTrack in src/share/board.js): it holds
+     * the seat so the pilot is not left in an empty field, and gives it up
+     * to the board's most flown track the next time the board answers. */
+    standIn: Boolean(payload.standIn),
     importedUtc: new Date().toISOString(),
   });
+}
+
+/* Whether the seat holds such a stand in, which a cold boot may replace. */
+export function shareSeatIsStandIn(cls) {
+  const seat = readShareImport(cls);
+  return Boolean(seat && seat.standIn);
 }
 
 export function clearShareImport(cls) {

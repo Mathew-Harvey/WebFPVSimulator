@@ -126,6 +126,7 @@ import {
   clearPendingTime,
   readEditKey,
   readPendingTime,
+  shareSeatIsStandIn,
   writePendingTime,
   writePostedBest,
   writeShareImport,
@@ -1107,7 +1108,7 @@ export async function boot({ loading, bootStart, mapId }) {
       ui.seatCraftForDoc(fromUrl.document);
       ui.settings.map = 'custom';
       ui.renderMenu();
-    } else if (mapById(ui.settings.map).mode !== 'freestyle' && !hasFlyableTrack()) {
+    } else if (mapById(ui.settings.map).mode !== 'freestyle' && (!hasFlyableTrack() || shareSeatIsStandIn())) {
       const featured = await adoptMostFlownTrack(airframeById(ui.settings.airframe).trackClass);
       if (featured) {
         ui.settings.map = 'custom';
@@ -8836,7 +8837,7 @@ export async function boot({ loading, bootStart, mapId }) {
         /* Any freestyle world, not only the town: a pilot seated on Your
          * map has no race track to be missing, and adopting one here would
          * move them off the map they chose. */
-        if (mapById(s.map).mode !== 'freestyle' && !hasFlyableTrack()) {
+        if (mapById(s.map).mode !== 'freestyle' && (!hasFlyableTrack() || shareSeatIsStandIn())) {
           adoptMostFlownTrack(wantCls).then((got) => {
             if (!got) {
               return;

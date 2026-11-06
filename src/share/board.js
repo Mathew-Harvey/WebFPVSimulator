@@ -50,7 +50,7 @@
  */
 
 import { adminAuthHeaders, writeAdminSession } from './admin.js';
-import { readShareImport, writeShareImport } from './session.js';
+import { readShareImport, shareSeatIsStandIn, writeShareImport } from './session.js';
 import { byRating, cleanRating, raterKey, rememberStars } from './rating.js';
 
 /*
@@ -454,7 +454,7 @@ export async function adoptMostFlownTrack(cls) {
    * is per class too.
    */
   const want = cls === 'micro' ? 'micro' : 'full';
-  if (readShareImport()) {
+  if (readShareImport() && !shareSeatIsStandIn()) {
     return null;
   }
   try {
@@ -481,7 +481,7 @@ export async function adoptMostFlownTrack(cls) {
     })).filter((t) => t.id && t.trackClass === want);
     const top = pickMostFlownTrack(list);
     if (!top) {
-      return null;
+      return seatStandIn(want);
     }
     const payload = await fetchTrackDocument(top.id, top.board);
     const document = payload.document || payload;
@@ -496,6 +496,53 @@ export async function adoptMostFlownTrack(cls) {
       return null;
     }
     return share;
+  } catch (e) {
+    return seatStandIn(want);
+  }
+}
+
+/*
+ * NO BOARD, AND STILL A TRACK (ART-20). A cold boot whose board did not
+ * answer, or had no track for this aircraft, used to build the Track map
+ * with nothing seated: an empty field, no gates, which is the first thing a
+ * visitor offline saw. So it seats a track that ships with the simulator,
+ * the first chapter's for the five inch and the first RaceGOW5 room for the
+ * whoop, as a stock seat (not published, takes no time) marked as a stand
+ * in, which the next boot that reaches the board replaces with the most
+ * flown track. A stand in already seated is kept. The presets are fetched
+ * only here, so a boot that reaches the board never asks for them.
+ */
+async function seatStandIn(want) {
+  const held = readShareImport();
+  if (held && held.standIn) {
+    return held;
+  }
+  if (held) {
+    return null;
+  }
+  try {
+    const { presetById } = await import('../trackbuilder/presets.js');
+    let document = null;
+    if (want === 'micro') {
+      document = presetById('racegow5-track1');
+    } else {
+      const { FIVE_INCH_PRESETS } = await import('../trackbuilder/presets5.js');
+      const first = FIVE_INCH_PRESETS.find((d) => d.id === 'trk-178a4de4') || FIVE_INCH_PRESETS[0];
+      document = first ? JSON.parse(JSON.stringify(first)) : null;
+    }
+    if (!document || (document.trackClass === 'micro' ? 'micro' : 'full') !== want) {
+      return null;
+    }
+    const share = {
+      id: document.id,
+      name: document.name,
+      author: '',
+      board: '',
+      document,
+      stock: true,
+      standIn: true,
+    };
+    return writeShareImport(share) ? share : null;
   } catch (e) {
     return null;
   }

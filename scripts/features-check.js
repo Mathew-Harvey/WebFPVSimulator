@@ -45,6 +45,9 @@
  *             pairs (ART-1, FUN-10)
  *   thumbs    every world picture in assets/thumbs is one the generator
  *             draws with nothing but the world in frame (ART-5)
+ *   offline   the Track map with no board seats a shipped track rather
+ *             than an empty field, and gives it up when the board answers
+ *             (ART-20)
  *
  * No wall clock timing is asserted: on a software rasteriser under load a
  * frame can take 200 ms, so every wait polls the page with until(). Every
@@ -1218,6 +1221,64 @@ async function scenarioThumbs() {
   check('thumbs: every picture in assets/thumbs is drawn by boardcards.js --worlds', files.length > 20 && loose.length === 0, loose.length ? `not on its list: ${loose.join(', ')}` : `${files.length} pictures`);
 }
 
+/* ------------------------------------------------------------------ */
+/* offline: the Track map with no board still has a track               */
+/* ------------------------------------------------------------------ */
+
+/*
+ * ART-20: a cold boot on the Track map whose board does not answer built
+ * an empty field with no gates. It seats a shipped track now, marked as a
+ * stand in, and a later boot that reaches the board gives the seat to the
+ * board's most flown track. Two pages: no board at all, then a board that
+ * answers, on a profile already holding the stand in.
+ */
+async function scenarioOffline() {
+  const SEAT = 'webfpv.share.import.v1';
+  const seatOf = `JSON.parse(localStorage.getItem(${JSON.stringify(SEAT)}) || 'null')`;
+  const page = await openPage({ root, width: 1280, height: 720, seed: [settingsSeed({ airframe: '5inch', map: 'custom' })] });
+  let held = null;
+  try {
+    await page.until('window.__shellReady === true && !!window.__ui', 120000);
+    await page.until("(() => { const m = window.__map && window.__map(); return m && m.ready && m.id === 'custom'; })()", 120000);
+    const r = await json(page, `(() => {
+      const seat = ${seatOf};
+      const race = window.__race && window.__race();
+      return { seat, gates: race && race.gates ? race.gates.length : 0 };
+    })()`);
+    held = r.seat;
+    check('offline: with no board the Track map seats a shipped track, as a stand in', Boolean(r.seat && r.seat.standIn && r.seat.stock && r.seat.document), r.seat ? `${r.seat.name}, standIn ${r.seat.standIn}` : 'nothing seated');
+    check('offline: and the field has its gates', r.gates > 0, `${r.gates} gates`);
+    errorsCheck(page, 'offline');
+  } catch (e) {
+    check('offline: the scenario ran to the end', false, e.message);
+  } finally {
+    await page.close();
+  }
+  if (!held) {
+    return;
+  }
+  const { FIVE_INCH_PRESETS } = await import('../src/trackbuilder/presets5.js');
+  const doc = JSON.parse(JSON.stringify(FIVE_INCH_PRESETS[1]));
+  doc.id = 'trk-feat0001';
+  const routes = `window.__board.routes['GET /api/tracks'] = { body: { tracks: [{ id: 'trk-feat0001', name: 'Board track', author: 'Pilot', gates: 12, times: 9, trackClass: 'full' }] } };
+    window.__board.routes['GET /api/tracks/trk-feat0001/document'] = { body: { id: 'trk-feat0001', name: 'Board track', author: 'Pilot', document: ${JSON.stringify(doc)} } };`;
+  const again = await openPage({
+    root, width: 1280, height: 720,
+    seed: [BOARD_STUB, routes, settingsSeed({ airframe: '5inch', map: 'custom' }, `localStorage.setItem(${JSON.stringify(SEAT)}, ${JSON.stringify(JSON.stringify(held))});`)],
+  });
+  try {
+    await again.until('window.__shellReady === true && !!window.__ui', 120000);
+    await again.until(`(() => { const s = ${seatOf}; return s && s.id === 'trk-feat0001'; })()`, 30000).catch(() => {});
+    const seat = await json(again, seatOf);
+    check('offline: a later boot that reaches the board gives the seat to its most flown track', Boolean(seat && seat.id === 'trk-feat0001' && !seat.standIn), seat ? `${seat.id}, standIn ${seat.standIn}` : 'nothing seated');
+    errorsCheck(again, 'offline, board back');
+  } catch (e) {
+    check('offline: the board back scenario ran to the end', false, e.message);
+  } finally {
+    await again.close();
+  }
+}
+
 const SCENARIOS = {
   quad: scenarioQuad,
   room: scenarioRoom,
@@ -1231,6 +1292,7 @@ const SCENARIOS = {
   modules: scenarioModules,
   lettering: scenarioLettering,
   thumbs: scenarioThumbs,
+  offline: scenarioOffline,
 };
 
 const t0 = Date.now();

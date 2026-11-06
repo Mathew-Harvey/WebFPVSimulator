@@ -127,7 +127,11 @@ const PINNED = [
   { file: 'src/ui/ui.js', re: /sixty metre field|65 mm 1S|710 gram 6S|forty metres a second/, use: 'an outdoor field, a tiny whoop, a big fast quad' },
   { file: 'configs/airframes.js', re: /\b\d+ mm\b|710 gram|forty metres a second/, use: 'Whoop, and words for size and speed' },
   { file: 'configs/registry.js', re: /Factory \d|feedforward/, use: 'what the tune does, not its version and its keys' },
-  { file: 'src/trackbuilder/app.js', re: /sixty metre field|160 metre plot|\b60 m field\b|\b160 m plot\b|65 mm whoop|ten by twelve metre/, use: 'an outdoor field, a big plot, the whoop' },
+  /* The plot sizes came back to the builder on the owner's call of
+   * 2026-11-06 (R2D-11): the builder is an author's tool, and its chooser
+   * now says them from the figures a new document is made with
+   * (groundOf in that file). The aircraft's size stays out. */
+  { file: 'src/trackbuilder/app.js', re: /65 mm whoop/, use: 'the whoop' },
 ];
 
 /* Every problem with one piece of visible text, the noun and the retired

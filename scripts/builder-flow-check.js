@@ -4002,6 +4002,46 @@ kase('canvas words', async () => {
 });
 
 /*
+ * THE CHOOSER'S SIZES (R2D-11, the owner's call of 2026-11-06): the builder is an author's tool, so its chooser and the
+ * line a new canvas says name the ground each canvas starts on, and in the figures a new document is made with, not in
+ * words typed beside them. Read off the page against the field of the document each card actually opens.
+ */
+kase('chooser sizes', async () => {
+  const page = await openBuilder('', 1600, 900, { room: false });
+  try {
+    await trapToasts(page);
+    await page.until("!!window.trackBuilder.choosing && window.trackBuilder.choosing()", 20000).catch(() => {});
+    const cards = await json(page, `[...document.querySelectorAll('.tb-choose-card')].map((c) => ({
+      canvas: c.dataset.canvas,
+      blurb: c.querySelector('.tb-choose-blurb').textContent,
+      facts: [...c.querySelectorAll('.tb-choose-fact')].map((f) => f.textContent),
+    }))`);
+    check('the chooser shows its three cards', cards.length === 3, JSON.stringify(cards.map((c) => c.canvas)));
+    const said = (w, d) => (w === d ? `${w}` : `${w} by ${d}`);
+    const nouns = { full: 'field', micro: 'hall', freestyle: 'plot' };
+    for (const canvas of ['full', 'micro', 'freestyle']) {
+      const card = cards.find((c) => c.canvas === canvas) || { blurb: '', facts: [] };
+      await page.evaluate(`(window.trackBuilder.chooseCanvas(${JSON.stringify(canvas)}), 1)`);
+      await page.sleep(300);
+      const f = await json(page, '({ w: window.trackBuilder.doc.field.width, d: window.trackBuilder.doc.field.depth })');
+      const span = said(f.w, f.d);
+      const toast = (await toasts(page)).slice(-1)[0] || '';
+      check(`the ${canvas} card names the ground its canvas opens on, ${span} m`,
+        card.blurb.includes(`${span} metre ${nouns[canvas]}`) && card.facts.includes(`${span} m ${nouns[canvas]}`), `${card.blurb} / ${card.facts.join(', ')}`);
+      if (canvas !== 'full') {
+        check(`and switching to it says the same ground`, toast.includes(`${span} metre ${nouns[canvas]}`), toast);
+      }
+      if (canvas === 'full') {
+        check('the five inch card still names its gates as MultiGP gates', card.blurb.includes('MultiGP gates'), card.blurb);
+      }
+    }
+    check('the page reported no error of its own', ownErrors(page).length === 0, ownErrors(page).join(' | '));
+  } finally {
+    await page.close();
+  }
+});
+
+/*
  * THE ACCEPTANCE RUN, which is what the plan was for: the Drone Nationals qualifying track, built from an empty canvas
  * with the pointer and the keys and nothing else, and compared piece for piece with the one that ships
  * (scripts/mission-preset.js). The number of gestures is counted and printed. Before this work the same plan took about a

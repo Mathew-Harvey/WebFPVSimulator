@@ -172,6 +172,7 @@
     "check:firstflight": "node scripts/firstflight-check.js",
     "check:tuneinvite": "node scripts/tuneinvite-check.js",
     "feel:response": "node scripts/stick-response.js",
-    "feel:measure": "node scripts/tune-measure.js"
+    "feel:measure": "node scripts/tune-measure.js",
+    "coverage": "node scripts/coverage.js"
   }
 }

@@ -303,6 +303,32 @@ export async function openPage({
   for (const source of seed) {
     await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source }, sessionId);
   }
+  /* Coverage, only when asked for: WEBFPV_COVERAGE names a folder and
+   * scripts/coverage.js reads what lands in it. Precise coverage starts
+   * before the first script loads, and each take is a delta written to its
+   * own file, so a page that dies early still leaves what it ran. It is a
+   * test switch and changes nothing a check measures when it is unset. */
+  let coverTimer = null;
+  let takeCoverage = async () => {};
+  if (process.env.WEBFPV_COVERAGE) {
+    const dir = process.env.WEBFPV_COVERAGE;
+    await mkdir(dir, { recursive: true });
+    await cdp.send('Profiler.enable', {}, sessionId);
+    await cdp.send('Profiler.startPreciseCoverage', { callCount: false, detailed: true }, sessionId);
+    let n = 0;
+    const tag = `${process.pid}-${Date.now().toString(36)}`;
+    takeCoverage = async () => {
+      const r = await cdp.send('Profiler.takePreciseCoverage', {}, sessionId).catch(() => null);
+      if (!r) {
+        return;
+      }
+      const result = r.result.filter((s) => s.url.startsWith(server.origin));
+      if (result.length) {
+        await writeFile(join(dir, `page-${tag}-${n++}.json`), JSON.stringify({ result }));
+      }
+    };
+    coverTimer = setInterval(() => { takeCoverage(); }, 3000);
+  }
   await cdp.send('Page.navigate', { url: `${server.origin}${url}` }, sessionId);
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -347,6 +373,10 @@ export async function openPage({
   }
 
   async function close() {
+    if (coverTimer) {
+      clearInterval(coverTimer);
+      await takeCoverage();
+    }
     try {
       ws.close();
     } catch (e) { /* The socket is already gone. Nothing to close. */ }

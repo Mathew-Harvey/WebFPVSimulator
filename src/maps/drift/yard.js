@@ -44,7 +44,7 @@
 import { DRIFT_DOC_ID } from '../registry.js';
 import { pointAt, nearestOn } from '../built/road.js';
 import {
-  FIELD_W, FIELD_D, courseElement, courseLine, circuitLayout, PITS, BANK, TOWER, FAIR, ROAD_WIDTH,
+  FIELD_W, FIELD_D, courseElement, courseLine, circuitLayout, PITS, BANK, TOWER, FAIR, ROAD_WIDTH, DRIFT_PAD,
 } from './circuit.js';
 
 export const DRIFT_NAME = 'Drift Matsuri';
@@ -167,8 +167,13 @@ function rows() {
     });
   }
   /* The start: one pad on the tower's roof, looking out over the straight
-   * and turn one, south east. */
-  out.push({ type: 'startPads', x: TOWER.x, y: TOWER.y, yaw: -Math.PI / 4, z: TOWER.top, dims: { pads: 1, spacing: 1.5, padSize: 0.9 } });
+   * and turn one, south east. On the roof's east edge, flush with it
+   * (round 2 R2M-3): from the middle of the roof the camera, three
+   * centimetres up, saw the roof's own top hide everything below the
+   * horizon, so the opening view was sky over an indigo band. From the
+   * edge the stands, the crowd and the lights are in the bottom of the
+   * frame. */
+  out.push({ type: 'startPads', x: DRIFT_PAD.x, y: DRIFT_PAD.y, yaw: -Math.PI / 4, z: TOWER.top, dims: { pads: 1, spacing: 1.5, padSize: 0.9 } });
   /* The pit cars, nose in to their garages, one in every bay but the
    * ends. */
   for (let k = 1; k < 14; k += 2) {

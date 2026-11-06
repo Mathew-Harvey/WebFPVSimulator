@@ -52,7 +52,10 @@ export function alpsDocument(heliTop, gaps) {
   const rows = [];
   const pad = doc(HELI.x, HELI.z + 5);
   rows.push({
-    type: 'startPads', x: pad.x, y: pad.y, z: heliTop, yaw: SOUTH, dims: { pads: 1, spacing: 1.5, padSize: 0.9 },
+    /* Facing east, at the peak (round 2 R2M-3): south it opened on the
+     * helipad's pale edge and a far range, mostly sky; east the summit
+     * stands in the middle of the view, above the camera's uptilt line. */
+    type: 'startPads', x: pad.x, y: pad.y, z: heliTop, yaw: EAST, dims: { pads: 1, spacing: 1.5, padSize: 0.9 },
   });
   for (const g of gaps) {
     const p = doc(g.x, g.z);

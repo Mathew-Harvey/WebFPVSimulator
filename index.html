@@ -5497,6 +5497,16 @@
       }
       .picker-has-keys .row.on { color: inherit; border-left-color: transparent; background: none; }
       .picker-has-keys .row.on .row-label { text-shadow: none; }
+      /* The primary row, Fly it on the Tracks room, keeps its unselected
+         look while the picker holds the keys. The rule above took away the
+         selected mint fill and left the selected deep ink label, so the
+         label was ink on the dark row and read as an empty box. */
+      .picker-has-keys .row-primary.on {
+        background: rgba(125, 255, 180, 0.10);
+        box-shadow: inset 0 0 0 1px rgba(125, 255, 180, 0.42);
+        color: var(--mint);
+      }
+      .picker-has-keys .row-primary.on .row-label { color: var(--mint); }
       .strip-label {
         margin: 10px 0 2px;
         font-size: 11px; font-weight: 700;

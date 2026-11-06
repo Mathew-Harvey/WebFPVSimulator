@@ -1800,6 +1800,29 @@
       .tb-chooser .tb-choose-lede, .tb-chooser .tb-choose { position: relative; margin-inline: 20px; }
       .tb-chooser .tb-choose-lede { color: var(--qp-quiet); }
       .tb-chooser .tb-row-btns { position: relative; margin-inline: 20px; }
+      /*
+       * DRESSED FOR THE DARK (round 3 R3-12). The tool's dialogs keep a
+       * scrollbar gutter, and on this page it was a cream strip at the end
+       * of the title's ink band, so the page gives its gutter back. Its
+       * ink frame and ink drop were ink on a near ink backdrop, so the page
+       * read as loose paper: a cream rule outside the ink frame and the
+       * drop in sakura, the chrome colour, make the edge. And Close is the
+       * quad picker's paper button (index.html .qp-btn), not the dark tool
+       * button standing on paper.
+       */
+      .tb-modal.tb-chooser {
+        scrollbar-gutter: auto;
+        box-shadow: 0 0 0 3px var(--cream), 10px 10px 0 3px var(--sakura);
+      }
+      .tb-chooser .tb-row-btns .tb-btn {
+        appearance: none; cursor: pointer; padding: 10px 20px; font-size: 15px; line-height: 1;
+        font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap;
+        color: #0b1116; background: var(--qp-paper); border: 3px solid #0b1116; border-radius: 0;
+        box-shadow: 4px 4px 0 #0b1116;
+      }
+      .tb-chooser .tb-row-btns .tb-btn:hover { background: #fff; color: #0b1116; }
+      .tb-chooser .tb-row-btns .tb-btn:focus-visible { outline: 3px solid var(--sakura); outline-offset: 2px; }
+      .tb-chooser .tb-row-btns .tb-btn:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 #0b1116; }
       .tb-chooser .tb-choose-card {
         background: #fff;
         color: #0b1116;

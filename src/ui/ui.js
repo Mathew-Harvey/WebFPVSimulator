@@ -1950,10 +1950,6 @@ const DEFAULTS = {
  * the version in the key is for, and it is cheaper than being wrong quietly.
  */
 const AIR_HINT_KEY = 'webfpv.airhint.v2';
-/* How long the card stays up in the air, on the run's airtime. Long enough
- * to read two sentences in a hover, short enough that it is gone before the
- * pilot is looking at the ground it covers. */
-const AIR_HINT_AIR_MS = 8000;
 /* How long the flight chips stay up once the quad is in the air, or after
  * the last pointer movement: see syncChipFade. Wall clock, because it is
  * chrome, not flight. */
@@ -6092,6 +6088,9 @@ export class Ui {
     this.reopenCard = null;
     this.sheetAfterKey = null;
     this.onAction = null;    /* (action, settings) => void */
+    /* (text) => void: a line for the pilot, shown by main.js as its notice
+     * (over a menu, above the command bar). */
+    this.onNotice = null;
     this.onSettings = null;  /* (settings) => void */
     /* () => void. Fly what was just seated from the starting blocks, now if
      * its world is on screen and after the load if one is building. main.js
@@ -6542,6 +6541,19 @@ export class Ui {
     this.perfRingI = 0;
     this.osd.append(this.osdPerf, this.osdCross, top, packBlock, flightBlock, sticks, this.osdLaunch, this.buildTargetLock());
     r.append(this.osd);
+    /*
+     * THE BANNER IS NEVER PRINTED ON THE CLOCK (core.md CORE-4). The
+     * banner is centred at 22 percent of the height and grows both ways,
+     * so three lines at 720p were printed over the gate count and the
+     * record line, and at 540 over the AIR digits. It still centres there,
+     * and its top now stops below the clock block's foot (index.html
+     * .banner), which needs the foot and its own height as lengths: a
+     * ResizeObserver writes them when either box changes size, so a record
+     * line arriving or new words move it, and a ticking clock, which never
+     * changes a box's size, costs nothing. The banner is built below, so
+     * the observer is started there (watchBannerFit).
+     */
+    this.osdTopBlock = top;
 
     /*
      * The freestyle score, in its own overlay beside the OSD rather than
@@ -6593,6 +6605,7 @@ export class Ui {
      * stick calibration prompts, which have to read over a screen, so the
      * banner is appended after the screens rather than before. */
     this.banner = el('div', 'banner', '');
+    this.watchBannerFit();
     /* And a notice on a menu screen, which is not the banner: see
      * setMenuNotice. */
     this.menuNotice = el('div', 'menu-notice', '');
@@ -6658,7 +6671,11 @@ export class Ui {
      * take it out of it: see syncPrimaryButton. Captured, because a scroll
      * event does not bubble. One look per frame. */
     this.primaryFrame = 0;
-    r.addEventListener('scroll', () => {
+    r.addEventListener('scroll', (e) => {
+      /* A list that scrolled may have reached its foot, or left it. */
+      if (e.target && e.target.classList && e.target.classList.contains('menu-scroll')) {
+        this.markMenuMore(e.target);
+      }
       if (!this.primaryFrame) {
         this.primaryFrame = requestAnimationFrame(() => {
           this.primaryFrame = 0;
@@ -8634,12 +8651,30 @@ export class Ui {
       return;
     }
     dropLinkParam('tune');
-    tunesDialog().then((m) => m.openTuneLoad(this, { code }));
+    this.withTunes((m) => m.openTuneLoad(this, { code }));
   }
 
   /* The Tracks and Maps rooms' Rate action: one rating dialog for either. */
   rateItem(kind, item, after) {
-    tunesDialog().then((m) => m.openRate(this, { kind, item, onRated: after }));
+    this.withTunes((m) => m.openRate(this, { kind, item, onRated: after }));
+  }
+
+  /*
+   * The tune and rating dialogs, fetched on the press. A chunk that will
+   * not fetch (a flaky link, a deploy mid session) used to leave an
+   * unhandled rejection and a button that did nothing; now the pilot is
+   * told, through main.js's notice, as the rooms are when they will not
+   * load.
+   */
+  withTunes(open) {
+    /* The fetch's failure only: an error in the dialog itself is a bug
+     * and stays loud. */
+    tunesDialog().then(open, (e) => {
+      console.warn('tunes dialog did not load', e);
+      if (this.onNotice) {
+        this.onNotice('That did not open. Check the connection, then reload the page.');
+      }
+    });
   }
 
   closeNameDialog(value) {
@@ -12790,6 +12825,7 @@ export class Ui {
     this.restoreFocusRow();
     this.syncFrame();
     this.syncCursor(false);
+    this.markMenuMore(host);
     this.syncRates();
     this.syncPids();
     this.syncFcChrome();
@@ -14458,6 +14494,23 @@ export class Ui {
 
   gatePageNow() {
     return this.roomsOn ? (this.gatePage || 'cover') : 'solo';
+  }
+
+  /*
+   * Rooms are switched on by main.js after the gate's first paint, and that
+   * turns the gate's first page from the solo page into the two card cover.
+   * The constructor's first cursor is an index into the solo page's cards
+   * (Career first, then WAYS), so left as it was, a returning pilot whose
+   * seat is the first way opened on card 1 of the cover, Multiplayer, and
+   * Enter took them to the rooms. So the first page is picked again here,
+   * by titleStop, which knows the cover lands on Fly solo.
+   */
+  turnRoomsOn() {
+    this.roomsOn = true;
+    if (this.onGate() && !this.gatePage) {
+      this.cursor = this.titleStop();
+      this.renderMenu();
+    }
   }
 
   /* Turn to a page of the gate: the cursor lands where that page starts,
@@ -17155,6 +17208,11 @@ export class Ui {
   }
 
   show(screen) {
+    /* Counts the screens the pilot has been on, for a board load that
+     * lands after they left the one that asked (boardStillWanted). */
+    if (screen !== this.screen) {
+      this.screenSeq = (this.screenSeq || 0) + 1;
+    }
     this.closeDrop();
     /* A flight is the only thing that moves a mini game's best, and the
      * title is where the panels show them: read again on the next draw. */
@@ -17644,8 +17702,15 @@ export class Ui {
       this.boardNote.textContent = `${track.name} could not be loaded from the board.`;
       return;
     }
-    this.onBoardCourse(track).then((ok) => {
+    /* The same token as openBoardCourse: a pilot who left before the track
+     * landed is not sent to the builder with it. */
+    const wanted = this.boardAsker();
+    this.onBoardCourse(track, wanted).then((ok) => {
       this.openingBoardCourse = false;
+      if (!wanted()) {
+        this.boardNote.textContent = '';
+        return;
+      }
       if (!ok) {
         this.boardNote.textContent = `${track.name} could not be loaded from the board.`;
         return;
@@ -17653,7 +17718,7 @@ export class Ui {
       go();
     }).catch((err) => {
       this.openingBoardCourse = false;
-      this.boardNote.textContent = `${track.name} could not be loaded. ${err.message ?? err}`;
+      this.boardNote.textContent = wanted() ? `${track.name} could not be loaded. ${err.message ?? err}` : '';
     });
   }
 
@@ -17714,26 +17779,37 @@ export class Ui {
     if (!w || !w.track || this.openingBoardCourse || !this.onBoardCourse) {
       return;
     }
-    if (this.settings.airframe !== '5inch') {
-      seatAirframe(this.settings, '5inch');
-    }
-    this.settings.airframeAsked = true;
-    this.craftGate = false;
-    this.mode = 'race';
-    saveSettings(this.settings);
-    if (this.onSettings) {
-      this.onSettings(this.settings);
-    }
     const track = { ...w.track, board: boardOrigin() };
-    const lead = w.times.find((x) => x.hasGhost && x.id);
-    if (lead && this.onStandingsGhost) {
-      this.onStandingsGhost(track, lead);
-    }
+    const wanted = this.boardAsker();
     this.openingBoardCourse = true;
-    this.onBoardCourse(track).then((ok) => {
+    /* Nothing of the pilot's changes until the track is here and they are
+     * still on the page that asked: the five inch, the race mode and the
+     * ghost used to be seated at the press, so a load that failed or that
+     * the pilot walked away from had already changed their seat. */
+    this.onBoardCourse(track, wanted).then((ok) => {
       this.openingBoardCourse = false;
-      if (!ok) {
+      if (!wanted()) {
         return;
+      }
+      if (!ok) {
+        if (this.onNotice) {
+          this.onNotice(`${track.name} could not be loaded from the board.`);
+        }
+        return;
+      }
+      if (this.settings.airframe !== '5inch') {
+        seatAirframe(this.settings, '5inch');
+      }
+      this.settings.airframeAsked = true;
+      this.craftGate = false;
+      this.mode = 'race';
+      saveSettings(this.settings);
+      if (this.onSettings) {
+        this.onSettings(this.settings);
+      }
+      const lead = w.times.find((x) => x.hasGhost && x.id);
+      if (lead && this.onStandingsGhost) {
+        this.onStandingsGhost(track, lead);
       }
       this.returnTo = 'title';
       this.act('map:custom');
@@ -17742,7 +17818,28 @@ export class Ui {
       }
     }).catch(() => {
       this.openingBoardCourse = false;
+      if (wanted() && this.onNotice) {
+        this.onNotice(`${track.name} could not be loaded from the board.`);
+      }
     });
+  }
+
+  /*
+   * A board track is fetched over the network, and the pilot can leave
+   * while it is in the air: Escape, the title, another card, Fly. A load
+   * that landed after that used to seat the track anyway, which sent the
+   * pilot to the title and swapped the world under them, even out of a
+   * flight they had started since (bugs.md BUG-4). So each press takes a
+   * token, and what lands is acted on only while it is still the latest
+   * press and the pilot is on the screen (and gate page) that made it.
+   * main.js's onBoardCourse asks the same before it writes the share seat.
+   */
+  boardAsker() {
+    const at = (this.boardSeq = (this.boardSeq || 0) + 1);
+    const screens = this.screenSeq || 0;
+    const page = this.onGate() ? this.gatePageNow() : '';
+    return () => at === this.boardSeq && screens === (this.screenSeq || 0)
+      && page === (this.onGate() ? this.gatePageNow() : '');
   }
 
   /* `failed` hears about a load that did not happen, once the note says why:
@@ -17763,8 +17860,22 @@ export class Ui {
       }
       return;
     }
-    this.onBoardCourse(track).then((ok) => {
+    const wanted = this.boardAsker();
+    /* A load the pilot walked away from says nothing and seats nothing:
+     * the note is cleared and the card's Loading stopped, so coming back
+     * finds the room as it was. */
+    const dropped = () => {
+      this.boardNote.textContent = '';
+      if (failed) {
+        failed();
+      }
+    };
+    this.onBoardCourse(track, wanted).then((ok) => {
       this.openingBoardCourse = false;
+      if (!wanted()) {
+        dropped();
+        return;
+      }
       if (!ok) {
         this.boardNote.textContent = `${track.name} could not be loaded from the board.`;
         if (failed) {
@@ -17779,6 +17890,10 @@ export class Ui {
       }
     }).catch((err) => {
       this.openingBoardCourse = false;
+      if (!wanted()) {
+        dropped();
+        return;
+      }
       this.boardNote.textContent = `${track.name} could not be loaded. ${err.message ?? err}`;
       if (failed) {
         failed();
@@ -20434,14 +20549,16 @@ export class Ui {
    * the frame loop beside setStickOverlay, so the two cannot disagree about
    * what flying means.
    *
-   * The hint is shown on the FIRST FLIGHT this browser has ever seen and
-   * never again. Not on the title, not in a menu: a tooltip on a control the
-   * reader cannot see is a riddle, and the sentence it carries only means
-   * anything while there is a quad in the air to try it on.
+   * The hint is shown after the FIRST FLIGHT this browser has ever seen
+   * and never again. Not on the title, not in a menu: a tooltip on a
+   * control the reader cannot see is a riddle, and the sentence it carries
+   * only means anything to a pilot who has felt the air it describes.
    *
    * `ready` is the quad in the air: off the pads, not perched, not set down
-   * and not on its back. `airMs` is the run's airtime on the sim clock and
-   * `padFlying` is a radio or gamepad's sticks moving the quad in the air.
+   * and not on its back. `airMs` is the run's airtime on the sim clock.
+   * main.js also passes `padFlying` and `touch`, which decided this card
+   * while it was raised in the air on keys and a radio; it waits for the
+   * ground on every device now (CORE-5 below), so they are not read.
    *
    * THE SLIDER FADES IN THE AIR. The owner's decision of 2026-09-26: "once
    * in flight fade it out, show it when landed or pause screen". The block
@@ -20458,7 +20575,7 @@ export class Ui {
    * after some air, sitting still with the slider under it and a thumb
    * free, and it retires, remembered, on the next takeoff.
    */
-  setAirSlider(show, ready = true, { airMs = 0, padFlying = false, touch = false } = {}) {
+  setAirSlider(show, ready = true, { airMs = 0 } = {}) {
     const air = this.osdAir;
     if (!air) {
       return;
@@ -20472,15 +20589,12 @@ export class Ui {
      * THE CARD RETIRES WITHOUT A POINTER. It used to wait for Got it or a
      * touch on the track, which a pilot holding a radio never gives, so it
      * sat over the ground ahead for the whole first session and came back
-     * the next one. It now goes, and is remembered as dismissed, on the
-     * first landing or crash (ready drops), after about eight seconds of
-     * airtime, or on the first stick a radio or gamepad flies the quad with.
+     * the next one. It now goes, and is remembered as dismissed, when the
+     * quad leaves the ground again, on every device.
      */
     const dialog = Boolean(this.nameDialog && !this.nameDialog.hidden);
     if (!air.hint.hidden) {
-      const done = touch
-        ? ready
-        : (!ready || padFlying || airMs - this.airHintAtMs >= AIR_HINT_AIR_MS);
+      const done = ready;
       if (done) {
         this.dismissAirHint();
       } else if (dialog) {
@@ -20510,7 +20624,18 @@ export class Ui {
      * clean set down once a pilot has flown enough: see tickInvite. */
     const inv = this.invite;
     this.tickInvite(ready, dialog, air);
-    const raise = touch ? (!ready && airMs > 0) : (ready && !padFlying);
+    /*
+     * AFTER THE FIRST LANDING, ON EVERY DEVICE (core.md CORE-5). On keys and
+     * a radio it was raised in the air, for the first eight seconds of
+     * airtime, and it sat at the bottom middle over the next gate's chevron
+     * and its distance: the eight seconds a new pilot most needs the cue
+     * and a clear middle of the picture. Thumb sticks already waited for
+     * the first set down, because the card would sit under a thumb. So now
+     * every pilot gets it on the ground after their first flight, which is
+     * when they have felt the air it describes and are not chasing a gate,
+     * and it goes when they lift off again.
+     */
+    const raise = !ready && airMs > 0;
     /* A card seen in an earlier session is remembered here as done, so the
      * local storage read happens once and not on every frame after it. Not
      * while the invitation to tune flight feel is up: one card at a time, and
@@ -21423,6 +21548,68 @@ export class Ui {
    * track's Fly it under thirty cards), and gone while the row is on screen,
    * where it was the same word twice, one of them in the corner.
    */
+  /* See THE BANNER IS NEVER PRINTED ON THE CLOCK, where the OSD is built. */
+  watchBannerFit() {
+    const top = this.osdTopBlock;
+    const banner = this.banner;
+    if (!top || !banner || typeof ResizeObserver !== 'function') {
+      return;
+    }
+    let foot = '';
+    let tall = '';
+    /* One observer for both boxes. */
+    const watch = new ResizeObserver(() => {
+      const f = top.offsetHeight ? `${Math.round(top.offsetTop + top.offsetHeight)}px` : '0px';
+      const t = `${Math.round(banner.offsetHeight)}px`;
+      if (f !== foot) {
+        foot = f;
+        banner.style.setProperty('--osd-top-foot', f);
+      }
+      if (t !== tall) {
+        tall = t;
+        banner.style.setProperty('--banner-h', t);
+      }
+    });
+    watch.observe(top);
+    watch.observe(banner);
+  }
+
+  /*
+   * A LIST CUT BY ITS BOX SAYS SO. A menu that scrolls was cut through a
+   * row at its foot with nothing to say there was more ("Launch control"
+   * sliced through its letters in the Quad room, art.md ART-14). While
+   * there is more below, .has-more fades the last 28 px out (index.html),
+   * and at the foot the fade goes. Called when the list is drawn and when
+   * it scrolls, never from the frame loop, and it touches the class only
+   * when the answer changes.
+   */
+  markMenuMore(node) {
+    if (!node || !node.classList || !node.classList.contains('menu-scroll')) {
+      return;
+    }
+    /* And when its box changes size, which a window that grew or shrank,
+     * or a layout that went to one column, does without a scroll or a new
+     * list. Observed once per list. */
+    if (typeof ResizeObserver === 'function') {
+      if (!this.menuMoreWatch) {
+        this.menuMoreSeen = new WeakSet();
+        this.menuMoreWatch = new ResizeObserver((entries) => {
+          for (const e of entries) {
+            this.markMenuMore(e.target);
+          }
+        });
+      }
+      if (!this.menuMoreSeen.has(node)) {
+        this.menuMoreSeen.add(node);
+        this.menuMoreWatch.observe(node);
+      }
+    }
+    const more = node.scrollHeight - node.scrollTop - node.clientHeight > 2;
+    if (node.classList.contains('has-more') !== more) {
+      node.classList.toggle('has-more', more);
+    }
+  }
+
   syncPrimaryButton() {
     if (!this.framePrimary) {
       return;
@@ -23144,7 +23331,7 @@ export class Ui {
       return;
     }
     if (action === 'tune-share') {
-      tunesDialog().then((m) => m.openTuneShare(this));
+      this.withTunes((m) => m.openTuneShare(this));
       return;
     }
     if (action === 'quad-ask-again') {
@@ -23155,7 +23342,7 @@ export class Ui {
       return;
     }
     if (action === 'tune-load') {
-      tunesDialog().then((m) => m.openTuneLoad(this));
+      this.withTunes((m) => m.openTuneLoad(this));
       return;
     }
     if (action === 'fc') {

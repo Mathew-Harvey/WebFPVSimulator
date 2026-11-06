@@ -438,6 +438,11 @@ export function openTuneLoad(ui, { code = '' } = {}) {
           err.textContent = e.message || 'The board could not take that down.';
         }
         busy = false;
+        /* The press disabled the button, and a disabled button lets go of
+         * the focus, to the body, where the dialog's keys (Escape) are not
+         * heard. So the focus comes back into the dialog: to the button
+         * when it is still there, else to the code field. */
+        (down.isConnected && !down.disabled ? down : entry).focus();
       });
       actions.append(down);
     }

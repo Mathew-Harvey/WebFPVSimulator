@@ -48,12 +48,13 @@
  * quad picker's deaf period, and a negative ("the locked tile did not
  * open") is read straight after a synchronous click handler has run.
  *
- * KNOWN, NOT COUNTED. This check found four bugs on 2026-11-06. Two are
- * printed as `known` lines rather than failures, and the walk steps past
- * them as a pilot would; two more are stepped round where they would bite
- * (a clicked button keeps the browser's focus, an abandoned lesson load
- * logs an error), each with a comment. PROGRESS.md has all four with a
- * repro. When one is fixed, make its line a check.
+ * FOUND BY THIS CHECK. It found four bugs on 2026-11-06, first printed as
+ * `known` lines or stepped round, and each is a check now that it is
+ * fixed: the returning visitor's cover opens on Fly solo, the first tap on
+ * a part in the narrow tree opens it, Enter does not also click a button
+ * the mouse left focused, and a lesson load walked away from lets go
+ * without an error. PROGRESS.md has the repros. A bug found and not fixed
+ * is printed as a `known` line, not counted, until it is.
  *
  * Not part of `npm run verify`. Run it as `npm run check:careerui`.
  * `--only=desktop` or `--only=phone` runs one size.
@@ -195,7 +196,7 @@ async function run(size) {
    * whose text includes `text`, after scrolling it into view. It fails the
    * step when something else is on top of it, which is a click a pilot
    * could not make. */
-  const click = async (sel, text = '') => {
+  const click = async (sel, text = '', { keepFocus = false } = {}) => {
     const at = await page.evaluate(`(() => {
       const root = document.getElementById('career');
       const all = [...root.querySelectorAll(${JSON.stringify(sel)})].filter((n) => n.offsetParent !== null || n.getClientRects().length);
@@ -220,10 +221,14 @@ async function run(size) {
      * left over a part would take the cursor back to it on the next layout,
      * because hovering moves the cursor by design. */
     await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: -20, y: -20 }, sessionId);
-    /* And the clicked button lets go of the browser's focus. Left focused,
-     * Enter clicks it natively as well as pressing the career's own cursor:
-     * a bug this check found and reports (PROGRESS.md, 2026-11-06), which
-     * would otherwise turn every later Enter into two presses. */
+    /* And the clicked button lets go of the browser's focus, as a hand that
+     * goes to the keys would leave it, unless the step is about that
+     * focus. Left focused, Enter used to click it natively as well as
+     * pressing the career's own cursor (PROGRESS.md, 2026-11-06); the one
+     * step that keeps it asserts that it no longer does. */
+    if (keepFocus) {
+      return true;
+    }
     await page.evaluate("(() => { const a = document.activeElement; if (a && a !== document.body && !/^(TEXTAREA|INPUT)$/.test(a.tagName)) { a.blur(); } return 1; })()");
     return true;
   };
@@ -320,6 +325,20 @@ async function run(size) {
     check('the title is lettered on a canvas', cover.lettered);
     check('the cursor starts on Start', /^Start/.test(v.focus || ''), v.focus);
     fits(v, 'the cover');
+    /* On a desktop the cover's foot, Back and the save note, is above the
+     * key bar on the first view, not under it (core.md CORE-21: clipped at
+     * 1280x720). A phone's cover is a list that scrolls, and is not asked. */
+    if (!size.touch) {
+      const foot = await page.evaluate(`(() => {
+        const c = document.querySelector('#career .cr-cover');
+        const bar = c.querySelector('.cr-legend').getBoundingClientRect();
+        const back = [...c.querySelectorAll('.cr-cover-foot .cr-btn')].find((b) => /Back/.test(b.textContent));
+        const note = c.querySelector('.cr-save-note');
+        const low = Math.max(back ? back.getBoundingClientRect().bottom : 1e9, note ? note.getBoundingClientRect().bottom : 1e9);
+        return { scroll: c.scrollTop, low: Math.round(low), bar: Math.round(bar.top) };
+      })()`);
+      check('the cover\'s Back and save note sit above the key bar', foot.scroll === 0 && foot.low <= foot.bar, JSON.stringify(foot));
+    }
 
     /* ---------------- the tree ---------------- */
     await tap('KeyT');
@@ -351,18 +370,15 @@ async function run(size) {
       v = await view();
       check('a locked lesson does not open', v.state === 'tree', v.state);
     }
-    if (await click('.cr-part', 'Angle Navigation')) {
-      /* A part that is not the chosen one, tapped on a narrow tree: the
-       * tap's mouseover chooses it, which scrolls it to the top of the list
-       * (screens.js markTree), and the click lands on whatever is under the
-       * finger after the scroll. Found by this check; printed as known and
-       * tapped again, as a pilot would. */
-      if (await page.evaluate("!!document.querySelector('#career .cr-part.is-focus')")) {
-        knownBugs += 1;
-        console.log('  known  the first tap on a part in the narrow tree chooses it but does not open it: the list scrolls under the finger (src/career/screens.js:755, :829)');
-        await click('.cr-part', 'Angle Navigation');
-      }
-      check('a click on a part opens its lessons', await page.evaluate("!document.querySelector('#career .cr-part.is-focus')"));
+    let partFocused = false;
+    if (await click('.cr-part', 'Angle Navigation', { keepFocus: true })) {
+      partFocused = await page.evaluate("(() => { const a = document.activeElement; return Boolean(a && a.closest && a.closest('.cr-part') && a.textContent.includes('Angle Navigation')); })()");
+      /* A part that is not the chosen one, tapped on a narrow tree. The
+       * tap's mouseover used to choose it, which scrolled it to the top of
+       * the list (screens.js markTree), and the click landed on whatever
+       * was under the finger after the scroll. Found by this check on
+       * 2026-11-06; in the list a hover chooses nothing now. */
+      check('the first click on a part opens its lessons', await page.evaluate("!document.querySelector('#career .cr-part.is-focus')"));
       const said = await page.evaluate("document.querySelector('#career .cr-sheet .cr-panel-line').textContent");
       check('a locked part says what opens it', /Finish First Hover to open it/.test(said), said);
     }
@@ -379,7 +395,13 @@ async function run(size) {
     await tap('KeyQ');
     await page.until("document.querySelector('#career .cr-sheet-title').textContent === 'First Hover'");
     check('Q walks back', true);
+    /* Angle Navigation still has the browser's focus from its click (when
+     * the browser gave it one). Enter is the career's alone: it opens First
+     * Hover, where the cursor is, and does not click Angle Navigation too. */
     await tap('Enter');
+    await page.until("document.querySelector('#career .cr-sheet .cr-tile.is-focus') !== null");
+    const opened = await page.evaluate("document.querySelector('#career .cr-sheet-title').textContent");
+    check('Enter opens the part under the cursor, not the button the mouse left focused', opened === 'First Hover', `${opened}${partFocused ? '' : ' (the click left no focus, so this step proves less)'}`);
     await page.until("(() => { const f = document.querySelector('#career .cr-sheet .cr-tile.is-focus'); return f && f.textContent.includes(" + JSON.stringify(first.title) + "); })()");
     check('Enter on a part puts the cursor on its first open lesson', true);
     await tap('Enter');
@@ -460,12 +482,18 @@ async function run(size) {
     const res = await page.evaluate(`(() => {
       const r = document.querySelector('#career .cr-results');
       return { failed: r.classList.contains('is-failed'), word: (r.querySelector('.cr-res-word .cr-title-text') || {}).textContent,
-        said: (r.querySelector('.cr-res-time span') || {}).textContent, buttons: [...r.querySelectorAll('.cr-res-actions .cr-btn-label')].map((x) => x.textContent) };
+        said: (r.querySelector('.cr-res-time span') || {}).textContent, buttons: [...r.querySelectorAll('.cr-res-actions .cr-btn-label')].map((x) => x.textContent),
+        coach: (r.querySelector('.cr-res-coach .cr-balloon') || {}).textContent || '' };
     })()`).catch((e) => ({ error: e.message }));
     const rec = v.progress && v.progress.lessons ? v.progress.lessons['1-1'] : null;
     check('Lift Off flown on the throttle reaches the results', v.state === 'results', `ended in ${ended}`);
     check('the results say it finished', !res.failed && /Gold!|Silver!|Finished!/.test(res.word || ''), `${res.word}`);
     check('and that it is a first finish', /First finish\./.test(res.said || ''), res.said);
+    /* A hover lesson: no top speed, which read as a fault ("Top speed
+     * 2 km/h"), and the briefing's coach is still there on a pass, saying
+     * what the lesson is for in the words the briefing used (fun.md FUN-12). */
+    check('a hover lesson\'s results print no top speed', !/top speed/i.test(res.said || ''), res.said);
+    check('the briefing\'s coach is on the results of a pass', res.coach.length > 0 && res.coach.startsWith(first.briefing.why.slice(0, 20)), res.coach.slice(0, 80));
     check('the medal and the time are saved', Boolean(rec && rec.medal && Number.isFinite(rec.bestMs) && rec.runs === 1 && v.progress.last === '1-1'), JSON.stringify(rec));
     check('Next offers the next lesson', (res.buttons || []).includes(`Next: ${lessonById('1-2').title}`), (res.buttons || []).join(', '));
     check('the lesson\'s display is gone over the results', v.menu && !v.flightBody, `menu ${v.menu}`);
@@ -481,6 +509,40 @@ async function run(size) {
     const cover2 = await page.evaluate("[document.querySelector('#career .cr-continue-title .cr-title-text').textContent, document.querySelector('#career .cr-continue .cr-btn-label').textContent, document.querySelector('#career .cr-licence-line').textContent.trim()]");
     check('the cover moves on to Hold the Box, and says Continue', cover2[0] === lessonById('1-2').title && cover2[1] === 'Continue', cover2.join(' / '));
     check('the licence card counts the lesson', /, 1 of \d+ lessons$/.test(cover2[2]) && !/^0 stars/.test(cover2[2]), cover2[2]);
+
+    /* ---------------- a load walked away from ---------------- */
+    /* Out and Back's briefing (its own field, One Gate), and before that
+     * world is built, Lift Off's (the Training Field): the pilot has moved
+     * on. The trunk's lessons share one field, so it has to be a lesson
+     * from a branch. The first wait
+     * used to poll on for 90 s and then log "took too long" as a
+     * console.error into a career that had moved on (PROGRESS.md,
+     * 2026-11-06). It lets go when the second lesson asks for its world,
+     * so once that one is ready nothing is waiting. The harness hook opens
+     * them because a key press is too slow a hand to beat a fast build. */
+    const walked = await page.evaluate(`(async () => {
+      const c = window.__career;
+      c.open('7-1');
+      for (let i = 0; i < 2000 && c.waits() === 0; i += 1) {
+        await new Promise((r) => setTimeout(r, 0));
+      }
+      const pending = c.waits();
+      c.open('1-1');
+      return pending;
+    })()`);
+    await page.until(state('briefing'));
+    await page.until("(() => { const b = document.querySelector('#career .cr-brief .cr-btn.primary'); return b && !b.disabled && /Lift Off/.test(document.querySelector('#career .cr-brief-title').textContent); })()", 120000);
+    const waits = await page.evaluate('window.__career.waits()');
+    check('a lesson load walked away from lets go when another lesson loads', walked > 0 && waits === 0, `${walked} waiting when the pilot moved on, ${waits} once the next was ready`);
+    /* Opened as from the tree: Esc steps back out (the tree, its parts)
+     * to the cover, each step waited for on what it changed. */
+    const where = "(() => { const f = document.querySelector('#career .is-focus'); return window.__career.state() + '|' + (f ? f.className + f.textContent.slice(0, 40) : ''); })()";
+    for (let i = 0; i < 4 && !(await page.evaluate(state('cover'))); i += 1) {
+      const was = await page.evaluate(where);
+      await tap('Escape');
+      await page.until(`${where} !== ${JSON.stringify(was)}`);
+    }
+    await page.until(state('cover'));
 
     /* ---------------- Set my level ---------------- */
     await tap('KeyL');
@@ -684,15 +746,14 @@ async function run(size) {
     await page.evaluate('window.__beforeReload = true');
     await cdp.send('Page.reload', {}, sessionId);
     await page.until('!window.__beforeReload && !!window.__shellReady', 180000);
-    /* The cover's cursor should be on Fly solo. It is on Multiplayer once a
-     * lesson is flown and the seated way is the first one: the gate's first
-     * cursor is a solo page index (ui.js, the constructor's "at + 1") used
-     * on the two card cover. A bug this check found; it is printed as
-     * known, not counted, and the walk steps past it as a pilot would. */
+    /* The cover's cursor is on Fly solo. It was on Multiplayer once a
+     * lesson was flown and the seated way was the first one: the gate's
+     * first cursor was a solo page index (ui.js, the constructor's
+     * "at + 1") used on the two card cover, until Ui.turnRoomsOn picked it
+     * again. Found by this check on 2026-11-06. */
     const side = await page.evaluate('(window.__ui.items()[window.__ui.cursor] || {}).action');
+    check('on the next visit the gate\'s cover opens on Fly solo', side === 'gate-solo', side);
     if (side !== 'gate-solo') {
-      knownBugs += 1;
-      console.log(`  known  on the next visit the gate's cover opens on ${side}, not Fly solo (src/ui/ui.js, the gate's first cursor)`);
       const at = await page.evaluate('window.__ui.cursor');
       await tap('ArrowLeft');
       await page.until(`window.__ui.cursor !== ${at}`);

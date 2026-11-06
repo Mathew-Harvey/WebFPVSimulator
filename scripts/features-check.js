@@ -17,6 +17,8 @@
  *             tune by its code, lists what is in it, rates it, puts it on
  *             and puts the pilot's own back; Share this tune posts the
  *             snapshot and the code it gets back takes it down again
+ *   lazy      the tunes dialog and the career, their code blocked before
+ *             it is fetched: the press says so, and nothing is unhandled
  *   room      a whoop track with Race line on: the line is solved off the
  *             flight and its dots are in the picture in flight; the results
  *             screen draws the course's plan
@@ -182,7 +184,8 @@ const BOARD_STUB = `(() => {
     if (!answer) {
       throw new TypeError('Failed to fetch');
     }
-    const a = typeof answer === 'function' ? answer(body) : answer;
+    /* A function may answer later, as a slow link does. */
+    const a = await (typeof answer === 'function' ? answer(body) : answer);
     return new Response(JSON.stringify(a.body ?? null), {
       status: a.status ?? 200, headers: { 'content-type': 'application/json' },
     });
@@ -273,6 +276,29 @@ async function scenarioQuad() {
       `${five.colours} colours, ${five.off} of ${five.n} samples off the clear colour, ${five.w} by ${five.h}`);
     const caption = await page.evaluate("(document.querySelector('.craft-showcase-cap') || {}).textContent || ''");
     check('quad: the preview did not say it could not start', !/could not start/.test(caption), caption.slice(0, 80));
+    /* The Quad room's list is longer than its box: its foot fades while
+     * there is more, rather than a row cut through its letters, and the
+     * fade goes at the foot (art.md ART-14). */
+    /* The finding's window, 1600 by 900, where the room is two columns and
+     * the list runs past its box; then the window it was. */
+    await page.cdp.send('Emulation.setDeviceMetricsOverride', { width: 1600, height: 900, deviceScaleFactor: 1, mobile: false }, page.sessionId);
+    await page.until('window.innerHeight === 900', 10000);
+    const fade = await json(page, `(async () => {
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const m = window.__ui.quadMenu;
+      const look = () => ({ more: m.scrollHeight - m.scrollTop - m.clientHeight > 2, cls: m.classList.contains('has-more'), mask: getComputedStyle(m).maskImage || getComputedStyle(m).webkitMaskImage || '' });
+      const top = look();
+      m.scrollTop = m.scrollHeight;
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const foot = look();
+      m.scrollTop = 0;
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      return { top, foot };
+    })()`);
+    check('quad: the room\'s list fades at its foot while there is more, and not at the foot',
+      fade.top.more && fade.top.cls && /gradient/.test(fade.top.mask) && !fade.foot.more && !fade.foot.cls && !/gradient/.test(fade.foot.mask), JSON.stringify(fade));
+    await page.cdp.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false }, page.sessionId);
+    await page.until('window.innerHeight === 800', 10000);
     /* A drag orbits it; the next frames still draw. */
     const box = await json(page, "(() => { const r = window.__ui.craftCanvas.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; })()");
     const cy = box.y + box.h / 2;
@@ -408,19 +434,113 @@ async function scenarioQuad() {
     })`);
     check('quad: a tune this browser shared can be taken down with its key, and is forgotten',
       down.call && down.call.body.editKey === 'k'.repeat(32) && down.kept === 0, JSON.stringify(down));
-    /* Taking it down empties the preview and the focus with it (see the
-     * report of 2026-11-06 in PROGRESS.md), so the way out is Close. */
+    /* Taking it down empties the preview. It used to empty the focus with
+     * it, to the body, where the dialog's Escape is not heard (PROGRESS.md,
+     * 2026-11-06); the focus stays in the dialog now, and Escape works. */
+    const after = await json(page, "(() => { const a = document.activeElement; return { tag: a ? a.tagName : '', inDialog: Boolean(a && a.closest && a.closest('.name-dialog')) }; })()");
+    check('quad: after Take my tune down the focus is still in the dialog', after.inDialog, after.tag);
+    await page.tap('Escape');
+    const escaped = await page.until("document.querySelector('.name-dialog').hidden && window.__ui.screen === 'quad'", 5000).then(() => true, () => false);
+    check('quad: and Escape closes the dialog after Take my tune down', escaped, escaped ? '' : 'still open');
+    if (!escaped) {
+      await clickText(page, '.name-dialog button', 'Close');
+      await page.until("document.querySelector('.name-dialog').hidden", 5000);
+    }
+    /* Close, with the mouse. */
+    await clickText(page, '.screen-quad .row', 'Load a tune');
+    await page.until("!!document.querySelector('.tune-code-field') && !document.querySelector('.name-dialog').hidden", 10000);
     await clickText(page, '.name-dialog button', 'Close');
     await page.until("document.querySelector('.name-dialog').hidden", 5000);
     check('quad: Close closes the Load dialog', true);
+
     await clickText(page, '.screen-quad .row', 'Load a tune');
     await page.until("(() => { const d = document.querySelector('.name-dialog'); return !d.hidden && document.activeElement === document.querySelector('.tune-code-field'); })()", 10000);
     await page.tap('Escape');
     await page.until("document.querySelector('.name-dialog').hidden && window.__ui.screen === 'quad'", 5000);
     check('quad: Escape closes the Load dialog', true);
+
+    /* A board track that lands after the pilot left (bugs.md BUG-4). The
+     * fetch is held until the pilot has walked away, then let go: nothing
+     * may be seated, the pilot is not sent to the title or flown, and
+     * their seat and share are as they were. Track of the week's Fly it
+     * first, then a board card's open with its Fly it to follow. */
+    const late = { ...presetsForClass('micro')[0], id: 'trk-fea7late', name: 'Late track' };
+    await page.evaluate(`(() => {
+      window.__lateGo = [];
+      window.__board.routes['GET /api/tracks/trk-fea7late/document'] = () => new Promise((go) => {
+        window.__lateGo.push(() => go({ body: { id: 'trk-fea7late', name: 'Late track', author: 'Checker', document: ${JSON.stringify(late)} } }));
+      });
+      return 1;
+    })()`);
+    const seatOf = "({ screen: window.__ui.screen, map: window.__ui.settings.map, mode: window.__ui.mode, airframe: window.__ui.settings.airframe, share: window.__ui.share ? window.__ui.share.id : null, opening: Boolean(window.__ui.openingBoardCourse) })";
+    for (const way of ['week', 'card']) {
+      await page.evaluate("window.__ui.show('quad'), 1");
+      const before = await json(page, seatOf);
+      await page.evaluate(`(() => {
+        const ui = window.__ui;
+        window.__lateThen = false;
+        if (${JSON.stringify(way)} === 'week') {
+          ui.week = { track: { id: 'trk-fea7late', name: 'Late track' }, times: [] };
+          ui.flyWeek();
+        } else {
+          ui.boardCourses = [{ id: 'trk-fea7late', name: 'Late track', board: 'http://127.0.0.1:3100' }];
+          ui.openBoardCourse('trk-fea7late', () => { window.__lateThen = true; });
+        }
+        return 1;
+      })()`);
+      await page.until('window.__lateGo.length > 0', 10000);
+      /* The pilot leaves for the Pilot room, then the track lands. */
+      await page.evaluate("window.__ui.show('pilot'), 1");
+      await page.evaluate('(window.__lateGo.shift())(), 1');
+      await page.until('!window.__ui.openingBoardCourse', 10000);
+      await page.sleep(300);
+      const after = await json(page, `(() => { const s = ${seatOf}; s.then = window.__lateThen; return s; })()`);
+      check(`quad: a board load (${way === 'week' ? 'Track of the week' : 'a board card'}) that lands after the pilot left seats nothing and moves nobody`,
+        after.screen === 'pilot' && after.map === before.map && after.mode === before.mode && after.airframe === before.airframe
+          && after.share === before.share && !after.then,
+        `${JSON.stringify(before)} then ${JSON.stringify(after)}`);
+    }
     errorsCheck(page, 'quad');
   } catch (e) {
     check('quad: the scenario ran to the end', false, e.message);
+  } finally {
+    await page.close();
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* lazy: a menu chunk that will not fetch                               */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The tunes dialogs and the career are fetched on the press. A chunk that
+ * will not fetch (a flaky link, a deploy mid session) used to leave an
+ * unhandled rejection and a press that did nothing (bugs.md BUG-13). Each
+ * is blocked here before its first fetch and pressed: the pilot is told,
+ * and nothing is left unhandled. A browser keeps a failed module fetch
+ * for the page's life, which is why the words say to reload.
+ */
+async function scenarioLazy() {
+  const page = await openPage({ root, width: 1280, height: 800, seed: [BOARD_STUB, settingsSeed({ airframe: '5inch', map: 'city' })] });
+  try {
+    await page.until('window.__shellReady === true && !!window.__ui', 120000);
+    await page.cdp.send('Network.enable', {}, page.sessionId);
+    await page.cdp.send('Network.setBlockedURLs', { urls: ['*/src/ui/tunesdialog.js*', '*/src/career/controller.js*'] }, page.sessionId);
+    await page.evaluate(PAST_GATE);
+    await page.evaluate("window.__ui.show('quad'), 1");
+    const notice = "((document.querySelector('.menu-notice') || {}).textContent || '')";
+    await clickText(page, '.screen-quad .row', 'Load a tune');
+    const tunes = await page.until(`/did not open/.test(${notice})`, 15000).then(() => true, () => false);
+    check('lazy: Load a tune whose dialog will not fetch says so', tunes, await page.evaluate(notice));
+    /* The career card's press, as the gate routes it. */
+    await page.evaluate("window.__ui.act('career'), 1");
+    const career = await page.until(`/Could not open the career/.test(${notice})`, 15000).then(() => true, () => false);
+    check('lazy: the career whose code will not fetch says so', career, await page.evaluate(notice));
+    const loose = page.errors.filter((e) => /^uncaught/.test(e));
+    check('lazy: neither leaves an unhandled rejection', loose.length === 0, loose.slice(0, 2).join(' | '));
+    errorsCheck(page, 'lazy');
+  } catch (e) {
+    check('lazy: the scenario ran to the end', false, e.message);
   } finally {
     await page.close();
   }
@@ -457,6 +577,47 @@ async function scenarioRoom() {
     check('room: with Race line on, the whoop track\'s line is solved', line.phase === 'ready' && line.crumbs > 50 && line.lapS > 0 && line.wanted,
       `${line.phase}${line.reason ? ` (${line.reason})` : ''}, ${line.crumbs} crumbs, ${line.lapS.toFixed ? line.lapS.toFixed(1) : line.lapS} s a lap`);
 
+    /* A card with no picture shows the track's initial, and it never
+     * prints through the card's lettered name (art.md ART-15). Read on the
+     * Tracks cards: the initial's own glyphs against each name line. */
+    await page.evaluate("window.__ui.show('courses'), 1");
+    const initials = await json(page, `(async () => {
+      let cards = [];
+      for (let i = 0; i < 100; i += 1) {
+        cards = [...document.querySelectorAll('.wp-card')].filter((c) => c.querySelector('.wp-blank') && c.querySelector('.wp-nm canvas, .wp-nm.is-text'));
+        if (cards.length) { break; }
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+      return cards.map((c) => {
+        const blank = c.querySelector('.wp-blank');
+        const range = document.createRange();
+        range.selectNodeContents(blank);
+        const g = range.getBoundingClientRect();
+        const lines = [...c.querySelectorAll('.wp-nm canvas, .wp-nm.is-text')].map((n) => n.getBoundingClientRect());
+        return { initial: blank.textContent, over: lines.some((l) => hit(g, l)) };
+      });
+    })()`);
+    check('room: a card\'s fallback initial does not overprint its name', initials.length > 0 && initials.every((x) => !x.over), JSON.stringify(initials));
+
+    /* The Quad room on a race seated, on the keyboard: the preview's
+     * caption says which of the two mode rows this flight follows, so it
+     * never says Angle under a Flight mode row lit Acro without saying why
+     * (fun.md FUN-21). */
+    await page.evaluate("window.__ui.show('quad'), 1");
+    const modes = await json(page, `(async () => {
+      for (let i = 0; i < 50 && !/Keyboard races|^(Acro|Angle)/.test(window.__ui.craftCaption.textContent); i += 1) {
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      await new Promise((r) => setTimeout(r, 300));
+      const s = window.__ui.settings;
+      return { caption: window.__ui.craftCaption.textContent, flightMode: s.flightMode, keyRaceMode: s.keyRaceMode };
+    })()`);
+    const keyWord = modes.keyRaceMode === 'acro' ? 'Acro' : 'Angle';
+    check('quad room, a race on keys: the caption names Keyboard races and the mode it flies',
+      modes.caption.startsWith(`Keyboard races fly ${keyWord}.`), `${modes.caption} (Flight mode ${modes.flightMode}, Keyboard races ${modes.keyRaceMode})`);
+    await page.evaluate("window.__ui.show('courses'), 1");
+
     await page.evaluate("window.__ui.act('fly'), 1");
     await page.until("window.__ui.screen === 'launch'", 30000);
     await page.tap('Enter');
@@ -470,6 +631,34 @@ async function scenarioRoom() {
       return pts ? { count: pts.geometry.drawRange.count, all: pts.geometry.attributes.position.count } : null;
     })()`);
     check('room: and only part of the lap is drawn at once', shown && shown.count > 0 && shown.count < shown.all, JSON.stringify(shown));
+    /* The ground cluster's small captions sit on an ink plate at 11 px or
+     * more, so they read over the white checks, a pale yard and snow
+     * (art.md ART-6), and the corners' small lines carry the 2 px edge. */
+    const caps = await json(page, `(() => {
+      const plate = [...document.querySelectorAll('.osd .osd-gimbal-cap, .osd .osd-air-end, .osd .osd-air-cap')]
+        .filter((n) => n.textContent.trim() && n.getClientRects().length)
+        .map((n) => { const c = getComputedStyle(n); const a = /rgba\([^)]*,\s*([0-9.]+)\)/.exec(c.backgroundColor); return { t: n.textContent, px: parseFloat(c.fontSize), alpha: a ? Number(a[1]) : (c.backgroundColor === 'transparent' ? 0 : 1) }; });
+      const edge = [...document.querySelectorAll('.osd .osd-corner .osd-label, .osd .osd-corner .osd-sub')]
+        .map((n) => /2px 2px 0px/.test(getComputedStyle(n).textShadow));
+      return { plate, edge: edge.length > 0 && edge.every(Boolean) };
+    })()`);
+    check('room: the OSD\'s small captions sit on ink at 11 px or more, the corners\' lines on a 2 px edge',
+      caps.plate.length >= 3 && caps.plate.every((x) => x.px >= 11 && x.alpha >= 0.5) && caps.edge,
+      JSON.stringify(caps.plate.filter((x) => !(x.px >= 11 && x.alpha >= 0.5)).slice(0, 3)) + (caps.edge ? '' : ' (a corner line has the 1 px edge)'));
+    /* Paused, the live readings are put away and the pack stays (art.md
+     * ART-24): dimmed, they ghosted behind the pause menu. */
+    await page.tap('Escape');
+    await page.until("window.__ui.screen === 'paused'", 20000);
+    const ghost = await json(page, `(() => {
+      const vis = (sel) => { const n = document.querySelector(sel); return n ? getComputedStyle(n).visibility : 'none'; };
+      return { right: vis('.osd .osd-right'), sticks: vis('.osd .osd-sticks'), pack: vis('.osd .osd-left'), top: vis('.osd .osd-top') };
+    })()`);
+    check('room: paused, the speed corner and the gimbals are put away and the pack stays',
+      ghost.right === 'hidden' && ghost.sticks === 'hidden' && ghost.pack === 'visible', JSON.stringify(ghost));
+    await page.evaluate("window.__ui.act('resume'), 1");
+    await page.until("window.__ui.screen === 'flight'", 20000);
+    const back = await json(page, "(() => getComputedStyle(document.querySelector('.osd .osd-right')).visibility)()");
+    check('room: and back in flight they are shown again', back === 'visible', back);
     await page.evaluate("(() => { window.__ui.settings.raceLine = false; window.__ui.writeSettings(); return 1; })()");
     await page.until('window.__raceLine().state.shown === false', 20000)
       .then(() => check('room: turned off, the dots go', true))
@@ -986,6 +1175,45 @@ async function scenarioModules() {
   try {
     await page.until('window.__shellReady === true && !!window.__ui', 120000);
 
+    /* THE HARNESS SERVES IMAGES AS IMAGES (art.md ART-23): the credits'
+     * SVG logo under Powered by was application/octet-stream here, so
+     * every capture of the loading screen showed it broken. */
+    const logo = await json(page, `(async () => {
+      const r = await fetch('/assets/credits/betaflight-mono.svg');
+      const img = new Image();
+      img.src = '/assets/credits/betaflight-mono.svg';
+      const drawn = await img.decode().then(() => img.naturalWidth > 0, () => false);
+      return { type: r.headers.get('content-type'), drawn };
+    })()`);
+    check('modules: the harness serves an SVG as image/svg+xml, and it decodes', logo.type === 'image/svg+xml' && logo.drawn, JSON.stringify(logo));
+
+    /* A GAME HUD'S 'select' IS THE MENU CLICK (fun.md FUN-5). Quad Ball's
+     * kick off, overtime and reset, a goal against, the dogfight and the
+     * ribbons send 'select' to audio.event, and it used to play the
+     * landing thump. The real class, its voices stubbed, so what is read
+     * is which path the call took. */
+    const cue = await json(page, `(async () => {
+      const { MotorAudio } = await import('/src/render/audio.js');
+      const a = new MotorAudio();
+      const touched = [];
+      const param = (name) => ({
+        cancelScheduledValues() { touched.push(name); }, setValueAtTime() {}, exponentialRampToValueAtTime() {}, linearRampToValueAtTime() {}, setTargetAtTime() {},
+      });
+      a.ctx = { currentTime: 0 };
+      a.mix = { ...a.mix, effects: 1 };
+      a.cueGain = { gain: param('cueGain') };
+      a.cueOsc = { frequency: param('cueOsc') };
+      a.crashGain = { gain: param('crashGain') };
+      a.crashLp = { frequency: param('crashLp'), Q: param('crashLpQ') };
+      a.duckFlight = () => touched.push('duck');
+      a.music = { duckNow: () => touched.push('duckMusic') };
+      const ui = [];
+      a.ui = (k) => ui.push(k);
+      a.event('select');
+      return { ui, touched };
+    })()`);
+    check('modules: audio.event(\'select\') plays the menu click, not the landing thump', cue.ui.join() === 'select' && cue.touched.length === 0, JSON.stringify(cue));
+
     /* THE TRAILS, from a real FieldWatch fed two pilots' poses, drawn by a
      * renderer of its own looking down on them. */
     const trails = await json(page, `(async () => {
@@ -1130,6 +1358,26 @@ async function scenarioModules() {
     })()`);
     check('modules: badges: every achievement glyph, earned and not, parses as SVG', badges.glyphs > 5 && badges.bad.length === 0, `${badges.n} drawings, ${badges.bad.slice(0, 3).join('; ')}`);
     check('modules: badges: unearned is not the earned picture', badges.differ);
+    /* THE SOLO PAGE'S MINI GAMES PANEL (fun.md FUN-22, FUN-14): its POW!
+     * and its NEW! sticker do not overprint, and the Quad Ball caption
+     * names nobody else's game. */
+    const { GATE_GAMES } = await import('../src/ui/gatepages.js');
+    const ball = GATE_GAMES.find((g) => g.id === 'mg-ball');
+    check('modules: the Quad Ball caption names no other company\'s game', ball && !/rocket league/i.test(ball.caption), ball && ball.caption);
+    await page.evaluate("window.__ui.turnGate('solo'), 1");
+    const stick = await json(page, `(async () => {
+      const box = (sel) => { const n = document.querySelector(sel); if (!n) { return null; } const r = n.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom }; };
+      let a = null; let b = null;
+      for (let i = 0; i < 100; i += 1) {
+        a = box('.gate-card-games .gp-dog-sfx');
+        b = box('.gate-card-games .gp-dog-sticker');
+        const card = box('.gate-card-games');
+        if (a && b && card && card.r <= window.innerWidth + 1) { break; }
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      return { a, b, over: Boolean(a && b && a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b) };
+    })()`);
+    check('modules: on the solo page the Mini games POW! and NEW! do not overlap', stick.a && stick.b && !stick.over, JSON.stringify(stick));
     errorsCheck(page, 'modules');
   } catch (e) {
     check('modules: the scenario ran to the end', false, e.message);
@@ -1579,6 +1827,7 @@ async function scenarioFront() {
 
 const SCENARIOS = {
   quad: scenarioQuad,
+  lazy: scenarioLazy,
   room: scenarioRoom,
   capture: scenarioCapture,
   loadfail: scenarioLoadFail,

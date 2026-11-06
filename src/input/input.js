@@ -2020,8 +2020,15 @@ export class InputManager {
           this.takeKeys();
         }
       }
-      if (this.onKey) {
-        this.onKey(e.code, e.repeat);
+      /* onKey answers true when a screen that draws its own cursor took
+       * the key (the career's). Enter is then that screen's alone: left to
+       * the browser as well, it also clicked whatever button the mouse had
+       * last focused, so one press chose two things (2026-11-06,
+       * scripts/career-ui-check.js). Only then, because a dialog's own
+       * focused button still wants Enter natively. */
+      const used = this.onKey ? this.onKey(e.code, e.repeat) === true : false;
+      if (used && (e.code === 'Enter' || e.code === 'NumpadEnter')) {
+        e.preventDefault();
       }
       /* Repeats must preventDefault too. Skipping them used to let ArrowDown
        * scroll the menu while the cursor stayed put, then a synthetic

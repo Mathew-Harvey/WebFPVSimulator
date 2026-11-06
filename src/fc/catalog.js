@@ -157,7 +157,7 @@ const INERT_REASONS = [
   [/^rpm_limit/, 'The RPM limiter is not used in this simulator.'],
   [/^max_aux_channels/, 'There are no AUX channels.'],
   [/^mixer_/, 'Only mixer_type is used. The other mixer settings are for other aircraft.'],
-  [/^3d_/, 'The motors do not reverse, so there is no 3D mode.'],
+  [/^3d_/, '3D mode is turned on in Settings, not here: the 3d_ values are not read.'],
   [/^deadband/, 'Stick deadband is not used. Stick calibration is in Settings.'],
   [/^yaw_deadband/, 'Stick deadband is not used. Stick calibration is in Settings.'],
   [/^yaw_control_reversed/, 'Not used. Yaw direction is set by yaw_motors_reversed.'],
@@ -391,7 +391,7 @@ export const FEATURES = [
   { name: 'LED_STRIP', status: STATUS.INERT, reason: 'There is no LED strip.' },
   { name: 'TELEMETRY', status: STATUS.INERT, reason: 'There is no telemetry back to a radio.' },
   { name: 'RX_SPI', status: STATUS.INERT, reason: 'There is no receiver. The sticks come from a joystick, a gamepad or the keyboard.' },
-  { name: '3D', status: STATUS.INERT, reason: 'The motors do not reverse, so there is no 3D mode.' },
+  { name: '3D', status: STATUS.INERT, reason: '3D mode is turned on in Settings, not here: feature 3D is not read.' },
   { name: 'SERVO_TILT', status: STATUS.INERT, reason: 'There are no servos on this aircraft.' },
   { name: 'SOFTSERIAL', status: STATUS.INERT, reason: 'There are no serial ports.' },
 ];

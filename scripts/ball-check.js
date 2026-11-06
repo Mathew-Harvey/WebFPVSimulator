@@ -98,6 +98,15 @@ async function main() {
     check('it is Quad Ball', await ev(`${G} return g.ballRules.size === 2 && g.inFight.reduce((a, v) => a + v, 0) === 4;`));
     check('the arena came from the map', await ev(`${G} return g.arena && g.arena.hx === 55;`));
     check('the HUD is up', await until("const h = document.querySelector('.df-hud'); return Boolean(h) && !h.classList.contains('is-off');", 10000));
+    /* Before kick off: the brief sits under the score strip, in the top
+     * half, and not down over the goal and its marker; and the goal
+     * count sits beside its label (art.md ART-7). */
+    await until("const b = document.querySelector('.rb-hud .df-banner'); return Boolean(b) && !b.classList.contains('is-off') && b.textContent.length > 0;", 10000);
+    const brief = await ev(`const r = (s) => { const n = document.querySelector(s); if (!n) { return null; } const b = n.getBoundingClientRect(); return { t: b.top, b: b.bottom, l: b.left, r: b.right }; };
+      return { banner: r('.rb-hud .df-banner'), score: r('.rb-hud .df-score'), label: r('.rb-hud .df-me-panel .df-lbl span'), count: r('.rb-hud .df-me-panel .df-lbl em'), h: innerHeight };`);
+    check('the brief before kick off sits under the score strip, in the top half',
+      brief.banner && brief.score && brief.banner.t >= brief.score.b && brief.banner.b < brief.h / 2, JSON.stringify({ banner: brief.banner, score: brief.score }));
+    check('the goal count sits beside its label', brief.label && brief.count && brief.count.l - brief.label.r < 40, JSON.stringify({ label: brief.label, count: brief.count }));
     await ev('window.__stick(0, 0, 0, 0.7); return 1;');
     check('taking off starts the match', await until(`${G} return g.startedMs >= 0;`, 20000));
     check('the countdown is on', await ev(`${G} return g.countdownS() > 0;`));

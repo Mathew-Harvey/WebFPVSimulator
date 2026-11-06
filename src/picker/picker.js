@@ -387,6 +387,10 @@ scroll-margin:24px 0 132px}
 .wp-plan{position:absolute;top:0;left:0;width:100%;height:100%;display:block}.wp-sk .wp-plan{left:12%;width:76%}
 .wp-blank{position:absolute;inset:0;display:grid;place-items:center;background:var(--wp-ink) radial-gradient(circle,rgba(243,234,212,.16) 0 1.2px,transparent 1.7px) 0 0/7px 7px;
 font-weight:900;font-style:italic;font-size:56px;line-height:1;color:var(--wp-slate)}
+/* On a card the name is lettered over the lower left, so the initial goes to the top right corner, smaller, where it
+   reads as a mark and never prints through a word (art.md ART-15). The picture is 16% wider than the card each side,
+   for the lean (.wp-sk), so its right padding first steps back in by that much: 16/132 of its own width. */
+.wp-card .wp-blank{place-items:start end;padding:14px calc(12.2% + 16px) 0 0;font-size:40px}
 .wp-dt{position:absolute;inset:0;background:radial-gradient(circle,rgba(11,17,22,.9) 0 1px,transparent 1.5px) 0 0/4px 4px;opacity:.1;pointer-events:none}
 .wp-sh{position:absolute;inset:0;background:linear-gradient(to top,rgba(11,17,22,.74),rgba(11,17,22,0) 42%);pointer-events:none}
 .wp-fl{position:absolute;inset:0;opacity:0;pointer-events:none;

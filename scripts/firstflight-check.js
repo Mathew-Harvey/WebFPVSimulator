@@ -258,7 +258,42 @@ await scenario('B five inch track by link', { url: FIVE_LINK, settings: NEWCOMER
   check('B: in the air it is the words this simulator has always said',
     step0.ok && step0.got === 'Tip forward with the up arrow, then throttle\nThe green gate starts your lap',
     JSON.stringify(step0.got));
+  /* The Weight card waits for the ground (core.md CORE-5): in the air on
+   * keys it sat over the next gate's chevron for the first eight seconds,
+   * the ones a new pilot most needs it. Read over two seconds of air. */
+  const weightCard = "(() => { const c = document.querySelector('.osd-air .osd-air-hint:not(.osd-tune-hint):not(.osd-invite-hint)'); return Boolean(c && !c.hidden && c.getClientRects().length); })()";
+  let upInAir = false;
+  for (let i = 0; i < 10; i += 1) {
+    upInAir = upInAir || (await page.evaluate(weightCard)) === true;
+    await sleep(200);
+  }
+  const airborne = await page.evaluate('window.__craftState().flownThisRun === true');
+  check('B: in the air the Weight card is not over the picture', airborne && !upInAir, `card up in the air: ${upInAir}`);
 });
+
+/* ---- I: the banner on a desktop never on the lap clock ----------------- */
+
+/*
+ * The guide's words and the launch prompt's second lines, on keys, at the
+ * two short desktop windows core.md CORE-4 found them printed over the gate
+ * count, the record line and the AIR digits: measured with FIT_PROBE below,
+ * which H uses for a phone. A race's clock block is the tallest one. The
+ * centre third is the phone's own rule (scripts/device-check.js) and is
+ * not asked of a desktop, whose banner has centred at 22 percent of the
+ * height by design; what is asked is the finding: never on the clock.
+ */
+const DESK_STRINGS = [];
+for (const kind of ['race', 'whoop', 'freestyle']) {
+  for (const second of ['The green gate starts your lap', 'Practice: no lap limit. The green gate starts your lap']) {
+    DESK_STRINGS.push([`${kind} take off over "${second.slice(0, 14)}"`, `${textOf(kind, TAKEOFF, KEYS)}\n${second}`]);
+  }
+  for (const step of [0, 1, 2]) {
+    const text = textOf(kind, step, KEYS);
+    if (text && !DESK_STRINGS.some(([, t]) => t === text)) {
+      DESK_STRINGS.push([`${kind} step ${step}`, `${text}\nThe green gate starts your lap`]);
+    }
+  }
+}
 
 /* ---- C: a newcomer, the town, by link ----------------------------------- */
 
@@ -418,7 +453,7 @@ for (const kind of ['race', 'whoop', 'freestyle']) {
  * parked, where main.js says the same line every frame and the banner's
  * memo therefore does not rewrite it.
  */
-const FIT_PROBE = (strings) => `(() => {
+const FIT_PROBE = (strings, { centre = true, settle = false } = {}) => `(async () => {
   const ui = window.__ui;
   const W = innerWidth;
   const H = innerHeight;
@@ -431,6 +466,9 @@ const FIT_PROBE = (strings) => `(() => {
   let widest = 0;
   for (const [tag, text] of ${JSON.stringify(strings)}) {
     ui.banner.textContent = text;
+    /* A desktop banner is placed from its own height, which ui.js writes
+     * from a ResizeObserver before the frame paints: read after a frame. */
+    if (${settle}) { await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))); }
     const r = ui.banner.getBoundingClientRect();
     /* The glyphs' own extent, not the box's: a box with a maximum width
      * stays inside the screen while an unbreakable run of text does not. */
@@ -439,7 +477,7 @@ const FIT_PROBE = (strings) => `(() => {
     const t = ink.getBoundingClientRect();
     tallest = Math.max(tallest, r.height);
     widest = Math.max(widest, t.width);
-    if (meets(r, cell) || meets(t, cell)) { bad.push(tag + ': in the centre third, down to ' + Math.round(Math.max(r.bottom, t.bottom)) + ' of ' + H); }
+    if (${centre} && (meets(r, cell) || meets(t, cell))) { bad.push(tag + ': in the centre third, down to ' + Math.round(Math.max(r.bottom, t.bottom)) + ' of ' + H); }
     if (r.top < clock.bottom - 0.5) { bad.push(tag + ': over the lap clock'); }
     if (Math.min(r.left, t.left) < -0.5 || Math.max(r.right, t.right) > W + 0.5) {
       bad.push(tag + ': runs off the screen, ' + Math.round(Math.min(r.left, t.left)) + ' to ' + Math.round(Math.max(r.right, t.right)) + ' of ' + W);
@@ -462,6 +500,19 @@ for (const [w, h] of [[844, 390], [740, 360]]) {
     const r = JSON.parse(await page.evaluate(FIT_PROBE(PHONE_STRINGS)));
     check(`H: ${w}x${h}: the thumb sticks are up, so this is the layout a phone flies in`, r.sticksUp === true, JSON.stringify(r.sticksUp));
     check(`H: ${w}x${h}: all ${PHONE_STRINGS.length} strings clear the centre third, the lap clock and the screen's edges`,
+      r.bad.length === 0, r.bad.slice(0, 3).join(' | ') || `tallest ${r.tallest} px, widest ${r.widest} px`);
+  });
+}
+
+for (const [w, h] of [[1280, 720], [960, 540]]) {
+  await scenario(`I desktop ${w}x${h}, every string`, { url: FIVE_LINK, settings: NEWCOMER, keys: FIVE_TRACK, width: w, height: h }, async (page) => {
+    await launched(page);
+    /* The record line under the gate count, as a pilot with a best lap has
+     * it: the tallest the clock block gets. */
+    await page.evaluate("(() => { window.__ui.osdBest.textContent = 'Best 0:31.20'; window.__ui.osdLast.textContent = 'Last 0:32.00'; return 1; })()");
+    await sleep(300);
+    const r = JSON.parse(await page.evaluate(FIT_PROBE(DESK_STRINGS, { centre: false, settle: true })));
+    check(`I: ${w}x${h}: all ${DESK_STRINGS.length} strings clear the lap clock and the screen's edges`,
       r.bad.length === 0, r.bad.slice(0, 3).join(' | ') || `tallest ${r.tallest} px, widest ${r.widest} px`);
   });
 }

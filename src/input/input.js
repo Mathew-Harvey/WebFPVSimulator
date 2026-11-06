@@ -382,6 +382,23 @@ const CAL = {
    */
   REV_DELTA: 0.45,
   REV_GAP: 0.18,
+  /*
+   * A HAND PICK RECORDED THE END OF A PUSH AT HALF STICK.
+   *
+   * The pick on the check step chose its axis at the first poll past
+   * IDENT_DELTA and took the end of travel from that same poll, which on a
+   * real hand is about halfway: a push takes a tenth of a second or more,
+   * six polls or more, and the first one past 0.45 is nowhere near the
+   * stop. Roll came out full at half stick and a parked throttle full at a
+   * quarter, and Save kept it (bug hunt BUG-1, round 1). So the axis is
+   * still chosen at the bar, and the pick then keeps watching that axis
+   * alone until the stick comes back inside the bar or has stopped moving
+   * for PICK_DWELL_MS, the throttle on a radio that stays where it is put.
+   * PICK_SETTLE is how little the far end may creep and still count as
+   * stopped, well clear of a gimbal's noise and well under a hand.
+   */
+  PICK_DWELL_MS: 400,
+  PICK_SETTLE: 0.02,
 };
 
 const PAD_PICK = {
@@ -3702,26 +3719,50 @@ export class InputManager {
     return true;
   }
 
-  /* One poll of the listener above: see listenForChannel. */
-  calListen(c, axes) {
+  /* One poll of the listener above: see listenForChannel and
+   * CAL.PICK_DWELL_MS. */
+  calListen(c, axes, dtMs = 0) {
     const l = c.listen;
     expandRange(l.min, l.max, axes);
-    let best = -1;
-    let bestAbs = 0;
-    for (let i = 0; i < Math.min(axes.length, l.rest.length); i += 1) {
-      const a = Math.abs(axes[i] - l.rest[i]);
-      if (a > bestAbs) {
-        bestAbs = a;
-        best = i;
+    if (l.axis == null) {
+      let best = -1;
+      let bestAbs = 0;
+      for (let i = 0; i < Math.min(axes.length, l.rest.length); i += 1) {
+        const a = Math.abs(axes[i] - l.rest[i]);
+        if (a > bestAbs) {
+          bestAbs = a;
+          best = i;
+        }
       }
+      if (best < 0 || bestAbs < CAL.IDENT_DELTA) {
+        return;
+      }
+      /* The axis is chosen here; where its travel ends is not, yet. */
+      l.axis = best;
+      l.towardHigh = axes[best] >= l.rest[best];
+      l.far = axes[best];
+      l.still = 0;
+      return;
     }
-    if (best < 0 || bestAbs < CAL.IDENT_DELTA) {
+    const best = l.axis;
+    const rest = l.rest[best];
+    const far = l.towardHigh ? l.max[best] : l.min[best];
+    if (Math.abs(far - l.far) > CAL.PICK_SETTLE) {
+      l.far = far;
+      l.still = 0;
+    } else {
+      l.still += dtMs;
+    }
+    if (Math.abs(axes[best] - rest) >= CAL.IDENT_DELTA && l.still < CAL.PICK_DWELL_MS) {
       return;
     }
     const ch = l.channel;
-    const rest = l.rest[best];
-    const towardHigh = axes[best] >= rest;
-    const end = towardHigh ? l.max[best] : l.min[best];
+    /* The far end is the furthest this axis has been seen on the pushed
+     * side, by this push or by anything since the step opened, which on the
+     * wizard's own check step includes its full range sweep. */
+    const end = l.towardHigh
+      ? (c.max && best < c.max.length ? Math.max(c.max[best], l.max[best]) : l.max[best])
+      : (c.min && best < c.min.length ? Math.min(c.min[best], l.min[best]) : l.min[best]);
     let spec;
     if (ch === 'throttle') {
       spec = { axis: best, low: rest, high: end };
@@ -4184,7 +4225,7 @@ export class InputManager {
       expandRange(c.min, c.max, axes);
     }
     if (c.step === 'confirm' && c.listen) {
-      this.calListen(c, axes);
+      this.calListen(c, axes, dtMs);
       return;
     }
     if (c.step === 'center') {

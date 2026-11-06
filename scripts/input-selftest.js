@@ -2714,6 +2714,10 @@ section('the check step picks a stick by hand: "let us pick which stick does wha
   rig.ax(0, 0.2); rig.step();
   check('a nudge is not a pick', rig.view().listening === 'roll' && rig.im.calibration.draft.roll.axis === 3);
   rig.ax(0, 1); rig.step();
+  check('the axis is chosen, but the pick waits for the end of the push', rig.view().listening === 'roll'
+    && rig.im.calibration.draft.roll.axis === 3, JSON.stringify(rig.im.calibration.draft.roll));
+  /* Held against the stop, the pick closes once the stick stops moving. */
+  rig.run(480);
   const d = rig.im.calibration.draft;
   check('axis 0 pushed right is roll now', d.roll.axis === 0 && rig.view().listening === null, JSON.stringify(d.roll));
   check('yaw, which had axis 0, takes roll\'s old axis', d.yaw.axis === 3, JSON.stringify(d.yaw));
@@ -2741,6 +2745,8 @@ section('the check step picks a stick by hand: "let us pick which stick does wha
   rig.im.startCalibrationCheck();
   rig.im.listenForChannel('throttle');
   rig.ax(4, 1); rig.step();
+  /* Let go: a sprung stick comes back to the middle, which ends the push. */
+  rig.ax(4, 0); rig.step();
   const t = rig.im.calibration.draft.throttle;
   check('a throttle pushed up from the middle is sprung, zero where it rested', t.axis === 4 && t.sprung === true
     && t.low === 0, JSON.stringify(t));
@@ -2749,6 +2755,54 @@ section('the check step picks a stick by hand: "let us pick which stick does wha
   check('the old throttle axis went to nobody it should not', rig.im.calibration.draft.pitch.axis === 1);
   rig.im.cancelCalibration();
   check('outside the check step it does nothing', rig.im.listenForChannel('roll') === false);
+}
+
+section('a hand pick records the end of a push, not where it crossed the bar (BUG-1)');
+{
+  /*
+   * A real hand takes 100 to 200 ms over a push, six to twelve polls. The
+   * pick used to choose its axis AND take the end of travel at the first
+   * poll past IDENT_DELTA, so roll came out full at half stick and a parked
+   * throttle full at a quarter. Every push here ramps over several polls.
+   */
+  const ramp = (rig, axis, values) => {
+    for (const v of values) {
+      rig.ax(axis, v); rig.step();
+    }
+  };
+  const rig = new Rig(makePad([0, 0, -1, 0, 0], 4, 'Picked by hand, slowly'));
+  driveWizard(rig, {
+    roll: 3, pitch: 1, yaw: 0, thr: 2, thrRest: -1, thrReturn: -1,
+  });
+  rig.im.acceptCalibration();
+  rig.im.startCalibrationCheck();
+  rig.im.listenForChannel('roll');
+  /* Pushed over six polls, then let go over three. */
+  ramp(rig, 0, [0.15, 0.3, 0.5, 0.7, 0.9, 1.0, 0.6, 0.3, 0]);
+  const r = rig.im.calibration.draft.roll;
+  check('a ramped roll push records the stop as full stick', r.axis === 0 && r.pos === 1 && r.neg === -1
+    && rig.view().listening === null, JSON.stringify(r));
+  rig.ax(0, 0.5); rig.step();
+  check('and half stick reads half roll', Math.abs(rig.view().channels.roll - 0.5) < 1e-9,
+    JSON.stringify(rig.view().channels));
+  rig.ax(0, 1); rig.step();
+  check('and full stick reads full roll', rig.view().channels.roll === 1, JSON.stringify(rig.view().channels));
+  rig.ax(0, 0); rig.step();
+  /* A radio's throttle, parked at the bottom, pushed up over five polls and
+   * left at the top: the dwell closes the pick. */
+  rig.im.listenForChannel('throttle');
+  ramp(rig, 2, [-0.8, -0.5, 0, 0.5, 1.0]);
+  check('a throttle still at the top keeps the pick open', rig.view().listening === 'throttle');
+  rig.run(480);
+  const t = rig.im.calibration.draft.throttle;
+  check('a ramped parked throttle records the whole travel and is not sprung', t.axis === 2 && t.low === -1
+    && t.high === 1 && !t.sprung && rig.view().listening === null, JSON.stringify(t));
+  for (const [v, want] of [[-0.5, 0.25], [0, 0.5]]) {
+    rig.ax(2, v); rig.step();
+    check(`throttle stick ${v} reads ${want}`, Math.abs(rig.view().channels.throttle - want) < 1e-9,
+      JSON.stringify(rig.view().channels));
+  }
+  rig.im.cancelCalibration();
 }
 
 console.log(failed ?`\n${failed} failed, ${passed} passed` : `\nall ${passed} passed`);

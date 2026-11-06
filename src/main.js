@@ -1553,6 +1553,7 @@ export async function boot({ loading, bootStart, mapId }) {
   /* Auto's floor for this world and window: see autoFloorFor. */
   autoScale.setFloor(autoFloorFor(ui.settings));
   ui.setShare(view.share || null);
+  ui.racegowSeat = Boolean(view.racegow);
   /*
    * THE CLIP KEY OF THE WORLD AS IT WAS BUILT, taken now rather than when a
    * card asks, because a card's key is read off the seat when the card is
@@ -5669,7 +5670,7 @@ export async function boot({ loading, bootStart, mapId }) {
    * setting to 1. PRACTICE_LAPS is a run with no end, and it is latched
    * here for the same reason: whether a lap may go to the board is decided
    * by the run it was flown in, not by what the menu says afterwards. */
-  let runLaps = ui.settings.laps;
+  let runLaps = lapsForRun();
   race.setRecordKey(recordKey());
   ui.setBest(race.bestMs, view.mode);
 
@@ -7760,9 +7761,7 @@ export async function boot({ loading, bootStart, mapId }) {
     ghostGap = null;
     ghostChased = null;
     ghostRig.setPresence(0);
-    /* A dogfight on a race track is practice: no end to the run, so the
-     * fight is never cut off by a results screen. */
-    runLaps = ui.dogfight ? PRACTICE_LAPS : ui.settings.laps;
+    runLaps = lapsForRun();
     view.setNextGate(race.nextSceneIndex(), race.followSceneIndex());
     /* Steam edition: career. A new run of the lesson under way, if any. */
     if (career) {
@@ -7844,7 +7843,25 @@ export async function boot({ loading, bootStart, mapId }) {
     return ui.screen === 'courses' || ui.screen === 'freestyle';
   }
 
+  /*
+   * How many laps a run launched now lasts. A dogfight on a race track is
+   * practice: no end to the run, so the fight is never cut off by a results
+   * screen. A RaceGOW room reads its own setting, racegowLaps, which is non
+   * stop unless the pilot picked a count for the rooms (the owner,
+   * 2026-11-06: "When i run a RaceGOW track the default should be a non
+   * stop session"). Every other track reads laps, so picking 3 on a room
+   * does not change what a field run lasts, and the other way round.
+   */
+  function lapsForRun() {
+    if (ui.dogfight) {
+      return PRACTICE_LAPS;
+    }
+    return view && view.racegow ? ui.settings.racegowLaps : ui.settings.laps;
+  }
+
   function adoptLoadedView(keepPlace, stayMode, stayScreen) {
+    /* Which lap setting the launch card shows: see lapsForRun. */
+    ui.racegowSeat = Boolean(view.racegow);
     /* A new view is a new set of solids, whether or not the place is kept. */
     uploadPlantWorld();
     applyRaceLine(ui.settings);
@@ -9250,7 +9267,9 @@ export async function boot({ loading, bootStart, mapId }) {
       ...row,
       tags: [
         ...(runStyle === 'arcade' ? ['arcade'] : []),
-        ...(withPractice && runLaps === PRACTICE_LAPS ? ['practice'] : []),
+        /* Not on a RaceGOW room: non stop is how RaceGOW is flown, best
+         * three in a row from a session, so it is the race and not practice. */
+        ...(withPractice && runLaps === PRACTICE_LAPS && !view.racegow ? ['practice'] : []),
         ...(row.tuned ? ['tuned'] : []),
       ],
     };
@@ -12580,7 +12599,7 @@ export async function boot({ loading, bootStart, mapId }) {
            * from, so the voice and the screen say the same lap. */
           if (race.laps.length > lapsBefore && ui.settings.sound) {
             lapVoice.say(
-              lapCall(race.log.length, race.lastLapMs, race.lastLapRecord),
+              lapCall(race.log.length, race.lastLapMs, race.lastLapRecord, race.lastThreeBest),
               (ui.settings.volume / 10) * (ui.settings.calloutLevel / 10),
             );
           }
@@ -13889,7 +13908,9 @@ export async function boot({ loading, bootStart, mapId }) {
       /* Practice is the one race that does not end, so it says so on the
        * line that promises what starts. See PRACTICE_LAPS. */
       let second = runLaps === PRACTICE_LAPS
-        ? '\nPractice: no lap limit. The green gate starts your lap'
+        ? (view.racegow
+          ? '\nNon stop: every lap called, best three in a row kept. The green gate starts your lap'
+          : '\nPractice: no lap limit. The green gate starts your lap')
         : '\nThe green gate starts your lap';
       if (race.freestyle && view.filmGame && fightGame) {
         /* Drift Matsuri: the take is the game, and it starts in the air. */

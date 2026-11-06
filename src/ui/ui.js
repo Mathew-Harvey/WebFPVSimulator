@@ -759,8 +759,14 @@ export const PACK_VOLTAGES = [4.2, 3.8, 3.5];
 export const LAP_COUNTS = [1, 3, 5, PRACTICE_LAPS];
 
 /* A lap count as the launch card writes it. */
-function lapsLabel(n) {
-  return n === PRACTICE_LAPS ? 'Practice' : `${n}`;
+function lapsLabel(n, racegow = false) {
+  return n === PRACTICE_LAPS ? (racegow ? 'Non stop' : 'Practice') : `${n}`;
+}
+
+/* Which setting the launch card's Laps row is: a RaceGOW room keeps its own,
+ * non stop by default. See lapsForRun in src/main.js. */
+function lapsKey(racegow) {
+  return racegow ? 'racegowLaps' : 'laps';
 }
 
 /* Render scale, percent of the preset's resolution, and the frame cap in
@@ -1781,6 +1787,9 @@ const DEFAULTS = {
    * back on. Nothing is ever sent without a yes either way. */
   feelTuneAsk: true,
   laps: 3,
+  /* The same, on a RaceGOW room, and non stop until the pilot picks a
+   * count there (the owner, 2026-11-06). See lapsForRun in src/main.js. */
+  racegowLaps: PRACTICE_LAPS,
   sound: true,
   volume: 6,
   /* Per stem, zero to ten, each dividing by 10 to reach the audio API. The
@@ -2179,6 +2188,7 @@ export function loadSettings() {
     ['fpsCap', FPS_CAPS],
     ['flightStyle', FLIGHT_STYLES],
     ['laps', LAP_COUNTS],
+    ['racegowLaps', LAP_COUNTS],
     ['packVoltage', PACK_VOLTAGES],
     ['musicTrack', musicIds()],
     ['ghost', ['off', 'best', 'previous', 'top3']],
@@ -3528,7 +3538,8 @@ function seatIsRace(s) {
  * help column under the Fly button, which is the last thing read before a
  * run and the only place it can still change anything.
  */
-function recordSentence(s, trackName) {
+function recordSentence(s, trackName, racegow = false) {
+  const laps = s[lapsKey(racegow)];
   const style = s.flightStyle === 'arcade' ? 'Arcade' : 'Expert';
   const link = s.link === 'perfect' ? 'a perfect link' : LINK_PRESETS[s.link].label;
   /* Practice is not in the list, because it is not a different best: a
@@ -3537,7 +3548,7 @@ function recordSentence(s, trackName) {
   const bits = [
     `${style} physics`,
     `${s.packVoltage.toFixed(2)} V per cell`,
-    ...(s.laps === PRACTICE_LAPS ? [] : [`${s.laps} lap${s.laps === 1 ? '' : 's'}`]),
+    ...(laps === PRACTICE_LAPS ? [] : [`${laps} lap${laps === 1 ? '' : 's'}`]),
     `the ${tuneById(s.tune).name} tune`,
   ];
   /* clampWeight rather than s.weight raw, the same guard bugSnapshot uses:
@@ -3554,7 +3565,7 @@ function recordSentence(s, trackName) {
   }
   return `Your best on ${trackName} is filed under exactly this: ${bits.join(', ')}.`
     + ' Change any part of it and you are on a different board.'
-    + (s.laps === PRACTICE_LAPS
+    + (laps === PRACTICE_LAPS && !racegow
       ? ' Practice laps post to the public board tagged Practice.'
       : s.flightStyle === 'arcade'
         ? ' Arcade times post to the public board tagged Arcade.'
@@ -5695,6 +5706,9 @@ export class Ui {
   constructor(root) {
     this.root = root;
     this.settings = loadSettings();
+    /* Whether the seated world is a RaceGOW room, set by src/main.js when
+     * it adopts one: the launch card's Laps row is then racegowLaps. */
+    this.racegowSeat = false;
     this.firstRun = detectFirstRun();
     /*
      * WHAT THIS SESSION IS FOR, which is half of the one question the front
@@ -10419,7 +10433,7 @@ export class Ui {
               uploadAction(listing, {
                 row: this.liveBoardRow ? this.liveBoardRow() : null,
                 timePosted: this.timePosted,
-                practice: s.laps === PRACTICE_LAPS,
+                practice: !this.racegowSeat && s.laps === PRACTICE_LAPS,
               }),
               publishAction(listing, this.coursePublished),
             ]),
@@ -11332,7 +11346,16 @@ export class Ui {
          */
         tuneItem(s, false),
         { label: 'What this run counts as', section: true },
-        choice(
+        this.racegowSeat ? choice(
+          'Laps',
+          s.racegowLaps === PRACTICE_LAPS
+            ? 'Non stop is how a RaceGOW room is flown: as many laps as you like, each one called out with its time as you cross the line, and every time you set a faster three laps in a row the new best three is called too. Stop from the pause menu. Your best three posts to the public board like any other run. RaceGOW rooms keep their own pick, so a field track keeps its lap count. Latched when you launch.'
+            : 'How many laps a run lasts before the result screen. Non stop has no end and keeps calling your best three in a row. RaceGOW rooms keep their own pick, so a field track keeps its lap count. Latched when you launch.',
+          LAP_COUNTS,
+          s.racegowLaps,
+          (n) => lapsLabel(n, true),
+          (n) => { s.racegowLaps = n; },
+        ) : choice(
           'Laps',
           s.laps === PRACTICE_LAPS
             ? 'Practice has no end: fly as many laps as you like, each one called out with its time as you cross the line, and stop from the pause menu. A practice lap posts to the public board tagged Practice. Latched when you launch, so changing it mid-run does nothing until the next one.'
@@ -11378,7 +11401,7 @@ export class Ui {
           label: 'Fly',
           action: 'launch-go',
           primary: true,
-          note: recordSentence(s, trackName),
+          note: recordSentence(s, trackName, this.racegowSeat),
         },
         { label: 'Back', action: 'back' },
       ];

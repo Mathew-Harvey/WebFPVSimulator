@@ -142,10 +142,10 @@ import {
 import { CLASH_HORIZON } from './warnings.js';
 import { clubhouseSolids } from '../art/clubhouse.js';
 import { BANNER_SIZE, GATE_BANNER_H, flagMast, flagSailProfile } from '../art/banners.js';
-import { courseFromDocument } from '../game/trackdoc.js';
+import { courseFromDocument, isRaceGowCourse } from '../game/trackdoc.js';
 import { GUIDE, guideFromKnots, knotsFromPath, tessellateGuide } from '../game/guide.js';
-import { GATE_SCALE, MICRO_SCALE } from '../game/track.js';
-import { PRACTICE_LAPS, Race, gateAcross, gateUp, runComplete, stationLegMin } from '../game/race.js';
+import { GATE_SCALE, MICRO_SCALE, fastestThreeConsecutive } from '../game/track.js';
+import { PRACTICE_LAPS, Race, fmt, gateAcross, gateUp, runComplete, stationLegMin } from '../game/race.js';
 import { LapVoice, lapCall, pickVoice } from '../render/voice.js';
 import {
   Colliders, hitOutcome, groundOutcome, GROUND_LAND, GROUND_BOUNCE, GROUND_CRASH,
@@ -2300,6 +2300,70 @@ function suiteCrashRule() {
     `${practice.lastLapMs} ${JSON.stringify(practice.flashText(12010))}`);
   check('practice is never over, whatever has been flown',
     !runComplete(0, PRACTICE_LAPS) && !runComplete(1, PRACTICE_LAPS) && !runComplete(500, PRACTICE_LAPS));
+
+  /*
+   * NON STOP ON A RACEGOW ROOM (the owner, 2026-11-06): every lap called,
+   * and a new best three in a row called on the lap that sets it, and only
+   * then. Laps of 1.00, 0.90, 1.10 (first three, 3.00), 0.80 (2.80, new),
+   * 1.20 (2.90, not), void, 0.50, 0.50 (a void breaks the run, so no three
+   * yet), 0.50 (1.50, new). The field is scored on one lap and never calls one.
+   */
+  const roomGate = [{
+    position: { x: 0, y: 0, z: 0 },
+    heading: 0,
+    pitch: 0,
+    flyOrder: 0,
+    apertures: [{ centreY: 2.5, clearW: 3.5, clearH: 5.0 }],
+    aperture: { centreY: 2.5, clearW: 3.5, clearH: 5.0 },
+  }];
+  const room = new Race(roomGate, 'micro');
+  const threeSeen = [];
+  let tRoom = 0;
+  room.update(airSeg.prev, airSeg.curr, tRoom, tRoom);
+  for (const step of [1000, 900, 1100, 800, 1200, 'void', 500, 500, 500]) {
+    if (step === 'void') {
+      room.voidLap('Crashed', tRoom);
+      room.update(airSeg.prev, airSeg.curr, tRoom + 10, tRoom + 10);
+      tRoom += 10;
+      continue;
+    }
+    tRoom += step;
+    const bestBefore = fastestThreeConsecutive(room.log);
+    room.update(airSeg.prev, airSeg.curr, tRoom, tRoom);
+    const bestAfter = fastestThreeConsecutive(room.log);
+    /* What the results screen's reading of the log says was a new best. */
+    const want = bestAfter != null && (bestBefore == null || bestAfter < bestBefore) ? bestAfter : null;
+    threeSeen.push(`${room.lastThreeBest == null ? '-' : 'B'}${want == null ? '-' : 'B'}`);
+  }
+  /* The crossing is interpolated inside the frame, so the laps are not the
+   * steps above, which is why the pattern is read against the log. A void
+   * leaves laps 7 and 8 with no three: the eighth entry is the first after. */
+  check('a room calls a new best three on exactly the laps that set one',
+    threeSeen.every((f) => f[0] === f[1]) && threeSeen.filter((f) => f === 'BB').length >= 2
+    && threeSeen[0] === '--' && threeSeen[1] === '--' && threeSeen[2] === 'BB'
+    && threeSeen[threeSeen.length - 1] === 'BB', threeSeen.join(' '));
+  check('and the flash says it under the lap',
+    new RegExp(`^Lap \\d+   [0-9.]+(\\nNew track record)?\\nBest three   ${fmt(room.bestThreeMs()).replace('.', '\\.')}$`).test(room.flashText(tRoom) || ''),
+    JSON.stringify(room.flashText(tRoom)));
+  check('the run best three matches the results screen figure',
+    room.runThreeMs === room.bestThreeMs(), `${room.runThreeMs} ${room.bestThreeMs()}`);
+  check('the call says the best three after the lap, in one breath',
+    lapCall(9, 500, true, 1500) === 'Lap 9, 0.50. New track record. Best three, 1.50'
+    && lapCall(4, 800, false, 62800) === 'Lap 4, 0.80. Best three, 1 minute 2.80',
+    `${lapCall(9, 500, true, 1500)} | ${lapCall(4, 800, false, 62800)}`);
+  const field3 = new Race(roomGate, 'full');
+  field3.update(airSeg.prev, airSeg.curr, 0, 0);
+  let fieldCalled = false;
+  for (let k = 1; k <= 5; k += 1) {
+    field3.update(airSeg.prev, airSeg.curr, k * 1000, k * 1000);
+    fieldCalled = fieldCalled || field3.lastThreeBest != null;
+  }
+  check('a field track never calls a best three', !fieldCalled);
+  check('a RaceGOW track is one by its series or, with none, by its name',
+    isRaceGowCourse({ series: 'RaceGOW5', name: 'Track 1' })
+    && isRaceGowCourse({ series: '', name: 'RaceGOW6 Track 2' })
+    && !isRaceGowCourse({ series: '', name: 'WCMRC Round 5' })
+    && !isRaceGowCourse(null));
 
   /*
    * THE LAP CALLED OUT LOUD (src/render/voice.js). What is said, whether it

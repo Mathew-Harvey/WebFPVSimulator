@@ -480,7 +480,8 @@ const AXIS_X = new THREE.Vector3(1, 0, 0);
  * index.js, animation.js, bake.js, drawn.js and references.js, plus the
  * eight under places/ that build the works road, the disused works, the
  * municipal pool, the training field and the blossom that falls over the
- * first three: 72 in all. It was 63 while vendored/world/petals.js sat
+ * first three: 72 in all, and 70 since the perf pass of 2026-11-06 (sim
+ * PR 239), measured by check 16 on a cold load. It was 63 while vendored/world/petals.js sat
  * in the tree unimported, and 64 once the falling blossom was built again.
  * scan.js is ours and harness only, so it never arrives on a player's
  * load. Check 16 asserts the city count against what the browser actually
@@ -499,7 +500,7 @@ const AXIS_X = new THREE.Vector3(1, 0, 0);
  * alone. The entry is written out because it has moved with the directory:
  * it was three before looks.js came and four before egg.js, and with no
  * entry then the bar sat at 75 percent until the import resolved. */
-const MAP_MODULE_COUNT = { field: 1, city: 72, custom: 1, built: 5, house: 3, heads: 4, bardwell: 4, warehouse: 3, goats: 9, sunny: 12, factory: 9, drift: 3, towers: 11, alps: 6, office: 4, kaza: 10, sana: 6, shiokaze: 10, fmx: 8, airfield: 9, dunes: 5, arctic: 9, haikyo: 11 };
+const MAP_MODULE_COUNT = { field: 1, city: 70, custom: 1, built: 5, house: 3, heads: 4, bardwell: 4, warehouse: 3, goats: 9, sunny: 12, factory: 9, drift: 3, towers: 11, alps: 6, office: 4, kaza: 10, sana: 6, shiokaze: 10, fmx: 8, airfield: 9, dunes: 5, arctic: 9, haikyo: 11 };
 /* Kamome Wharf (src/maps/dock/): its ten. */
 MAP_MODULE_COUNT.dock = 10;
 /* Hayate Circuit (src/maps/hayate/): its ten. */
@@ -13912,7 +13913,7 @@ export async function boot({ loading, bootStart, mapId }) {
        * line that promises what starts. See PRACTICE_LAPS. */
       let second = runLaps === PRACTICE_LAPS
         ? (view.racegow
-          ? '\nNon stop: every lap called, best three in a row kept. The green gate starts your lap'
+          ? '\nNon stop: best three in a row kept. The green gate starts your lap'
           : '\nPractice: no lap limit. The green gate starts your lap')
         : '\nThe green gate starts your lap';
       if (race.freestyle && view.filmGame && fightGame) {

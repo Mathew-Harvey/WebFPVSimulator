@@ -202,13 +202,19 @@ async function scenario(name, opts, run) {
 /* ---- A: a newcomer, a whoop room, by link ------------------------------- */
 
 const WHOOP_LINK = '/index.html?map=custom&craft=whoop65&fly=1';
+/* Every whoop room preset is a RaceGOW track, and since 2026-11-06 (sim
+ * PR 241, the owner's "any track with racegow in the name") a RaceGOW track
+ * launches non stop, so the room's launch prompt carries the non stop line
+ * under the take off line. The guide owns the first line; this is the
+ * second, as main.js prints it. */
+const ROOM_SECOND = 'Non stop: best three in a row kept. The green gate starts your lap';
 
 await scenario('A whoop room by link', { url: WHOOP_LINK, settings: NEWCOMER, keys: WHOOP_ROOM }, async (page) => {
   await launched(page);
   const s0 = await state(page);
   check('A: the link took them past the menu to the grid, on the whoop, with the room guide armed',
     s0.screen === 'flight' && s0.airframe === 'whoop65' && s0.guided === 'whoop', JSON.stringify(s0));
-  const pre = await bannerIs(page, 'Hold W to take off\nThe green gate starts your lap');
+  const pre = await bannerIs(page, 'Hold W to take off\n' + ROOM_SECOND);
   check('A: before take off the banner names the throttle key', pre.ok, JSON.stringify(pre.got));
   check('A: and the room is marked as guided only now it is on the glass',
     s0.flags === 'FTF' && s0.stored === 'FTF', `flags ${s0.flags}, stored ${s0.stored}`);
@@ -229,7 +235,7 @@ await scenario('A whoop room by link', { url: WHOOP_LINK, settings: NEWCOMER, ke
 
   await visit(page, WHOOP_LINK);
   await launched(page);
-  const again = await bannerIs(page, 'Throttle up to take off\nThe green gate starts your lap');
+  const again = await bannerIs(page, 'Throttle up to take off\n' + ROOM_SECOND);
   const s1 = await state(page);
   check('A: the second visit is the usual prompt, with no guide', again.ok && s1.guided === false,
     `${JSON.stringify(again.got)} guided ${s1.guided}`);
@@ -309,7 +315,7 @@ await scenario('D veteran meets the whoop', {
 }, async (page) => {
   await launched(page);
   const s0 = await state(page);
-  const pre = await bannerIs(page, 'Hold W to take off\nThe green gate starts your lap');
+  const pre = await bannerIs(page, 'Hold W to take off\n' + ROOM_SECOND);
   check('D: and the first room they fly gets the room guide, not the track one',
     s0.guided === 'whoop' && pre.ok, `${s0.guided} ${JSON.stringify(pre.got)}`);
   check('D: the lap on file marked the track as had, the room is marked now it is on the glass',
@@ -334,7 +340,7 @@ await scenario('E phone, whoop room by link', {
 }, async (page) => {
   await launched(page);
   const s0 = await state(page);
-  const pre = await bannerIs(page, 'Push the left plate up to take off\nThe green gate starts your lap');
+  const pre = await bannerIs(page, 'Push the left plate up to take off\n' + ROOM_SECOND);
   check('E: on glass the banner names the plate, not a key', s0.guided === 'whoop' && pre.ok,
     `${s0.guided} ${JSON.stringify(pre.got)}`);
 });
@@ -377,15 +383,16 @@ await scenario('G the First flight row', { url: '/index.html', settings: NEWCOME
 /*
  * Every string the guide can put on the banner for a touch pilot, with the
  * line of the launch prompt that sits under it, so that the combination
- * that is new is the one measured. The three second lines are the longest
- * main.js prints under a guided first line: a race's, a practice run's and
- * a scored freestyle run's. Both wordings of the freestyle step are here,
+ * that is new is the one measured. The four second lines are the longest
+ * main.js prints under a guided first line: a race's, a practice run's, a
+ * RaceGOW room's non stop run's and a scored freestyle run's. Both wordings of the freestyle step are here,
  * because Acro's is the longer.
  */
 const TOUCH = { device: 'touch', stickMode: 2, angle: true };
 const SECOND_LINES = [
   'The green gate starts your lap',
   'Practice: no lap limit. The green gate starts your lap',
+  'Non stop: best three in a row kept. The green gate starts your lap',
   'No clock and no gates. Lines and tricks count as you fly them.',
 ];
 const PHONE_STRINGS = [];

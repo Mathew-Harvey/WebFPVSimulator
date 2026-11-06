@@ -272,6 +272,9 @@ const hold = (until, capS, target = 3) => `
   return out;`;
 
 /* The slider rows and the card, as a pilot would find them. */
+/* The tuning group's own rows. The Camera angle row is built from the same
+ * parts and carries .osd-tune-item too, but it sits beside the group, not in
+ * it, and is drawn whether the mode is on or not, so it is not counted here. */
 const GROUP = `
   const box = document.querySelector('.osd-tune');
   const vis = (n) => {
@@ -280,7 +283,7 @@ const GROUP = `
     const cs = getComputedStyle(n);
     return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none' && Number(cs.opacity) > 0.05;
   };
-  const items = [...document.querySelectorAll('.osd-tune-item')];
+  const items = [...document.querySelectorAll('.osd-tune .osd-tune-item')];
   const caps = items.filter(vis).map((n) => n.querySelector('.osd-air-cap').textContent);
   const hint = document.querySelector('.osd-tune-hint');
   const reset = document.querySelector('.osd-tune-reset');
@@ -509,7 +512,7 @@ async function tunedPage(inspect) {
 
     /* A slider moved on the ground, the way the pointer moves it. */
     const move = `
-      const r = document.querySelector('.osd-tune-item .osd-air-range');
+      const r = document.querySelector('.osd-tune .osd-tune-item .osd-air-range');
       r.value = ${JSON.stringify('__V__')};
       r.dispatchEvent(new Event('input', { bubbles: true }));
       await new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(d)));
@@ -693,7 +696,7 @@ async function tunedPage(inspect) {
 
 /* A slider moved on the ground by its label, the way the pointer moves it. */
 const moveSlider = (label, value) => `
-  const item = [...document.querySelectorAll('.osd-tune-item')]
+  const item = [...document.querySelectorAll('.osd-tune .osd-tune-item')]
     .find((n) => n.querySelector('.osd-air-cap').textContent.startsWith(${JSON.stringify(label)}));
   const r = item.querySelector('.osd-air-range');
   r.value = ${JSON.stringify(String(value))};

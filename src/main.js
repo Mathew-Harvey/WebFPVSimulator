@@ -3627,30 +3627,54 @@ export async function boot({ loading, bootStart, mapId }) {
     const k = simLenToWorld(1);
     return k < 1 ? k : 1;
   }
+  /*
+   * THE EYE SWEEP'S BALL. The near plane is CAMERA_NEAR_FRACTION of the
+   * clearance and never under CAMERA_NEAR_MIN, so a ball of the least
+   * plane's own size (what the sweep used to be given) stops the eye where
+   * that plane's CENTRE is on the face and its corners, about twice as far
+   * out, are through it: round 3's R3-2. A ball of least / fraction stops
+   * it where the clamped plane is still the fraction of the clearance, so
+   * the corners stay in front of the face. 2.2 cm on a five inch, 0.65 cm
+   * on a whoop in the town. Used by the frame and by __eyeSweep alike.
+   */
+  function eyeSweepRadius() {
+    return CAMERA_NEAR_MIN * nearScale() / CAMERA_NEAR_FRACTION;
+  }
+  /* What the last fpvNear found that a collider sweep cannot see: the
+   * nearest car or sail, and the floor under the point asked (negative
+   * when the point is below it). The predicted eye reads them: R3-7. */
+  let fpvMoverGap = Infinity;
+  let fpvFloorGap = Infinity;
   function fpvNear(p) {
     const k = nearScale();
     const open = CAMERA_NEAR_OPEN * k;
     const least = CAMERA_NEAR_MIN * k;
     const reach = open / CAMERA_NEAR_FRACTION;
     let gap = view.colliders ? view.colliders.gapAt(p.x, p.y, p.z, reach) : Infinity;
+    let mover = Infinity;
     /* A car is solid too, and not a collider: its drawn box, as last drawn. */
     if (trafficOn) {
       const car = view.carGap(p.x, p.y, p.z, reach);
-      if (car < gap) {
-        gap = car;
+      if (car < mover) {
+        mover = car;
       }
     }
     /* And a windmill's sails, where they are drawn at the lap clock. */
     if (sails) {
       const sail = sails.gapAt(p.x, p.y, p.z, reach, simTimeMs);
-      if (sail < gap) {
-        gap = sail;
+      if (sail < mover) {
+        mover = sail;
       }
+    }
+    if (mover < gap) {
+      gap = mover;
     }
     const floor = p.y - view.height(p.x, p.z, p.y - SURFACE_BIAS, p.y);
     if (floor < gap) {
       gap = floor;
     }
+    fpvMoverGap = mover;
+    fpvFloorGap = floor;
     const near = gap * CAMERA_NEAR_FRACTION;
     return near < least ? least : (near > open ? open : near);
   }
@@ -5503,6 +5527,9 @@ export async function boot({ loading, bootStart, mapId }) {
   /* The mount before the lead, and the last sweep's answer (-1 for open air), for the check. */
   const predMount = new THREE.Vector3();
   let predictClippedT = -1;
+  /* The point the FPV branch wants its near plane sized at, when the
+   * predicted view does not size it: null on every other camera. */
+  let fpvNearAt = null;
   let lastCamClear = 0;
   let lastCamFwdY = 0;
   let lastCamUpY = 0;
@@ -11772,6 +11799,7 @@ export async function boot({ loading, bootStart, mapId }) {
     predictApplied = false;
     predictClippedT = -1;
     fpvLens = false;
+    fpvNearAt = null;
     /* Once a frame, whatever the window did since the last one. */
     applyResizeIfDirty();
     if (!mapReady) {
@@ -13332,7 +13360,10 @@ export async function boot({ loading, bootStart, mapId }) {
          * moves: see predictView before the draw. */
         predictCam = !held;
         fpvLens = true;
-        setCameraNear(fpvNear(held ? manga.holdPos : fpvPos));
+        /* Sized once, after the predicted view has had its say: where it
+         * moves the eye it sizes the plane there, and the mount's answer
+         * would be thrown away (R3-9). See the foot of predictView. */
+        fpvNearAt = held ? manga.holdPos : fpvPos;
         if (shell.camera.fov !== ui.settings.cameraFov) {
           shell.camera.fov = ui.settings.cameraFov;
           shell.camera.updateProjectionMatrix();
@@ -13559,21 +13590,47 @@ export async function boot({ loading, bootStart, mapId }) {
        * prediction the sticks feel most, is kept. In open air nothing
        * changes. Then the near plane is sized again where the eye now is.
        */
+      const eyeR = eyeSweepRadius();
       if (view.colliders) {
         const t = view.colliders.sweepPoint(
           predMount.x, predMount.y, predMount.z,
           shell.camera.position.x, shell.camera.position.y, shell.camera.position.z,
-          CAMERA_NEAR_MIN * nearScale(),
+          eyeR,
         );
         predictClippedT = t;
         if (t >= 0) {
           shell.camera.position.lerpVectors(predMount, shell.camera.position, t);
         }
       }
-      setCameraNear(fpvNear(shell.camera.position));
+      /*
+       * WHAT THE SWEEP CANNOT SEE (R3-7). The sweep knows colliders only,
+       * and the floor clamp above is the MOUNT's floor, so a lead over a
+       * rising slope or a kerb, or into a car or a windmill's sail, can
+       * still put the eye inside one. fpvNear at the eye already asks all
+       * three to size the plane, so the open air frame pays nothing more
+       * for reading its answer: a car or sail nearer than the ball keeps
+       * the mount (the lead is dropped, as a touch at the start of the
+       * sweep would), and a floor nearer than the ball lifts the eye onto
+       * it. Either is a second query on that rare frame only.
+       */
+      let near = fpvNear(shell.camera.position);
+      if (fpvMoverGap < eyeR) {
+        shell.camera.position.copy(predMount);
+        predictClippedT = 0;
+        near = fpvNear(shell.camera.position);
+      } else if (fpvFloorGap < eyeR) {
+        shell.camera.position.y += eyeR - fpvFloorGap;
+        near = fpvNear(shell.camera.position);
+      }
+      setCameraNear(near);
       shell.camera.updateMatrixWorld();
       predictLastMs = horizon;
       predictApplied = true;
+    }
+    /* The FPV mount's near plane, where no prediction sized it (R3-9). A
+     * harness camera has sized its own. */
+    if (fpvNearAt && !predictApplied && !camOverride) {
+      setCameraNear(fpvNear(fpvNearAt));
     }
     if (worldLive && drawThis) {
       placePropView();
@@ -14886,10 +14943,16 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     return view.colliders.gapAt(x, y, z, r);
   };
-  /* The predicted view's eye sweep, as the frame asks it (radius the least
-   * near plane). Harness only: check:features eye times it in the town. */
+  /* The predicted view's eye sweep, as the frame asks it (radius
+   * eyeSweepRadius). Harness only: check:features eye times it in the town. */
   window.__eyeSweep = (ax, ay, az, bx, by, bz) => (view.colliders
-    ? view.colliders.sweepPoint(ax, ay, az, bx, by, bz, CAMERA_NEAR_MIN * nearScale()) : -1);
+    ? view.colliders.sweepPoint(ax, ay, az, bx, by, bz, eyeSweepRadius()) : -1);
+  window.__eyeSweepRadius = () => eyeSweepRadius();
+  /* The near plane as the frame sizes it at a point, colliders, cars,
+   * sails and floor: the one fpvNear a predicted frame now pays (R3-9).
+   * Harness only. */
+  const fpvNearProbe = new THREE.Vector3();
+  window.__fpvNear = (x, y, z) => fpvNear(fpvNearProbe.set(x, y, z));
   window.__segmentCrossesAny = (ax, ay, az, bx, by, bz) => {
     if (!view.colliders) {
       return false;

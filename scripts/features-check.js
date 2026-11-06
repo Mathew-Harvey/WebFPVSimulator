@@ -1966,17 +1966,19 @@ async function scenarioEye() {
         for (const p of pts) window.__eyeSweep(...p);
         best = Math.min(best, (performance.now() - t0) / pts.length);
       }
-      /* And the near plane sized again at the moved eye: one gap query at
-       * fpvNear's reach (0.2 / 0.45 m). */
+      /* And the near plane sized at the moved eye, as the frame sizes it:
+       * fpvNear whole, colliders, cars, sails and the floor (R3-7, R3-9:
+       * once a predicted frame, where it was the gap query alone timed
+       * here and fpvNear twice in the frame). */
       let gapBest = Infinity;
       for (let round = 0; round < 5; round += 1) {
         const t0 = performance.now();
-        for (const p of pts) window.__nearSolid(p[3], p[4], p[5], 0.2 / 0.45);
+        for (const p of pts) window.__fpvNear(p[3], p[4], p[5]);
         gapBest = Math.min(gapBest, (performance.now() - t0) / pts.length);
       }
-      return { ms: best + gapBest, sweepMs: best, gapMs: gapBest, hits, n: pts.length, colliders: window.__colliders().count };
+      return { ms: best + gapBest, sweepMs: best, gapMs: gapBest, hits, n: pts.length, colliders: window.__colliders().count, radius: window.__eyeSweepRadius() };
     })()`);
-    console.log(`  info  eye sweep and near plane in the town: ${(cost.ms * 1000).toFixed(2)} us a frame (sweep ${(cost.sweepMs * 1000).toFixed(2)}, gap ${(cost.gapMs * 1000).toFixed(2)}) (${cost.colliders} colliders, ${cost.hits} of ${cost.n} sample segments touch a solid)`);
+    console.log(`  info  eye sweep and near plane in the town: ${(cost.ms * 1000).toFixed(2)} us a frame (sweep ${(cost.sweepMs * 1000).toFixed(2)}, fpvNear ${(cost.gapMs * 1000).toFixed(2)}) (${cost.colliders} colliders, ball ${(cost.radius * 100).toFixed(2)} cm, ${cost.hits} of ${cost.n} sample segments touch a solid)`);
     check('eye: the sweep sees the town (some sample segments touch a solid, most do not)', cost.hits > 0 && cost.hits < cost.n / 2, `${cost.hits} of ${cost.n}`);
     check('eye: the sweep and the second near plane cost no more than 0.02 ms a frame', cost.ms <= 0.02, `${(cost.ms * 1000).toFixed(2)} us`);
     /* A wall's face found by walking out from the pad, then the eye swept at
@@ -2002,7 +2004,10 @@ async function scenarioEye() {
             }
             const t = window.__eyeSweep(x, y, z, x + best.ux * 0.33, y + best.uy * 0.33, z + best.uz * 0.33);
             const k = 0.33 * (t < 0 ? 1 : t);
-            return { t, gapStart: g, gapAfter: window.__nearSolid(x + best.ux * k, y + best.uy * k, z + best.uz * k, 0.25), gapStraight: best.v };
+            const ex = x + best.ux * k;
+            const ey = y + best.uy * k;
+            const ez = z + best.uz * k;
+            return { t, gapStart: g, gapAfter: window.__nearSolid(ex, ey, ez, 0.25), gapStraight: best.v, near: window.__fpvNear(ex, ey, ez), radius: window.__eyeSweepRadius() };
           }
         }
       }
@@ -2010,6 +2015,11 @@ async function scenarioEye() {
     })()`);
     check('eye: swept at a town wall from 0.2 m, it stops outside the face', wall && wall.t > 0 && wall.t < 1 && wall.gapAfter > 0.005,
       JSON.stringify(wall));
+    /* R3-2: where it stops, the plane it is given is no more than the
+     * fraction of the clearance, so its corners are in front of the face
+     * too, not only its centre. */
+    check('eye: and there the near plane is at most 0.45 of the clearance, so its corners stay in front of the face',
+      wall && wall.near <= wall.gapAfter * 0.45 + 1e-6, JSON.stringify(wall));
     /* In flight, in open air, the lead is untouched and the near plane is the
      * one sized where the drawn eye is. */
     await page.evaluate("(window.__stick(0, 0, 0, 0.75), 1)");

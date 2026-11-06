@@ -60,7 +60,15 @@ import { sunnyDocument } from './yard.js';
 import { paintSigns, signMesh } from './signs.js';
 import { makeFx } from './fx.js';
 import { mergePalette } from './palette.js';
+import { inkWater } from '../built/sea.js';
+import { GORGE } from './landmarks.js';
 import { nearOf } from './frame.js';
+
+/* The gorge's water in the sea's manner, in Sunnyfield's own cyan
+ * (../../props/sunny.js sfWater) and its shades. */
+const GORGE_WATER = {
+  base: '#48b4e8', trough: '#3ba2d6', sky: '#74c8f0', ink: '#1f6f9e', glint: '#f2fbff', light: '#bfe6f8',
+};
 
 /* The chunk a drawn thing is filed under, or its near cell if it is set
  * dressing (./frame.js dress). */
@@ -461,6 +469,23 @@ export async function buildMap(shell, onProgress, options) {
   }
   /* The signs, one mesh on one picture. */
   const atlas = paintSigns(T.signs);
+  /* The gorge's water, in the sea's ink, painted into its two cells
+   * (./signs.js waterfall and pool, round 2 R2M-4): no texture and no draw
+   * call of its own. The pool is a disc, so outside it stays clear. */
+  {
+    const g = atlas.canvas.getContext('2d');
+    const fall = atlas.cells.waterfall;
+    const pool = atlas.cells.pool;
+    if (fall) {
+      inkWater(g, fall, { wM: 6, hM: GORGE.depth - 0.2, tones: GORGE_WATER, tileM: 9, turn: true });
+    }
+    if (pool) {
+      inkWater(g, pool, {
+        wM: 6.8, hM: 6.8, tones: GORGE_WATER, tileM: 9,
+        clip: (c, sx, sy) => c.ellipse(3.4 * sx, 3.4 * sy, 3.4 * sx, 3.4 * sy, 0, 0, Math.PI * 2),
+      });
+    }
+  }
   const tex = new THREE.CanvasTexture(atlas.canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 4;

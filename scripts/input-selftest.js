@@ -133,6 +133,7 @@ function makePad(axes, buttons = 0, id = 'Selftest radio') {
 installEnv(null);
 const {
   InputManager, calSteps, SELECT_STEP, KEY_THROTTLE_MODES, normaliseKeyThrottle,
+  PAD_DEADZONES, normalisePadDeadzone, PAD_THROTTLES, normalisePadThrottle,
 } = await import('../src/input/input.js');
 const { hoverStickPercent } = await import('../configs/rates.js');
 const {
@@ -2803,6 +2804,105 @@ section('a hand pick records the end of a push, not where it crossed the bar (BU
       JSON.stringify(rig.view().channels));
   }
   rig.im.cancelCalibration();
+}
+
+section('a gamepad at rest does not drift, and full stick is still full (CORE-1)');
+{
+  const near = (a, b) => Math.abs(a - b) < 1e-9;
+  const std = (axes = [0, 0, 0, 0]) => ({ ...makePad(axes, 17, 'Worn pad (STANDARD GAMEPAD)'), mapping: 'standard' });
+  check('the deadzone choices are a closed list, auto by default',
+    PAD_DEADZONES.join() === 'auto,small,medium,large' && normalisePadDeadzone('huge') === 'auto'
+    && normalisePadDeadzone('large') === 'large');
+  {
+    const rig = new Rig(std());
+    const im = rig.im;
+    check('a new manager is on auto', im.padDeadzone === 'auto');
+    /* A worn pad's right stick resting four percent off: Mode 2 roll. */
+    rig.ax(2, 0.04); rig.step();
+    check('a gamepad resting 0.04 off centre reads no roll on auto', im.channels.roll === 0, JSON.stringify(im.channels));
+    rig.ax(2, 1); rig.step();
+    check('and full stick is exactly full roll', im.channels.roll === 1, JSON.stringify(im.channels));
+    rig.ax(2, -1); rig.step();
+    check('both ways', im.channels.roll === -1, JSON.stringify(im.channels));
+    rig.ax(2, 0.525); rig.step();
+    check('half way past the band is half roll: rescaled, not a step', near(im.channels.roll, 0.5), JSON.stringify(im.channels));
+    rig.ax(2, 0.06); rig.step();
+    check('just past the band is a sliver, not a jump to 0.06', im.channels.roll > 0 && im.channels.roll < 0.012,
+      JSON.stringify(im.channels));
+    im.setPadDeadzone('small');
+    rig.ax(2, 0.04); rig.step();
+    check('Small is the radio floor: 0.04 passes through as it always did', near(im.channels.roll, 0.04), JSON.stringify(im.channels));
+    im.setPadDeadzone('large');
+    rig.ax(2, 0.08); rig.step();
+    check('Large swallows 0.08', im.channels.roll === 0, JSON.stringify(im.channels));
+    rig.ax(2, 1); rig.step();
+    check('and still reaches full', im.channels.roll === 1, JSON.stringify(im.channels));
+    rig.ax(2, 0);
+  }
+  {
+    /* A radio on auto is bit for bit what it was: the hard 1.2 percent
+     * floor and nothing else. */
+    const rig = new Rig(makePad([0, 0, -1, 0, 0], 8, 'Some radio'));
+    const im = rig.im;
+    for (const v of [0.011, 0.013, 0.04, 0.5, 0.987]) {
+      rig.ax(0, v); rig.step();
+      const want = v < 0.012 ? 0 : v;
+      check(`a radio on auto: roll ${v} reads ${want}`, im.channels.roll === want, JSON.stringify(im.channels));
+    }
+    rig.ax(0, 0);
+  }
+}
+
+section('a gamepad throttle can be the whole stick or the right trigger, and defaults to the upper half (CORE-9)');
+{
+  const near = (a, b) => Math.abs(a - b) < 1e-9;
+  const std = (axes = [0, 0, 0, 0]) => ({ ...makePad(axes, 17, 'Throttle pad (STANDARD GAMEPAD)'), mapping: 'standard' });
+  check('the throttle choices are a closed list, upper half by default',
+    PAD_THROTTLES.join() === 'upper,full,trigger' && normalisePadThrottle('nope') === 'upper');
+  const pad = std();
+  const rig = new Rig(pad);
+  const im = rig.im;
+  check('a new manager flies the upper half', im.padThrottle === 'upper');
+  rig.step();
+  check('upper half: rest is no throttle', im.channels.throttle === 0, JSON.stringify(im.channels));
+  rig.ax(1, 0.8); rig.step();
+  check('upper half: below centre is idle', im.channels.throttle === 0, JSON.stringify(im.channels));
+  rig.ax(1, -0.5); rig.step();
+  check('upper half: half way up is half', near(im.channels.throttle, 0.5), JSON.stringify(im.channels));
+  im.setPadThrottle('full');
+  rig.ax(1, 1); rig.step();
+  check('whole stick: the bottom is no throttle', im.channels.throttle === 0, JSON.stringify(im.channels));
+  rig.ax(1, 0); rig.step();
+  check('whole stick: rest is half', near(im.channels.throttle, 0.5), JSON.stringify(im.channels));
+  rig.ax(1, -1); rig.step();
+  check('whole stick: the top is full', near(im.channels.throttle, 1), JSON.stringify(im.channels));
+  im.setPadThrottle('trigger');
+  rig.ax(1, -1);
+  pad.buttons[7] = { pressed: false, value: 0 }; pad.timestamp += 1; rig.step();
+  check('trigger: the stick up does nothing, the trigger let go is no throttle', im.channels.throttle === 0,
+    JSON.stringify(im.channels));
+  pad.buttons[7] = { pressed: true, value: 0.35 }; pad.timestamp += 1; rig.step();
+  check('trigger: squeezed a third is a third', near(im.channels.throttle, 0.35), JSON.stringify(im.channels));
+  check('and the dogfight gun moves to the left bumper', im.weaponSpecFor('gun', pad).index === 4
+    && im.weaponLabels(pad).gun.pad === 'Left bumper', JSON.stringify(im.weaponLabels(pad)));
+  im.set3d(true);
+  rig.step();
+  check('trigger in 3D flies the stick, which can reverse', near(im.channels.throttle, 1), JSON.stringify(im.channels));
+  im.set3d(false);
+  im.setPadThrottle('upper');
+  rig.step();
+  check('back on the upper half, the stick at the top is full again', near(im.channels.throttle, 1)
+    && im.weaponSpecFor('gun', pad).index === 7, JSON.stringify(im.channels));
+  /* A radio's throttle is not sprung: neither stick choice moves it. */
+  const rrig = new Rig(makePad([0, 0, -1, 0, 0], 8, 'Some radio'));
+  rrig.im.setPadThrottle('full');
+  rrig.step();
+  check('a radio\'s parked throttle stays at zero on whole stick', rrig.im.channels.throttle === 0,
+    JSON.stringify(rrig.im.channels));
+  rrig.im.setPadThrottle('trigger');
+  rrig.ax(2, 1); rrig.step();
+  check('and a radio, which has no trigger, flies its stick on trigger', near(rrig.im.channels.throttle, 1),
+    JSON.stringify(rrig.im.channels));
 }
 
 console.log(failed ?`\n${failed} failed, ${passed} passed` : `\nall ${passed} passed`);

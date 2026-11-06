@@ -1910,6 +1910,35 @@ async function keyboardPage(page) {
   await page.until("window.__input.keyThrottle === 'hover'", 3000).catch(() => {});
   check('one arrow left is the spring again', await ev("return input.keyThrottle === 'hover' && ui.settings.keyThrottle === 'hover';"));
 
+  /* CORE-1 and CORE-9, round 1: a gamepad's deadzone and throttle, on the
+   * rows after the keyboard's, written to storage and to the input. */
+  const pad = await ev(`
+    ui.show('pilot');
+    const items = ui.items();
+    const k = items.findIndex((it) => it && it.label === 'Keyboard throttle');
+    const dz = items.findIndex((it) => it && it.label === 'Stick deadzone');
+    const th = items.findIndex((it) => it && it.label === 'Gamepad throttle');
+    const before = { dz: items[dz] && items[dz].value, th: items[th] && items[th].value, idz: input.padDeadzone, ith: input.padThrottle };
+    ui.setCursor(th);
+    return JSON.stringify({ k, dz, th, before });
+  `).then(JSON.parse);
+  check('Settings has Stick deadzone and Gamepad throttle rows, after Keyboard throttle',
+    pad.k >= 0 && pad.dz === pad.k + 1 && pad.th === pad.k + 2, JSON.stringify(pad));
+  check('they start on Auto and Upper half, in the rows and in the input',
+    pad.before.dz === 'Auto' && pad.before.th === 'Upper half' && pad.before.idz === 'auto' && pad.before.ith === 'upper',
+    JSON.stringify(pad));
+  await page.tap('ArrowRight');
+  await page.until("window.__input.padThrottle === 'full'", 3000).catch(() => {});
+  const padFull = await ev(`
+    const stored = JSON.parse(localStorage.getItem(${JSON.stringify(SETTINGS_KEY)}) || '{}').padThrottle;
+    return JSON.stringify({ value: ui.items()[ui.cursor].value, mode: input.padThrottle, stored });
+  `).then(JSON.parse);
+  check('one arrow right is Whole stick, in the input and in storage',
+    padFull.value === 'Whole stick' && padFull.mode === 'full' && padFull.stored === 'full', JSON.stringify(padFull));
+  await page.tap('ArrowLeft');
+  await page.until("window.__input.padThrottle === 'upper'", 3000).catch(() => {});
+  check('one arrow left is the upper half again', await ev("return input.padThrottle === 'upper' && ui.settings.padThrottle === 'upper';"));
+
   /* Into a real race, on the start line, through the Race room and the
    * launch card, which is how a pilot gets there. */
   const seat = await ev(`

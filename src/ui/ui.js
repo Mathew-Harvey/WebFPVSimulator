@@ -43,7 +43,10 @@
  */
 
 import { MAPS } from '../maps/registry.js';
-import { CAL_STEPS, KEY_THROTTLE_MODES, normaliseKeyThrottle } from '../input/input.js';
+import {
+  CAL_STEPS, KEY_THROTTLE_MODES, normaliseKeyThrottle,
+  PAD_DEADZONES, normalisePadDeadzone, PAD_THROTTLES, normalisePadThrottle,
+} from '../input/input.js';
 import {
   STICK_MODES, DEFAULT_STICK_MODE, normaliseStickMode, stickChannels, stickCaption,
 } from '../input/stickmode.js';
@@ -1546,6 +1549,14 @@ const DEFAULTS = {
    */
   keyThrottle: 'hover',
   /*
+   * A GAMEPAD'S STICK DEADZONE AND WHAT ITS THROTTLE IS. Keys of
+   * PAD_DEADZONES and PAD_THROTTLES in src/input/input.js. 'auto' gives a
+   * thumb stick pad a deadzone wide enough not to drift and a radio the
+   * floor it always had; 'upper' is the throttle a gamepad always flew.
+   */
+  padDeadzone: 'auto',
+  padThrottle: 'upper',
+  /*
    * FREESTYLE IS THREE DIFFERENT ACTIVITIES AND THEY WANT DIFFERENT RULES.
    * See FREESTYLE_SCORING above for what each value does.
    *
@@ -2141,6 +2152,8 @@ export function loadSettings() {
   s.stickMode = normaliseStickMode(s.stickMode);
   s.touchSize = normaliseTouchSize(s.touchSize);
   s.keyThrottle = normaliseKeyThrottle(s.keyThrottle);
+  s.padDeadzone = normalisePadDeadzone(s.padDeadzone);
+  s.padThrottle = normalisePadThrottle(s.padThrottle);
   /*
    * A setting the pilot picks off a LIST has to still be on that list.
    *
@@ -10997,6 +11010,38 @@ export class Ui {
           s.keyThrottle,
           (id) => (id === 'hold' ? 'Stays put' : 'Springs back'),
           (id) => { s.keyThrottle = normaliseKeyThrottle(id); },
+        ),
+        /*
+         * A GAMEPAD'S DEADZONE AND ITS THROTTLE, after the keyboard's, for
+         * the same reason: the other things a pilot sets about their hands.
+         * Review CORE-1 and CORE-9, round 1. The notes say what each does
+         * to the sticks and what a radio does with it, which is nothing on
+         * Auto and on Upper half.
+         */
+        choice(
+          'Stick deadzone',
+          {
+            auto: 'Auto: a gamepad gets enough of a dead centre that a stick resting slightly off does not drift the quad, and a radio keeps the tiny one it has always had. Full stick is still full stick.',
+            small: 'Small: the tiniest dead centre, for a radio or a pad whose sticks rest dead still. Full stick is still full stick.',
+            medium: 'Medium: enough dead centre that a gamepad resting slightly off does not drift the quad. Full stick is still full stick.',
+            large: 'Large: a wide dead centre, for a worn pad that still drifts on Medium. Full stick is still full stick, and small moves need a little more thumb.',
+          }[normalisePadDeadzone(s.padDeadzone)],
+          PAD_DEADZONES,
+          normalisePadDeadzone(s.padDeadzone),
+          (id) => ({ auto: 'Auto', small: 'Small', medium: 'Medium', large: 'Large' })[id],
+          (id) => { s.padDeadzone = normalisePadDeadzone(id); },
+        ),
+        choice(
+          'Gamepad throttle',
+          {
+            upper: 'Upper half: the left stick at rest is no throttle and pushed to the top is full, the way a gamepad has always flown here. A radio is not changed by this.',
+            full: 'Whole stick: the bottom of the stick is no throttle and the top is full, so the stick at rest is half throttle. Hold it down to stay on the ground. More travel for the same throttle, like a radio. A radio is not changed by this.',
+            trigger: 'Right trigger: squeeze for throttle, let go for none. In a dogfight the gun moves to the left bumper. In 3D the stick is the throttle, because a trigger cannot reverse. A gamepad only.',
+          }[normalisePadThrottle(s.padThrottle)],
+          PAD_THROTTLES,
+          normalisePadThrottle(s.padThrottle),
+          (id) => ({ upper: 'Upper half', full: 'Whole stick', trigger: 'Right trigger' })[id],
+          (id) => { s.padThrottle = normalisePadThrottle(id); },
         ),
         ratesItem(s, midRun),
         /* Beside the rates, which are what Acro flies. See flightModeItem. */

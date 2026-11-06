@@ -8745,6 +8745,10 @@ export async function boot({ loading, bootStart, mapId }) {
     /* What the throttle keys do when let go. The collective stays where it
      * is across a change, so this is safe mid flight. */
     input.setKeyThrottle(s.keyThrottle);
+    /* A gamepad's stick deadzone and what its throttle is: read on the
+     * next poll, so safe mid flight too. See PAD_DEADZONES in input.js. */
+    input.setPadDeadzone(s.padDeadzone);
+    input.setPadThrottle(s.padThrottle);
     /* The thumb stick size: one CSS variable, written only when it moves,
      * so nothing here runs per frame. The plates' travel is measured off
      * the drawn plate at touchdown and follows on its own. */
@@ -15651,6 +15655,8 @@ export async function boot({ loading, bootStart, mapId }) {
     flying: angleModeOn ? 'angle' : 'acro',
     keyRaceMode: ui.settings.keyRaceMode,
     keyThrottle: input.keyThrottle,
+    padDeadzone: input.padDeadzone,
+    padThrottle: input.padThrottle,
     keyHover: Math.round(input.kbHover * 1000) / 10,
     /* Which axes are being flown and what they read: see mapReport.
      * bug-c9423f3e could not be checked without it. */

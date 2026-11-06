@@ -1597,6 +1597,70 @@ export function normaliseKeyThrottle(mode) {
 }
 
 /*
+ * A GAMEPAD AT REST DRIFTS, AND THE ONLY DEADBAND WAS A RADIO'S.
+ *
+ * readGamepad zeroed anything under 1.2 percent of stick and passed the
+ * rest through untouched. That is right for a radio, whose gimbals rest
+ * within a count or two of centre, and wrong for a thumb stick: a worn or
+ * cheap pad rests a few percent off, and at the default rates five percent
+ * of stick is a steady roll the pilot never asked for (review CORE-1,
+ * round 1). Betaflight's own deadband keys are refused in src/fc/catalog.js,
+ * so the pad gets one here, at the input, on the sample already being read.
+ *
+ *   'auto'    a gamepad gets PAD_DEADZONE.medium, anything else the radio's
+ *             floor, exactly as before: a radio flies the same numbers.
+ *   'small'   the radio's floor on every pad.
+ *   'medium'  and 'large' wider, for a pad that still drifts.
+ *
+ * A width above the radio's floor is RESCALED, so the band is dead and
+ * full stick is still exactly full: sign(v) * (|v| - d) / (1 - d). The
+ * floor itself keeps its old hard step, so 'auto' on a radio and 'small'
+ * everywhere are bit for bit the old reading. Roll, pitch and yaw only: the
+ * throttle has its own rest.
+ */
+export const PAD_DEADZONES = ['auto', 'small', 'medium', 'large'];
+const PAD_DEADZONE = { small: 0.012, medium: 0.05, large: 0.1 };
+
+export function normalisePadDeadzone(id) {
+  return PAD_DEADZONES.includes(id) ? id : 'auto';
+}
+
+function deadband(v, d) {
+  if (d <= PAD_DEADZONE.small) {
+    return Math.abs(v) < PAD_DEADZONE.small ? 0 : v;
+  }
+  const a = Math.abs(v);
+  if (a <= d) {
+    return 0;
+  }
+  const out = (a - d) / (1 - d);
+  return v < 0 ? -out : out;
+}
+
+/*
+ * WHAT A GAMEPAD'S THROTTLE IS, the pilot's choice (review CORE-9, round 1).
+ *
+ *   'upper'    the stick's upper half: zero at rest, full at the top, idle
+ *              below centre. What a gamepad has always flown, the default.
+ *   'full'     the stick's whole travel: bottom is idle, rest is half, top
+ *              is full, the way a radio's throttle covers its range. Only a
+ *              throttle that springs back changes; a radio's already does.
+ *   'trigger'  the right trigger, which a standard gamepad reports as
+ *              buttons[7].value, nought to one. The dogfight's gun leaves it
+ *              for the left bumper (see weaponSpecFor). Not in 3D, where a
+ *              trigger cannot reverse, and not on a pad that is not a
+ *              standard gamepad, which has no trigger at that index: both
+ *              fly the stick.
+ */
+export const PAD_THROTTLES = ['upper', 'full', 'trigger'];
+const PAD_TRIGGER = 7;
+const PAD_GUN_ON_TRIGGER = 4;
+
+export function normalisePadThrottle(id) {
+  return PAD_THROTTLES.includes(id) ? id : 'upper';
+}
+
+/*
  * The stick a throttle key has to reach before letting go rests at hover.
  * It is main.js's TAKEOFF_THROTTLE, the point where the shell lifts a
  * landed craft, so the keys and the shell agree about what a takeoff is.
@@ -1691,6 +1755,12 @@ export class InputManager {
      * KEY_THROTTLE_MODES. main.js sets it from Settings.
      */
     this.keyThrottle = 'hover';
+    /* The pad's stick deadzone and what its throttle is. See PAD_DEADZONES
+     * and PAD_THROTTLES. main.js sets both from Settings. */
+    this.padDeadzone = 'auto';
+    this.padThrottle = 'upper';
+    this.padKindId = null;
+    this.padKindPad = false;
     /*
      * WHERE 'hover' SPRINGS TO, as stick travel. It was a constant, 0.22, and
      * it was wrong by thirteen points at the shipped weight: bug-3a7be142.
@@ -2722,7 +2792,10 @@ export class InputManager {
       return spec;
     }
     if (!spec && gp.mapping === 'standard') {
-      return { id: gp.id, kind: 'button', index: which === 'gun' ? PAD_GUN_DEFAULT : PAD_MISSILE_DEFAULT, dir: 1 };
+      /* The trigger is the throttle when the pilot says so: the gun moves
+       * to the other bumper. See PAD_THROTTLES. */
+      const gun = this.padThrottle === 'trigger' && !this.mode3d ? PAD_GUN_ON_TRIGGER : PAD_GUN_DEFAULT;
+      return { id: gp.id, kind: 'button', index: which === 'gun' ? gun : PAD_MISSILE_DEFAULT, dir: 1 };
     }
     return null;
   }
@@ -2790,7 +2863,7 @@ export class InputManager {
       let pad = null;
       if (spec) {
         pad = this.weaponSpec[which] ? describeRestart(spec)
-          : (which === 'gun' ? 'Right trigger' : 'Right bumper');
+          : (which === 'gun' ? (spec.index === PAD_GUN_ON_TRIGGER ? 'Left bumper' : 'Right trigger') : 'Right bumper');
       }
       out[which] = { pad, picked: Boolean(this.weaponSpec[which]), key: describeKey(this.weaponKeys[which]) };
     }
@@ -4336,24 +4409,37 @@ export class InputManager {
     c.holdMs = 0;
   }
 
-  readGamepad(gp, map = this.map, fly3d = false) {
+  /*
+   * `live` is the flight poll's own read, the only one the pilot's throttle
+   * choice applies to: the wizard, the check step and the pad picker show
+   * the sticks themselves. The deadzone applies to all of them, as the old
+   * fixed one did.
+   */
+  readGamepad(gp, map = this.map, fly3d = false, live = false) {
     const ax = (i) => (i < gp.axes.length ? gp.axes[i] : 0);
-    const dead = (v) => (Math.abs(v) < 0.012 ? 0 : v);
+    const dz = this.deadzoneFor(gp);
     const clamp = (v) => Math.max(-1, Math.min(1, v));
     const m = map;
     const norm = (spec) => {
       if (!spec || !Number.isInteger(spec.axis)) {
         return 0;
       }
-      return dead(clamp(mapCentered(ax(spec.axis), spec)));
+      return deadband(clamp(mapCentered(ax(spec.axis), spec)), dz);
     };
     let throttle = 0;
-    if (m.throttle && Number.isInteger(m.throttle.axis)) {
+    const trig = live && !fly3d && this.padThrottle === 'trigger' && gp.mapping === 'standard'
+      && gp.buttons && gp.buttons.length > PAD_TRIGGER && gp.buttons[PAD_TRIGGER];
+    if (trig) {
+      const v = Number(trig.value);
+      throttle = Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : (trig.pressed ? 1 : 0);
+    } else if (m.throttle && Number.isInteger(m.throttle.axis)) {
       const t = (ax(m.throttle.axis) - m.throttle.low) / ((m.throttle.high - m.throttle.low) || 1);
       /* A sprung throttle at rest is zero thrust in 3D mode too, but the
        * centre of the CHANNEL, so its whole travel is used: up is forward,
-       * down past rest is reverse. Off, below rest is idle as it was. */
-      throttle = fly3d && m.throttle.sprung
+       * down past rest is reverse. Off, below rest is idle as it was,
+       * unless the pilot asked for the whole travel (PAD_THROTTLES), which
+       * is the same arithmetic with rest as half throttle. */
+      throttle = (fly3d || (live && this.padThrottle === 'full')) && m.throttle.sprung
         ? Math.max(0, Math.min(1, 0.5 + 0.5 * t))
         : Math.max(0, Math.min(1, t));
     }
@@ -4586,6 +4672,43 @@ export class InputManager {
       this.touchSource.setRestThrottle(next ? 0.5 : 0);
     }
     return next;
+  }
+
+  /* The pad's deadzone and throttle, from Settings. See PAD_DEADZONES and
+   * PAD_THROTTLES. Read on the next poll, so safe mid flight. */
+  setPadDeadzone(id) {
+    this.padDeadzone = normalisePadDeadzone(id);
+    return this.padDeadzone;
+  }
+
+  setPadThrottle(id) {
+    this.padThrottle = normalisePadThrottle(id);
+    return this.padThrottle;
+  }
+
+  /*
+   * Whether this pad is a thumb stick gamepad rather than a radio, for the
+   * 'auto' deadzone. A standard gamepad that is not a radio by name
+   * (firefoxRadio) or by behaviour (radioAsGamepad), or the Android layout
+   * for an unknown pad. The name test is a regex, so it is kept per id
+   * rather than run on every 2 ms poll.
+   */
+  gamepadLike(gp) {
+    if (gp.id !== this.padKindId) {
+      this.padKindId = gp.id;
+      const standard = gp.mapping === 'standard';
+      this.padKindPad = standard ? !firefoxRadio(gp)
+        : Boolean(this.androidChrome && androidExtraAxesPad(gp));
+    }
+    return this.padKindPad && !(gp.mapping === 'standard' && this.radioAsGamepad);
+  }
+
+  deadzoneFor(gp) {
+    const id = this.padDeadzone;
+    if (id === 'auto') {
+      return this.gamepadLike(gp) ? PAD_DEADZONE.medium : PAD_DEADZONE.small;
+    }
+    return PAD_DEADZONE[id];
   }
 
   setKeyHover(frac) {
@@ -4840,7 +4963,7 @@ export class InputManager {
       next = { roll: 0, pitch: 0, yaw: 0, throttle: 0 };
       this.source = 'the calibration wizard';
     } else if (gp) {
-      next = this.readGamepad(gp, this.map, Boolean(this.mode3d));
+      next = this.readGamepad(gp, this.map, Boolean(this.mode3d), true);
       /* The pad's own reading, before the keys below are laid over it: a
        * yaw flown on A and D is not the radio's yaw arriving. */
       if (this.flying) {

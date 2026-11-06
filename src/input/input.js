@@ -2801,7 +2801,7 @@ export class InputManager {
     if (!spec && gp.mapping === 'standard') {
       /* The trigger is the throttle when the pilot says so: the gun moves
        * to the other bumper. See PAD_THROTTLES. */
-      const gun = this.padThrottle === 'trigger' && !this.mode3d ? PAD_GUN_ON_TRIGGER : PAD_GUN_DEFAULT;
+      const gun = this.padThrottle === 'trigger' && !this.mode3d && this.gamepadLike(gp) ? PAD_GUN_ON_TRIGGER : PAD_GUN_DEFAULT;
       return { id: gp.id, kind: 'button', index: which === 'gun' ? gun : PAD_MISSILE_DEFAULT, dir: 1 };
     }
     return null;
@@ -4434,8 +4434,12 @@ export class InputManager {
       return deadband(clamp(mapCentered(ax(spec.axis), spec)), dz);
     };
     let throttle = 0;
+    /* A gamepad's trigger only, as the setting promises: on Firefox a
+     * radio's Rz is put into button 7 (firefoxTriggerView), and a radio in
+     * HID mode can come up standard, so the mapping alone let a switch or
+     * an axis there become the throttle (round 2 review R2D-7). */
     const trig = live && !fly3d && this.padThrottle === 'trigger' && gp.mapping === 'standard'
-      && gp.buttons && gp.buttons.length > PAD_TRIGGER && gp.buttons[PAD_TRIGGER];
+      && this.gamepadLike(gp) && gp.buttons && gp.buttons.length > PAD_TRIGGER && gp.buttons[PAD_TRIGGER];
     if (trig) {
       const v = Number(trig.value);
       throttle = Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : (trig.pressed ? 1 : 0);

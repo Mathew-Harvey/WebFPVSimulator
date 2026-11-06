@@ -2903,6 +2903,15 @@ section('a gamepad throttle can be the whole stick or the right trigger, and def
   rrig.ax(2, 1); rrig.step();
   check('and a radio, which has no trigger, flies its stick on trigger', near(rrig.im.channels.throttle, 1),
     JSON.stringify(rrig.im.channels));
+  /* A radio Firefox lists as standard (firefoxRadio), whose Rz Firefox
+   * puts into button 7: Right trigger must not read that button, because
+   * the setting says a gamepad only (round 2 review R2D-7). */
+  const fpad = { ...makePad([0, 0, 0, 0, 0, 0], 17, '1209-4f54-EdgeTX Radiomaster Pocket Joystick'), mapping: 'standard' };
+  const frig = new Rig(fpad);
+  frig.im.setPadThrottle('trigger');
+  fpad.buttons[7] = { pressed: true, value: 1 }; fpad.timestamp += 1; frig.step();
+  check('a radio listed as a standard pad does not fly button 7 on trigger', frig.im.channels.throttle !== 1
+    && frig.im.weaponSpecFor('gun', fpad).index !== 4, `${JSON.stringify(frig.im.channels)} gun ${frig.im.weaponSpecFor('gun', fpad).index}`);
 }
 
 console.log(failed ?`\n${failed} failed, ${passed} passed` : `\nall ${passed} passed`);

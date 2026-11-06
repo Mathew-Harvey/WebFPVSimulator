@@ -4015,6 +4015,23 @@ function isCardScreen(screen) {
   return screen === 'courses' || screen === 'freestyle';
 }
 
+/* The plan behind a picker entry, for its card when it has no picture:
+ * the board's listing carries one, the pilot's own tracks were read with
+ * one, the seated track is derived, and a board map's listing has one. */
+function pickerPlan(entry) {
+  const it = entry && entry.item;
+  if (!it) {
+    return null;
+  }
+  if (it.course) {
+    if (it.course.kind === 'current') {
+      return currentPlan();
+    }
+    return (it.course.track && it.course.track.plan) || null;
+  }
+  return (it.boardMap && it.boardMap.plan) || null;
+}
+
 /* The plan of whatever is on the working canvas, or null. Derived rather
  * than stored: the canvas changes in the builder, on another page. */
 function currentPlan() {
@@ -15053,6 +15070,12 @@ export class Ui {
           }
         },
         onSelect: (entry) => this.pickerChosen(entry),
+        /* A card with no picture shows its plan (FUN-17), drawn by the
+         * same src/share/plan.js the board map cards fall back to. */
+        drawPlan: (canvas, entry) => {
+          const plan = pickerPlan(entry);
+          return plan ? drawPlan(canvas, plan) : false;
+        },
         /* Flying together's Rooms tab, after the three shelves, only
          * while rooms are on. Its count comes from the board after. */
         onRooms: this.roomsOn ? () => {
@@ -20870,6 +20893,8 @@ export class Ui {
      * condition. The condition is whether the bar is there.
      */
     this.root.classList.toggle('bar-shown', !this.frameTop.hidden);
+    /* The library rooms, whose paper the command bar sits over (ART-16). */
+    this.root.classList.toggle('on-cards', isCardScreen(this.screen));
     this.placePatreon();
     if (onFlight) {
       this.root.style.setProperty('--bar-top', '0px');
@@ -20937,6 +20962,14 @@ export class Ui {
     }
     const primary = this.screen === 'flight' ? null : this.primaryItem();
     let show = Boolean(primary);
+    /* The library's caption carries its own FLY THIS: while it is in sight
+     * the bar's Fly it was the same press twice (ART-16), on touch too. */
+    if (show && isCardScreen(this.screen) && this.pickerHost) {
+      const own = this.pickerHost.querySelector('.wp-hero:not([hidden]) .wp-act.is-primary');
+      if (own && this.rowInSight(own)) {
+        show = false;
+      }
+    }
     if (show && !touchWanted()) {
       const node = this.screens && this.screens[this.screen]
         ? this.screens[this.screen].querySelector('.row-primary')

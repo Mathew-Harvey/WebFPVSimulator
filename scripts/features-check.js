@@ -48,6 +48,8 @@
  *   offline   the Track map with no board seats a shipped track rather
  *             than an empty field, and gives it up when the board answers
  *             (ART-20)
+ *   library   the Maps room on a phone on its side shows a card, its bar
+ *             is an ink strip, and Fly it is not said twice (ART-8, ART-16)
  *
  * No wall clock timing is asserted: on a software rasteriser under load a
  * frame can take 200 ms, so every wait polls the page with until(). Every
@@ -1279,6 +1281,98 @@ async function scenarioOffline() {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* library: the Tracks and Maps rooms on a phone, and the command bar    */
+/* ------------------------------------------------------------------ */
+
+/*
+ * ART-8: on a phone on its side the library's head took the whole height
+ * and the sticky caption covered the rest, so no card was in sight. ART-16:
+ * the command bar's legend was cream on the cream paper, and its Fly it
+ * repeated the caption's FLY THIS. Asserted on the Maps room, which lists
+ * the shipped worlds with no board, at two phone sizes and a desktop one:
+ *
+ *   seen     at least one card wholly between the top bar and the caption
+ *   caption  one line on a phone: no taller than 80 px
+ *   bar      the command bar is an ink strip where its words are
+ *   once     the bar's Fly it is hidden while the caption's FLY THIS is in
+ *            sight
+ */
+async function scenarioLibrary() {
+  for (const [w, h, touch] of [[844, 390, true], [740, 360, true], [1600, 900, false]]) {
+    const page = await openPage({ root, width: w, height: h, touch, seed: [settingsSeed({ airframe: '5inch', map: 'city' })] });
+    const at = `${w}x${h}`;
+    try {
+      await page.until('window.__shellReady === true && !!window.__ui', 120000);
+      await page.evaluate(`(() => { ${PAST_GATE}; window.__ui.show('freestyle'); return 1; })()`);
+      await page.until("!!document.querySelector('.room-picker .wp-card') && !!document.querySelector('.room-picker .wp-hero:not([hidden]) .wp-act.is-primary')", 60000);
+      await page.sleep(2500);
+      const r = await json(page, `(() => {
+        const ui = window.__ui;
+        const bars = getComputedStyle(ui.root);
+        const top = parseFloat(bars.getPropertyValue('--bar-top')) || 0;
+        const bot = innerHeight - (parseFloat(bars.getPropertyValue('--bar-bot')) || 0);
+        const cap = document.querySelector('.room-picker .wp-hero').getBoundingClientRect();
+        const floor = Math.min(bot, cap.top);
+        const seen = [...document.querySelectorAll('.room-picker .wp-strip .wp-card')]
+          .map((c) => c.getBoundingClientRect()).filter((b) => b.height > 0 && b.top >= top - 1 && b.bottom <= floor + 1).length;
+        const fb = document.querySelector('.frame-bot');
+        const fp = document.querySelector('.frame-primary');
+        return { seen, cap: Math.round(cap.height), bar: getComputedStyle(fb).backgroundImage, flyIt: !fp.hidden };
+      })()`);
+      check(`library ${at}: a card is wholly in sight between the bars and the caption`, r.seen >= 1, `${r.seen} card(s)`);
+      if (touch) {
+        check(`library ${at}: the caption is one line`, r.cap <= 80, `${r.cap} px`);
+      }
+      check(`library ${at}: the command bar is an ink strip where its words are`, /rgba\(11, 17, 22, 0\.97\)/.test(r.bar), r.bar.slice(0, 90));
+      check(`library ${at}: no second Fly it while the caption's FLY THIS is in sight`, r.flyIt === false);
+      errorsCheck(page, `library ${at}`);
+    } catch (e) {
+      check(`library ${at}: the scenario ran to the end`, false, e.message);
+    } finally {
+      await page.close();
+    }
+  }
+  /* The Tracks room on the whoop, with one of the pilot's own tracks: it
+   * has no picture, so its card draws its plan (FUN-17) and not a letter,
+   * and once it is chosen the caption's FLY THIS is the only Fly it. */
+  /* 640 high, so the rows under the picker, the screen's own Fly it among
+   * them, are below the fold, which is when the bar repeats it. */
+  const page = await openPage({
+    root, width: 1280, height: 640,
+    seed: [settingsSeed({ airframe: 'whoop65', map: 'city' },
+      `localStorage.setItem('webfpv.trackbuilder.library.v1', ${JSON.stringify(JSON.stringify({ [ROOM_TRACK.id]: ROOM_TRACK }))});`)],
+  });
+  try {
+    await page.until('window.__shellReady === true && !!window.__ui', 120000);
+    await page.evaluate(`(() => { ${PAST_GATE}; window.__ui.show('courses'); return 1; })()`);
+    const card = `[...document.querySelectorAll('.room-picker .wp-strip .wp-card')].find((c) => /Features check track/.test(c.getAttribute('aria-label') || ''))`;
+    await page.until(`!!(${card})`, 60000);
+    await page.until(`!!(${card}).querySelector('canvas.wp-plan[data-done]')`, 15000).catch(() => {});
+    const drawn = await json(page, `(() => { const c = ${card}; return { plan: !!c.querySelector('canvas.wp-plan[data-done]'), letter: !!c.querySelector('.wp-blank') }; })()`);
+    check('library: a track with no picture draws its plan on its card, not its initial', drawn.plan && !drawn.letter, JSON.stringify(drawn));
+    const at = await json(page, `(() => { const r = (${card}).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+    await clickAt(page, at.x, at.y);
+    await page.until("!!document.querySelector('.room-picker .wp-hero:not([hidden]) .wp-act.is-primary')", 15000);
+    await page.evaluate("(() => { document.querySelector('.screen-courses:not([style*=none])').scrollTop = 0; return 1; })()");
+    await page.sleep(800);
+    const once = await json(page, `(() => ({
+      name: document.querySelector('.room-picker .wp-hero .wp-sr') ? document.querySelector('.room-picker .wp-hero .wp-sr').textContent : '',
+      own: document.querySelector('.room-picker .wp-hero .wp-act.is-primary').textContent,
+      bar: !document.querySelector('.frame-primary').hidden,
+      barText: document.querySelector('.frame-primary').textContent,
+      capPlan: !!document.querySelector('.room-picker .wp-hero canvas.wp-plan[data-done]'),
+    }))()`);
+    check('library: the chosen track\'s caption draws its plan too', once.capPlan, JSON.stringify(once));
+    check('library: no second Fly it on the bar while the caption\'s own is in sight', !once.bar, `caption ${once.own}, bar ${once.bar ? once.barText : 'hidden'}`);
+    errorsCheck(page, 'library tracks');
+  } catch (e) {
+    check('library: the Tracks room ran to the end', false, e.message);
+  } finally {
+    await page.close();
+  }
+}
+
 const SCENARIOS = {
   quad: scenarioQuad,
   room: scenarioRoom,
@@ -1293,6 +1387,7 @@ const SCENARIOS = {
   lettering: scenarioLettering,
   thumbs: scenarioThumbs,
   offline: scenarioOffline,
+  library: scenarioLibrary,
 };
 
 const t0 = Date.now();

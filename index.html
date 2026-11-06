@@ -5333,6 +5333,57 @@
       .screen-courses:has(> .room-picker) > h2,
       .screen-courses:has(> .room-picker) > .screen-lede,
       .screen-courses:has(> .room-picker) > .rates-lede { display: none; }
+      /*
+       * THE LIBRARY ON A PHONE ON ITS SIDE (ART-8). At 844 by 390 the
+       * chapter label, the title, the four shelves and the find row took the
+       * whole height, and the chosen card's caption, sticky at the foot,
+       * covered what was left: no card was in sight. So under 480 px of
+       * height the head is one row (the title beside smaller shelves, the
+       * chapter label gone), find and order are one row, the panels are
+       * shorter, and the caption is one line: the name and its buttons, its
+       * picture and its sentence left to the panel. Here and not in
+       * src/picker/picker.js, because these are the simulator's windows; a
+       * board on a phone keeps the picker's own layout.
+       */
+      @media (max-height: 480px) {
+        .screen-courses { padding-top: calc(var(--bar-top) + 2px); }
+        .room-picker { margin: 2px 0 8px; }
+        .room-picker .wp { gap: 8px; padding-top: 8px; }
+        .room-picker .wp-head { flex-wrap: nowrap; align-items: center; gap: 12px; }
+        .room-picker .wp-ttl { flex: 0 1 auto; }
+        .room-picker .wp-ttl > .wp-kick { display: none; }
+        .room-picker .wp-title .wp-lt canvas { height: 28px !important; width: auto !important; }
+        .room-picker .wp-rail { flex: 1 1 auto; justify-content: flex-end; gap: 8px; padding: 4px 6px 4px 2px; }
+        .room-picker .wp-shelf { width: 92px; height: 40px; border-width: 3px; }
+        .room-picker .wp-shelf i { display: none; }
+        .room-picker .wp-bar { flex-wrap: nowrap; gap: 8px; }
+        .room-picker .wp-find { flex: 1 1 140px; height: 34px; font-size: 14px; }
+        .room-picker .wp-chips { flex-wrap: nowrap; gap: 6px; }
+        .room-picker .wp-chip { height: 34px; padding: 0 10px; font-size: 12px; }
+        .room-picker .wp-strip { gap: 8px; padding-bottom: 6px; }
+        .room-picker .wp-offs { grid-template-columns: 1.55fr 1fr 1fr; grid-auto-rows: 128px; gap: 14px; }
+        .room-picker .wp-offs .wp-card { aspect-ratio: auto; }
+        .room-picker .wp-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; }
+        .room-picker .wp-grid .wp-card { aspect-ratio: 2 / 1; }
+        .room-picker .wp-hero { margin: 2px 0 6px; min-height: 0; transform: none; }
+        .room-picker .wp-cap { flex-wrap: nowrap; gap: 10px; min-height: 0; padding: 6px 10px; transform: none; }
+        .room-picker .wp-cap .wp-pic, .room-picker .wp-line { display: none; }
+        .room-picker .wp-who { flex: 1 1 auto; }
+        .room-picker .wp-name .wp-lt canvas { max-height: 26px; width: auto !important; }
+        .room-picker .wp-acts { width: auto; flex: none; flex-wrap: nowrap; gap: 8px; }
+        .room-picker .wp-act { height: 34px; padding: 0 10px; font-size: 11px; box-shadow: 3px 3px 0 var(--wp-ink); }
+        .room-picker .wp-act.is-primary { flex: none; height: 38px; padding: 0 16px; font-size: 16px; }
+      }
+      /*
+       * THE COMMAND BAR OVER THE LIBRARY'S PAPER (ART-16). Its scrim fades
+       * to nothing at its top, which over the dark world is a soft foot and
+       * over the cream paper left the slate legend cream on cream, over the
+       * cards' stars. On the two library rooms it is an ink strip, opaque
+       * where the words are, like the patch the page scrollers get.
+       */
+      #ui.on-cards .frame-bot {
+        background: linear-gradient(0deg, rgba(11, 17, 22, 0.97) 0%, rgba(11, 17, 22, 0.95) 72%, rgba(11, 17, 22, 0) 100%);
+      }
       .picker-has-keys .row.on { color: inherit; border-left-color: transparent; background: none; }
       .picker-has-keys .row.on .row-label { text-shadow: none; }
       .strip-label {

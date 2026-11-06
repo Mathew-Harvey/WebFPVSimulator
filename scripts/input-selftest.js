@@ -2697,6 +2697,60 @@ section('the full range step says which rest it is waiting for: bug-6afb51eb');
   check('throttle down: on to the throttle step', rig.view().step === 'throttle', rig.view().step);
 }
 
+section('the check step picks a stick by hand: "let us pick which stick does what"');
+{
+  /* A radio whose wizard put roll and yaw on each other's axes. */
+  const rig = new Rig(makePad([0, 0, -1, 0, 0], 4, 'Picked by hand'));
+  driveWizard(rig, {
+    roll: 3, pitch: 1, yaw: 0, thr: 2, thrRest: -1, thrReturn: -1,
+  });
+  rig.im.acceptCalibration();
+  const saved = JSON.stringify(rig.im.map);
+  rig.im.startCalibrationCheck();
+  check('the view says which axis each channel reads', rig.view().assigned
+    && rig.view().assigned.roll === 3 && rig.view().assigned.yaw === 0, JSON.stringify(rig.view().assigned));
+  check('roll listens', rig.im.listenForChannel('roll') === true && rig.view().listening === 'roll');
+  check('and the prompt says what to push', /roll fully to the right/.test(rig.view().prompt), rig.view().prompt);
+  rig.ax(0, 0.2); rig.step();
+  check('a nudge is not a pick', rig.view().listening === 'roll' && rig.im.calibration.draft.roll.axis === 3);
+  rig.ax(0, 1); rig.step();
+  const d = rig.im.calibration.draft;
+  check('axis 0 pushed right is roll now', d.roll.axis === 0 && rig.view().listening === null, JSON.stringify(d.roll));
+  check('yaw, which had axis 0, takes roll\'s old axis', d.yaw.axis === 3, JSON.stringify(d.yaw));
+  rig.ax(0, 1); rig.step();
+  check('the stick on axis 0 flies roll, the right way round', rig.view().channels.roll > 0.9
+    && Math.abs(rig.view().channels.yaw) < 0.05, JSON.stringify(rig.view().channels));
+  rig.ax(0, 0); rig.ax(3, 1); rig.step();
+  check('and the one on axis 3 flies yaw', Math.abs(rig.view().channels.yaw) > 0.9
+    && Math.abs(rig.view().channels.roll) < 0.05, JSON.stringify(rig.view().channels));
+  rig.ax(3, 0); rig.step();
+  /* Pushed LEFT for a channel asked to go right: the sign follows the push. */
+  rig.im.listenForChannel('yaw');
+  rig.ax(3, -1); rig.step(); rig.ax(3, 0); rig.step();
+  rig.ax(3, -1); rig.step();
+  check('the direction pushed is the positive one', rig.view().channels.yaw > 0.9, JSON.stringify(rig.view().channels));
+  rig.ax(3, 0); rig.step();
+  const axes = ['roll', 'pitch', 'yaw', 'throttle'].map((ch) => rig.im.calibration.draft[ch].axis);
+  check('no two channels share an axis', new Set(axes).size === 4, JSON.stringify(axes));
+  check('nothing is saved until Save', JSON.stringify(rig.im.map) === saved);
+  check('pressing a channel twice stops listening', rig.im.listenForChannel('pitch') === true
+    && rig.im.listenForChannel('pitch') === false && rig.view().listening === null);
+  check('saving keeps the hand picked axes', rig.im.acceptCalibration() === true
+    && rig.im.map.roll.axis === 0 && rig.im.map.yaw.axis === 3 && rig.im.map.throttle.axis === 2);
+  /* The throttle on a stick that springs to the middle: zero at rest. */
+  rig.im.startCalibrationCheck();
+  rig.im.listenForChannel('throttle');
+  rig.ax(4, 1); rig.step();
+  const t = rig.im.calibration.draft.throttle;
+  check('a throttle pushed up from the middle is sprung, zero where it rested', t.axis === 4 && t.sprung === true
+    && t.low === 0, JSON.stringify(t));
+  rig.ax(4, 0); rig.step();
+  check('and reads zero there', rig.view().channels.throttle === 0, JSON.stringify(rig.view().channels));
+  check('the old throttle axis went to nobody it should not', rig.im.calibration.draft.pitch.axis === 1);
+  rig.im.cancelCalibration();
+  check('outside the check step it does nothing', rig.im.listenForChannel('roll') === false);
+}
+
 console.log(failed ?`\n${failed} failed, ${passed} passed` : `\nall ${passed} passed`);
 for (const f of fails) {
   console.log(`  FAIL ${f}`);

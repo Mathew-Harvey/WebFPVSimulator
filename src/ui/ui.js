@@ -4503,6 +4503,8 @@ const CARD_PRESS_NOTE = 'Choose it to see what you can do with it, or double cli
  * The row says so now, and so does the hint on the screen itself.
  */
 const MID_RUN_WARNING = ' Changing it during a run puts the quad back on the start line.';
+/* How long the 3D mode row waits for its second press. See mode3dRow. */
+const MODE3D_CONFIRM_MS = 4000;
 
 function tuneItem(s, midRun) {
   const name = tuneById(s.tune).name;
@@ -7133,6 +7135,21 @@ export class Ui {
       this.calCancelBtn, this.calSkipBtn, this.calZeroBtn,
       this.calRevBtn, this.calModeBtn, this.calSaveBtn,
     );
+    /*
+     * PICK WHICH STICK IS WHICH, by hand, on the check step only. One
+     * button per channel, naming the axis it reads; press it, push the
+     * stick you want for it, and that axis is the channel. See
+     * listenForChannel in input.js.
+     */
+    this.calAssign = el('div', 'cal-actions cal-assign');
+    this.calAssign.hidden = true;
+    this.calAssignBtns = {};
+    for (const ch of ['throttle', 'yaw', 'pitch', 'roll']) {
+      const b = btn('name-dialog-btn', ch);
+      b.addEventListener('click', () => this.act(`calibrate-assign-${ch}`));
+      this.calAssignBtns[ch] = b;
+      this.calAssign.append(b);
+    }
     calibrate.append(
       this.calKicker,
       this.calPrompt,
@@ -7140,6 +7157,7 @@ export class Ui {
       calSticks,
       this.calAxes,
       this.calList,
+      this.calAssign,
       calBtns,
     );
     this.screens.calibrate = calibrate;
@@ -10728,14 +10746,7 @@ export class Ui {
          * the note says so then. See run3d in src/main.js.
          */
         { label: 'Flying', section: true },
-        toggle(
-          '3D mode',
-          s.mode3d === true
-            ? `On: the motors spin both ways. Throttle in the middle is no thrust, below the middle pushes the other way, so you can hang upside down and fly inverted. No turtle, just reverse off the ground. Fitted with 3D props, a little less punch than race props. Laps post to the public board tagged Tuned and keep a best lap of their own.${midRun ? MID_RUN_WARNING : ''}`
-            : `Off: normal flying, the motors spin one way and the bottom of the throttle is idle. Turn it on for reversible motors, the way 3D pilots fly: throttle in the middle is no thrust and below it flies you upside down.${midRun ? MID_RUN_WARNING : ''}`,
-          s.mode3d === true,
-          (v) => { s.mode3d = Boolean(v); },
-        ),
+        this.mode3dRow(s, midRun),
         { label: 'Camera', section: true },
         this.cameraAngleRow(s),
         this.cameraFovRow(s),
@@ -13052,6 +13063,68 @@ export class Ui {
     return wrap;
   }
 
+  /*
+   * 3D MODE IS THE FIRST ROW OF THE PILOT SCREEN, SO IT WAS THE EASIEST
+   * ROW IN THE GAME TO CHANGE BY ACCIDENT, AND THE ONE THAT COSTS MOST.
+   *
+   * The cursor opens on it, a radio's roll is Right in the menus and a
+   * switch row takes Right as On, and a radio's switches on buttons 0, 2
+   * and 3 are Select. So a pilot who came to this screen to calibrate,
+   * and moved a stick or flicked the arm switch on the way, came back to a
+   * quad that hovers at 70 percent of stick and drives itself into the
+   * ground at the bottom of it. Four reports in three days read exactly
+   * that way (bug-6f04ebea, bug-e4571129, bug-9c9d953e and a pilot on
+   * Discord, 2026-11-06: "the sim is completely unplayable for me now"),
+   * and none of them knew 3D was on.
+   *
+   * The row stays where the owner put it (2026-10-21). Turning it OFF is
+   * one press of anything, as before. Turning it ON is never a stick
+   * nudge, and is two presses: the first asks, the note says so, and a
+   * second press inside four seconds turns it on. A mouse click is the
+   * same, so every input has one rule.
+   */
+  mode3dRow(s, midRun) {
+    const on = s.mode3d === true;
+    const asking = !on && this.arm3dAt > 0 && performance.now() - this.arm3dAt < MODE3D_CONFIRM_MS;
+    const tail = midRun ? MID_RUN_WARNING : '';
+    const row = toggle(
+      '3D mode',
+      on
+        ? `On: the motors spin both ways. Throttle in the middle is no thrust, below the middle pushes the other way, so you can hang upside down and fly inverted. No turtle, just reverse off the ground. Fitted with 3D props, a little less punch than race props. Laps post to the public board tagged Tuned and keep a best lap of their own.${tail}`
+        : (asking
+          ? 'Press again to turn 3D mode on. In 3D the middle of the throttle is no thrust and the bottom flies you backwards, so normal flying will feel broken until you turn it off.'
+          : `Off: normal flying, the motors spin one way and the bottom of the throttle is idle. Turn it on for reversible motors, the way 3D pilots fly: throttle in the middle is no thrust and below it flies you upside down. It takes two presses to turn on.${tail}`),
+      on,
+      (v) => { s.mode3d = Boolean(v); },
+    );
+    if (asking) {
+      row.value = 'Press again';
+    }
+    const press = () => {
+      if (s.mode3d === true) {
+        s.mode3d = false;
+        this.arm3dAt = 0;
+        return;
+      }
+      if (this.arm3dAt > 0 && performance.now() - this.arm3dAt < MODE3D_CONFIRM_MS) {
+        s.mode3d = true;
+        this.arm3dAt = 0;
+        return;
+      }
+      this.arm3dAt = performance.now();
+    };
+    /* Left still turns it off. Right, the roll a radio sends, does nothing. */
+    row.adjust = (d) => {
+      if (d < 0) {
+        s.mode3d = false;
+        this.arm3dAt = 0;
+      }
+    };
+    row.flip = press;
+    row.confirmOn = press;
+    return row;
+  }
+
   /* One place that writes a switch, so the sound, the repaint and the
    * disabled guard cannot drift between the mouse and the keys. */
   setSwitch(it, on) {
@@ -13059,6 +13132,12 @@ export class Ui {
       return;
     }
     if (it.on === Boolean(on)) {
+      return;
+    }
+    /* A row that asks before it turns on: see mode3dRow. */
+    if (on && it.confirmOn) {
+      it.confirmOn();
+      this.writeSettings();
       return;
     }
     it.adjust(on ? 1 : -1);
@@ -19941,6 +20020,9 @@ export class Ui {
       if (this.calModeBtn) {
         this.calModeBtn.hidden = true;
       }
+      if (this.calAssign) {
+        this.calAssign.hidden = true;
+      }
       return;
     }
     const n = view.stepIndex + 1;
@@ -19969,6 +20051,21 @@ export class Ui {
          * pressed it once needs to know this puts it back. */
         const on = view.reverse && view.reverse[view.moving];
         Ui.text(this.calRevBtn, `${on ? 'Un-reverse' : 'Reverse'} ${view.moving}`);
+      }
+    }
+    if (this.calAssign) {
+      this.calAssign.hidden = !this.calOnConfirm;
+      if (this.calOnConfirm) {
+        const ax = view.assigned || {};
+        for (const [ch, b] of Object.entries(this.calAssignBtns)) {
+          const name = ch[0].toUpperCase() + ch.slice(1);
+          const label = view.listening === ch
+            ? `${name}: move it`
+            : (Number.isInteger(ax[ch]) ? `${name}: axis ${ax[ch]}` : `${name}: none`);
+          Ui.text(b, label);
+          b.classList.toggle('on', view.listening === ch);
+          b.title = `Pick the stick for ${ch}: press, then push the stick you want.`;
+        }
       }
     }
     if (this.calModeBtn) {

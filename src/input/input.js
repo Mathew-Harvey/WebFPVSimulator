@@ -1065,6 +1065,33 @@ function pickUnusedAxis(axes, rest, used) {
 }
 
 /*
+ * A channel's spec moved onto another axis, for the hand pick's swap (see
+ * listenForChannel). A spec keeps its measurements when its shape fits the
+ * channel; between the throttle and a centred channel its ends are read in
+ * the other shape. Reverse still applies on top for the sign.
+ */
+function reshapeSpec(ch, spec, axis) {
+  if (!spec) {
+    return ch === 'throttle' ? { axis, low: -1, high: 1 } : { axis, center: 0, pos: 1, neg: -1 };
+  }
+  if (ch === 'throttle') {
+    if (spec.low != null) {
+      return { ...spec, axis };
+    }
+    const centre = spec.center;
+    const pos = spec.pos != null ? spec.pos : centre + (spec.full || 1);
+    const neg = spec.neg != null ? spec.neg : centre - (pos - centre);
+    return { axis, low: neg, high: pos };
+  }
+  if (spec.center != null) {
+    return { ...spec, axis };
+  }
+  const centre = spec.sprung ? spec.low : (spec.low + spec.high) / 2;
+  const neg = spec.sprung ? spec.low - (spec.high - spec.low) : spec.low;
+  return { axis, center: centre, pos: spec.high, neg };
+}
+
+/*
  * WHICH CHANNEL IS THE PILOT MOVING RIGHT NOW?
  *
  * The check step has no cursor. It is driven by sticks, by design, because
@@ -1273,6 +1300,14 @@ function calPrompt(c, mode) {
   }
   if (c.step === 'sweep') {
     return 'Move both sticks through every corner, and the throttle up and down, then put them back.';
+  }
+  if (c.step === 'confirm' && c.listen) {
+    return {
+      throttle: 'Push the stick you want for throttle all the way up.',
+      roll: 'Push the stick you want for roll fully to the right.',
+      pitch: 'Pull the stick you want for pitch fully back, toward you.',
+      yaw: 'Push the stick you want for yaw fully to the right.',
+    }[c.listen.channel];
   }
   if (c.step === 'confirm') {
     return `Move the sticks. Left is ${stickCaption(mode, 'left').toLowerCase()},`
@@ -3628,6 +3663,96 @@ export class InputManager {
     return true;
   }
 
+  /*
+   * PICK WHICH STICK IS WHICH, by hand, on the check step.
+   *
+   * The wizard maps whatever moved, and that is right for nearly every
+   * radio, but a pilot whose radio sends something odd had no way to say
+   * "roll is that one" except to calibrate again and hope. A pilot on
+   * Discord, 2026-11-06: "Or just let us please pick which stick does
+   * what." So each channel on the check step has a button: press it, then
+   * push the stick you want for that channel the way the prompt says, and
+   * that axis is the channel. The channel that had the axis takes this
+   * one's old axis, so no two channels ever read the same axis, and the
+   * live gimbals show the result before anything is saved.
+   *
+   * The push says the direction, as the wizard's own steps do, so the sign
+   * comes out right with no Reverse. A centred channel keeps the rest it
+   * was pushed from as its centre. The throttle keeps where the stick
+   * started as zero, and a push that did not travel most of the way across
+   * the axis is a stick that springs back to the middle, so it is marked
+   * sprung, as noteThrottleSpring marks one.
+   */
+  listenForChannel(channel) {
+    const c = this.calibration;
+    if (!c || c.step !== 'confirm' || !IDENT_CHANNELS.includes(channel)) {
+      return false;
+    }
+    const gp = this.firstGamepad();
+    if (!gp) {
+      return false;
+    }
+    /* Pressing the same button again stops listening. */
+    if (c.listen && c.listen.channel === channel) {
+      c.listen = null;
+      return false;
+    }
+    const live = snapshotAxes(gp);
+    c.listen = { channel, rest: live.slice(), min: live.slice(), max: live.slice() };
+    return true;
+  }
+
+  /* One poll of the listener above: see listenForChannel. */
+  calListen(c, axes) {
+    const l = c.listen;
+    expandRange(l.min, l.max, axes);
+    let best = -1;
+    let bestAbs = 0;
+    for (let i = 0; i < Math.min(axes.length, l.rest.length); i += 1) {
+      const a = Math.abs(axes[i] - l.rest[i]);
+      if (a > bestAbs) {
+        bestAbs = a;
+        best = i;
+      }
+    }
+    if (best < 0 || bestAbs < CAL.IDENT_DELTA) {
+      return;
+    }
+    const ch = l.channel;
+    const rest = l.rest[best];
+    const towardHigh = axes[best] >= rest;
+    const end = towardHigh ? l.max[best] : l.min[best];
+    let spec;
+    if (ch === 'throttle') {
+      spec = { axis: best, low: rest, high: end };
+      if (Math.abs(end - rest) < 1.5) {
+        spec.sprung = true;
+      }
+    } else {
+      spec = { axis: best, center: rest, pos: end, neg: rest - (end - rest) };
+    }
+    const mine = c.draft[ch];
+    const cur = mine && Number.isInteger(mine.axis) ? mine.axis : -1;
+    const other = IDENT_CHANNELS.find((o) => o !== ch && c.draft[o] && c.draft[o].axis === best);
+    if (other && cur >= 0 && cur !== best) {
+      c.draft[other] = reshapeSpec(other, mine, cur);
+    }
+    c.draft[ch] = spec;
+    /* The pushed direction is the right one, so any reversal set against
+     * the old axis is gone. */
+    if (c.draft.reverse) {
+      c.draft.reverse[ch] = false;
+    }
+    if (c.draft.select && c.draft.select.axis === best) {
+      c.draft.select = null;
+    }
+    /* Hand made, so a stick mode change must not lay the standard layout
+     * back over it. See setStickMode. */
+    c.fromGuess = false;
+    c.listen = null;
+    c.picked = { channel: ch, axis: best };
+  }
+
   /* Reverse whichever channel the pilot is moving, and say which it was so
    * the shell can name it. See movingChannel. */
   reverseMovingChannel() {
@@ -4028,6 +4153,12 @@ export class InputManager {
        * offer that goes with it. See movingChannel. */
       moving,
       canReverse: Boolean(moving),
+      /* Which axis each channel reads, for the check step's pick buttons.
+       * See listenForChannel. */
+      assigned: c.step === 'confirm' ? Object.fromEntries(IDENT_CHANNELS.map((ch) => [ch,
+        c.draft[ch] && Number.isInteger(c.draft[ch].axis) ? c.draft[ch].axis : null])) : null,
+      /* The channel waiting for its stick, if any. */
+      listening: c.step === 'confirm' && c.listen ? c.listen.channel : null,
       /* Which channels this draft has turned round, so the screen can
        * show the state rather than only the control. */
       reverse: cloneReverse(c.draft && c.draft.reverse),
@@ -4051,6 +4182,10 @@ export class InputManager {
     const axes = snapshotAxes(gp);
     if (c.rest) {
       expandRange(c.min, c.max, axes);
+    }
+    if (c.step === 'confirm' && c.listen) {
+      this.calListen(c, axes);
+      return;
     }
     if (c.step === 'center') {
       this.calCenter(c, axes, dtMs);

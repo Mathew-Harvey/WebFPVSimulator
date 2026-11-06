@@ -5578,6 +5578,8 @@ export async function boot({ loading, bootStart, mapId }) {
    * their own. false is what the module starts with.
    */
   let run3d = false;
+  /* Whether this session has said 3D is on yet. See reset(). */
+  let told3d = false;
   /* Whether the machine being flown is off stock in any way the board tags
    * as Tuned: the two flight feel scales, prop wash switched off, or 3D. */
   function offStock() {
@@ -7639,6 +7641,21 @@ export async function boot({ loading, bootStart, mapId }) {
      * key and the Tuned stamp follow it below, after race.reset. */
     const was3d = run3d;
     apply3d();
+    /*
+     * AND SAY SO, because nothing in flight did. Four pilots in three days
+     * flew 3D without knowing it was on and called the sim broken: hover at
+     * 70 percent, the bottom of the stick driving them into the ground
+     * (see mode3dRow in src/ui/ui.js). Once a session, and again whenever
+     * it has just been turned on. A banner, not a HUD element: no draw and
+     * no work in the flight frame.
+     */
+    if (run3d && (!was3d || !told3d)) {
+      told3d = true;
+      notice = {
+        text: '3D mode is on: mid throttle is no thrust.\nTurn it off in Settings, Pilot, 3D mode.',
+        untilMs: performance.now() + 6000,
+      };
+    }
     /* Back to the MAP's own spawn. A crash recovery moves the spawn offset
      * to a point on the course, and a new run must not begin from wherever
      * the last one happened to end. */
@@ -10478,6 +10495,9 @@ export async function boot({ loading, bootStart, mapId }) {
        * The feedback is the gimbal they are watching turning round under
        * the stick they are holding, which is the point of doing it here. */
       input.reverseMovingChannel();
+    } else if (typeof action === 'string' && action.startsWith('calibrate-assign-')) {
+      /* Feedback is the button's own label and the gimbal, as above. */
+      input.listenForChannel(action.slice('calibrate-assign-'.length));
     } else if (action === 'calibrate-stick-mode') {
       /* Settings owns the mode and writeSettings pushes it through
        * applySettings, so the keyboard, the thumb sticks and every drawn

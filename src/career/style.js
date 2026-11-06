@@ -570,7 +570,12 @@ body.career-flight:not(.career-score) #ui .score-combo { visibility: hidden; }
 #career .cr-res-page { flex: 1 0 auto; display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 4fr); gap: clamp(18px, 2.6vw, 44px); align-items: start; }
 #career .cr-res-page > :only-child { grid-column: 1 / -1; }
 #career .cr-res-main { display: flex; flex-direction: column; gap: clamp(10px, 1.8vh, 20px); min-width: 0; }
-#career .cr-res-word { animation: cr-word-in 0.5s cubic-bezier(.2,1.6,.4,1) both; transform-origin: left center; }
+/* The word is as wide as its lettering, not its column: the word-in
+   overshoots past scale(1), and a heading the width of the page grew 25 px
+   past a phone's edge at 200 ms of it, so the results scrolled sideways
+   while it landed (check:careerui). Its lettering is capped at half the
+   window, which the overshoot never takes to the edge. */
+#career .cr-res-word { align-self: flex-start; max-width: 100%; animation: cr-word-in 0.5s cubic-bezier(.2,1.6,.4,1) both; transform-origin: left center; }
 @keyframes cr-word-in { 0% { transform: scale(0.4) rotate(-6deg); opacity: 0; } 100% { transform: scale(1) rotate(-2deg); opacity: 1; } }
 #career .cr-res-time { align-self: flex-start; flex-direction: row; align-items: baseline; flex-wrap: wrap; gap: 6px 16px; transform: rotate(-0.6deg); }
 #career .cr-res-time b { font-size: clamp(34px, 4vw, 62px); font-weight: 900; font-style: italic; letter-spacing: 0.01em; line-height: 1; font-variant-numeric: tabular-nums; }

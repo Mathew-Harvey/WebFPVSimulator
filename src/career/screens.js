@@ -142,13 +142,20 @@ function modeTag(mode) {
   return el('span', `cr-tag ${mode === 'angle' ? 'angle' : 'acro'}`, mode === 'angle' ? 'Angle' : 'Acro');
 }
 
-/* The medals' names as the player reads them: finishing is the bronze. */
 /* The tree is a list in a small window (style.js). Read on a hover, never
  * per frame. */
 const LIST_TREE = typeof matchMedia === 'function' ? matchMedia(SMALL_WINDOW) : { matches: false };
 
+/* The medals' names as the player reads them: finishing is the bronze. */
 const MEDAL_NAME = { gold: 'Gold', silver: 'Silver', bronze: 'Finish' };
 const STAR_COUNT = { gold: 3, silver: 2, bronze: 1 };
+
+/* A lesson where speed is the point: gates, rings or laps against the
+ * clock. A hover, a landing or a trick is not. */
+const SPEED_KINDS = new Set(['gates', 'rings']);
+function speedLesson(lesson) {
+  return Boolean(lesson.laps) || (lesson.objectives || []).some((o) => SPEED_KINDS.has(o.kind));
+}
 
 /* "Learn to fly, 3.4": the part a lesson is in and where in it. */
 function lessonPlace(lesson) {
@@ -1686,11 +1693,27 @@ export class CareerScreens {
       if (status.crashes) {
         line.push(`${status.crashes} crash${status.crashes === 1 ? '' : 'es'}`);
       }
-      line.push(`top speed ${Math.round(status.maxSpeed * 3.6)} km/h`);
-      said.push(`${line.join(', ')}.`.replace(/^./, (c) => c.toUpperCase()));
+      /* Top speed only where speed is the point: a hover lesson printed
+       * "Top speed 2 km/h", which reads as a fault (fun.md FUN-12). */
+      if (speedLesson(lesson)) {
+        line.push(`top speed ${Math.round(status.maxSpeed * 3.6)} km/h`);
+      }
+      if (line.length) {
+        said.push(`${line.join(', ')}.`.replace(/^./, (c) => c.toUpperCase()));
+      }
       time.append(el('span', null, said.join(' ')));
       main.append(time);
       main.append(ladder(lesson, status.medal));
+      /* The coach from the briefing stays for the pass, saying what the
+       * briefing said this lesson is for. Only words the lesson already
+       * has: a pass gets no new lines of its own. */
+      if (lesson.briefing && lesson.briefing.why) {
+        const coach = el('div', 'cr-res-coach');
+        const art = el('div', 'cr-coach-face small');
+        art.innerHTML = coachSvg();
+        coach.append(art, el('div', 'cr-balloon left', sticksIn(lesson.briefing.why, stickMode, { keys })));
+        main.append(coach);
+      }
 
       /* What the run earned, as panels down the right of the page. */
       if (outcome && outcome.licence) {

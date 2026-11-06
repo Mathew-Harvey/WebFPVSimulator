@@ -255,6 +255,29 @@ async function scenarioQuad() {
       `${five.colours} colours, ${five.off} of ${five.n} samples off the clear colour, ${five.w} by ${five.h}`);
     const caption = await page.evaluate("(document.querySelector('.craft-showcase-cap') || {}).textContent || ''");
     check('quad: the preview did not say it could not start', !/could not start/.test(caption), caption.slice(0, 80));
+    /* The Quad room's list is longer than its box: its foot fades while
+     * there is more, rather than a row cut through its letters, and the
+     * fade goes at the foot (art.md ART-14). */
+    /* The finding's window, 1600 by 900, where the room is two columns and
+     * the list runs past its box; then the window it was. */
+    await page.cdp.send('Emulation.setDeviceMetricsOverride', { width: 1600, height: 900, deviceScaleFactor: 1, mobile: false }, page.sessionId);
+    await page.until('window.innerHeight === 900', 10000);
+    const fade = await json(page, `(async () => {
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const m = window.__ui.quadMenu;
+      const look = () => ({ more: m.scrollHeight - m.scrollTop - m.clientHeight > 2, cls: m.classList.contains('has-more'), mask: getComputedStyle(m).maskImage || getComputedStyle(m).webkitMaskImage || '' });
+      const top = look();
+      m.scrollTop = m.scrollHeight;
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const foot = look();
+      m.scrollTop = 0;
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      return { top, foot };
+    })()`);
+    check('quad: the room\'s list fades at its foot while there is more, and not at the foot',
+      fade.top.more && fade.top.cls && /gradient/.test(fade.top.mask) && !fade.foot.more && !fade.foot.cls && !/gradient/.test(fade.foot.mask), JSON.stringify(fade));
+    await page.cdp.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false }, page.sessionId);
+    await page.until('window.innerHeight === 800', 10000);
     /* A drag orbits it; the next frames still draw. */
     const box = await json(page, "(() => { const r = window.__ui.craftCanvas.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; })()");
     const cy = box.y + box.h / 2;
@@ -533,6 +556,29 @@ async function scenarioRoom() {
     check('room: with Race line on, the whoop track\'s line is solved', line.phase === 'ready' && line.crumbs > 50 && line.lapS > 0 && line.wanted,
       `${line.phase}${line.reason ? ` (${line.reason})` : ''}, ${line.crumbs} crumbs, ${line.lapS.toFixed ? line.lapS.toFixed(1) : line.lapS} s a lap`);
 
+    /* A card with no picture shows the track's initial, and it never
+     * prints through the card's lettered name (art.md ART-15). Read on the
+     * Tracks cards: the initial's own glyphs against each name line. */
+    await page.evaluate("window.__ui.show('courses'), 1");
+    const initials = await json(page, `(async () => {
+      let cards = [];
+      for (let i = 0; i < 100; i += 1) {
+        cards = [...document.querySelectorAll('.wp-card')].filter((c) => c.querySelector('.wp-blank') && c.querySelector('.wp-nm canvas, .wp-nm.is-text'));
+        if (cards.length) { break; }
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+      return cards.map((c) => {
+        const blank = c.querySelector('.wp-blank');
+        const range = document.createRange();
+        range.selectNodeContents(blank);
+        const g = range.getBoundingClientRect();
+        const lines = [...c.querySelectorAll('.wp-nm canvas, .wp-nm.is-text')].map((n) => n.getBoundingClientRect());
+        return { initial: blank.textContent, over: lines.some((l) => hit(g, l)) };
+      });
+    })()`);
+    check('room: a card\'s fallback initial does not overprint its name', initials.length > 0 && initials.every((x) => !x.over), JSON.stringify(initials));
+
     /* The Quad room on a race seated, on the keyboard: the preview's
      * caption says which of the two mode rows this flight follows, so it
      * never says Angle under a Flight mode row lit Acro without saying why
@@ -564,6 +610,20 @@ async function scenarioRoom() {
       return pts ? { count: pts.geometry.drawRange.count, all: pts.geometry.attributes.position.count } : null;
     })()`);
     check('room: and only part of the lap is drawn at once', shown && shown.count > 0 && shown.count < shown.all, JSON.stringify(shown));
+    /* The ground cluster's small captions sit on an ink plate at 11 px or
+     * more, so they read over the white checks, a pale yard and snow
+     * (art.md ART-6), and the corners' small lines carry the 2 px edge. */
+    const caps = await json(page, `(() => {
+      const plate = [...document.querySelectorAll('.osd .osd-gimbal-cap, .osd .osd-air-end, .osd .osd-air-cap')]
+        .filter((n) => n.textContent.trim() && n.getClientRects().length)
+        .map((n) => { const c = getComputedStyle(n); const a = /rgba\([^)]*,\s*([0-9.]+)\)/.exec(c.backgroundColor); return { t: n.textContent, px: parseFloat(c.fontSize), alpha: a ? Number(a[1]) : (c.backgroundColor === 'transparent' ? 0 : 1) }; });
+      const edge = [...document.querySelectorAll('.osd .osd-corner .osd-label, .osd .osd-corner .osd-sub')]
+        .map((n) => /2px 2px 0px/.test(getComputedStyle(n).textShadow));
+      return { plate, edge: edge.length > 0 && edge.every(Boolean) };
+    })()`);
+    check('room: the OSD\'s small captions sit on ink at 11 px or more, the corners\' lines on a 2 px edge',
+      caps.plate.length >= 3 && caps.plate.every((x) => x.px >= 11 && x.alpha >= 0.5) && caps.edge,
+      JSON.stringify(caps.plate.filter((x) => !(x.px >= 11 && x.alpha >= 0.5)).slice(0, 3)) + (caps.edge ? '' : ' (a corner line has the 1 px edge)'));
     /* Paused, the live readings are put away and the pack stays (art.md
      * ART-24): dimmed, they ghosted behind the pause menu. */
     await page.tap('Escape');

@@ -783,6 +783,16 @@ body.career-score #career .cr-obj { top: 150px; }
   #career .cr-paint-pic { width: 48px; }
   #career .cr-paint-name { font-size: 17px; }
 }
+/* A desktop window a little short of the cover, 720 p and the like: the
+   cover's gaps and the side column's panels close up, so its foot (Back
+   and the save note) sits above the key bar instead of under it (core.md
+   CORE-21). Above the small window, which is a list with room to scroll. */
+@media (min-height: 561px) and (max-height: 800px) and (min-width: 761px) {
+  #career .cr-cover { padding-top: 12px; gap: 10px; padding-bottom: 44px; }
+  #career .cr-cover-side { gap: 12px; }
+  #career .cr-cover-side .cr-panel { padding-top: 12px; padding-bottom: 12px; }
+  #career .cr-way { padding: 9px 12px; }
+}
 @media (max-height: 820px) {
   #career .cr-res-time b { font-size: clamp(28px, 3.2vw, 44px); }
   #career .cr-rung { padding: 3px 9px; }

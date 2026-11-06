@@ -325,6 +325,20 @@ async function run(size) {
     check('the title is lettered on a canvas', cover.lettered);
     check('the cursor starts on Start', /^Start/.test(v.focus || ''), v.focus);
     fits(v, 'the cover');
+    /* On a desktop the cover's foot, Back and the save note, is above the
+     * key bar on the first view, not under it (core.md CORE-21: clipped at
+     * 1280x720). A phone's cover is a list that scrolls, and is not asked. */
+    if (!size.touch) {
+      const foot = await page.evaluate(`(() => {
+        const c = document.querySelector('#career .cr-cover');
+        const bar = c.querySelector('.cr-legend').getBoundingClientRect();
+        const back = [...c.querySelectorAll('.cr-cover-foot .cr-btn')].find((b) => /Back/.test(b.textContent));
+        const note = c.querySelector('.cr-save-note');
+        const low = Math.max(back ? back.getBoundingClientRect().bottom : 1e9, note ? note.getBoundingClientRect().bottom : 1e9);
+        return { scroll: c.scrollTop, low: Math.round(low), bar: Math.round(bar.top) };
+      })()`);
+      check('the cover\'s Back and save note sit above the key bar', foot.scroll === 0 && foot.low <= foot.bar, JSON.stringify(foot));
+    }
 
     /* ---------------- the tree ---------------- */
     await tap('KeyT');
@@ -468,12 +482,18 @@ async function run(size) {
     const res = await page.evaluate(`(() => {
       const r = document.querySelector('#career .cr-results');
       return { failed: r.classList.contains('is-failed'), word: (r.querySelector('.cr-res-word .cr-title-text') || {}).textContent,
-        said: (r.querySelector('.cr-res-time span') || {}).textContent, buttons: [...r.querySelectorAll('.cr-res-actions .cr-btn-label')].map((x) => x.textContent) };
+        said: (r.querySelector('.cr-res-time span') || {}).textContent, buttons: [...r.querySelectorAll('.cr-res-actions .cr-btn-label')].map((x) => x.textContent),
+        coach: (r.querySelector('.cr-res-coach .cr-balloon') || {}).textContent || '' };
     })()`).catch((e) => ({ error: e.message }));
     const rec = v.progress && v.progress.lessons ? v.progress.lessons['1-1'] : null;
     check('Lift Off flown on the throttle reaches the results', v.state === 'results', `ended in ${ended}`);
     check('the results say it finished', !res.failed && /Gold!|Silver!|Finished!/.test(res.word || ''), `${res.word}`);
     check('and that it is a first finish', /First finish\./.test(res.said || ''), res.said);
+    /* A hover lesson: no top speed, which read as a fault ("Top speed
+     * 2 km/h"), and the briefing's coach is still there on a pass, saying
+     * what the lesson is for in the words the briefing used (fun.md FUN-12). */
+    check('a hover lesson\'s results print no top speed', !/top speed/i.test(res.said || ''), res.said);
+    check('the briefing\'s coach is on the results of a pass', res.coach.length > 0 && res.coach.startsWith(first.briefing.why.slice(0, 20)), res.coach.slice(0, 80));
     check('the medal and the time are saved', Boolean(rec && rec.medal && Number.isFinite(rec.bestMs) && rec.runs === 1 && v.progress.last === '1-1'), JSON.stringify(rec));
     check('Next offers the next lesson', (res.buttons || []).includes(`Next: ${lessonById('1-2').title}`), (res.buttons || []).join(', '));
     check('the lesson\'s display is gone over the results', v.menu && !v.flightBody, `menu ${v.menu}`);

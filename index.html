@@ -1654,6 +1654,29 @@
       }
       .osd-air-cap.is-stock { color: var(--osd-slate); }
       /*
+       * THE SMALL CAPTIONS SIT ON INK (art.md ART-6). The gimbals' names,
+       * the slider's ends and its reading were 10 px slate, letter spaced
+       * wide, with a 1 px eight way edge: over the garage's white checks,
+       * a pale yard or snow they vanished, and over dark ground the edge
+       * read as a ragged double stroke. Each now sits on a small ink plate
+       * at 55 percent, which reads over any ground, at 11 px and a tighter
+       * spacing, with no edge to go ragged. Static text on the DOM layer
+       * that already composites the OSD: no draw call, no pass.
+       */
+      .osd .osd-gimbal-cap, .osd .osd-air-end, .osd .osd-air-cap {
+        font-size: 11px; letter-spacing: 0.08em; line-height: 1.35;
+        text-shadow: none;
+        background: rgba(11, 17, 22, 0.55);
+        padding: 1px 6px;
+        border-radius: 2px;
+      }
+      .osd .osd-gimbal-cap { width: fit-content; margin-inline: auto; }
+      .osd .osd-air-cap:empty { background: none; }
+      /* The corners' small lines (Pack, the height, Throttle) keep their
+         place and take the 2 px edge, which holds over light ground where
+         the 1 px one broke up. */
+      .osd-corner .osd-label, .osd-corner .osd-sub { text-shadow: var(--osd-edge-2); letter-spacing: 0.08em; }
+      /*
        * THE ONE TIME IT EXPLAINS ITSELF.
        *
        * A slider with no label is furniture, and a label long enough to say
@@ -2092,11 +2115,20 @@
            0.762 m and the FPV camera is tilted up, so the target lands low in
            the frame, and a pilot found the launch banner drawn directly over
            the one thing they need to find. */
-        position: absolute; left: 50%; top: 22%; transform: translate(-50%, -50%);
+        position: absolute; left: 50%; transform: translateX(-50%);
+        /* Centred at 22 percent as before, but its top never above the foot
+           of the clock block, so it is never printed over the gate count or
+           the record (core.md CORE-4). Both lengths are written by ui.js
+           (watchBannerFit) when either box changes size; until they are,
+           its top is at 22 percent. */
+        top: max(calc(22% - var(--banner-h, 0px) / 2), calc(var(--osd-top-foot, 0px) + 10px));
+        text-wrap: balance;
         text-align: center; white-space: pre-wrap; font-size: var(--banner-size); font-weight: 600;
         letter-spacing: 0.04em; color: var(--amber); opacity: 0;
         transition: opacity 0.18s ease; text-shadow: 0 3px 10px rgba(0,0,0,0.9);
-        max-width: min(92vw, 22em);
+        /* Wide enough that a guide line is one line at 720p and the banner
+           two, not three with a one word widow. */
+        max-width: min(84vw, 30em);
       }
 
       /* A notice that arrives while a menu is up (setMenuNotice in
@@ -3316,11 +3348,20 @@
        * still win in their own media.
        */
       .screen-title .menu-scroll { max-height: none; }
+      /* More below: the foot of the list fades out rather than cutting a
+         row through its letters (art.md ART-14, ui.js markMenuMore). A mask
+         on a menu, which is never up in flight. */
+      .menu-scroll.has-more {
+        -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+        mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+      }
       .menu-stage .menu { grid-column: 2; margin-top: 0; }
       .menu-scroll {
         max-height: min(calc(58vh - var(--bars)), 34em);
         overflow-y: auto;
         overscroll-behavior: contain;
+        /* A row the cursor scrolls to stops clear of the fade below. */
+        scroll-padding-bottom: 28px;
         scrollbar-width: thin;
         scrollbar-color: rgba(232, 168, 184, 0.45) rgba(16, 22, 17, 0.55);
       }

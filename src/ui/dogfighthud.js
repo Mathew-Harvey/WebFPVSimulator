@@ -71,7 +71,13 @@ const CSS = `
  * through it. */
 .df-on .banner { top: calc(22% + 56px); }
 .df-on.touch-fly-on .banner, .df-on.touch-fly-on .osd.is-free ~ .banner { top: 140px; }
-.df-banner { position: absolute; left: 50%; bottom: 150px; transform: translateX(-50%); text-align: center; color: ${CREAM}; text-shadow: 0 2px 0 ${INK}, 0 0 8px rgba(0,0,0,.6); font-size: 20px; font-weight: 800; max-width: 80%; }
+.df-banner { position: absolute; left: 50%; bottom: 150px; transform: translateX(-50%); text-align: center; color: ${CREAM}; text-shadow: 0 2px 0 ${INK}, 0 0 8px rgba(0,0,0,.6); font-size: 20px; font-weight: 800; max-width: 80%; text-wrap: balance; }
+/* Quad Ball: the brief goes under the score strip, where PRACTICE is, and
+   not down over the goal the pilot is looking at and its marker, and the
+   goal count sits beside its label rather than across the crowd from it
+   (art.md ART-7). */
+.rb-hud .df-banner { bottom: auto; top: 146px; max-width: min(80%, 760px); }
+.rb-hud .df-lbl { justify-content: flex-start; gap: 12px; }
 .df-pop { position: absolute; inset: 0; display: grid; place-items: center; align-content: center; gap: 14px; background: rgba(11,17,22,.35); }
 .df-pop .df-say { background: #fff; border: 3px solid ${INK}; border-radius: 22px; padding: 10px 20px; font: 700 20px/1.2 "Comic Neue", "Comic Sans MS", system-ui, sans-serif; color: ${INK}; }
 .df-pop .df-back { color: ${CREAM}; font-size: 18px; font-weight: 900; letter-spacing: .14em; text-shadow: 0 2px 0 ${INK}; text-align: center; }

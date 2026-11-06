@@ -364,22 +364,22 @@ const CHOICES = [
     canvas: 'full',
     label: 'Five inch racing',
     art: '../../assets/gate/race.jpg',
-    blurb: 'A race track on a sixty metre field. MultiGP gates, flags and dive gates on a grid in metres, flown on the five inch and published to the board.',
-    facts: ['5 ft gates', '60 m field', 'The board'],
+    blurb: 'A race track on an outdoor field. MultiGP gates, flags and dive gates on a grid in metres, flown on the five inch and published to the board.',
+    facts: ['5 ft gates', 'Outdoor field', 'The board'],
   },
   {
     canvas: 'micro',
     label: 'Whoop racing',
     art: '../../assets/gate/whoop.jpg',
-    blurb: 'A room for the 65 mm whoop. RaceGOW’s 28 inch gates in a ten by twelve metre hall, a grid in inches, and RaceGOW’s own rules checking the layout.',
+    blurb: 'A room for the whoop. RaceGOW’s 28 inch gates in an indoor hall, a grid in inches, and RaceGOW’s own rules checking the layout.',
     facts: ['28 in gates', 'Indoors', 'RaceGOW'],
   },
   {
     canvas: 'freestyle',
     label: 'Freestyle',
     art: '../../assets/gate/freestyle.jpg',
-    blurb: 'A map of your own on a 160 metre plot. Buildings, cranes, a skate set and named gaps wherever you put them, flown on the five inch with no gates and no clock.',
-    facts: ['No gates', '160 m plot', 'Five inch'],
+    blurb: 'A map of your own on a big plot. Buildings, cranes, a skate set and named gaps wherever you put them, flown on the five inch with no gates and no clock.',
+    facts: ['No gates', 'Big plot', 'Five inch'],
   },
 ];
 
@@ -3838,13 +3838,13 @@ export class App {
         : `"${seated.name}" is in Load.`;
     }
     /* Kept already, so loadDocument is told so rather than keeping it twice. */
-    return this.loadDocument(fresh, [map ? 'New map, on a 160 metre plot.' : 'New track.', said].filter(Boolean).join(' '), { ok: true, said: '' });
+    return this.loadDocument(fresh, [map ? 'New map, on the big plot.' : 'New track.', said].filter(Boolean).join(' '), { ok: true, said: '' });
   }
 
   newTrack() {
     if (docModeOf(this.doc) === 'freestyle') {
       this.confirm('Start a new map?', 'Anything unsaved in the current one is gone.', () => {
-        this.loadDocument(newMap(), 'New map, on a 160 metre plot.');
+        this.loadDocument(newMap(), 'New map, on the big plot.');
       });
       return;
     }
@@ -6216,9 +6216,9 @@ export class App {
     const held = readAutosave(cls, mode);
     const doc = (held && held.doc) || (mode === 'freestyle' ? newMap() : createTrack(undefined, cls));
     const fresh = {
-      full: 'A new five inch track, on a sixty metre field.',
-      micro: 'A new whoop track, in a ten by twelve metre hall.',
-      freestyle: 'A new freestyle map, on a 160 metre plot.',
+      full: 'A new five inch track, on the outdoor field.',
+      micro: 'A new whoop track, in the indoor hall.',
+      freestyle: 'A new freestyle map, on the big plot.',
     }[want];
     /*
      * WHAT THE SWITCH DID, said (MENUS-PLAN.md 4.2c). It has two effects an

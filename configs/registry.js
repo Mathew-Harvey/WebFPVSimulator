@@ -71,7 +71,7 @@ export const TUNES = [
     airframe: '5inch',
     plant: 0,
     name: 'Betaflight default',
-    note: 'Factory 4.5.1 with four settings changed: a quarter more feedforward, and less bounce back after a stop.',
+    note: 'Betaflight\u2019s own tune with a light touch: a little quicker to answer the sticks, and less bounce back after a stop.',
   },
   {
     id: 'whoop-champion',

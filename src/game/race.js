@@ -885,9 +885,13 @@ export class Race {
         this.laps.push(this.lastLapMs);
         /* `tuned` only when it is, so a stock lap's entry is the shape it
          * always was. */
+        /* `splits` is the lap's own gate times, the array this lap just
+         * finished filling and that is never written again (a new one is
+         * made for the next lap below), so keeping it costs a reference.
+         * The results screen reads it for the gate by gate breakdown. */
         this.log.push(this.tuned || this.mixed
-          ? { n: this.lapNumber(), ms: this.lastLapMs, weight: this.weight, tuned: true }
-          : { n: this.lapNumber(), ms: this.lastLapMs, weight: this.weight });
+          ? { n: this.lapNumber(), ms: this.lastLapMs, weight: this.weight, tuned: true, splits: this.lastSplits }
+          : { n: this.lapNumber(), ms: this.lastLapMs, weight: this.weight, splits: this.lastSplits });
         let msgText = `Lap ${this.log.length}   ${fmt(this.lastLapMs)}`;
         /* Kept for the shell's spoken call (src/render/voice.js), so the
          * voice reads the flash's decision rather than making its own. */

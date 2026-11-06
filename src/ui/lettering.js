@@ -174,28 +174,84 @@ function shadeOf(hex, k) {
  * ------------------------------------------------------------------ */
 
 /*
- * Lay a word out: the advance of each glyph at `px`, and the whole width.
- * Sets the context's font, which the drawing below relies on. A space is
- * narrower than the font's, because lettering is set tight.
+ * Lay a word out: the advance of each glyph at `px`, where its centre sits
+ * inside that advance, and the whole width. Sets the context's font, which
+ * the drawing below relies on.
+ *
+ * THE SPACING, and why it is not one measure per glyph (ART-1, FUN-10).
+ * Every glyph is drawn on its own, so the font never kerns them; the
+ * layout has to. A glyph's advance is its own width plus the font's kern
+ * against the glyph after it, which the font tells us as the width of the
+ * pair less the widths of the two: that is what closes the holes after L,
+ * A and before an apostrophe ("MUL TIPLA YER", "BARDWELL 'S"), and costs
+ * nothing a font that has no pair for those two letters does not already
+ * cost. The whole is then set tight, 0.95 of it, as it always was.
+ *
+ * A space is the font's space plus the outline, because two outlines, one
+ * either side, eat that much of it: at 0.62 of the space and no allowance
+ * for the ink the words ran together ("THETOWN", "FIVEINCHTRACKS"). The
+ * drop's reach is added too, because the hard drop of the word before
+ * reaches into the gap and reads as ink. `ink` is the outline as a
+ * fraction of the size.
+ *
+ * Widths are measured once per glyph and per pair at one reference size
+ * and scaled, which a font's outlines do exactly, and kept: so a title
+ * fitted three times, or a callout on its fiftieth showing, asks the font
+ * nothing new. Nothing here runs per frame either way.
  */
-function layout(ctx, text, px) {
+const REF = 100;
+const WIDTHS = new Map();
+function refWidth(ctx, s) {
+  let w = WIDTHS.get(s);
+  if (w === undefined) {
+    const font = ctx.font;
+    ctx.font = `900 ${REF}px ${FONT}`;
+    w = ctx.measureText(s).width;
+    ctx.font = font;
+    if (WIDTHS.size > 4096) {
+      WIDTHS.clear();
+    }
+    WIDTHS.set(s, w);
+  }
+  return w;
+}
+
+function layout(ctx, text, px, ink = INK_W) {
   ctx.font = `900 ${px}px ${FONT}`;
+  if ('fontKerning' in ctx) {
+    ctx.fontKerning = 'normal';
+  }
+  const k = px / REF;
   const chars = Array.from(text);
   const adv = new Array(chars.length);
+  const mid = new Array(chars.length);
   let w = 0;
   for (let i = 0; i < chars.length; i += 1) {
-    const a = ctx.measureText(chars[i]).width * (chars[i] === ' ' ? 0.62 : 0.95);
+    const c = chars[i];
+    let a;
+    if (c === ' ') {
+      a = refWidth(ctx, ' ') * k + px * (ink + DROP_X);
+      mid[i] = a * 0.5;
+    } else {
+      const g = refWidth(ctx, c) * k;
+      const n = chars[i + 1];
+      const kern = n && n !== ' ' ? (refWidth(ctx, c + n) - refWidth(ctx, c) - refWidth(ctx, n)) * k : 0;
+      a = (g + kern) * 0.95;
+      mid[i] = g * 0.475;
+    }
     adv[i] = a;
     w += a;
   }
-  return { chars, adv, w };
+  return {
+    chars, adv, mid, w,
+  };
 }
 
 /* The width a word will take at `px`, including the slant and the drop
  * that reach past its last advance. `inkW` is the outline as a fraction of
  * the size, INK_W unless a title asks for a finer one. */
 export function wordWidth(ctx, text, px, inkW = INK_W) {
-  return layout(ctx, text, px).w + px * (SLANT * ASC + DROP_X + inkW);
+  return layout(ctx, text, px, inkW).w + px * (SLANT * ASC + DROP_X + inkW);
 }
 
 /*
@@ -221,7 +277,7 @@ export function drawWord(ctx, text, x, y, px, fill, opts = {}) {
  */
 export function drawRuns(ctx, runs, x, y, px, opts = {}) {
   const text = runs.map((r) => r.text).join('');
-  const { chars, adv, w } = layout(ctx, text, px);
+  const { chars, adv, mid, w } = layout(ctx, text, px, opts.inkW > 0 ? opts.inkW : INK_W);
   const runOf = [];
   runs.forEach((r, k) => {
     for (let n = Array.from(r.text).length; n > 0; n -= 1) {
@@ -248,7 +304,7 @@ export function drawRuns(ctx, runs, x, y, px, opts = {}) {
         const lift = (hash(seed, i * 3 + 1) - 0.5) * 0.07 * px;
         const sc = (i === 0 ? 1.08 : 1) + (hash(seed, i * 3 + 2) - 0.5) * 0.05;
         ctx.save();
-        ctx.translate(gx + a * 0.5 + dx, y + lift + dy);
+        ctx.translate(gx + mid[i] + dx, y + lift + dy);
         ctx.rotate(rot);
         ctx.transform(1, 0, -SLANT, 1, 0, 0);
         ctx.scale(sc, sc);

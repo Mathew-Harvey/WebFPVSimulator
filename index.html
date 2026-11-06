@@ -5333,6 +5333,57 @@
       .screen-courses:has(> .room-picker) > h2,
       .screen-courses:has(> .room-picker) > .screen-lede,
       .screen-courses:has(> .room-picker) > .rates-lede { display: none; }
+      /*
+       * THE LIBRARY ON A PHONE ON ITS SIDE (ART-8). At 844 by 390 the
+       * chapter label, the title, the four shelves and the find row took the
+       * whole height, and the chosen card's caption, sticky at the foot,
+       * covered what was left: no card was in sight. So under 480 px of
+       * height the head is one row (the title beside smaller shelves, the
+       * chapter label gone), find and order are one row, the panels are
+       * shorter, and the caption is one line: the name and its buttons, its
+       * picture and its sentence left to the panel. Here and not in
+       * src/picker/picker.js, because these are the simulator's windows; a
+       * board on a phone keeps the picker's own layout.
+       */
+      @media (max-height: 480px) {
+        .screen-courses { padding-top: calc(var(--bar-top) + 2px); }
+        .room-picker { margin: 2px 0 8px; }
+        .room-picker .wp { gap: 8px; padding-top: 8px; }
+        .room-picker .wp-head { flex-wrap: nowrap; align-items: center; gap: 12px; }
+        .room-picker .wp-ttl { flex: 0 1 auto; }
+        .room-picker .wp-ttl > .wp-kick { display: none; }
+        .room-picker .wp-title .wp-lt canvas { height: 28px !important; width: auto !important; }
+        .room-picker .wp-rail { flex: 1 1 auto; justify-content: flex-end; gap: 8px; padding: 4px 6px 4px 2px; }
+        .room-picker .wp-shelf { width: 92px; height: 40px; border-width: 3px; }
+        .room-picker .wp-shelf i { display: none; }
+        .room-picker .wp-bar { flex-wrap: nowrap; gap: 8px; }
+        .room-picker .wp-find { flex: 1 1 140px; height: 34px; font-size: 14px; }
+        .room-picker .wp-chips { flex-wrap: nowrap; gap: 6px; }
+        .room-picker .wp-chip { height: 34px; padding: 0 10px; font-size: 12px; }
+        .room-picker .wp-strip { gap: 8px; padding-bottom: 6px; }
+        .room-picker .wp-offs { grid-template-columns: 1.55fr 1fr 1fr; grid-auto-rows: 128px; gap: 14px; }
+        .room-picker .wp-offs .wp-card { aspect-ratio: auto; }
+        .room-picker .wp-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; }
+        .room-picker .wp-grid .wp-card { aspect-ratio: 2 / 1; }
+        .room-picker .wp-hero { margin: 2px 0 6px; min-height: 0; transform: none; }
+        .room-picker .wp-cap { flex-wrap: nowrap; gap: 10px; min-height: 0; padding: 6px 10px; transform: none; }
+        .room-picker .wp-cap .wp-pic, .room-picker .wp-line { display: none; }
+        .room-picker .wp-who { flex: 1 1 auto; }
+        .room-picker .wp-name .wp-lt canvas { max-height: 26px; width: auto !important; }
+        .room-picker .wp-acts { width: auto; flex: none; flex-wrap: nowrap; gap: 8px; }
+        .room-picker .wp-act { height: 34px; padding: 0 10px; font-size: 11px; box-shadow: 3px 3px 0 var(--wp-ink); }
+        .room-picker .wp-act.is-primary { flex: none; height: 38px; padding: 0 16px; font-size: 16px; }
+      }
+      /*
+       * THE COMMAND BAR OVER THE LIBRARY'S PAPER (ART-16). Its scrim fades
+       * to nothing at its top, which over the dark world is a soft foot and
+       * over the cream paper left the slate legend cream on cream, over the
+       * cards' stars. On the two library rooms it is an ink strip, opaque
+       * where the words are, like the patch the page scrollers get.
+       */
+      #ui.on-cards .frame-bot {
+        background: linear-gradient(0deg, rgba(11, 17, 22, 0.97) 0%, rgba(11, 17, 22, 0.95) 72%, rgba(11, 17, 22, 0) 100%);
+      }
       .picker-has-keys .row.on { color: inherit; border-left-color: transparent; background: none; }
       .picker-has-keys .row.on .row-label { text-shadow: none; }
       .strip-label {
@@ -6355,65 +6406,125 @@
          the first layout, before the import map has resolved a single module,
          so the three.js fetch is a stage the player can see rather than a
          blank page. src/ui/loading.js only ever writes into it. */
+      /*
+       * THE COVER'S FURNITURE, BEFORE THE COVER EXISTS (ART-11). The menus
+       * are paper and ink, and this was the one screen that was not: every
+       * visitor's first look at the game was a green gradient and light
+       * sans. So the words sit on a paper panel framed in the ink line,
+       * the joke in a speech balloon, and the bar is an ink strip with a
+       * halftone fill. CSS and the markup only, on purpose: no font, no
+       * image, nothing fetched, so it paints on the first layout exactly as
+       * it did, and nothing here waits on lettering.js or anything else.
+       * The panel's frame is skewed by a pseudo element so the words stay
+       * upright and the transform under the bar stays the bar's own, and
+       * the screen itself scrolls when a failure is taller than a phone on
+       * its side, so the paper always reaches the last line.
+       */
       #loading {
         position: fixed; inset: 0; z-index: 10;
         display: flex; flex-direction: column;
-        align-items: center; justify-content: center;
-        background: radial-gradient(120% 90% at 50% 42%, #1e2a20, #101610);
-        font-family: var(--ui-font); color: var(--cream);
+        align-items: center; justify-content: safe center;
+        overflow-y: auto; scrollbar-width: thin;
+        background:
+          radial-gradient(circle, rgba(243, 234, 212, 0.05) 0 1.2px, transparent 1.7px) 0 0 / 8px 8px,
+          radial-gradient(120% 90% at 50% 42%, #1d2730, #0b1116);
+        font-family: var(--ui-font); color: var(--ink-line);
         font-variant-numeric: tabular-nums;
         transition: opacity 0.3s ease;
       }
       #loading[hidden] { display: none; }
+      .loading-panel {
+        position: relative; isolation: isolate;
+        box-sizing: border-box;
+        flex: none;
+        width: min(560px, calc(100vw - 32px));
+        margin: 16px 0;
+        padding: 26px 30px 22px;
+        display: flex; flex-direction: column; align-items: center;
+      }
+      .loading-panel::before {
+        content: ""; position: absolute; inset: 0; z-index: -1;
+        background:
+          radial-gradient(circle, rgba(11, 17, 22, 0.07) 0 1px, transparent 1.5px) 0 0 / 4px 4px,
+          #f7f0dc;
+        border: 4px solid var(--ink-line);
+        box-shadow: 8px 8px 0 rgba(0, 0, 0, 0.55);
+        transform: skewX(-2.5deg);
+      }
+      .loading-mark {
+        font: italic 900 clamp(30px, 4.4vw, 44px)/1 var(--ui-font);
+        letter-spacing: -0.01em; color: var(--cream);
+        text-shadow:
+          -2px -2px 0 var(--ink-line), 0 -2px 0 var(--ink-line), 2px -2px 0 var(--ink-line),
+          -2px 0 0 var(--ink-line), 2px 0 0 var(--ink-line),
+          -2px 2px 0 var(--ink-line), 0 2px 0 var(--ink-line), 2px 2px 0 var(--ink-line),
+          3px 4px 0 var(--ink-line);
+      }
+      .loading-mark b { font-weight: 900; color: var(--sakura); }
       .loading-stage {
-        font-size: clamp(18px, 2.4vw, 22px); letter-spacing: 0.06em;
-        color: var(--cream);
+        margin-top: 14px;
+        font: italic 900 clamp(18px, 2.4vw, 24px)/1.15 var(--ui-font);
+        letter-spacing: 0.02em; text-transform: uppercase;
+        color: var(--ink-line); text-align: center;
       }
+      /* The joke in a balloon: paper, the ink line, and a tail of two
+         triangles, ink under paper, pointing up at the words it answers. */
       .loading-joke {
-        margin-top: 12px; font-size: 15px; line-height: 1.45;
-        font-style: italic; color: var(--slate);
+        position: relative;
+        margin-top: 18px; padding: 10px 18px;
+        font-size: 15px; line-height: 1.45; font-weight: 600;
+        color: var(--ink-line);
+        background: #fffaf0;
+        border: 3px solid var(--ink-line); border-radius: 22px;
         max-width: 28em; min-height: 2.2em; text-align: center;
+        overflow-wrap: anywhere;
       }
+      .loading-joke::before, .loading-joke::after {
+        content: ""; position: absolute; left: 30%;
+        border: solid transparent; pointer-events: none;
+      }
+      .loading-joke::before { bottom: 100%; border-width: 0 9px 14px 9px; border-bottom-color: var(--ink-line); margin-left: -9px; }
+      .loading-joke::after { bottom: calc(100% - 4px); border-width: 0 6px 10px 6px; border-bottom-color: #fffaf0; margin-left: -6px; }
       /* The failure panel. Only ever painted by fail(), which is why it
          carries its own type sizes rather than inheriting the calm ones
          above: this is the one moment the screen has to be read rather
          than glanced at. */
       .loading-help {
         margin-top: 22px; max-width: 34em; text-align: left;
-        color: var(--cream); font-size: 14.5px; line-height: 1.55;
+        color: var(--ink-line); font-size: 14.5px; line-height: 1.55;
       }
       .loading-help h3 {
         margin: 0 0 10px; font-size: 13px; font-weight: 700;
-        letter-spacing: 0.14em; text-transform: uppercase; color: var(--amber);
+        letter-spacing: 0.14em; text-transform: uppercase; color: #a3322a;
       }
       .loading-help ol { margin: 0; padding-left: 1.3em; }
       .loading-help li { margin-bottom: 9px; }
       .loading-help li:last-child { margin-bottom: 0; }
-      .loading-help b { color: var(--cream); font-weight: 700; }
+      .loading-help b { color: var(--ink-line); font-weight: 800; }
       .loading-help .loading-why {
-        margin: 0 0 14px; color: var(--slate);
+        margin: 0 0 14px; color: #3f4d57;
       }
       .loading-help .loading-detail {
         margin-top: 16px; padding-top: 12px;
-        border-top: 1px solid rgba(244, 236, 214, 0.16);
+        border-top: 2px solid rgba(11, 17, 22, 0.18);
         font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
-        font-size: 11.5px; color: #7f9188; word-break: break-word;
+        font-size: 11.5px; color: #4d5a54; word-break: break-word;
       }
       .loading-actions { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
       .loading-actions button {
         font: inherit; font-size: 14.5px; font-weight: 700;
-        padding: 10px 20px; border: 0; border-radius: 3px; cursor: pointer;
-        background: var(--mint); color: var(--deep);
+        padding: 9px 19px; border: 3px solid var(--ink-line); border-radius: 0; cursor: pointer;
+        background: var(--mint); color: var(--ink-line);
+        box-shadow: 3px 3px 0 var(--ink-line);
       }
       .loading-actions button.quiet {
-        background: transparent; color: var(--cream); font-weight: 600;
-        box-shadow: inset 0 0 0 1px rgba(244, 236, 214, 0.3);
+        background: #fffaf0; color: var(--ink-line); font-weight: 600;
       }
       .loading-actions button:focus-visible {
-        outline: 2px solid var(--cream); outline-offset: 2px;
+        outline: 3px solid var(--sakura); outline-offset: 3px;
       }
       .loading-joke.is-error {
-        font-style: normal; color: #ff8f8f;
+        font-style: normal; color: #a3322a;
       }
       /* POWERED BY BETAFLIGHT, at the foot of the loading screen, where a
          game names what it runs on. Betaflight gave the owner permission on
@@ -6440,13 +6551,22 @@
       }
       .loading-powered img { display: block; width: auto; height: 26px; opacity: 0.72; }
       #loading:has(.loading-help:not([hidden])) .loading-powered { display: none; }
-      @media (max-height: 480px) { .loading-powered { display: none; } }
+      @media (max-height: 480px) {
+        .loading-powered { display: none; }
+        .loading-panel { padding: 16px 24px 14px; }
+        .loading-mark { font-size: 28px; }
+        .loading-stage { margin-top: 8px; }
+        .loading-joke { margin-top: 14px; padding: 7px 14px; font-size: 14px; }
+        .loading-track { margin-top: 14px; }
+      }
       .loading-track {
         position: relative;
-        width: min(420px, 68vw); height: 6px; border-radius: 3px;
-        margin-top: 26px;
-        background: rgba(16, 22, 17, 0.8);
-        box-shadow: inset 0 0 0 1px rgba(232, 168, 184, 0.28);
+        box-sizing: border-box;
+        width: min(420px, 100%); height: 16px;
+        margin-top: 22px;
+        background: #fffaf0;
+        border: 3px solid var(--ink-line);
+        box-shadow: 3px 3px 0 var(--ink-line);
         overflow: hidden;
       }
       /*
@@ -6471,7 +6591,9 @@
         position: absolute; inset: 0;
         transform: scaleX(0);
         transform-origin: left center;
-        background: var(--sakura);
+        background:
+          radial-gradient(circle, rgba(11, 17, 22, 0.28) 0 1px, transparent 1.5px) 0 0 / 4px 4px,
+          var(--sakura);
         transition: transform 0.18s linear;
         will-change: transform;
       }
@@ -6484,7 +6606,7 @@
       .loading-sweep {
         position: absolute; inset: 0;
         background: linear-gradient(90deg,
-          transparent, rgba(243, 234, 212, 0.55), transparent);
+          transparent, rgba(255, 250, 240, 0.6), transparent);
         transform: translateX(-100%);
         animation: loading-sweep 1.35s linear infinite;
         will-change: transform;
@@ -6501,10 +6623,10 @@
       .loading-meta {
         margin-top: 12px;
         display: flex; gap: 10px; align-items: baseline;
-        font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
-        color: rgba(157, 179, 200, 0.75);
+        font-size: 11px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase;
+        color: rgba(11, 17, 22, 0.72);
       }
-      .loading-meta .loading-elapsed { color: rgba(157, 179, 200, 0.5); }
+      .loading-meta .loading-elapsed { color: rgba(11, 17, 22, 0.5); }
       @media (prefers-reduced-motion: reduce) {
         /* The sweep is decoration and goes. The fill is not: it is the one
            thing on this screen carrying how far through the load we are, so
@@ -7029,15 +7151,18 @@
     <canvas id="view"></canvas>
     <div id="ui"></div>
     <div id="loading">
-      <div class="loading-stage">loading</div>
-      <div class="loading-joke">"I complimented my quad on its propellers. It said thanks for the props."</div>
-      <div class="loading-track"><div class="loading-fill"></div><div class="loading-sweep"></div></div>
-      <div class="loading-meta"><span class="loading-step"></span><span class="loading-elapsed"></span></div>
-      <!-- Empty until something fails. See fail() in src/ui/loading.js: a
-           boot that dies used to leave a red bar, a sentence and no way
-           out, which is a dead end on the one screen a stranded visitor is
-           looking at. aria-live so a screen reader hears the failure. -->
-      <div class="loading-help" hidden role="alert" aria-live="assertive"></div>
+      <div class="loading-panel">
+        <div class="loading-mark" aria-hidden="true">WEB<b>FPV</b></div>
+        <div class="loading-stage">loading</div>
+        <div class="loading-joke">"I complimented my quad on its propellers. It said thanks for the props."</div>
+        <div class="loading-track"><div class="loading-fill"></div><div class="loading-sweep"></div></div>
+        <div class="loading-meta"><span class="loading-step"></span><span class="loading-elapsed"></span></div>
+        <!-- Empty until something fails. See fail() in src/ui/loading.js: a
+             boot that dies used to leave a red bar, a sentence and no way
+             out, which is a dead end on the one screen a stranded visitor is
+             looking at. aria-live so a screen reader hears the failure. -->
+        <div class="loading-help" hidden role="alert" aria-live="assertive"></div>
+      </div>
       <!-- Powered by Betaflight: see .loading-powered for why here and
            only here and the credits. Low priority, so it never queues
            ahead of the renderer the stage above is waiting on. -->

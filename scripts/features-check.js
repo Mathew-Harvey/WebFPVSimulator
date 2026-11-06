@@ -41,6 +41,15 @@
  *             is picked and nothing drawn at Off, the track plan's three
  *             quarter view and a freestyle map's plan, every achievement
  *             badge a well formed SVG
+ *   lettering the lettered titles keep their word spaces and kern their
+ *             pairs (ART-1, FUN-10)
+ *   thumbs    every world picture in assets/thumbs is one the generator
+ *             draws with nothing but the world in frame (ART-5)
+ *   offline   the Track map with no board seats a shipped track rather
+ *             than an empty field, and gives it up when the board answers
+ *             (ART-20)
+ *   library   the Maps room on a phone on its side shows a card, its bar
+ *             is an ink strip, and Fly it is not said twice (ART-8, ART-16)
  *
  * No wall clock timing is asserted: on a software rasteriser under load a
  * frame can take 200 ms, so every wait polls the page with until(). Every
@@ -541,6 +550,39 @@ async function scenarioLoadFail() {
     check('loadfail: and says to allow the CDN', help.steps.some((s) => s.includes('cdn.jsdelivr.net')), help.steps.join(' / ').slice(0, 300));
     check('loadfail: Try again is offered and has the focus', help.buttons.includes('Try again') && help.focused === 'Try again', help.buttons.join(', '));
     check('loadfail: what the page measured is shown', /WebGL2 (yes|no)/.test(help.detail) && /WebAssembly yes/.test(help.detail), help.detail);
+    /* ART-11: the screen is the menus' paper and ink, and it fetched
+     * nothing to be so: the words on a paper panel framed in the ink line,
+     * the joke in a balloon, the bar an ink strip, the failure ink on paper
+     * with the paper reaching its last button, and no font or picture
+     * asked for by the stylesheet. */
+    const look = await json(page, `(() => {
+      const root = document.getElementById('loading');
+      const panel = root.querySelector('.loading-panel');
+      if (!panel) {
+        return { panel: false };
+      }
+      const frame = getComputedStyle(panel, '::before');
+      const cs = (sel) => getComputedStyle(root.querySelector(sel));
+      const pr = panel.getBoundingClientRect();
+      const last = [...root.querySelectorAll('.loading-help button')].pop().getBoundingClientRect();
+      return {
+        panel: true,
+        paper: frame.backgroundColor,
+        border: frame.borderTopWidth + ' ' + frame.borderTopColor,
+        stage: cs('.loading-stage').color,
+        help: cs('.loading-help').color,
+        balloon: cs('.loading-joke').borderTopWidth + ' ' + cs('.loading-joke').backgroundColor,
+        track: cs('.loading-track').borderTopWidth,
+        holds: last.bottom <= pr.bottom && last.top >= pr.top,
+        fetched: performance.getEntriesByType('resource').filter((r) => r.initiatorType === 'css' || /\\.(woff2?|ttf|otf)(\\?|$)/.test(r.name)).map((r) => r.name),
+      };
+    })()`);
+    const ink = 'rgb(11, 17, 22)';
+    check('loadfail: the words sit on a paper panel framed in the ink line', look.panel && look.paper === 'rgb(247, 240, 220)' && look.border === `4px ${ink}`, JSON.stringify(look).slice(0, 200));
+    check('loadfail: the stage and the failure are ink on that paper', look.stage === ink && look.help === ink, `${look.stage}, ${look.help}`);
+    check('loadfail: the joke is a balloon and the bar an ink strip', /^3px rgb\(255, 250, 240\)$/.test(look.balloon || '') && look.track === '3px', `${look.balloon}, ${look.track}`);
+    check('loadfail: the paper reaches the last button', look.holds === true);
+    check('loadfail: the stylesheet fetched no font and no picture', Array.isArray(look.fetched) && look.fetched.length === 0, (look.fetched || []).join(', '));
     await clickText(page, '#loading .loading-actions button', 'Copy the details');
     await page.until("/Copied|Select and copy/.test([...document.querySelectorAll('#loading .loading-actions button')].map((b) => b.textContent).join(' '))", 10000);
     const copied = await json(page, "({ label: document.querySelector('#loading .loading-actions .quiet').textContent, shown: [...document.querySelectorAll('#loading .loading-detail')].map((d) => d.textContent).join(' ') })");
@@ -1084,6 +1126,253 @@ async function scenarioModules() {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* lettering: the titles read as their words                            */
+/* ------------------------------------------------------------------ */
+
+/*
+ * ART-1 and FUN-10: every lettered title lost its word spaces ("THETOWN")
+ * and had holes after L and A ("MUL TIPLA YER"), because each glyph was
+ * measured alone and a space was narrower than the two outlines either
+ * side of it. Asserted on the canvas itself and on the layout:
+ *
+ *   gap    a title of two words, painted by paintTitle, has a run of clear
+ *          paper between the words at least a tenth of its size wide, read
+ *          along the slant (the glyphs are sheared, so a straight column
+ *          would cut through both words even where the eye sees a gap)
+ *   kern   after L, A or an apostrophe's L, the next glyph advances less
+ *          than it does after H, by at least four hundredths of the size:
+ *          the font's own pair kerning, which a glyph measured alone loses
+ */
+async function scenarioLettering() {
+  const page = await openPage({ root, width: 800, height: 600, url: '/scripts/og.html' });
+  try {
+    const r = await json(page, `(async () => {
+      const L = await import('/src/ui/lettering.js');
+      const px = 48;
+      const gapOf = (text) => {
+        const c = document.createElement('canvas');
+        const m = L.paintTitle(c, [{ text, fill: L.INKS.cream }], px);
+        const ctx = c.getContext('2d');
+        const { width: W, height: H } = c;
+        const d = ctx.getImageData(0, 0, W, H).data;
+        const s = W / m.w;
+        const base = m.base * s;
+        /* Clear columns along the slant, and the widest run of them that
+         * has ink on both sides. */
+        const clear = [];
+        for (let x = 0; x < W; x += 1) {
+          let ok = true;
+          for (let y = 0; y < H && ok; y += 1) {
+            const xx = Math.round(x + 0.24 * (base - y));
+            if (xx >= 0 && xx < W && d[(y * W + xx) * 4 + 3] > 24) {
+              ok = false;
+            }
+          }
+          clear.push(ok);
+        }
+        const first = clear.indexOf(false);
+        const last = clear.lastIndexOf(false);
+        let best = 0;
+        let run = 0;
+        for (let x = first; x <= last; x += 1) {
+          run = clear[x] ? run + 1 : 0;
+          best = Math.max(best, run);
+        }
+        return best / s;
+      };
+      const ctx = document.createElement('canvas').getContext('2d');
+      const after = (a, b) => L.wordWidth(ctx, a + b, px) - L.wordWidth(ctx, a, px);
+      return {
+        gaps: ['THE TOWN', 'HOW DO', 'RUN ENDED', 'YOUR MAP'].map((t) => [t, gapOf(t)]),
+        kern: [['L', 'T'], ['A', 'Y'], ['L', 'V'], ['L', "'"]].map(([a, b]) => [a + b, (after('H', b) - after(a, b)) / px]),
+      };
+    })()`);
+    for (const [t, g] of r.gaps) {
+      check(`lettering: "${t}" has clear paper between its words`, g >= 4.8, `${g.toFixed(1)} px at 48 px`);
+    }
+    for (const [pair, k] of r.kern) {
+      check(`lettering: "${pair}" is kerned closer than after H`, k >= 0.04, `${(k * 100).toFixed(1)} hundredths of the size`);
+    }
+    errorsCheck(page, 'lettering');
+  } catch (e) {
+    check('lettering: the scenario ran to the end', false, e.message);
+  } finally {
+    await page.close();
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* thumbs: every shipped world picture comes from the generator          */
+/* ------------------------------------------------------------------ */
+
+/*
+ * ART-5: assets/thumbs/drift.jpg was a screenshot of the shell, with the
+ * music dock and the key hint bar in it, because Drift Matsuri was never
+ * on the list scripts/boardcards.js --worlds draws from orbit.html with
+ * nothing but the world in frame. So every picture in assets/thumbs/ has
+ * to be one that list names, and no world is left to be photographed by
+ * hand. No browser: the list and the folder.
+ */
+async function scenarioThumbs() {
+  const { readFile, readdir } = await import('node:fs/promises');
+  const src = await readFile(`${root}/scripts/boardcards.js`, 'utf8');
+  const listed = new Set([...src.matchAll(/\{ id: '[\w-]+', file: '([\w.-]+)'/g)].map((m) => m[1]));
+  const files = (await readdir(`${root}/assets/thumbs`)).filter((f) => /\.jpg$/.test(f));
+  const loose = files.filter((f) => !listed.has(f));
+  check('thumbs: every picture in assets/thumbs is drawn by boardcards.js --worlds', files.length > 20 && loose.length === 0, loose.length ? `not on its list: ${loose.join(', ')}` : `${files.length} pictures`);
+}
+
+/* ------------------------------------------------------------------ */
+/* offline: the Track map with no board still has a track               */
+/* ------------------------------------------------------------------ */
+
+/*
+ * ART-20: a cold boot on the Track map whose board does not answer built
+ * an empty field with no gates. It seats a shipped track now, marked as a
+ * stand in, and a later boot that reaches the board gives the seat to the
+ * board's most flown track. Two pages: no board at all, then a board that
+ * answers, on a profile already holding the stand in.
+ */
+async function scenarioOffline() {
+  const SEAT = 'webfpv.share.import.v1';
+  const seatOf = `JSON.parse(localStorage.getItem(${JSON.stringify(SEAT)}) || 'null')`;
+  const page = await openPage({ root, width: 1280, height: 720, seed: [settingsSeed({ airframe: '5inch', map: 'custom' })] });
+  let held = null;
+  try {
+    await page.until('window.__shellReady === true && !!window.__ui', 120000);
+    await page.until("(() => { const m = window.__map && window.__map(); return m && m.ready && m.id === 'custom'; })()", 120000);
+    const r = await json(page, `(() => {
+      const seat = ${seatOf};
+      const race = window.__race && window.__race();
+      return { seat, gates: race && race.gates ? race.gates.length : 0 };
+    })()`);
+    held = r.seat;
+    check('offline: with no board the Track map seats a shipped track, as a stand in', Boolean(r.seat && r.seat.standIn && r.seat.stock && r.seat.document), r.seat ? `${r.seat.name}, standIn ${r.seat.standIn}` : 'nothing seated');
+    check('offline: and the field has its gates', r.gates > 0, `${r.gates} gates`);
+    errorsCheck(page, 'offline');
+  } catch (e) {
+    check('offline: the scenario ran to the end', false, e.message);
+  } finally {
+    await page.close();
+  }
+  if (!held) {
+    return;
+  }
+  const { FIVE_INCH_PRESETS } = await import('../src/trackbuilder/presets5.js');
+  const doc = JSON.parse(JSON.stringify(FIVE_INCH_PRESETS[1]));
+  doc.id = 'trk-feat0001';
+  const routes = `window.__board.routes['GET /api/tracks'] = { body: { tracks: [{ id: 'trk-feat0001', name: 'Board track', author: 'Pilot', gates: 12, times: 9, trackClass: 'full' }] } };
+    window.__board.routes['GET /api/tracks/trk-feat0001/document'] = { body: { id: 'trk-feat0001', name: 'Board track', author: 'Pilot', document: ${JSON.stringify(doc)} } };`;
+  const again = await openPage({
+    root, width: 1280, height: 720,
+    seed: [BOARD_STUB, routes, settingsSeed({ airframe: '5inch', map: 'custom' }, `localStorage.setItem(${JSON.stringify(SEAT)}, ${JSON.stringify(JSON.stringify(held))});`)],
+  });
+  try {
+    await again.until('window.__shellReady === true && !!window.__ui', 120000);
+    await again.until(`(() => { const s = ${seatOf}; return s && s.id === 'trk-feat0001'; })()`, 30000).catch(() => {});
+    const seat = await json(again, seatOf);
+    check('offline: a later boot that reaches the board gives the seat to its most flown track', Boolean(seat && seat.id === 'trk-feat0001' && !seat.standIn), seat ? `${seat.id}, standIn ${seat.standIn}` : 'nothing seated');
+    errorsCheck(again, 'offline, board back');
+  } catch (e) {
+    check('offline: the board back scenario ran to the end', false, e.message);
+  } finally {
+    await again.close();
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* library: the Tracks and Maps rooms on a phone, and the command bar    */
+/* ------------------------------------------------------------------ */
+
+/*
+ * ART-8: on a phone on its side the library's head took the whole height
+ * and the sticky caption covered the rest, so no card was in sight. ART-16:
+ * the command bar's legend was cream on the cream paper, and its Fly it
+ * repeated the caption's FLY THIS. Asserted on the Maps room, which lists
+ * the shipped worlds with no board, at two phone sizes and a desktop one:
+ *
+ *   seen     at least one card wholly between the top bar and the caption
+ *   caption  one line on a phone: no taller than 80 px
+ *   bar      the command bar is an ink strip where its words are
+ *   once     the bar's Fly it is hidden while the caption's FLY THIS is in
+ *            sight
+ */
+async function scenarioLibrary() {
+  for (const [w, h, touch] of [[844, 390, true], [740, 360, true], [1600, 900, false]]) {
+    const page = await openPage({ root, width: w, height: h, touch, seed: [settingsSeed({ airframe: '5inch', map: 'city' })] });
+    const at = `${w}x${h}`;
+    try {
+      await page.until('window.__shellReady === true && !!window.__ui', 120000);
+      await page.evaluate(`(() => { ${PAST_GATE}; window.__ui.show('freestyle'); return 1; })()`);
+      await page.until("!!document.querySelector('.room-picker .wp-card') && !!document.querySelector('.room-picker .wp-hero:not([hidden]) .wp-act.is-primary')", 60000);
+      await page.sleep(2500);
+      const r = await json(page, `(() => {
+        const ui = window.__ui;
+        const bars = getComputedStyle(ui.root);
+        const top = parseFloat(bars.getPropertyValue('--bar-top')) || 0;
+        const bot = innerHeight - (parseFloat(bars.getPropertyValue('--bar-bot')) || 0);
+        const cap = document.querySelector('.room-picker .wp-hero').getBoundingClientRect();
+        const floor = Math.min(bot, cap.top);
+        const seen = [...document.querySelectorAll('.room-picker .wp-strip .wp-card')]
+          .map((c) => c.getBoundingClientRect()).filter((b) => b.height > 0 && b.top >= top - 1 && b.bottom <= floor + 1).length;
+        const fb = document.querySelector('.frame-bot');
+        const fp = document.querySelector('.frame-primary');
+        return { seen, cap: Math.round(cap.height), bar: getComputedStyle(fb).backgroundImage, flyIt: !fp.hidden };
+      })()`);
+      check(`library ${at}: a card is wholly in sight between the bars and the caption`, r.seen >= 1, `${r.seen} card(s)`);
+      if (touch) {
+        check(`library ${at}: the caption is one line`, r.cap <= 80, `${r.cap} px`);
+      }
+      check(`library ${at}: the command bar is an ink strip where its words are`, /rgba\(11, 17, 22, 0\.97\)/.test(r.bar), r.bar.slice(0, 90));
+      check(`library ${at}: no second Fly it while the caption's FLY THIS is in sight`, r.flyIt === false);
+      errorsCheck(page, `library ${at}`);
+    } catch (e) {
+      check(`library ${at}: the scenario ran to the end`, false, e.message);
+    } finally {
+      await page.close();
+    }
+  }
+  /* The Tracks room on the whoop, with one of the pilot's own tracks: it
+   * has no picture, so its card draws its plan (FUN-17) and not a letter,
+   * and once it is chosen the caption's FLY THIS is the only Fly it. */
+  /* 640 high, so the rows under the picker, the screen's own Fly it among
+   * them, are below the fold, which is when the bar repeats it. */
+  const page = await openPage({
+    root, width: 1280, height: 640,
+    seed: [settingsSeed({ airframe: 'whoop65', map: 'city' },
+      `localStorage.setItem('webfpv.trackbuilder.library.v1', ${JSON.stringify(JSON.stringify({ [ROOM_TRACK.id]: ROOM_TRACK }))});`)],
+  });
+  try {
+    await page.until('window.__shellReady === true && !!window.__ui', 120000);
+    await page.evaluate(`(() => { ${PAST_GATE}; window.__ui.show('courses'); return 1; })()`);
+    const card = `[...document.querySelectorAll('.room-picker .wp-strip .wp-card')].find((c) => /Features check track/.test(c.getAttribute('aria-label') || ''))`;
+    await page.until(`!!(${card})`, 60000);
+    await page.until(`!!(${card}).querySelector('canvas.wp-plan[data-done]')`, 15000).catch(() => {});
+    const drawn = await json(page, `(() => { const c = ${card}; return { plan: !!c.querySelector('canvas.wp-plan[data-done]'), letter: !!c.querySelector('.wp-blank') }; })()`);
+    check('library: a track with no picture draws its plan on its card, not its initial', drawn.plan && !drawn.letter, JSON.stringify(drawn));
+    const at = await json(page, `(() => { const r = (${card}).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+    await clickAt(page, at.x, at.y);
+    await page.until("!!document.querySelector('.room-picker .wp-hero:not([hidden]) .wp-act.is-primary')", 15000);
+    await page.evaluate("(() => { document.querySelector('.screen-courses:not([style*=none])').scrollTop = 0; return 1; })()");
+    await page.sleep(800);
+    const once = await json(page, `(() => ({
+      name: document.querySelector('.room-picker .wp-hero .wp-sr') ? document.querySelector('.room-picker .wp-hero .wp-sr').textContent : '',
+      own: document.querySelector('.room-picker .wp-hero .wp-act.is-primary').textContent,
+      bar: !document.querySelector('.frame-primary').hidden,
+      barText: document.querySelector('.frame-primary').textContent,
+      capPlan: !!document.querySelector('.room-picker .wp-hero canvas.wp-plan[data-done]'),
+    }))()`);
+    check('library: the chosen track\'s caption draws its plan too', once.capPlan, JSON.stringify(once));
+    check('library: no second Fly it on the bar while the caption\'s own is in sight', !once.bar, `caption ${once.own}, bar ${once.bar ? once.barText : 'hidden'}`);
+    errorsCheck(page, 'library tracks');
+  } catch (e) {
+    check('library: the Tracks room ran to the end', false, e.message);
+  } finally {
+    await page.close();
+  }
+}
+
 const SCENARIOS = {
   quad: scenarioQuad,
   room: scenarioRoom,
@@ -1095,6 +1384,10 @@ const SCENARIOS = {
   city: scenarioCity,
   logos: scenarioLogos,
   modules: scenarioModules,
+  lettering: scenarioLettering,
+  thumbs: scenarioThumbs,
+  offline: scenarioOffline,
+  library: scenarioLibrary,
 };
 
 const t0 = Date.now();

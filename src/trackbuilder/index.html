@@ -1761,6 +1761,71 @@
       .tb-choose-card[data-canvas="full"] .tb-choose-fact,
       .tb-choose-card[data-canvas="micro"] .tb-choose-fact { color: var(--mint); }
       .tb-choose-card[data-canvas="freestyle"] .tb-choose-fact { color: var(--slate); }
+      /*
+       * ON THE QUAD PICKER'S PAGE (round 2 R2M-7). The chooser was the dark
+       * tool look while the simulator's quad picker (index.html .qp-page) is
+       * a manga page: paper with a dot screen, a 4 px ink frame and a hard
+       * drop, the title in heavy capitals on an ink band, and white panels
+       * in ink frames with the cursor ringed in amber and an ink drop. This
+       * is that page, the same numbers, with the canvas pictures as the
+       * panels and the quad each canvas flies stuck on its corner. A dialog
+       * opened once a visit: static CSS, two more pictures (42 KB together,
+       * the picker's own and usually cached), nothing on the canvas.
+       */
+      .tb-modal.tb-chooser {
+        --qp-paper: #f7f0dc; --qp-quiet: #5d6b78;
+        position: relative;
+        padding: 0 0 18px;
+        background: var(--qp-paper);
+        color: var(--ink-line, #0b1116);
+        border: 4px solid #0b1116;
+        border-radius: 0;
+        box-shadow: 10px 10px 0 #0b1116;
+      }
+      .tb-modal.tb-chooser::before {
+        content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0.09;
+        background-image: radial-gradient(#0b1116 1px, transparent 1.2px); background-size: 6px 6px;
+      }
+      .tb-modal.tb-chooser h2 {
+        position: relative;
+        margin: 0 0 var(--s4);
+        padding: 12px 22px 10px;
+        background: #0b1116;
+        border-bottom: 4px solid #0b1116;
+        font-style: italic; font-weight: 900; font-size: clamp(24px, 3.4vw, 34px); line-height: 1.1;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--cream);
+      }
+      .tb-chooser .tb-choose-lede, .tb-chooser .tb-choose { position: relative; margin-inline: 20px; }
+      .tb-chooser .tb-choose-lede { color: var(--qp-quiet); }
+      .tb-chooser .tb-row-btns { position: relative; margin-inline: 20px; }
+      .tb-chooser .tb-choose-card {
+        background: #fff;
+        color: #0b1116;
+        border: 4px solid #0b1116;
+        border-radius: 0;
+        box-shadow: none;
+      }
+      .tb-chooser .tb-choose-card:hover { box-shadow: 4px 4px 0 #0b1116; }
+      .tb-chooser .tb-choose-card:focus {
+        border-top-color: #0b1116;
+        box-shadow: 0 0 0 5px var(--amber), 8px 8px 0 5px #0b1116;
+      }
+      .tb-chooser .tb-choose-art { background: #efe5c9; border-bottom: 4px solid #0b1116; }
+      .tb-chooser .tb-choose-art::after { display: none; }
+      .tb-choose-quad {
+        position: absolute; right: 6px; bottom: 4px; z-index: 1;
+        width: 42%; height: auto;
+        filter: drop-shadow(4px 5px 0 rgba(11, 17, 22, 0.28));
+      }
+      .tb-chooser .tb-choose-name {
+        font-style: italic; font-weight: 900; text-transform: uppercase; letter-spacing: 0.04em;
+        color: #0b1116;
+      }
+      .tb-chooser .tb-choose-card:focus .tb-choose-name { color: #c8423a; }
+      .tb-chooser .tb-choose-blurb { color: var(--qp-quiet); }
+      .tb-chooser .tb-choose-card .tb-choose-fact { color: #0b1116; font-weight: 700; }
       /* A narrow window gets the cards lying on their sides, one to a row,
          the way the gate's used to on a phone. This is not a phone tool
          (see the narrow block at the foot), but a dialog must not be the

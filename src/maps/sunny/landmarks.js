@@ -319,11 +319,20 @@ function gorge(T) {
     const h0 = lo + r.range(0, G.depth - 3);
     const h1 = Math.min(-0.6, h0 + r.range(1.5, 4.5));
     const m = r.chance(0.5) ? 'sfRock' : 'sfRockDark';
-    if (west) {
-      T.box(m, G.x0, y, h0, G.x0 + out, y + len, h1, { kind: 'wall', name: 'outcrop' });
-    } else {
-      T.box(m, G.x1 - out, y, h0, G.x1, y + len, h1, { kind: 'wall', name: 'outcrop' });
-    }
+    /*
+     * A LEDGE GROWN OUT OF THE WALL, not a crate stuck on it (round 2
+     * R2M-4, fly-sunny-8.png). Drawn as a prism whose underside slopes back
+     * into the face, so it reads as rock; the box it was stays its solid,
+     * the same box at the same place, so no gap opened or closed. The
+     * slope is the lower two fifths, so the solid stands proud of the
+     * drawing only in that wedge under the ledge, against the wall. The
+     * prism joins the same material's batch the box drew in.
+     */
+    const lip = h0 + (h1 - h0) * 0.4;
+    const face = west ? G.x0 : G.x1;
+    const tip = west ? G.x0 + out : G.x1 - out;
+    T.hidden(Math.min(face, tip), y, h0, Math.max(face, tip), y + len, h1, 'wall', 'outcrop');
+    T.prism(m, 'y', [[face, h0], [tip, lip], [tip, h1], [face, h1]], y, y + len);
   }
   /* Boulders on the floor, and along the rim. */
   for (let k = 0; k < 10; k += 1) {
@@ -340,11 +349,23 @@ function gorge(T) {
       T.take(x, y, s + 0.3);
     }
   }
-  /* The waterfall at the head, and its pool. */
+  /* The waterfall at the head, and its pool: flat water under the sea's
+   * inked picture, falling down the face and lying on the pool, as two
+   * signs on the map's one sign mesh (round 2 R2M-4, ./signs.js). */
   T.paint('sfWater', 163, G.y1 - 0.12, lo, 169, G.y1, -0.2);
+  T.sign('waterfall', 166, G.y1 - 0.12, (lo - 0.2) / 2, 6, -0.2 - lo, 's', 0.015);
   T.paint('sfTrim', 163.6, G.y1 - 0.16, lo, 164.2, G.y1 - 0.12, -0.6, true);
   T.paint('sfTrim', 167.4, G.y1 - 0.16, lo, 167.8, G.y1 - 0.12, -1.2, true);
   T.disc('sfWater', 166, G.y1 - 3, 3.4, lo, lo + 0.05, 20);
+  T.sign('pool', 166, G.y1 - 3, lo + 0.05, 6.8, 6.8, 'up', 0.01);
+  /* The far rim lit (round 2 R2M-4, spawn-sunny.png): from the pad the
+   * gorge's far end is a face in its own shade, a dark band across the end
+   * of the plaza that read as a wall. A strip of sunlit rock along the top
+   * of the inside faces, flat lit like paint, says it is an edge with a
+   * drop under it. Drawn only, on the faces, in the flat batch. */
+  T.paint('sfRockLit', G.x0, G.y1 - 0.05, -0.45, G.x1, G.y1, top);
+  T.paint('sfRockLit', G.x0, G.y0, -0.45, G.x0 + 0.05, G.y1, top);
+  T.paint('sfRockLit', G.x1 - 0.05, G.y0, -0.45, G.x1, G.y1, top);
   T.paint('sfWater', 162, G.y1 + 0.2, 0.02, 170, G.y1 + G.wall + 6, 0.05);
   /* The plank bridge across. */
   const B = GORGE_BRIDGE;

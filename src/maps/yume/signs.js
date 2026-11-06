@@ -301,6 +301,10 @@ const SIGNS = {
   ymStallKaki: { h: 32, paint: stallBoard('#8cc3e6', '#2a3a6a', 'かき氷') },
   ymStallWata: { h: 32, paint: stallBoard('#f39cbe', '#6a2a4a', 'わたあめ') },
   ymStallJuice: { h: 32, paint: stallBoard('#f4c033', '#6a4a2a', 'ジュース') },
+  /* The lake, the sea's own ink (round 2 R2M-5): ./index.js paints it over
+   * this with ../built/sea.js inkWater once the atlas is made, because that
+   * picture needs a browser's canvas and this file is read in Node too. */
+  ymLake: { h: 384, paint: () => {} },
 };
 
 /* The keys a map may name, for a check that every sign it hangs is

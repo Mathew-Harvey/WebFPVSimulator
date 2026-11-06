@@ -313,6 +313,9 @@ export const TOWER = { x: 168, y: 112, half: 3.2, deck: 8, top: 11.6 };
 /* Where the start pads stand, world metres: the tower's roof. The built
  * map seats its start on this (padBase in src/maps/built/index.js). */
 export const DRIFT_PAD_BASE = TOWER.top;
+/* The pad's middle in the plan: on the roof's east edge, the 0.9 m pad
+ * flush with it (round 2 R2M-3, ./yard.js). */
+export const DRIFT_PAD = { x: TOWER.x + TOWER.half - 0.45, y: TOWER.y };
 function tower(P, decor) {
   const { x, y, half, deck, top } = TOWER;
   for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {

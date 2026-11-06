@@ -45,7 +45,72 @@ export const SEA_TONES = {
   base: '#93b8ce', trough: '#85aac3', sky: '#a9c8d9', ink: '#557592', glint: '#eaf3f7', light: '#d6e7ef',
 };
 
+/* The picture alone, painted once a set of tones and kept: the sea's
+ * texture is made from it, and a map that inks a smaller water into a sign
+ * atlas (inkWater, below) draws it from the same canvas. */
+const PICTURES = new Map();
+export function seaPicture(C = SEA_TONES) {
+  const key = JSON.stringify(C);
+  let c = PICTURES.get(key);
+  if (!c) {
+    c = paintSea(C);
+    PICTURES.set(key, c);
+  }
+  return c;
+}
+
 function seaTexture(C, size, tile) {
+  const tex = new THREE.CanvasTexture(paintSea(C));
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(size / tile, size / tile);
+  tex.anisotropy = 4;
+  return tex;
+}
+
+/*
+ * THE SAME INK ON A SMALL WATER, inside a cell of a map's sign atlas: a
+ * waterfall's face or a pond, which a separate textured mesh would cost a
+ * draw call each, drawn instead as a sign on the sign mesh the map already
+ * has (round 2 R2M-4 and R2M-5). `cell` is the atlas cell, `wM` by `hM`
+ * the metres the sign spans, the picture tiled every `tileM` metres,
+ * `turn` runs its rows down the cell rather than across it (falling
+ * water), and `clip(g, sx, sy)`, if given, traces the water's outline in
+ * metres from the cell's top left, scaled by sx and sy, so what is outside
+ * it stays clear for the sign material's alpha test; `clear` false paints
+ * over what a first call left, for a deeper tone inside. Painted once, when the
+ * atlas is; nothing per frame.
+ */
+export function inkWater(g, cell, {
+  wM, hM, tones = SEA_TONES, tileM = 24, turn = false, clip = null, clear = true,
+}) {
+  const pic = seaPicture(tones);
+  const sx = cell.w / wM;
+  const sy = cell.h / hM;
+  g.save();
+  g.translate(cell.x, cell.y);
+  if (clear) {
+    g.clearRect(0, 0, cell.w, cell.h);
+  }
+  g.beginPath();
+  if (clip) {
+    clip(g, sx, sy);
+  } else {
+    g.rect(0, 0, cell.w, cell.h);
+  }
+  g.clip();
+  const pattern = g.createPattern(pic, 'repeat');
+  const k = (sx * tileM) / pic.width;
+  pattern.setTransform(turn
+    ? new DOMMatrix([0, k, -k, 0, cell.w, 0])
+    : new DOMMatrix([k, 0, 0, k, 0, 0]));
+  g.fillStyle = pattern;
+  g.fillRect(0, 0, cell.w, cell.h);
+  g.restore();
+}
+
+function paintSea(C) {
   const S = 512;
   const c = document.createElement('canvas');
   c.width = S;
@@ -132,13 +197,7 @@ function seaTexture(C, size, tile) {
   for (let i = 0; i < 40; i += 1) {
     sliver(rand() * S, rand() * S, 6 + rand() * 14, 1.2);
   }
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.wrapS = THREE.RepeatWrapping;
-  tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(size / tile, size / tile);
-  tex.anisotropy = 4;
-  return tex;
+  return c;
 }
 
 

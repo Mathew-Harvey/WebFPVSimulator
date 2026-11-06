@@ -477,6 +477,11 @@ export function createCareer(shell) {
         return;
       }
       state = 'flight';
+      /* The trunk before the Rookie Licence flies a simple OSD (R2M-10). */
+      const part = partOf(lesson.id);
+      if (shell.simpleOsd) {
+        shell.simpleOsd(Boolean(part && part.branch === 'trunk' && part.id !== 'rk'));
+      }
       mountVisuals();
       newRun();
       screens.showFlight(lesson);
@@ -503,6 +508,9 @@ export function createCareer(shell) {
   async function leave() {
     loadToken += 1;
     state = 'idle';
+    if (shell.simpleOsd) {
+      shell.simpleOsd(false);
+    }
     run = null;
     lesson = null;
     lastStatus = null;

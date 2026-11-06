@@ -252,6 +252,11 @@ const GROUND_CUE_GAP_MS = 220;
  * only; nothing in the flight reads it.
  */
 const PAD_FLYING_STICK = 0.12;
+/* The throttle still down on the pad, for the stick cluster's ink plate
+ * (R2M-11): the gimbals are dead until it moves, and while they wait they
+ * sit small, on ink, rather than over the strip of world a 30 degree
+ * camera leaves a pilot on the ground. */
+const PAD_WAIT_THROTTLE = 0.02;
 /*
  * How long after a takeoff the contact cues stay muted, on the WALL clock.
  *
@@ -4368,6 +4373,7 @@ export async function boot({ loading, bootStart, mapId }) {
     ghostChased = null;
     ghostGap = null;
     ghostBoardTimes = null;
+    ui.boardGhostTimes = null;
     ghostBoardLap = null;
     ghostBoardBusy = false;
     ghostTop = [];
@@ -4399,6 +4405,8 @@ export async function boot({ loading, bootStart, mapId }) {
         /* The five fastest recorded laps are plenty of rivals for one
          * menu row; the full table lives on the board page. */
         ghostBoardTimes = times.filter((t) => t.hasGhost && t.id).slice(0, 5);
+        /* The results' rival row reads the same five (R2M-9). */
+        ui.boardGhostTimes = ghostBoardTimes;
         syncGhostRow();
         if (ghostChoice === 'top3') {
           loadGhostTop();
@@ -5492,6 +5500,9 @@ export async function boot({ loading, bootStart, mapId }) {
   const predDq = new THREE.Quaternion();
   const predR = new THREE.Quaternion();
   const predV = new THREE.Vector3();
+  /* The mount before the lead, and the last sweep's answer (-1 for open air), for the check. */
+  const predMount = new THREE.Vector3();
+  let predictClippedT = -1;
   let lastCamClear = 0;
   let lastCamFwdY = 0;
   let lastCamUpY = 0;
@@ -10540,6 +10551,13 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     ghostQueryId = time.id;
   };
+  /* The results' rival row (R2M-9): the course flown is seated, so its lap
+   * is picked as the ghost row would pick it, fetched once and armed. */
+  ui.onChaseRival = (time) => {
+    if (time && time.id) {
+      pickGhost(`board:${time.id}`);
+    }
+  };
 
   /*
    * FULLSCREEN IN FLIGHT. See fullscreenFly in ui.js for why: a desktop
@@ -11747,6 +11765,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * move: set by that branch below, and only by it. And whether it did. */
     predictCam = false;
     predictApplied = false;
+    predictClippedT = -1;
     fpvLens = false;
     /* Once a frame, whatever the window did since the last one. */
     applyResizeIfDirty();
@@ -13518,11 +13537,35 @@ export async function boot({ loading, bootStart, mapId }) {
         horizon = PREDICT_MAX_MS;
       }
       predictDelta(stateCurr, horizon, qSpawn, predDp, predDq);
+      predMount.copy(shell.camera.position);
       moveRigid(shell.camera.position, shell.camera.quaternion, shell.quad.position, shell.quad.quaternion,
         predDp, predDq, predR, predV);
       if (shell.camera.position.y < lastCamFloor) {
         shell.camera.position.y = lastCamFloor;
       }
+      /*
+       * NEVER PAST A WALL. A 25 ms lead at 20 m/s is 0.33 m, nearly twice
+       * the craft's radius, so on the frame before a strike the predicted
+       * eye could stand inside the face with a near plane sized for the
+       * mount. One sweep of a ball the size of the least near plane from
+       * the mount to the predicted eye (Colliders.sweepPoint): on a touch
+       * the eye stops where the ball first touches, so the POSITION lead
+       * is cut for that frame and the ROTATION lead, the part of the
+       * prediction the sticks feel most, is kept. In open air nothing
+       * changes. Then the near plane is sized again where the eye now is.
+       */
+      if (view.colliders) {
+        const t = view.colliders.sweepPoint(
+          predMount.x, predMount.y, predMount.z,
+          shell.camera.position.x, shell.camera.position.y, shell.camera.position.z,
+          CAMERA_NEAR_MIN * nearScale(),
+        );
+        predictClippedT = t;
+        if (t >= 0) {
+          shell.camera.position.lerpVectors(predMount, shell.camera.position, t);
+        }
+      }
+      setCameraNear(fpvNear(shell.camera.position));
       shell.camera.updateMatrixWorld();
       predictLastMs = horizon;
       predictApplied = true;
@@ -13869,6 +13912,9 @@ export async function boot({ loading, bootStart, mapId }) {
             || Math.abs(ch.pitch) > PAD_FLYING_STICK
             || Math.abs(ch.yaw) > PAD_FLYING_STICK),
         touch: touchFlying,
+        /* On the pad, before this run's first takeoff and with the throttle
+         * still down: the cluster sits on a small ink plate (R2M-11). */
+        padWait: !aloft && !flownThisRun && ch.throttle <= PAD_WAIT_THROTTLE,
       });
       /* The chips fade on the same test: see syncChipFade. */
       ui.syncChipFade(aloft, nowWall);
@@ -14835,6 +14881,10 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     return view.colliders.gapAt(x, y, z, r);
   };
+  /* The predicted view's eye sweep, as the frame asks it (radius the least
+   * near plane). Harness only: check:features eye times it in the town. */
+  window.__eyeSweep = (ax, ay, az, bx, by, bz) => (view.colliders
+    ? view.colliders.sweepPoint(ax, ay, az, bx, by, bz, CAMERA_NEAR_MIN * nearScale()) : -1);
   window.__segmentCrossesAny = (ax, ay, az, bx, by, bz) => {
     if (!view.colliders) {
       return false;
@@ -16020,6 +16070,10 @@ export async function boot({ loading, bootStart, mapId }) {
     horizonMs: predictLastMs,
     turnDeg: 2 * Math.acos(Math.min(1, Math.abs(predDq.w))) * 180 / Math.PI,
     moveM: predDp.length(),
+    /* The last eye sweep: -1 in open air, else the fraction of the lead kept,
+     * and the near plane the drawn eye was given. */
+    clippedT: predictClippedT,
+    near: shell.camera.near,
     /* The body rate and speed it predicted from, so a probe can check the
      * turn is the rate times the horizon. */
     rateDegS: stateCurr ? Math.hypot(stateCurr[11], stateCurr[12], stateCurr[13]) * 180 / Math.PI : 0,
@@ -16637,6 +16691,9 @@ export async function boot({ loading, bootStart, mapId }) {
   /* To the title, quietly: the career's screens are over it. */
   function careerToTitle() {
     ui.setCareerLesson(null);
+    if (ui.osd) {
+      ui.osd.classList.remove('osd-simple');
+    }
     if (mode !== 'title') {
       mode = 'title';
       reset();
@@ -17366,6 +17423,12 @@ export async function boot({ loading, bootStart, mapId }) {
     setCamera(c) {
       careerCamera = c === 'chase' ? 'chase' : null;
       careerChaseCam.atMs = -1;
+    },
+    /* The first lessons' simple OSD (R2M-10): one class, CSS does the rest. */
+    simpleOsd(on) {
+      if (ui.osd) {
+        ui.osd.classList.toggle('osd-simple', Boolean(on));
+      }
     },
     get camera() {
       return shell.camera;

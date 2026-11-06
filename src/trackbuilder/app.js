@@ -364,6 +364,7 @@ const CHOICES = [
     canvas: 'full',
     label: 'Five inch racing',
     art: '../../assets/gate/race.jpg',
+    quad: '../../assets/quads/5inch.webp',
     blurb: 'A race track on an outdoor field. MultiGP gates, flags and dive gates on a grid in metres, flown on the five inch and published to the board.',
     facts: ['5 ft gates', 'Outdoor field', 'The board'],
   },
@@ -371,6 +372,7 @@ const CHOICES = [
     canvas: 'micro',
     label: 'Whoop racing',
     art: '../../assets/gate/whoop.jpg',
+    quad: '../../assets/quads/whoop.webp',
     blurb: 'A room for the whoop. RaceGOW’s 28 inch gates in an indoor hall, a grid in inches, and RaceGOW’s own rules checking the layout.',
     facts: ['28 in gates', 'Indoors', 'RaceGOW'],
   },
@@ -378,6 +380,7 @@ const CHOICES = [
     canvas: 'freestyle',
     label: 'Freestyle',
     art: '../../assets/gate/freestyle.jpg',
+    quad: '../../assets/quads/5inch.webp',
     blurb: 'A map of your own on a big plot. Buildings, cranes, a skate set and named gaps wherever you put them, flown on the five inch with no gates and no clock.',
     facts: ['No gates', 'Big plot', 'Five inch'],
   },
@@ -6285,6 +6288,16 @@ export class App {
       img.alt = '';
       img.decoding = 'async';
       art.append(img);
+      /* The quad it is flown on, the quad picker's own drawing, stuck on
+       * the corner of the picture (round 2 R2M-7). */
+      if (c.quad) {
+        const quad = document.createElement('img');
+        quad.className = 'tb-choose-quad';
+        quad.src = c.quad;
+        quad.alt = '';
+        quad.decoding = 'async';
+        art.append(quad);
+      }
       const text = document.createElement('span');
       text.className = 'tb-choose-body';
       const name = document.createElement('span');

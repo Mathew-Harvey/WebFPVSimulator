@@ -2272,6 +2272,87 @@ export class Colliders {
     return false;
   }
 
+  /*
+   * THE EYE'S SWEEP: the earliest t in [0, 1] at which a ball of radius r,
+   * moved from a to b, first touches any solid, static or moving, or -1 if
+   * it touches none. 0 when it already touches at a.
+   *
+   * It exists for the predicted view (src/main.js, predictView): the FPV
+   * camera is moved on by up to PREDICT_MAX_MS of travel, which at 20 m/s
+   * is 0.33 m, more than the craft's own radius, so the eye could be drawn
+   * past a wall face on the frame before the craft reaches it. hit() is the
+   * craft's four prop discs and too fat for one eye; segmentCrossesAny
+   * counts a solid only when the line goes out the far side, and an eye
+   * that stops inside a wall never does. This is the plain question, a
+   * point with the near plane's radius, answered by the same two closed
+   * forms hit() uses (boxSlabWalk with an equal radius on every axis, and
+   * capsuleEarliestT with the reach grown by r). It writes no hit state,
+   * so it cannot disturb a caller of hit(), and nothing in the step loop
+   * calls it: it is render only, once per drawn frame.
+   */
+  sweepPoint(ax, ay, az, bx, by, bz, r) {
+    if (!this.built) {
+      return -1;
+    }
+    if (
+      !Number.isFinite(ax) || !Number.isFinite(ay) || !Number.isFinite(az)
+      || !Number.isFinite(bx) || !Number.isFinite(by) || !Number.isFinite(bz)
+    ) {
+      return -1;
+    }
+    this.queryId += 1;
+    const id = this.queryId;
+    const dx = bx - ax;
+    const dy = by - ay;
+    const dz = bz - az;
+    const a = dx * dx + dy * dy + dz * dz;
+    const pad = r + this.maxR;
+    const cx0 = clampCell(Math.floor((Math.min(ax, bx) - pad) / CELL));
+    const cx1 = clampCell(Math.floor((Math.max(ax, bx) + pad) / CELL));
+    const cz0 = clampCell(Math.floor((Math.min(az, bz) - pad) / CELL));
+    const cz1 = clampCell(Math.floor((Math.max(az, bz) + pad) / CELL));
+    let best = -1;
+    for (let cx = cx0; cx <= cx1; cx += 1) {
+      for (let cz = cz0; cz <= cz1; cz += 1) {
+        const bucket = this.grid.get((cx + GRID_HALF) * GRID_SPAN + (cz + GRID_HALF));
+        if (bucket === undefined) {
+          continue;
+        }
+        for (let bi = 0; bi < bucket.length; bi += 1) {
+          const i = bucket[bi];
+          if (this.stamp[i] === id) {
+            continue;
+          }
+          this.stamp[i] = id;
+          let t;
+          if (this.fbox[i]) {
+            t = this.boxEarliestT(i, ax, ay, az, dx, dy, dz, r, r, r);
+          } else {
+            const reach = this.fr[i] + r;
+            t = this.capsuleEarliestT(i, ax, ay, az, dx, dy, dz, a, reach * reach);
+          }
+          if (t >= 0 && (best < 0 || t < best)) {
+            best = t;
+          }
+        }
+      }
+    }
+    for (let i = 0; i < this.movingCount; i += 1) {
+      const hx = this.movingHx[i];
+      const hy = this.movingHy[i];
+      const hz = this.movingHz[i];
+      const t = this.boxSlabWalk(
+        -hx, -hy, -hz, hx, hy, hz,
+        ax - this.movingCx[i], ay - this.movingCy[i], az - this.movingCz[i],
+        dx, dy, dz, r, r, r,
+      );
+      if (t >= 0 && (best < 0 || t < best)) {
+        best = t;
+      }
+    }
+    return best;
+  }
+
   kindName(k) {
     return KINDS[k] ?? 'none';
   }

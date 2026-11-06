@@ -92,6 +92,8 @@ export const MATERIALS = {
   sfTyre: { c: 0x2b2a2f, tint: 0x1e1d28 },
   sfDirt: { c: 0xb79466, tint: 0x6a5468 },
   sfRock: { c: 0xc08a5a, tint: 0x6e4e62 },
+  /* The gorge's sunlit lip, flat so it reads lit in the cut's shade. */
+  sfRockLit: { f: 0xe8bf8c, noCast: true },
   sfRockDark: { c: 0x8e6244, tint: 0x553f58 },
   sfStone: { c: 0xb4aeb8, tint: 0x66607e },
   sfFire: { f: 0xff8a2a, noCast: true },

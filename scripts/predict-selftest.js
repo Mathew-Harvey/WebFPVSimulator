@@ -31,6 +31,7 @@
 
 import { moveRigid, mulQuat, predictDelta, rotateVec } from '../src/render/predict.js';
 import { simQuatToThree } from '../src/render/frame.js';
+import { Colliders } from '../src/game/collide.js';
 
 let passed = 0;
 let failed = 0;
@@ -190,6 +191,40 @@ section('prediction composes, and a camera stays on its mount');
   moveRigid(camPos, camQuat, new Vec(1, 1.9, 3.05), unit(new Quat(0, 0.3, 0, 0.95)), dp, dq, new Quat(), new Vec());
   check('a craft at rest moves the camera nowhere', near(camPos.x, 1) && near(camPos.y, 2) && near(camPos.z, 3)
     && sameRotation(camQuat, before), `${camPos.x}, ${camPos.y}, ${camPos.z}`);
+}
+
+/*
+ * THE EYE'S SWEEP (Colliders.sweepPoint): the predicted view moves the eye
+ * on by up to 25 ms of travel, and this is the one query that stops it
+ * short of a solid. A ball of radius r from a to b: the earliest t it
+ * touches, -1 for open air, 0 when it starts touching.
+ */
+{
+  const c = new Colliders();
+  /* A wall whose near face is x = 1, a post at x = 0, z = 5, and a car. */
+  c.addBox('wall', 1, 0, -2, 1.4, 3, 2);
+  c.addPost('tree', 0, 5, 0, 3, 0.2);
+  c.addMoving('train', 0.5, 0.5, 0.5);
+  c.build();
+  c.seatMoving(0, 0, 1, -8);
+  const r = 0.01;
+  const open = c.sweepPoint(0, 1, 0, -0.3, 1, 0, r);
+  check('open air: the eye goes the whole way', open === -1, String(open));
+  const t = c.sweepPoint(0.7, 1, 0, 1.03, 1, 0, r);
+  /* The ball touches at x = 1 - r: (0.99 - 0.7) / 0.33. */
+  check('into a wall: the eye stops a radius short of its face', near(t, 0.29 / 0.33, 1e-9), String(t));
+  const inside = c.sweepPoint(1.2, 1, 0, 1.3, 1, 0, r);
+  check('starting inside a wall stops it where it is', inside === 0, String(inside));
+  const post = c.sweepPoint(0, 1, 4.5, 0, 1, 4.9, r);
+  /* The post's face is at z = 4.8, the ball's at 4.79: (4.79 - 4.5) / 0.4. */
+  check('into a post: a radius short of the capsule (stored as float32)', near(post, 0.29 / 0.4, 1e-6), String(post));
+  const car = c.sweepPoint(0, 1, -7, 0, 1, -7.6, r);
+  /* The car's face is at z = -7.5, the ball's at -7.49: 0.49 / 0.6. */
+  check('into a moving box where it is now', near(car, 0.49 / 0.6, 1e-9), String(car));
+  const along = c.sweepPoint(0.9, 1, -1, 0.9, 1, 1, r);
+  check('along a wall a hand off its face: open', along === -1, String(along));
+  const still = c.sweepPoint(0.995, 1, 0, 0.995, 1, 0, r);
+  check('a point already within the radius, not moving: 0', still === 0, String(still));
 }
 
 console.log(failed ? `\n${failed} failed, ${passed} passed` : `\nall ${passed} passed`);

@@ -1861,6 +1861,113 @@ async function scenarioFront() {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* eye: the predicted view never puts the eye past a wall (R2M-1)       */
+/* ------------------------------------------------------------------ */
+
+async function scenarioEye() {
+  const page = await openPage({
+    root, width: 1280, height: 720, seed: [BOARD_STUB, settingsSeed({ airframe: '5inch', map: 'city' })],
+  });
+  try {
+    await page.until('window.__shellReady === true && !!window.__ui', 180000);
+    await page.until("window.__map().id === 'city' && window.__map().ready", 180000);
+    await page.evaluate(PAST_GATE);
+    await page.evaluate("(() => { const ui = window.__ui; ui.mode = 'freestyle'; ui.show('title'); ui.act('fly'); return 1; })()");
+    await answerQuadPicker(page, 60000).catch(() => {});
+    await page.until("window.__ui.screen === 'flight'", 60000);
+    /*
+     * The cost, in the town, which has the most colliders of any map: the
+     * frame's own call on the segments a fast frame makes, 0.33 m (25 ms
+     * at 20 m/s) in every direction from points along the streets near the
+     * pad at head height, timed over thousands so the clock's grain does
+     * not decide it. One call per drawn frame is what the frame pays.
+     */
+    const cost = await json(page, `(() => {
+      const s = window.__craftState();
+      const pts = [];
+      let seed = 7;
+      const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+      for (let i = 0; i < 4000; i += 1) {
+        const x = s.worldX + (rnd() - 0.5) * 120;
+        const z = s.worldZ + (rnd() - 0.5) * 120;
+        const y = s.worldY + 0.5 + rnd() * 6;
+        const a = rnd() * Math.PI * 2;
+        const e = (rnd() - 0.5) * 1.2;
+        pts.push([x, y, z, x + 0.33 * Math.cos(a) * Math.cos(e), y + 0.33 * Math.sin(e), z + 0.33 * Math.sin(a) * Math.cos(e)]);
+      }
+      let hits = 0;
+      for (const p of pts) { if (window.__eyeSweep(...p) >= 0) hits += 1; }
+      let best = Infinity;
+      for (let round = 0; round < 5; round += 1) {
+        const t0 = performance.now();
+        for (const p of pts) window.__eyeSweep(...p);
+        best = Math.min(best, (performance.now() - t0) / pts.length);
+      }
+      /* And the near plane sized again at the moved eye: one gap query at
+       * fpvNear's reach (0.2 / 0.45 m). */
+      let gapBest = Infinity;
+      for (let round = 0; round < 5; round += 1) {
+        const t0 = performance.now();
+        for (const p of pts) window.__nearSolid(p[3], p[4], p[5], 0.2 / 0.45);
+        gapBest = Math.min(gapBest, (performance.now() - t0) / pts.length);
+      }
+      return { ms: best + gapBest, sweepMs: best, gapMs: gapBest, hits, n: pts.length, colliders: window.__colliders().count };
+    })()`);
+    console.log(`  info  eye sweep and near plane in the town: ${(cost.ms * 1000).toFixed(2)} us a frame (sweep ${(cost.sweepMs * 1000).toFixed(2)}, gap ${(cost.gapMs * 1000).toFixed(2)}) (${cost.colliders} colliders, ${cost.hits} of ${cost.n} sample segments touch a solid)`);
+    check('eye: the sweep sees the town (some sample segments touch a solid, most do not)', cost.hits > 0 && cost.hits < cost.n / 2, `${cost.hits} of ${cost.n}`);
+    check('eye: the sweep and the second near plane cost no more than 0.02 ms a frame', cost.ms <= 0.02, `${(cost.ms * 1000).toFixed(2)} us`);
+    /* A wall's face found by walking out from the pad, then the eye swept at
+     * it from 0.2 m off: it stops a near plane short, not inside. */
+    const wall = await json(page, `(() => {
+      const s = window.__craftState();
+      for (let d = 1; d < 80; d += 0.5) {
+        for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const x = s.worldX + dx * d;
+          const z = s.worldZ + dz * d;
+          const y = s.worldY + 1.5;
+          const g = window.__nearSolid(x, y, z, 0.25);
+          if (g !== null && g > 0.18 && g < 0.22) {
+            /* Toward the face: the one of the six ways whose far end is nearest. */
+            let best = null;
+            for (const [ux, uy, uz] of [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1], [0, 1, 0], [0, -1, 0]]) {
+              const fx = x + ux * 0.33;
+              const fy = y + uy * 0.33;
+              const fz = z + uz * 0.33;
+              const gs = window.__nearSolid(fx, fy, fz, 0.5);
+              const v = gs === null ? Infinity : gs;
+              if (!best || v < best.v) best = { v, ux, uy, uz };
+            }
+            const t = window.__eyeSweep(x, y, z, x + best.ux * 0.33, y + best.uy * 0.33, z + best.uz * 0.33);
+            const k = 0.33 * (t < 0 ? 1 : t);
+            return { t, gapStart: g, gapAfter: window.__nearSolid(x + best.ux * k, y + best.uy * k, z + best.uz * k, 0.25), gapStraight: best.v };
+          }
+        }
+      }
+      return null;
+    })()`);
+    check('eye: swept at a town wall from 0.2 m, it stops outside the face', wall && wall.t > 0 && wall.t < 1 && wall.gapAfter > 0.005,
+      JSON.stringify(wall));
+    /* In flight, in open air, the lead is untouched and the near plane is the
+     * one sized where the drawn eye is. */
+    await page.evaluate("(window.__stick(0, 0, 0, 0.75), 1)");
+    let pr = null;
+    for (let i = 0; i < 40 && !(pr && pr.applied); i += 1) {
+      await page.sleep(100);
+      pr = await json(page, 'window.__predict()');
+    }
+    check('eye: in open air the prediction runs, is not cut, and the near plane is sized at the drawn eye',
+      pr.applied === true && pr.clippedT === -1 && pr.near > 0 && pr.near <= 0.2, JSON.stringify(pr));
+    const fault = await page.evaluate('window.__frameFault || null');
+    check('eye: no frame faulted', !fault, String(fault));
+    errorsCheck(page, 'eye');
+  } catch (e) {
+    check('eye: the scenario ran to the end', false, e.message);
+  } finally {
+    await page.close();
+  }
+}
+
 const SCENARIOS = {
   quad: scenarioQuad,
   lazy: scenarioLazy,
@@ -1879,6 +1986,7 @@ const SCENARIOS = {
   library: scenarioLibrary,
   results: scenarioResults,
   front: scenarioFront,
+  eye: scenarioEye,
 };
 
 const t0 = Date.now();

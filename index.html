@@ -291,29 +291,75 @@
          draw: Wings the two long arms and the dot, Cross the four short
          arms round an open centre, Dot the dot. See syncCrosshair in
          src/ui/ui.js. */
-      /* The performance readout, top left, in the OSD's cream with its ink
-         edge: see notePerf in src/ui/ui.js. contain, like the corners, so
-         the numbers lay out this box and nothing else. A faint paper
-         behind it because the graph is unreadable over a bright sky. */
+      /* The performance readout, top left under the music dock (which is
+         at 16 px and 30 px tall in flight, .music-dock.on-flight), laid out
+         like a hardware monitor's overlay: see notePerf in src/ui/ui.js.
+         --pu is the unit everything here is sized in, so one number makes
+         it bigger or smaller. contain, like the corners, so the numbers
+         lay out this box and nothing else. A faint paper behind it because
+         the line is unreadable over a bright sky. */
       .osd-perf {
+        --pu: 22px;
         contain: layout style;
-        position: absolute; left: 12px; top: 8px; pointer-events: none;
-        padding: 5px 8px 6px; border-radius: 4px;
+        position: absolute; left: 16px; top: 54px; pointer-events: none;
+        width: calc(var(--pu) * 13.5);
+        padding: 0.3em 0.5em 0.45em; border-radius: 4px;
         background: rgba(11, 17, 22, 0.42);
-        color: var(--cream); font: 600 13px/1.3 ui-monospace, Menlo, Consolas, monospace;
-        text-shadow: 0 0 2px var(--osd-ink), 0 1px 3px rgba(0, 0, 0, 0.6);
+        color: var(--cream);
+        font: 700 var(--pu)/1.15 ui-monospace, Menlo, Consolas, monospace;
+        font-variant-numeric: tabular-nums;
+        text-shadow: 0 0 2px var(--osd-ink), 0 1px 3px rgba(0, 0, 0, 0.7);
       }
-      .osd-perf .perf-row { white-space: nowrap; }
+      .osd-perf .perf-row {
+        display: flex; align-items: baseline; white-space: nowrap;
+      }
+      .osd-perf .perf-row[hidden] { display: none; }
+      /* The label column: GPU rows in mint, CPU rows in slate, the API row
+         in sakura, as the monitors colour theirs by what they read. */
       .osd-perf .perf-k {
-        display: inline-block; width: 4.4em; color: var(--osd-slate);
-        font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+        flex: none; width: 4.6em; font-size: 0.86em;
+        letter-spacing: 0.06em; text-transform: uppercase;
       }
-      .osd-perf .perf-v { font-weight: 700; }
-      .osd-perf .perf-x { color: var(--osd-slate); font-weight: 500; font-size: 11px; margin-left: 0.7em; }
+      .osd-perf .is-gpu .perf-k { color: var(--mint); }
+      .osd-perf .is-cpu .perf-k { color: var(--slate); }
+      .osd-perf .is-api .perf-k { color: var(--sakura); }
+      .osd-perf .is-ft .perf-k { color: var(--sakura); font-size: 0.68em; text-transform: none; letter-spacing: 0.04em; }
+      /* A number, amber, right aligned in its column; its unit small and
+         raised beside it. The frame rate is cream, like theirs. */
+      .osd-perf .perf-v {
+        flex: none; min-width: 2.6em; text-align: right;
+        color: var(--amber); font-size: 1.12em; font-weight: 800;
+      }
+      /* An empty number still holds its line, so the box measures the same
+         before the first numbers arrive as after (syncPerf measures it). */
+      .osd-perf .perf-v:empty::before { content: "\00a0"; }
+      /* And a unit with no number yet (Hz before the refresh is learned)
+         keeps its place but does not dangle. */
+      .osd-perf .perf-v:empty + .perf-u { visibility: hidden; }
+      .osd-perf .perf-v.is-fps { color: var(--cream); }
+      .osd-perf .perf-u {
+        flex: none; align-self: flex-start; margin: 0.28em 0.6em 0 0.22em;
+        font-size: 0.5em; font-style: normal; font-weight: 700;
+        color: var(--amber); letter-spacing: 0.04em;
+      }
+      .osd-perf .is-api .perf-u { color: var(--cream); }
+      .osd-perf .is-api .perf-v:not(.is-fps) { min-width: 2em; font-size: 0.9em; color: var(--osd-slate); }
+      .osd-perf .is-api .perf-v:not(.is-fps) + .perf-u { color: var(--osd-slate); }
+      /* The frame time's number at the far right, over the line's end. */
+      .osd-perf .is-ft .perf-v { margin-left: auto; font-size: 0.86em; color: var(--cream); }
+      .osd-perf .is-ft .perf-u { color: var(--cream); margin-right: 0; }
       .osd-perf .perf-graph {
-        display: block; width: 120px; height: 32px; margin-top: 5px;
-        background: rgba(0, 0, 0, 0.28); border-radius: 2px;
+        display: block; width: 100%; height: auto; aspect-ratio: 260 / 64;
+        margin-top: 0.15em; background: rgba(0, 0, 0, 0.28); border-radius: 2px;
       }
+      /* Smaller where the window is: a phone, or a laptop with the browser
+         half size. And on a phone with the thumb sticks the music dock is
+         away and the pack line is at the top instead (.touch-fly-on
+         .osd-corner), so the box sits under that. */
+      @media (max-width: 900px), (max-height: 560px) {
+        .osd-perf { --pu: 14px; }
+      }
+      .touch-fly-on .osd-perf { top: 46px; }
       .osd-cross {
         position: absolute; left: 50%; top: 50%; width: 0; height: 0;
         pointer-events: none;
@@ -354,11 +400,11 @@
         position: absolute; left: 22px; top: calc(var(--bar-top) + 58px);
         text-shadow: var(--osd-edge);
       }
-      /* Under the Show FPS readout when that is up (.osd-perf, 116 px tall
-         from 8 px down): syncPerf in src/ui/ui.js sets perf-on on the root,
-         because the two are siblings and the score cannot see the readout
-         from CSS. */
-      .perf-on .score-total { top: calc(var(--bar-top) + 138px); }
+      /* Under the Show FPS readout when that is up: syncPerf in
+         src/ui/ui.js sets perf-on on the root and --perf-h to the box's
+         measured height, because the two are siblings and the score cannot
+         see the readout from CSS. 54 px is the box's top. */
+      .perf-on .score-total { top: calc(var(--bar-top) + 64px + var(--perf-h, 200px)); }
       .score-label {
         font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
         color: var(--osd-slate); margin-bottom: 1px;

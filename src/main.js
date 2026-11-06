@@ -53,6 +53,7 @@ import { makeAttractCamera } from './render/attract.js';
 import { MangaLayer } from './render/manga.js';
 import { measureBudget } from './render/budget.js';
 import { createFlightPerf } from './render/flightperf.js';
+import { estimateSceneBytes } from './render/vram.js';
 import { createGpuGate } from './render/gpugate.js';
 import { AUTO_FLOOR, autoPresetMove, createAutoScale } from './render/autoscale.js';
 import { createLatencyMeter } from './render/latency.js';
@@ -14320,6 +14321,12 @@ export async function boot({ loading, bootStart, mapId }) {
     geometries: shell.renderer.info.memory.geometries,
     textures: shell.renderer.info.memory.textures,
     programs: shell.renderer.info.programs ? shell.renderer.info.programs.length : 0,
+  });
+  /* The Show FPS readout's API label and its MEM row, which walks the live
+   * scene every few seconds: see setPerfSource in ui.js and vram.js. */
+  ui.setPerfSource({
+    api: shell.renderer.capabilities && shell.renderer.capabilities.isWebGL2 ? 'WebGL2' : 'WebGL',
+    memoryMB: () => (view && view.scene ? estimateSceneBytes(view.scene).bytes / 1048576 : 0),
   });
   /* Handles the screenshot harness uses to reach a screen that would
    * otherwise need a flown lap. Nothing in the shell reads them. */

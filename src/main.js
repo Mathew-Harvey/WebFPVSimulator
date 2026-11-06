@@ -464,6 +464,13 @@ async function fetchBytes(url, onProgress) {
 const AXIS_Y = new THREE.Vector3(0, 1, 0);
 const AXIS_X = new THREE.Vector3(1, 0, 0);
 
+/* The Quad room's flight mode caption (syncAngleMode), one of four fixed
+ * strings, so choosing it on a frame builds nothing. */
+const CAPTION_ANGLE = 'Angle. Sticks are tilt. Hands off levels.';
+const CAPTION_ACRO = 'Acro. Sticks are rates. Hands off holds.';
+const CAPTION_KEYS_ANGLE = `Keyboard races fly ${CAPTION_ANGLE}`;
+const CAPTION_KEYS_ACRO = `Keyboard races fly ${CAPTION_ACRO}`;
+
 /*
  * Bring one map in and make it the world.
  *
@@ -8290,10 +8297,12 @@ export async function boot({ loading, bootStart, mapId }) {
     /* The thumb sticks are a proportional stick, so they are a RADIO here,
      * not a keyboard: they fly whichever mode the setting says. Keys keep
      * forcing angle because a key is a bang-bang input and acro on one is
-     * a crash generator. */
-    if (input.isTouchPrimary()) {
-      return 'flightMode';
-    }
+     * a crash generator. That test is made last, below, because it is the
+     * only one that lists the pads (navigator.getGamepads, and a copy of a
+     * Firefox pad's axes), and this runs every frame through
+     * wantAngleMode: the harness and freestyle tests above it answer
+     * flightMode whatever the pads say, so asking them first costs nothing
+     * and skips the list (round 2 review R2D-5). */
     /*
      * THE HARNESS OVERRIDE IS A GIMBAL, NOT A KEY.
      *
@@ -8340,10 +8349,13 @@ export async function boot({ loading, bootStart, mapId }) {
     if (view && view.mode === 'freestyle') {
       return 'flightMode';
     }
-    return input.isKeyboardPrimary() ? 'keyRaceMode' : 'flightMode';
+    /* One list of the pads for both questions: no pad and the thumbs
+     * active is the touch case, no pad otherwise is the keyboard. */
+    return input.primaryKind() === 'keys' ? 'keyRaceMode' : 'flightMode';
   }
 
-  function wantAngleMode() {
+  /* key: flightModeSetting(), when the caller already has it. */
+  function wantAngleMode(key = null) {
     if (crashflipOn || turtleRecover) {
       return false;
     }
@@ -8357,7 +8369,7 @@ export async function boot({ loading, bootStart, mapId }) {
     if (careerFlightMode) {
       return careerFlightMode === 'angle';
     }
-    return ui.settings[flightModeSetting()] === 'angle';
+    return ui.settings[key || flightModeSetting()] === 'angle';
   }
 
   /*
@@ -8521,22 +8533,30 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   function syncAngleMode() {
-    const want = wantAngleMode();
+    const key = careerFlightMode ? null : flightModeSetting();
+    const want = wantAngleMode(key);
     if (want !== angleModeOn) {
       angleModeOn = want;
       sim.setAngleMode(want);
     }
-    if (ui.setCraftCaption && !(showcase && showcase.failed)) {
-      /* Which of the Quad room's two mode rows decides, said in the
-       * caption: on the keyboard a race flies Keyboard races, not Flight
-       * mode, so the room showed Acro lit over a quad captioned Angle and
-       * a beginner could not tell which one they would fly (fun.md
-       * FUN-21). The words are compared before they are written (Ui.text),
-       * so the frame loop writes nothing while they stand. */
-      const keys = !careerFlightMode && flightModeSetting() === 'keyRaceMode';
-      ui.setCraftCaption(`${keys ? 'Keyboard races fly ' : ''}${want
-        ? 'Angle. Sticks are tilt. Hands off levels.'
-        : 'Acro. Sticks are rates. Hands off holds.'}`);
+    /*
+     * Which of the Quad room's two mode rows decides, said in the caption:
+     * on the keyboard a race flies Keyboard races, not Flight mode, so the
+     * room showed Acro lit over a quad captioned Angle and a beginner could
+     * not tell which one they would fly (fun.md FUN-21). The words are
+     * compared before they are written (Ui.text).
+     *
+     * NOT IN FLIGHT. The caption is only seen in the Quad room, and this
+     * runs every frame: round 1 had it list the pads again and build a
+     * string on every flight frame (round 2 review R2D-5). In flight it is
+     * skipped; the first menu frame after it writes the right words, and
+     * the key it reads is the one already worked out above.
+     */
+    if (ui.screen !== 'flight' && ui.setCraftCaption && !(showcase && showcase.failed)) {
+      const keys = key === 'keyRaceMode';
+      ui.setCraftCaption(keys
+        ? (want ? CAPTION_KEYS_ANGLE : CAPTION_KEYS_ACRO)
+        : (want ? CAPTION_ANGLE : CAPTION_ACRO));
     }
   }
 

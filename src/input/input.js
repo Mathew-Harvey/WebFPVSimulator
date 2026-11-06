@@ -5087,6 +5087,20 @@ export class InputManager {
   }
 
   /*
+   * isTouchPrimary and isKeyboardPrimary in one list of the pads: 'pad',
+   * 'touch' or 'keys'. The flight mode choice asks both on every frame,
+   * and each lists the pads (navigator.getGamepads and, on Firefox, a copy
+   * of a standard pad's axes), so asking twice listed them twice (round 2
+   * review R2D-5).
+   */
+  primaryKind() {
+    if (this.firstGamepad() !== null) {
+      return 'pad';
+    }
+    return this.hand !== 'keys' && this.touchSource && this.touchSource.active() ? 'touch' : 'keys';
+  }
+
+  /*
    * The smallest step this radio has been seen to take, over the mapped
    * axes only: an unmapped axis is a switch or a pot and its travel is not
    * a stick's. See the note on axisStepMin: noise can only push this BELOW

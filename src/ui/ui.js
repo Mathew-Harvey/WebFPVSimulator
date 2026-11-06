@@ -17784,7 +17784,6 @@ export class Ui {
       fetchWeek().then((w) => {
         this.weekBusy = false;
         this.weekFailed = false;
-    this.weekBusy = false;
         const had = this.week;
         this.week = w && w.track ? w : null;
         if ((this.week || had) && this.onGate() && this.gatePageNow() === 'solo') {
@@ -17890,7 +17889,10 @@ export class Ui {
   }
 
   /* `failed` hears about a load that did not happen, once the note says why:
-   * a card that was showing Loading has to stop. */
+   * a card that was showing Loading has to stop. It is told 'dropped' when
+   * the pilot walked away from the load rather than the load failing, so a
+   * caller with a note of its own does not write "could not be loaded"
+   * about a load nobody is waiting for (round 2 review R2D-10). */
   openBoardCourse(id, then = null, failed = null) {
     const track = (this.boardCourses || []).find((t) => t.id === id)
       || (this.standingsFor && this.standingsFor.id === id ? this.standingsFor : null);
@@ -17914,7 +17916,7 @@ export class Ui {
     const dropped = () => {
       this.boardNote.textContent = '';
       if (failed) {
-        failed();
+        failed('dropped');
       }
     };
     this.onBoardCourse(track, wanted).then((ok) => {
@@ -23607,8 +23609,8 @@ export class Ui {
         if (this.onFlySeated) {
           this.onFlySeated();
         }
-      }, () => {
-        this.resultsNote.textContent = `${t.name} could not be loaded from the board.`;
+      }, (why) => {
+        this.resultsNote.textContent = why === 'dropped' ? '' : `${t.name} could not be loaded from the board.`;
       });
       return;
     }

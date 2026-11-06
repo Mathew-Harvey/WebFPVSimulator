@@ -108,6 +108,7 @@
     "check:yard": "node scripts/yardtrack-check.js",
     "check:windmill": "node scripts/windmill-check.js",
     "check:room": "node scripts/room-check.js",
+    "check:rooms": "node scripts/rooms-check.js",
     "check:roads": "node scripts/roads-check.js",
     "check:clip": "node src/trackbuilder/selftest.js",
     "check:builder": "node scripts/builder-flow-check.js",

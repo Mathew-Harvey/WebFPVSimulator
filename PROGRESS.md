@@ -74928,3 +74928,4 @@ What went wrong:
 - Latency and bandwidth: no change to the flight loop. The song is fetched only when it is about to be heard, like the rest (preload none, one shared media element, no decode into memory); a visitor with music off pays zero bytes. The only change to what is served is two new static files.
 - Checks: `node scripts/music-selftest.js` all passed; `node edge/selftest.js` run; ffprobe on both outputs. Not run: `npm run verify` (no physics, plant, ABI or build change), `shots.js` (nothing on screen changed beyond one more name in the Music setting). Not listened to.
 - Not done: the Steam repack (webFPV-SteamRepack) would need the same two files and the tracks.js line; left until the owner asks.
+- The owner, 2026-11-06 10:25Z, on draft PR 242: "push to main". Main had not moved from 35e881c, so main fast forwards to this branch. He named no verification scale, so nothing beyond the checks recorded above was run. Not listened to.

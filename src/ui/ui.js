@@ -8606,7 +8606,10 @@ export class Ui {
        * arrived with a rates line that says nothing about the throttle
        * unless a cap is already on, so the one setting that answers the
        * complaint was the one thing the report could not carry. Its hover
-       * is at the weight, pack and Motor power below, so they agree.
+       * is at the weight, pack and Motor power below, so they agree. And it
+       * says 3D mode when 3D mode is on, inside this line rather than as a
+       * key of its own, because the board caps a context at 32 keys and the
+       * feel report already spends 28 (see throttleSummary).
        */
       throttle: throttleSummary(
         s.rates || {},
@@ -8614,6 +8617,7 @@ export class Ui {
         clampWeight(s.weight, s.airframe),
         s.packVoltage,
         this.tuneCaps.kv ? effectiveTune(s).motorKv : MOTOR_KV_STOCK,
+        s.mode3d === true,
       ),
       /*
        * THE SLIDER'S POSITION, and it belongs in the report for the same

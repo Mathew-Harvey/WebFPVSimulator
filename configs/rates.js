@@ -621,12 +621,39 @@ export function ratesShort(r) {
  * Motor power is the same: it moves hover, so the report passes the pilot's
  * (a percent, 100 when the tuning mode is off) and the line agrees with the
  * keyboard's.
+ *
+ * AND 3D MODE, which moves hover more than everything above put together,
+ * and which the line could not say. Three tickets of 2026-11-03 to 11-04
+ * (bug-6f04ebea "the hoverpoint is ~ at 70% throttle", bug-e4571129 "the
+ * throttle half way and the quad not taking off ... if i drop the throttle
+ * to zero the drone motors spins and drags the drone downward", bug-9c9d953e
+ * "if im upside down i will fall to the sky") are 3D mode, word for word:
+ * mid stick is no thrust, the bottom is full reverse, and flown through the
+ * shell's own config on dist/sim.wasm a stock five inch in 3D hovers at 70.8
+ * percent of stick, and inverted at the bottom of the stick climbs at a
+ * steady 26 to 33 m/s, where the same craft in normal mode falls at 22 to 28.
+ * Each of the three reports said "hover near 35.0" or "21.7 percent of
+ * stick", the normal mode figure, and nothing in it said 3D, so a reader
+ * was told the opposite of what the pilot was flying. On, the line says so
+ * and quotes no number: the table below is measured in normal mode only.
+ *
+ * THE SAME FOR THE EXPO. The table is measured on the straight factory
+ * curve, and thr_expo bends where hover sits on the stick: at mid 50 and
+ * expo 40 a stock five inch capped at 80 hovers at 37.0 percent, where the
+ * table's 42.5 is the straight line's. Betaflight's curve is not
+ * transcribed here (CLAUDE.md: the controller is ported, not written), so
+ * the line names the straight curve rather than quoting a number for a
+ * curve it never measured. Expo 0 is a straight line whatever the mid.
  */
-export function throttleSummary(r, airframe = '5inch', weight = 100, cellV = 4.2, motorKv = 100) {
+export function throttleSummary(r, airframe = '5inch', weight = 100, cellV = 4.2, motorKv = 100, mode3d = false) {
   const p = normaliseRates(r);
-  const hover = hoverStickPercent(p.throttleCap, airframe, weight, cellV, motorKv);
   const curve = p.thrExpo > 0 ? `, mid ${p.thrMid} expo ${p.thrExpo}` : ', no expo';
-  return `cap ${p.throttleCap}${curve}, hover near ${hover.toFixed(1)} percent of stick`;
+  if (mode3d === true) {
+    return `cap ${p.throttleCap}${curve}, 3D mode on: mid stick is no thrust and the bottom is full reverse, so hover is above the middle`;
+  }
+  const hover = hoverStickPercent(p.throttleCap, airframe, weight, cellV, motorKv);
+  const straight = p.thrExpo > 0 ? ' on a straight curve, before the expo' : '';
+  return `cap ${p.throttleCap}${curve}, hover near ${hover.toFixed(1)} percent of stick${straight}`;
 }
 
 /*

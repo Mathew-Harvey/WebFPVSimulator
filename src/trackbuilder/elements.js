@@ -370,7 +370,14 @@ export function isFloating(el) {
 }
 
 export function isDecor(el) {
-  return Boolean(el) && el.decor === true && ELEMENTS[el.type]?.kind === KIND.APERTURE;
+  return Boolean(el) && el.decor === true && canBeDecorType(el.type);
+}
+
+/* A gate, a pole, a flag or a cone can be scenery. A waypoint is not a thing that stands on the field, and the rest
+ * (barriers, furniture) are never in the order, so they already are. */
+export function canBeDecorType(type) {
+  const kind = ELEMENTS[type]?.kind;
+  return kind === KIND.APERTURE || (kind === KIND.MARKER && type !== 'waypoint');
 }
 
 /*

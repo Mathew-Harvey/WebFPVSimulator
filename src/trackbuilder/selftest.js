@@ -1128,6 +1128,15 @@ function suiteFloatingDecor() {
   setDecor(lap, b.id, false);
   check('putting it back adds one pass and clears the flag',
     !('decor' in b) && lap.sequence.filter((q) => q.elementId === b.id).length === 1 && lap.sequence.length === before);
+  const pole = place(lap, 'pole', 15, 20);
+  addToSequence(lap, pole.id);
+  const wp = place(lap, 'waypoint', 25, 20);
+  check('a pole can be decor and a waypoint cannot', canBeDecor(pole) && !canBeDecor(wp));
+  setDecor(lap, pole.id, true);
+  const poleCourse = courseFromDocument(lap);
+  check('a decor pole is out of the order, still built, and survives a round trip',
+    !lap.sequence.some((q) => q.elementId === pole.id) && poleCourse.structures.some((st) => st.id === pole.id)
+    && isDecor(elementById((() => { const r = deserialize(serialize(lap)); return r.doc ?? r; })(), pole.id)));
   void a; void c;
 }
 

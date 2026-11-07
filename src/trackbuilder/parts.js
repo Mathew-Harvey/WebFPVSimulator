@@ -31,7 +31,7 @@
 
 import {
   ELEMENTS, KIND, FLAG_SIDES, FRAME_TUBE_OD, GATE_FLAG_H, GATE_PRESETS, applyGatePreset, apertureShapeOf, defaultDims,
-  docModeOf, elementHeight, flagSideOf, flagSideSigns, isLetterPiece, isPlain, isUnbuilt, letterDimsFor,
+  docModeOf, elementHeight, flagSideOf, flagSideSigns, isLetterPiece, canBeDecorType, isPlain, isUnbuilt, letterDimsFor,
   levelPitchFor, trackClassOf, wallPitchFor,
 } from './elements.js';
 import {
@@ -965,7 +965,7 @@ export function setFloating(doc, id, on) {
 }
 
 export function canBeDecor(el) {
-  return Boolean(el) && kindOf(el) === KIND.APERTURE && !el.group && !isLetterPiece(el);
+  return Boolean(el) && canBeDecorType(el.type) && !el.group && !isLetterPiece(el);
 }
 
 export function setDecor(doc, id, on) {

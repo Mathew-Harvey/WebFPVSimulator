@@ -75210,3 +75210,9 @@ The owner, 2026-11-06 23:29Z, on the review's owner calls: "Do everything except
 
 - The owner, 2026-11-07 about 02:00Z, in this thread after the report: "Push". It covers f301171 (a craft knocked in place in the slot by the town's shopfront is set down: `stuckClockStep`, `check:stuckslot`), 78d70bb (the standing rule to close every board ticket after triage, in CLAUDE.md, and the day's records) and this record. Main had not moved from a6ee39e, which the branch already holds, so main fast forwards to the branch. Asked which verification scale before shipping, the owner answered with the push and named none, so none beyond the checks below was run.
 - Checks on the pushed tree, this turn: `node scripts/stuckslot-check.js` (the Node half) 12 of 12. The browser half (22 of 22), crash-check, `wallpin-check --shell` and autoreset-check are as recorded in the two entries above. Not run: `npm run verify` (no physics, plant, ABI or build change). Not flown.
+
+## 2026-11-07 | whoop builder | Decor for poles, flags and cones
+
+- Ask: the owner, 2026-11-07 02:03Z: "a pole or any element should be able to be decore and not a functional gate".
+- Done: `decor` is allowed on a pole, a horizontal pole, a flag and a cone as well as a gate (`canBeDecorType` in elements.js; a waypoint is not a thing on the field, and barriers and furniture are never in the order, so they already are scenery). The card's In the race choice appears for them. Turning it on removes the piece's passes from the flying order, so no line, prompt, virtual gate or count is made for it. The world already builds every pole and marker whether or not it is flown, so nothing else changes there.
+- Latency: no change. Checks: selftest 2662 passed, 0 failed (2 new). Not run: shots, check:builder, verify. Not flown.

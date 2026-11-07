@@ -58,6 +58,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { openPage } from '../tests/lib/page.js';
+import { SETTINGS_KEY } from '../src/ui/ui.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -125,8 +126,24 @@ function measure(rows) {
   return { worstSink, worstAt, highRow, released };
 }
 
-async function openShell() {
-  const page = await openPage({ root: ROOT, width: 400, height: 260, url: '/index.html' });
+/*
+ * The aircraft is seated by the settings the page boots with, not set on a
+ * live page. Setting it on a live page and flying in the same call was how
+ * the whoop's lines used to run: the class change seats the whoop's own
+ * stand in track a moment later and the world rebuilds onto the title, so
+ * the whoop never flew and its lines read a parked craft (PROGRESS.md,
+ * round 2 merge fixes). Seated at boot, the boot builds the aircraft's own
+ * world once and the run flies in it.
+ */
+async function openShell(airframe) {
+  const seed = `try {
+    const k = ${JSON.stringify(SETTINGS_KEY)};
+    const s = JSON.parse(localStorage.getItem(k) || '{}');
+    Object.assign(s, { airframe: ${JSON.stringify(airframe)}, map: 'custom', graphics: 'low', graphicsAuto: false });
+    localStorage.setItem(k, JSON.stringify(s));
+    localStorage.setItem('webfpv.airhint.v2', '1');
+  } catch (e) { /* the run then reports what it finds */ }`;
+  const page = await openPage({ root: ROOT, width: 400, height: 260, url: '/index.html', seed: [seed] });
   const { cdp, sessionId } = page;
   const ev = async (expr) => {
     const r = await cdp.send('Runtime.evaluate', {
@@ -153,20 +170,29 @@ async function main() {
   for (const airframe of AIRFRAMES) {
     for (const R of RAMPS) {
       /* eslint-disable no-await-in-loop */
-      const { page, ev } = await openShell();
+      const { page, ev } = await openShell(airframe);
       try {
-        await ev(`const ui = window.__ui; ui.settings.map = 'field'; ui.settings.airframe = '${airframe}';
-          ui.settings.graphics = 'low'; ui.onAction('fly', ui.settings); return 1;`);
         let ready = false;
         for (let i = 0; i < 260 && !ready; i += 1) {
-          const m = await ev('return window.__map ? window.__map() : null');
-          ready = Boolean(m && m.ready);
+          ready = await ev(`const m = window.__map ? window.__map() : null;
+            return Boolean(m && m.ready && m.id === 'custom' && window.__craft().run === '${airframe}');`);
           if (!ready) {
             await sleep(500);
           }
         }
         if (!ready) {
-          throw new Error('the field never became ready');
+          throw new Error('the track never became ready on this aircraft');
+        }
+        await ev("const ui = window.__ui; ui.firstRun = false; ui.craftGate = false; ui.mode = 'race'; ui.onAction('fly', ui.settings); return 1;");
+        let flying = false;
+        for (let i = 0; i < 120 && !flying; i += 1) {
+          flying = await ev("return window.__ui.screen === 'flight' && window.__craftState().mode === 'flight';");
+          if (!flying) {
+            await sleep(500);
+          }
+        }
+        if (!flying) {
+          throw new Error(`the run never reached flight: ${await ev("return window.__ui.screen + ' ' + window.__craftState().mode")}`);
         }
         await sleep(2000);
         const craft = await ev('return window.__craft()');

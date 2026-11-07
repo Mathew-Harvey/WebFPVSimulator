@@ -60,7 +60,7 @@ import { createLatencyMeter } from './render/latency.js';
 import { moveRigid, predictDelta, PREDICT_MAX_MS } from './render/predict.js';
 import { simPosToThree, simQuatToThree, simLenToWorld, threePosToSim, threeDirToSim, WORLD_SCALE, setWorldScale } from './render/frame.js';
 import { setFisheye, fisheyeNdc } from './render/fisheye.js';
-import { CAMERA_LENS_FORWARD, CAMERA_LENS_UP, CAMERA_MOUNT_FORWARD, CAMERA_MOUNT_UP, cameraTiltRad, clampCameraAngle, makeLensShake, fpvLensClear, fpvFov } from './render/lens.js';
+import { CAMERA_LENS_FORWARD, CAMERA_LENS_UP, CAMERA_MOUNT_FORWARD, CAMERA_MOUNT_UP, cameraTiltRad, clampCameraAngle, makeLensShake, fpvLensClear, fpvFov, FPV_NEAR_CLEAR } from './render/lens.js';
 import { MotorAudio } from './render/audio.js';
 import { LapVoice, lapCall } from './render/voice.js';
 import { ClipVoice } from './render/clips.js';
@@ -11185,6 +11185,12 @@ export async function boot({ loading, bootStart, mapId }) {
   let liftFloorY = null;
   let liftAnchorX = 0;
   let liftAnchorZ = 0;
+  /* How far the lens floor lifted the mount this frame, the same on the last
+   * parked frame, and that frame's view height: carried into the release so
+   * the pad's hold does not let go before the craft lifts. Camera only. */
+  let floorRaise = 0;
+  let parkedFloorRaise = 0;
+  let parkedViewY = null;
 
   /*
    * World contact, already spawn-offset, back into plant metres. Inverse of
@@ -13044,7 +13050,9 @@ export async function boot({ loading, bootStart, mapId }) {
        * picture looks into the dirt; a high inverted pass stays put. */
       const camFloor = view.height(fpvPos.x, fpvPos.z, fpvPos.y - SURFACE_BIAS, fpvPos.y)
         + fpvLensClear(camFwd.y, camUp.y);
+      floorRaise = 0;
       if (fpvPos.y < camFloor) {
+        floorRaise = camFloor - fpvPos.y;
         fpvPos.y = camFloor;
       }
       lastCamFloor = camFloor;
@@ -13056,12 +13064,34 @@ export async function boot({ loading, bootStart, mapId }) {
     if (parked) {
       liftFloorY = null;
       parkedLift += (simLenToWorld(PARKED_LIFT) - parkedLift) * Math.min(1, dt * 0.006);
+      parkedFloorRaise = floorRaise;
     } else if (poseLock) {
       liftFloorY = null;
+      parkedViewY = null;
+      parkedFloorRaise = 0;
       parkedLift += (0 - parkedLift) * Math.min(1, dt * 0.006);
     } else {
       if (liftFloorY === null) {
+        /*
+         * THE PAD'S HOLD IS CARRIED TOO (check:takeoff, the owner's word of
+         * 2026-11-06). Parked on a start pad the lens floor's near clearance
+         * (FPV_NEAR_CLEAR in src/render/lens.js) held the mount above where
+         * it sits, and it let go the frame the craft was released, so the
+         * view sank 13 cm before the craft lifted. The floor is the higher of
+         * this frame's view and the last parked frame's, and the lift may
+         * carry what the lens floor was holding as well as its own 30 cm,
+         * so the view stays put until the craft's own lens climbs past it.
+         * Camera only: the plant and its pose never see either number.
+         */
         liftFloorY = fpvPos.y + parkedLift;
+        /* Bounded by what the floor and the lift could have held, so a
+         * parked frame somewhere else (a reset) is never carried. */
+        if (parkedViewY !== null && parkedViewY > liftFloorY
+          && parkedViewY - liftFloorY <= FPV_NEAR_CLEAR + simLenToWorld(PARKED_LIFT)) {
+          liftFloorY = parkedViewY;
+        }
+        parkedLift += parkedFloorRaise;
+        parkedFloorRaise = 0;
         liftAnchorX = pCurr.x;
         liftAnchorZ = pCurr.z;
       }
@@ -13072,6 +13102,7 @@ export async function boot({ loading, bootStart, mapId }) {
     if (parkedLift > 0.001) {
       fpvPos.y += parkedLift;
     }
+    parkedViewY = parked ? fpvPos.y : null;
     lastFpvY = fpvPos.y;
     fpvQuat.copy(qPrev).multiply(qTilt);
     /*
@@ -15775,6 +15806,8 @@ export async function boot({ loading, bootStart, mapId }) {
     haveRecoverFrom = false;
     parkedLift = 0;
     liftFloorY = null;
+    parkedViewY = null;
+    parkedFloorRaise = 0;
     adoptSimClock();
     acc = 0;
     groundY = hy;

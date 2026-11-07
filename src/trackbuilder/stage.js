@@ -1311,6 +1311,10 @@ export function buildStage(THREE, doc, path, {
         if (Math.abs(p.z - lowest) > 1e-6) {
           continue;
         }
+        /* A floating gate hangs: no post and no foot (isFloating in elements.js). */
+        if (el.floating === true) {
+          continue;
+        }
         if (p.z - base > GROUND_EPS) {
           pipes.push(pipeGeometry(THREE, { x: p.x, y: p.y, z: base }, p, tubeR));
         }
@@ -1384,7 +1388,7 @@ export function buildStage(THREE, doc, path, {
           minZ = Math.min(minZ, p.z);
         }
         for (const [i, p] of c.entries()) {
-          if (p.z > minZ + tubeOD || !cornerSide(i)) {
+          if (p.z > minZ + tubeOD || !cornerSide(i) || el.floating === true) {
             continue;
           }
           if (p.z - base > GROUND_EPS) {

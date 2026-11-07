@@ -35,7 +35,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ELEMENTS, KIND, TUNING, trackClassOf, tuningFor, docModeOf, apertureShapeOf, isLetterPiece } from './elements.js';
+import { ELEMENTS, KIND, TUNING, trackClassOf, tuningFor, docModeOf, apertureShapeOf, isLetterPiece, isDecor } from './elements.js';
 /* A map is checked against the world it builds, not against a racing line:
  * the same placed solids the simulator hands the physics. All pure, no
  * Three.js, so the checks run in Node too. */
@@ -153,7 +153,8 @@ export function collectWarnings(doc, path) {
   /* A cube is one piece however many gates it is made of, so it is said once, by its first face. */
   const groupsSaid = new Set();
   for (const el of unsequencedElements(doc)) {
-    if (legs.has(el.id)) {
+    /* Decor is on the field on purpose: built, solid, and never asked for by the lap (isDecor in elements.js). */
+    if (legs.has(el.id) || isDecor(el)) {
       continue;
     }
     if (el.group) {

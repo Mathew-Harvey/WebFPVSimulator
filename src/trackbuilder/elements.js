@@ -349,6 +349,31 @@ export function isPlain(el) {
 }
 
 /*
+ * A GATE HUNG IN THE AIR, AND A GATE THAT IS ONLY THERE.
+ *
+ * Two optional flags on an aperture, each written only when true, so every gate that exists serialises to the
+ * bytes it did and a track published before them reads back unchanged.
+ *
+ * `floating`: an elevated gate (sillH above the floor) with no uprights to the ground and no feet. The frame
+ * is the same pipe as ever and hangs where the document puts it, as a hoop on a wire or a frame slung from
+ * the ceiling would. It is still solid, all four sides. On a gate at sill zero there is no gap under it
+ * for legs to have crossed, so it does nothing there and the builder does not offer it.
+ *
+ * `decor`: the gate is built and solid and is NOT part of the race. It has no place in the flying order, so the
+ * line ignores it, no prompt is lit for it, nothing counts it and it takes no number. It is how a gate
+ * becomes scenery: a frame to fly around or to hit, that a lap never asks for. Taking a gate out of the
+ * order WITHOUT this flag still means it is not built at all (the rule since the order began), so the two
+ * are different on purpose: decor is "stays", unsequenced is "gone".
+ */
+export function isFloating(el) {
+  return Boolean(el) && el.floating === true && ELEMENTS[el.type]?.kind === KIND.APERTURE && !isLetterPiece(el);
+}
+
+export function isDecor(el) {
+  return Boolean(el) && el.decor === true && ELEMENTS[el.type]?.kind === KIND.APERTURE;
+}
+
+/*
  * WHERE A ROW OF GATES HAS TO STAND FOR ITS UPRIGHTS TO MEET IN THE WORLD.
  *
  * The document holds the published sizes and the field builds every gate GATE_SCALE

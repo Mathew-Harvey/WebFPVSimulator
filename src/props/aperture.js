@@ -277,10 +277,13 @@ export function frameOutline(shape, halfW, halfH, tube, n = CIRCLE_SEGMENTS) {
  * about its own middle by `pitch`, which is how a dive gate leans, so the hole stays where the
  * document put it and the corners move.
  *
+ * A FLOATING frame (isFloating in src/trackbuilder/elements.js) is the same frame with no post and no
+ * stub under it: it hangs where the document put it, and a pilot can fly under it.
+ *
  * An unbuilt opening has no frame at all, and still says where its corners would be, because it
  * still scores and still lights.
  */
-export function frameParts(shape, halfW, halfH, tubeR, sillH, pitch = 0, unbuilt = false) {
+export function frameParts(shape, halfW, halfH, tubeR, sillH, pitch = 0, unbuilt = false, floating = false) {
   const centreY = sillH + halfH;
   sincos(pitch, SC);
   const cp = SC.c;
@@ -315,7 +318,7 @@ export function frameParts(shape, halfW, halfH, tubeR, sillH, pitch = 0, unbuilt
     }
   }
   const lowest = Math.min(...ring.map((p) => p.y));
-  if (lowest - tubeR > 0.02) {
+  if (!floating && lowest - tubeR > 0.02) {
     for (const p of ring) {
       if (Math.abs(p.y - lowest) > 1e-6) {
         continue;

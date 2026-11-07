@@ -56,7 +56,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ELEMENTS, KIND, GATE_FLAG_POLE_R, apertureShapeOf, docModeOf, flagLeanSign, flagSideOf, flagSideSigns, frameSidesOf, unbuiltPolesOf, gateFlagHeight, hasMissingSides, isLetterPiece, isPvcPipe, openingSizesOf, isPlain, isUnbuilt, letterOfPiece, trackClassOf, virtualApertureDims } from '../trackbuilder/elements.js';
+import { ELEMENTS, KIND, GATE_FLAG_POLE_R, apertureShapeOf, docModeOf, flagLeanSign, flagSideOf, flagSideSigns, frameSidesOf, unbuiltPolesOf, gateFlagHeight, hasMissingSides, isLetterPiece, isPvcPipe, isFloating, isDecor, openingSizesOf, isPlain, isUnbuilt, letterOfPiece, trackClassOf, virtualApertureDims } from '../trackbuilder/elements.js';
 import {
   normalize, elementById, aperturesOf, startPadsOf, logosOf, logoForDecal, dressOrder,
 } from '../trackbuilder/model.js';
@@ -487,6 +487,10 @@ function buildCourse(raw) {
     if (isPvcPipe(el)) {
       s.pvc = true;
     }
+    /* Hung in the air with no legs to the floor: see isFloating in elements.js. Nothing is written for any other gate. */
+    if (kind === KIND.APERTURE && isFloating(el)) {
+      s.floating = true;
+    }
     /* Sides taken away one at a time, in the element's own frame. They are
      * turned into the mesh's frame below, once the first pass through the
      * structure is known, because that pass is what the mesh faces. */
@@ -769,7 +773,7 @@ function buildCourse(raw) {
   const loose = [];
   for (const el of doc.elements) {
     const structure = byElement.get(el.id);
-    if (!el.group || flown.has(el.id) || !structure || structure.kind !== KIND.APERTURE || structure.unbuilt) {
+    if (!(el.group || isDecor(el)) || flown.has(el.id) || !structure || structure.kind !== KIND.APERTURE || structure.unbuilt) {
       continue;
     }
     const normal = apertureFrame(el.yaw, el.pitch).normal;

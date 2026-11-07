@@ -202,7 +202,16 @@ export function radioBlind(platform, browser) {
  * on: move the stick so the browser shows the pad, or reload after plugging
  * it in.
  */
-export function noRadioNotice(platform, browser, then = 'move') {
+export function noRadioNotice(platform, browser, then = 'move', unflyable = null) {
+  /* Something IS plugged in, and the browser shows it without sticks: name
+   * it, and the setting, rather than send the pilot to plug in what they
+   * already have (bug-ca2e5b4b, unflyableNote above). */
+  if (unflyable && unflyable.length) {
+    const p = unflyable[0];
+    const n = Number(p.axes) || 0;
+    return `${p.name || 'Your joystick'} has ${n} ${n === 1 ? 'axis' : 'axes'} here, too few to fly.`
+      + '\nOn EdgeTX, set USB joystick mode to Classic, then replug it.';
+  }
   const blind = radioBlind(platform, browser);
   if (blind) {
     return `No radio or gamepad found.\n${blind.banner}`;
@@ -210,6 +219,31 @@ export function noRadioNotice(platform, browser, then = 'move') {
   return then === 'reload'
     ? 'No radio or gamepad found.\nPlug one in, set it to joystick mode, and reload.'
     : 'No radio or gamepad found.\nPlug one in, set it to joystick mode, then move it.';
+}
+
+/*
+ * A DEVICE THAT IS PLUGGED IN AND CANNOT FLY, said where its card would be.
+ * `list` is input.js's unflyableGamepads: a name and an axis count each.
+ *
+ * bug-ca2e5b4b: a RadioMaster Boxer the browser listed with 0 axes and 2
+ * buttons, which this page dropped without a word, so the pilot read it as
+ * the sim not detecting the radio. A browser shows an EdgeTX radio's sticks
+ * when the model's USB joystick is in Classic mode, eight axes; Advanced mode
+ * shows only what the pilot set up there, and a model with no channel set to
+ * an axis shows none. That is the one setting named, and it is named for
+ * EdgeTX only, because that is where it is known to live. Empty string for an
+ * empty list, so a caller can append it unconditionally.
+ */
+export function unflyableNote(list) {
+  if (!list || !list.length) {
+    return '';
+  }
+  const p = list[0];
+  const n = Number(p.axes) || 0;
+  const more = list.length > 1 ? `, and ${list.length - 1} more device${list.length > 2 ? 's' : ''},` : '';
+  return `${p.name || 'A joystick'}${more} is plugged in, but this browser shows it with ${n}`
+    + ` ${n === 1 ? 'axis' : 'axes'}, and flying needs four. On an EdgeTX radio, set the model's USB`
+    + ' joystick mode to Classic, then unplug the radio and plug it in again.';
 }
 
 export function capital(word) {
@@ -247,6 +281,11 @@ export function lostStickNotice(channel) {
 export function stickSay(view, platform = 'other', browser = '') {
   const v = view || {};
   if (!v.pad) {
+    /* The browser listed a device and this page could not fly it: say which
+     * and why, before any advice about plugging one in (bug-ca2e5b4b). */
+    if (v.unflyable && v.unflyable.length) {
+      return unflyableNote(v.unflyable);
+    }
     /* Where nothing a pilot does with a stick or a cable can matter, saying
      * "move a stick" is the wrong answer: see radioBlind. */
     const blind = radioBlind(platform, browser);

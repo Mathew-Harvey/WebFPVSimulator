@@ -2751,6 +2751,71 @@ section('the check step picks a stick by hand: "let us pick which stick does wha
   check('outside the check step it does nothing', rig.im.listenForChannel('roll') === false);
 }
 
+/* ------------------------------------------------------------------------
+ * A radio the browser lists with no axes is named, not dropped in silence.
+ * bug-ca2e5b4b, 2026-11-06: "I have a gamepad, a joystick, and a RadioMaster
+ * Boxer connected to my computer, but only the gamepad and joystick are
+ * detected in the game." The report listed the Boxer as "no mapping, 0 axes,
+ * 2 buttons, connected". listGamepads drops a pad with fewer than four axes,
+ * which is right, and no screen said so: the picker drew the other two and,
+ * with the radio alone, the picker could not open and the banner said "No
+ * radio or gamepad found. Plug one in, set it to joystick mode".
+ * ---------------------------------------------------------------------- */
+section('a radio the browser shows with no axes is named, not dropped in silence (bug-ca2e5b4b)');
+{
+  const { stickSay, unflyableNote, noRadioNotice } = await import('../src/ui/stickhelp.js');
+  const boxer = {
+    index: 2, id: 'Radiomaster Boxer Joystick (Vendor: 1209 Product: 4f54)', connected: true, mapping: '',
+    timestamp: 1, axes: [], buttons: [{ pressed: false, value: 0 }, { pressed: false, value: 0 }],
+  };
+  const xbox = {
+    index: 1, id: 'Xbox 360 Controller (XInput STANDARD GAMEPAD)', connected: true, mapping: 'standard',
+    timestamp: 1, axes: [0, 0, 0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })),
+  };
+  const gone = { ...boxer, index: 3, id: 'Unplugged radio', connected: false };
+  /* The radio alone: the picker has nothing to draw and does not open, so
+   * the banner main.js puts up in its place (noRadioBanner) is what speaks. */
+  const rig = new Rig(null);
+  navigator.getGamepads = () => [boxer, gone];
+  const im = rig.im;
+  check('alone, the picker does not open, which is right: there is nothing it can fly', im.startPadPick('menu') === false);
+  const list = im.unflyablePads();
+  check('and the radio is named with its axis count, and only the connected one',
+    list.length === 1 && list[0].name === 'Radiomaster Boxer Joystick' && list[0].axes === 0, JSON.stringify(list));
+  const banner = noRadioNotice('windows', 'chromium', 'move', list);
+  check('the banner names it and the setting, and does not say "plug one in"',
+    /^Radiomaster Boxer Joystick has 0 axes here, too few to fly\.\n/.test(banner) && /Classic/.test(banner)
+    && !/Plug one in/.test(banner), banner);
+  check('with nothing listed the banner is the one it always was',
+    noRadioNotice('windows', 'chromium', 'move', []) === noRadioNotice('windows', 'chromium', 'move')
+    && /Plug one in/.test(noRadioNotice('windows', 'chromium', 'move', [])));
+  const note = unflyableNote(list);
+  check('the longer words name the radio, the axes the browser shows, and the setting on the radio',
+    /^Radiomaster Boxer Joystick is plugged in/.test(note) && /shows it with 0 axes/.test(note)
+    && /USB joystick mode to Classic/.test(note), note);
+  check('an empty list says nothing, so a caller can append it', unflyableNote([]) === '' && unflyableNote(null) === '');
+  im.startStickCheck();
+  const help = im.stickCheckView();
+  check('Stick help with nothing flyable carries it too', help.pad === null && help.unflyable.length === 1,
+    JSON.stringify(help.unflyable));
+  check('and its sentence is the radio, not "plug it in"', stickSay(help) === note && !/Plug it in/.test(stickSay(help)),
+    stickSay(help));
+  check('with no device listed at all the old sentence stands', /only once something on it moves/.test(stickSay({ unflyable: [] })));
+  im.stopStickCheck();
+  /* The ticket's own case: the radio beside pads that fly. */
+  navigator.getGamepads = () => [null, xbox, boxer];
+  im.startPadPick('menu');
+  rig.run(48);
+  const both = im.padPickView();
+  check('beside a pad that flies, the flyable one has its card and the radio is still named',
+    both.pads.length === 1 && both.unflyable.length === 1 && both.unflyable[0].axes === 0,
+    `${both.pads.length} cards, ${JSON.stringify(both.unflyable)}`);
+  im.cancelPadPick();
+  check('two of them: the first is named and the count of the rest is said',
+    /^A, and 1 more device, is plugged in/.test(unflyableNote([{ name: 'A', axes: 2 }, { name: 'B', axes: 0 }]))
+    && /with 2 axes/.test(unflyableNote([{ name: 'A', axes: 2 }])) && /with 1 axis,/.test(unflyableNote([{ name: 'A', axes: 1 }])));
+}
+
 console.log(failed ?`\n${failed} failed, ${passed} passed` : `\nall ${passed} passed`);
 for (const f of fails) {
   console.log(`  FAIL ${f}`);

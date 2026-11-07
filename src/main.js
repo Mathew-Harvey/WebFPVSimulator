@@ -10316,9 +10316,12 @@ export async function boot({ loading, bootStart, mapId }) {
    * on it, which the ordinary advice never needed.
    */
   function noRadioBanner(then) {
+    /* A device the browser lists without enough axes is named, and given
+     * the reading time a setting on the radio needs (bug-ca2e5b4b). */
+    const unflyable = input.unflyablePads();
     return {
-      text: noRadioNotice(ui.stickPlatform, ui.stickBrowser, then),
-      untilMs: performance.now() + (ui.radioBlind ? 6000 : 3200),
+      text: noRadioNotice(ui.stickPlatform, ui.stickBrowser, then, unflyable),
+      untilMs: performance.now() + (ui.radioBlind || unflyable.length ? 6000 : 3200),
     };
   }
 

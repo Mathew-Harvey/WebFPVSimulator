@@ -251,7 +251,7 @@ import {
   closePadGate, newPadGate, openPadGate, padDtMs, stepPadGate,
 } from '../input/padgate.js';
 import {
-  capital, channelList, platformHelp, radioBlind, stickBrowser, stickPlatform, stickSay,
+  capital, channelList, platformHelp, radioBlind, stickBrowser, stickPlatform, stickSay, unflyableNote,
 } from './stickhelp.js';
 import {
   downloadCli, drawAttitude, FcSession, paintPageStrip, paintTabStrip,
@@ -20244,9 +20244,10 @@ export class Ui {
       firefox: 'read the way Firefox lays out a radio',
       android: 'read the way Chrome on Android lays out a radio',
     }[view.guess] || 'read by the built in guess of a radio\'s channel order');
+    const odd = !view.pad && view.unflyable && view.unflyable[0];
     Ui.text(this.stickPad, view.pad
       ? `${view.pad}: ${view.axisCount} ${view.axisCount === 1 ? 'axis' : 'axes'}, ${how}.`
-      : 'No radio or gamepad.');
+      : (odd ? `${odd.name}: ${odd.axes} ${odd.axes === 1 ? 'axis' : 'axes'}, too few to fly.` : 'No radio or gamepad.'));
     this.stickAxisCells = paintAxisStrip(this.stickAxes, this.stickAxisCells, view.axes || [], true);
     Ui.text(this.stickSay, stickSay(view, this.stickPlatform, this.stickBrowser));
     const key = `${this.stickPlatform}|${this.stickBrowser}|${view.fourAxes ? view.axisCount : ''}`;
@@ -20475,7 +20476,13 @@ export class Ui {
     this.padKicker.textContent = view.pads.length > 1
       ? `${view.pads.length} joysticks plugged in`
       : (view.pads.length === 1 ? 'One joystick plugged in' : 'No joystick');
-    this.padPrompt.textContent = view.prompt;
+    /* A device the browser listed and this page cannot fly has no card, so
+     * it is named here instead, and with nothing else plugged in "No
+     * joystick found, plug one in" would be untrue: bug-ca2e5b4b. */
+    const unflyable = unflyableNote(view.unflyable);
+    this.padPrompt.textContent = unflyable && !view.pads.length
+      ? 'No joystick this page can fly.'
+      : view.prompt;
     /*
      * WHAT THE DRAWN STICKS ARE, said beside them. They are the page's
      * reading of the device, through the pilot's calibration or through
@@ -20489,7 +20496,9 @@ export class Ui {
       : (view.mapKnown
         ? ' The sticks drawn follow your saved calibration.'
         : ` The sticks drawn are how this page reads it now, which is a guess until you calibrate. If they do not follow your hands, choose it anyway and run Calibrate sticks in ${SCREEN_TITLES.pilot}.`);
-    this.padHint.textContent = `${view.hint}${read}`;
+    this.padHint.textContent = unflyable && !view.pads.length
+      ? unflyable
+      : `${view.hint}${read}${unflyable ? ` ${unflyable}` : ''}`;
     if (this.padYesBtn) {
       this.padYesBtn.disabled = !view.canAccept;
     }

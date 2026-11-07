@@ -693,6 +693,41 @@ function listGamepads() {
 }
 
 /*
+ * THE PADS listGamepads LEAVES OUT, by name and axis count, so a screen can
+ * say why a device the pilot plugged in has no card.
+ *
+ * bug-ca2e5b4b, 2026-11-06: "I have a gamepad, a joystick, and a RadioMaster
+ * Boxer connected to my computer, but only the gamepad and joystick are
+ * detected in the game." The report's own pad list said why: "Radiomaster
+ * Boxer Joystick ..., no mapping, 0 axes, 2 buttons, connected". The browser
+ * showed the page the radio with no sticks on it at all, listGamepads dropped
+ * it for having fewer than four axes, which is right, and nothing on any
+ * screen said so: the picker counted two devices and drew two cards, and a
+ * pilot with only that radio was told "No joystick found. Plug one in". The
+ * radio was plugged in. What it needed was a setting on the radio.
+ *
+ * Connected pads only: a disconnected slot is the browser's bookkeeping, not
+ * a device in the pilot's hand. Read when a screen that lists pads is up,
+ * never by flight.
+ */
+function unflyableGamepads() {
+  const out = [];
+  let list = [];
+  try {
+    list = typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() || [] : [];
+  } catch (e) {
+    return out;
+  }
+  for (let i = 0; i < list.length; i += 1) {
+    const gp = list[i];
+    if (gp && gp.connected && !(gp.axes && gp.axes.length >= 4)) {
+      out.push({ name: shortPadName(gp.id), axes: gp.axes ? gp.axes.length : 0 });
+    }
+  }
+  return out;
+}
+
+/*
  * FIREFOX ON LINUX DOES NOT PUT THE THROTTLE ON AXIS 4 EITHER. IT PUTS IT IN
  * A BUTTON.
  *
@@ -3088,6 +3123,12 @@ export class InputManager {
     this.padPickQueued = reason || 'menu';
   }
 
+  /* Connected pads too short of axes to fly, for the no radio banner: see
+   * unflyableGamepads. */
+  unflyablePads() {
+    return unflyableGamepads();
+  }
+
   startPadPick(reason) {
     const pads = listGamepads();
     if (!pads.length) {
@@ -3249,6 +3290,9 @@ export class InputManager {
        * calibration or through the built in AETR guess. */
       mapKnown: Boolean(this.map.stored),
       pads: cards,
+      /* Plugged in and listed by the browser, but with too few axes to fly,
+       * so no card: see unflyableGamepads. The words are the Ui's. */
+      unflyable: unflyableGamepads(),
     };
   }
 
@@ -3945,8 +3989,13 @@ export class InputManager {
       missing: [],
       fourAxes: false,
       asGamepad: this.radioAsGamepad,
+      /* A device the browser lists with too few axes to fly: see
+       * unflyableGamepads. Only asked for when no pad is flying, because
+       * that is the screen with nothing else to say about it. */
+      unflyable: [],
     };
     if (!gp) {
+      view.unflyable = unflyableGamepads();
       return view;
     }
     this.syncGuess(gp);

@@ -55,7 +55,7 @@ import {
   replaceWith, rowPlan, snapTurn, turnGroups, turnStepFor,
 } from './snap.js';
 import {
-  addSpiral, canBecomeLetter, canBeInvisible, flyOver, placeBarHurdle, placeHurdle, placeInvisibleGate, placeUpGate, placeWall,
+  addSpiral, canBecomeLetter, canBeInvisible, canBeFloating, canBeDecor, setFloating, setDecor, flyOver, placeBarHurdle, placeHurdle, placeInvisibleGate, placeUpGate, placeWall,
   removeSpiral, reverseWall, roundFlagOf, setFlags, setInvisible, setWallFlags, setHurdleAngle, setHurdleLine, setHurdleSize,
   setWallSize, setWallWeave, turnIntoGate, turnIntoLetter, wallOf,
 } from './parts.js';
@@ -2821,6 +2821,22 @@ export class App {
         live.dims.levelPitch = levelPitchFor(live.dims.clearH);
       }
     });
+  }
+
+  /* A raised gate with no legs to the floor, or its legs put back. One undo step. */
+  setPieceFloating(id, on) {
+    if (!canBeFloating(elementById(this.doc, id))) {
+      return;
+    }
+    this.edit(on ? 'take the legs off' : 'put the legs back', (d) => { setFloating(d, id, on); });
+  }
+
+  /* A gate that stays where it is, solid, and is not part of the race: no prompt, no count. One undo step. */
+  setPieceDecor(id, on) {
+    if (!canBeDecor(elementById(this.doc, id))) {
+      return;
+    }
+    this.edit(on ? 'take it out of the race' : 'put it back in the race', (d) => { setDecor(d, id, on); });
   }
 
   /*

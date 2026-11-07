@@ -82,8 +82,9 @@ import {
   canBecomeLetter, canBeInvisible, placeInvisibleGate, setInvisible, turnIntoGate, turnIntoLetter,
   WALL_MIN, WALL_DEFAULT, WALL_MAX, HURDLE, SPIRAL, ROUND_NAME, roundFlagOf, removeSpiral,
   BAR_HURDLE, HURDLE_LINES, HURDLE_SIZES, hurdleAngleOf, hurdleLineOf, hurdleSizeOf, hurdleTop, placeBarHurdle, setHurdleAngle,
-  setHurdleLine, setHurdleSize,
+  setHurdleLine, setHurdleSize, canBeFloating, canBeDecor, setFloating, setDecor,
 } from './parts.js';
+import { frameParts as sharedFrameParts } from '../props/aperture.js';
 import {
   MANOEUVRES, SIZE_IDS, SIZE_FACTOR, FIGURE_BASE, baseFor, curveOf, figureName, isFigureName, netOf,
   parseFigureName, placeCurve, specOf,
@@ -104,7 +105,7 @@ import {
 } from './geometry.js';
 import {
   FRAME_SIDES, frameSidesOf, hasMissingSides, unbuiltSidesOf, unbuiltPolesOf, poleBuilt, uprightIntact, isPlain, wallPitchFor, WHOOP_TOOLS, labelOf, trackClassOf,
-  FIVE_INCH_PIECES, FIVE_INCH_TOOLS, WHOOP_PIECES, MAP_TOOLS, toolByKey, isFiveInchPiece, isLetterPiece, isUnbuilt, letterExtent, pieceLabel,
+  FIVE_INCH_PIECES, FIVE_INCH_TOOLS, WHOOP_PIECES, MAP_TOOLS, toolByKey, isFiveInchPiece, isLetterPiece, isUnbuilt, isFloating, isDecor, letterExtent, pieceLabel,
   LETTER_TUBE_OD,
 } from './elements.js';
 import { PRESETS } from './presets.js';
@@ -1064,6 +1065,70 @@ function suiteGuide() {
     course.guide && course.guide.arrows.some((a) => a.lanes === 2)
     && course.guide.arrows.some((a) => a.lanes === 1),
     course.guide ? course.guide.arrows.map((a) => `${a.kind}:${a.lanes}`).join(',') : 'missing');
+}
+
+/* A gate hung in the air, and a gate that is only there: floating and decor (elements.js). */
+function suiteFloatingDecor() {
+  console.log('\nfloating and decor gates');
+  const doc = createTrack(undefined, 'micro');
+  const raised = place(doc, 'gate', 10, 10, { dims: { sillH: 0.9 } });
+  const low = place(doc, 'gate', 20, 10);
+  check('a raised gate can hang and a gate on the floor cannot be offered it',
+    canBeFloating(raised) && !canBeFloating(low));
+  check('a gate on legs writes neither flag, so its JSON is what it was',
+    !('floating' in raised) && !('decor' in raised) && !serialize(doc).includes('floating') && !serialize(doc).includes('decor'));
+  setFloating(doc, raised.id, true);
+  check('floating survives a round trip and is on the loaded gate',
+    isFloating(elementById(deserialize(serialize(doc)).doc ?? deserialize(serialize(doc)), raised.id)));
+  check('floating is dropped from a gate on the floor, which has no gap to hang in',
+    !setFloating(doc, low.id, true) && !('floating' in low));
+  setFloating(doc, raised.id, false);
+  check('putting the legs back deletes the key', !('floating' in raised));
+
+  const hung = sharedFrameParts('hex', 0.35, 0.3, 0.01, 0.9, 0, false, true);
+  const stood = sharedFrameParts('hex', 0.35, 0.3, 0.01, 0.9, 0, false, false);
+  check('a frame on legs has posts and a floating one has none, and keeps every tube',
+    stood.posts.length > 0 && hung.posts.length === 0 && hung.tubes.length === stood.tubes.length
+    && hung.caps.length < stood.caps.length);
+
+  const lap = createTrack(undefined, 'micro');
+  const a = place(lap, 'gate', 10, 10);
+  const b = place(lap, 'gate', 20, 10);
+  const c = place(lap, 'gate', 30, 10);
+  for (const g of [a, b, c]) {
+    addToSequence(lap, g.id);
+  }
+  const before = lap.sequence.length;
+  check('a gate can be taken out of the race', canBeDecor(b) && setDecor(lap, b.id, true) && isDecor(b));
+  check('its passes leave the flying order and the others close up',
+    lap.sequence.length === before - 1 && !lap.sequence.some((q) => q.elementId === b.id));
+  const course = courseFromDocument(lap);
+  check('it is built and solid with nothing to score: loose, and not a station',
+    (course.loose ?? []).some((l) => l.elementId === b.id) && !course.stations.some((st) => st.elementId === b.id)
+    && course.stations.length === 2);
+  check('and the warning for a forgotten gate does not fire for it',
+    !collectWarnings(lap, buildPath(lap)).some((w) => w.code === 'unsequenced' && w.elementId === b.id));
+  const ordinary = createTrack(undefined, 'micro');
+  const x = place(ordinary, 'gate', 10, 10);
+  const x2 = place(ordinary, 'gate', 20, 10);
+  addToSequence(ordinary, x.id);
+  addToSequence(ordinary, x2.id);
+  removeFromSequence(ordinary, ordinary.sequence.find((q) => q.elementId === x.id).id);
+  check('a gate merely left out of the order is still not built, as it always was',
+    !(courseFromDocument(ordinary).loose ?? []).some((l) => l.elementId === x.id));
+  const reloaded = deserialize(serialize(lap));
+  const back = reloaded.doc ?? reloaded;
+  check('decor survives a round trip', isDecor(elementById(back, b.id)));
+  const both = deserialize(serialize(lap));
+  const bothDoc = both.doc ?? both;
+  bothDoc.sequence.push(createSequenceEntry(bothDoc, b.id, 0));
+  const fixed = normalize(toPlain(bothDoc));
+  check('a flown gate is not decor, and the flag is dropped and said',
+    !isDecor(elementById(fixed.doc ?? fixed, b.id)) && (fixed.repairs ?? []).some((r) => /decor/.test(r)));
+  setDecor(lap, b.id, false);
+  check('putting it back adds one pass and clears the flag',
+    !('decor' in b) && lap.sequence.filter((q) => q.elementId === b.id).length === 1 && lap.sequence.length === before);
+  void a; void c;
 }
 
 function suiteWarnings() {
@@ -14513,6 +14578,7 @@ async function main() {
   suiteWrongWay();
   suiteGuide();
   suiteWarnings();
+  suiteFloatingDecor();
   suiteHistory();
   suiteSequenceNaming();
   suiteFigures();

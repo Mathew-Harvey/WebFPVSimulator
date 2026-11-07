@@ -41,7 +41,7 @@
 import {
   ELEMENTS, KIND, TUNING, TRACK_CLASSES, TRACK_CLASS_DEFAULT, FRAME_SIDES, apertureLevels, apertureShapeOf, openingSizesOf,
   defaultDims, defaultPitch, defaultZ, elementHeight, normalizeFlagSide, normalizeUnbuiltSides,
-  trackClassOf, tuningFor, docModeOf, POLE_SIDES, PVC_TYPES, isPvcPipe, poleKey, unbuiltPolesOf, isTrafficType, clampByLimits, FLAG_SIDES, GATE_FLAG_H, GATE_STYLES,
+  trackClassOf, tuningFor, docModeOf, POLE_SIDES, PVC_TYPES, isPvcPipe, isFloating, isDecor, poleKey, unbuiltPolesOf, isTrafficType, clampByLimits, FLAG_SIDES, GATE_FLAG_H, GATE_STYLES,
   ROAD_NODES_MAX, ROAD_NODE_REACH, SINK_MAX, LETTER_TUBE_OD, isLetterPiece, letterDimsFor, letterOfPiece,
 } from './elements.js';
 import { apertureFrame, wrapAngle } from './geometry.js';
@@ -1490,6 +1490,14 @@ export function normalize(raw) {
     if (def.kind === KIND.APERTURE && rawEl.unbuilt === true) {
       el.unbuilt = true;
     }
+    /* Hung in the air, and scenery rather than race: see isFloating and isDecor in elements.js. Apertures only, and only
+     * when true. */
+    if (def.kind === KIND.APERTURE && rawEl.floating === true && !letter) {
+      el.floating = true;
+    }
+    if (def.kind === KIND.APERTURE && rawEl.decor === true) {
+      el.decor = true;
+    }
     /* A length of frame pipe rather than a race piece: see isPvcPipe in elements.js. */
     if (PVC_TYPES.includes(el.type) && rawEl.pvc === true) {
       el.pvc = true;
@@ -1608,6 +1616,15 @@ export function normalize(raw) {
       overridden: bool(rawSeq.overridden),
       ...(wrap ? { wrap } : {}),
     });
+  }
+
+  /* A gate that is flown is not scenery: a pass in the order beats the decor flag, so a hand edited document that says
+   * both is flown and the flag is dropped (and said). The builder's toggle takes the passes out first. */
+  for (const el of doc.elements) {
+    if (el.decor === true && doc.sequence.some((s) => s.elementId === el.id)) {
+      delete el.decor;
+      repairs.push(`${el.id}: was marked as decor but is in the flying order, so it is flown.`);
+    }
   }
 
   /*
@@ -1813,6 +1830,12 @@ export function toPlain(doc) {
       }
       if (isPvcPipe(el)) {
         out.pvc = true;
+      }
+      if (isFloating(el)) {
+        out.floating = true;
+      }
+      if (isDecor(el)) {
+        out.decor = true;
       }
       if (def.kind === KIND.APERTURE) {
         const sides = normalizeUnbuiltSides(el.unbuiltSides);

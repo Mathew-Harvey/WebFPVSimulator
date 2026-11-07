@@ -46,7 +46,7 @@ import { gateNumbers, gateNumberOf, sequenceLabel, faceLabel, unsequencedElement
 import { labelOf, MAP_TOOLS, WHOOP_TOOLS, FIVE_INCH_TOOLS, partPiecesFor } from './elements.js';
 import { replacementsFor } from './snap.js';
 import {
-  canBecomeLetter, canBeInvisible, canFlag, flagsAsFlown, flagsOf, roundFlagOf, wallOf, wallFlagsOf, wallIsWoven, wallSizeOf, HURDLE,
+  canBecomeLetter, canBeInvisible, canBeFloating, canBeDecor, canFlag, flagsAsFlown, flagsOf, roundFlagOf, wallOf, wallFlagsOf, wallIsWoven, wallSizeOf, HURDLE,
   HURDLE_LINES, HURDLE_SIZES, HURDLE_TYPES, canFlyOver, hurdleAngleOf, hurdleLineOf, hurdleSizeOf,
 } from './parts.js';
 import { scaleOf, say as sayLength } from './scale.js';
@@ -1158,7 +1158,9 @@ export class Panels {
         ? `Passes, ${entries.length}`
         : (entries.length > 1 ? 'In the track, twice or more' : 'In the track')));
       if (!entries.length) {
-        host.append(el('p', 'tb-help', 'Not in the flying order.'));
+        host.append(el('p', 'tb-help', element.decor === true
+          ? 'Decor: built and solid, and not part of the race.'
+          : 'Not in the flying order.'));
         host.append(button('Add to the track', 'tb-btn', () => this.host.addToSequence(element.id)));
       }
       for (const { s, i } of entries) {
@@ -2878,6 +2880,7 @@ export class Panels {
     this.cardFacing(card, element);
     this.cardLetter(card, element, at);
     this.cardFrame(card, element);
+    this.cardAir(card, element);
     this.cardPassOn(card, element, at);
     this.cardFlags(card, element);
     this.cardHurdle(card, element, touched);
@@ -3318,6 +3321,43 @@ export class Panels {
         title: 'Nothing built: the opening still scores and lights, and there is nothing to hit. A flag goes with the frame.',
       },
     ], 'Whether the opening has a frame round it'));
+  }
+
+  /*
+   * LEGS, AND RACE OR SCENERY, for a gate on a track (not a map, which has no order). A raised gate stands on legs
+   * or hangs in the air; any gate flies in the race or is only there, solid and never asked for. Plain choices, off
+   * by default, so a gate that has neither set reads as it always did.
+   */
+  cardAir(card, element) {
+    if (docModeOf(this.host.doc) === 'freestyle') {
+      return;
+    }
+    if (canBeFloating(element)) {
+      const floating = element.floating === true;
+      card.append(this.cardChoice('Legs', [
+        {
+          label: 'On legs', on: !floating, run: () => this.host.setPieceFloating(element.id, false),
+          title: 'Uprights run down to the floor, as a raised gate is built',
+        },
+        {
+          label: 'Floating', on: floating, run: () => this.host.setPieceFloating(element.id, true),
+          title: 'Hangs where it is with nothing under it: no legs, no feet. Still solid.',
+        },
+      ], 'Whether a raised gate has legs to the floor'));
+    }
+    if (canBeDecor(element)) {
+      const decor = element.decor === true;
+      card.append(this.cardChoice('In the race', [
+        {
+          label: 'Flown', on: !decor, run: () => this.host.setPieceDecor(element.id, false),
+          title: 'Part of the lap: lit when it is next, counted, and numbered',
+        },
+        {
+          label: 'Decor', on: decor, run: () => this.host.setPieceDecor(element.id, true),
+          title: 'Stays built and solid, and is not part of the race: no prompt, no count, no number. It leaves the flying order.',
+        },
+      ], 'Whether the lap goes through this gate'));
+    }
   }
 
   /*

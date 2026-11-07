@@ -157,7 +157,7 @@ export function membersOf(doc) {
     const feet = gateSupportFeet(el.yaw, el.pitch, bottom.clearW, bottom.clearH, bottom.centerH, tube);
     const c0 = apertureCenter(el, 0);
     feet.forEach((foot, i) => {
-      if (foot.z < 0.02 || !poleBuilt(el, i === 0 ? 'left' : 'right', 0)) {
+      if (foot.z < 0.02 || el.floating === true || !poleBuilt(el, i === 0 ? 'left' : 'right', 0)) {
         return;
       }
       const sw = i === 0 ? -1 : 1;
@@ -182,7 +182,7 @@ function hexMembers(out, el, tube) {
   }
   /* Legs: down from the lowest corners, the way the game and the room stand it. */
   const lowest = Math.min(...run.map((p) => p.z));
-  if (lowest - el.position.z - tube / 2 > 0.02) {
+  if (el.floating !== true && lowest - el.position.z - tube / 2 > 0.02) {
     for (const p of run) {
       if (Math.abs(p.z - lowest) <= 1e-6) {
         out.push({ a: { x: p.x, y: p.y, z: el.position.z }, b: p, from: el.id });

@@ -50,6 +50,7 @@
     "check:motorkv": "node scripts/motor-kv-check.js",
     "check:crash": "node scripts/crash-check.js",
     "check:wallpin": "node scripts/wallpin-check.js",
+    "check:stuckslot": "node scripts/stuckslot-check.js --shell",
     "check:roomfit": "node scripts/roomfit-check.js",
     "check:bedslot": "node scripts/bedslot-check.js",
     "check:deck": "node scripts/deck-check.js",

@@ -89,7 +89,7 @@ import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './shar
 import { uploadWorld, setWorldFrame, setMover, setBoxHeight, kindOf, setVehicleClock, readVehicles, makeVehiclePoses, moverVelocityInPlant, vehicleSurfaceInPlant } from './game/plantworld.js';
 import { Chase, CHASE_EVERY, pays } from './game/chase.js';
 import { sincos } from './props/trig.js';
-import { setCraftAirframe, CRAFT_R, CRAFT_WORLD_R, CRAFT_V_UP, CRAFT_V_DOWN, craftVerticalHalf, craftVerticalOffset, canPerch, heldStill, STUCK_SPEED, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, TURTLE_EXIT_UPZ, turtleClearance, findRestSpot, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, CLIP_SPAWN_GRACE_MS, CrashJudge, putDullBounce, emptyWorldReport, foldWorldReport } from './game/collide.js';
+import { setCraftAirframe, CRAFT_R, CRAFT_WORLD_R, CRAFT_V_UP, CRAFT_V_DOWN, craftVerticalHalf, craftVerticalOffset, canPerch, heldStill, stuckClockStep, STUCK_SPEED, STUCK_RATE, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, TURTLE_EXIT_UPZ, turtleClearance, findRestSpot, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, CLIP_SPAWN_GRACE_MS, CrashJudge, putDullBounce, DULL_OUT_MAX, STUCK_LEAN_UPZ, emptyWorldReport, foldWorldReport } from './game/collide.js';
 import { Ui, formatTime, WEIGHT_STOCK, clampWeight, gravityScaleFor, loadSettings, pacingTimerOn } from './ui/ui.js';
 import { TAKEOFF, guideKind, stepOf, textOf } from './ui/firstflight.js';
 import {
@@ -6936,36 +6936,49 @@ export async function boot({ loading, bootStart, mapId }) {
    */
   const STUCK_MS = 1500;
   const STUCK_TURTLE_MS = 5000;
-  let stuckSinceMs = -1;
-  function besideSolid(st) {
-    return plantSpeed(st) < STUCK_SPEED
-      && Boolean(view.colliders)
+  /* The clock, on the sim clock: since is -1 while stopped, and the rest is
+   * the place and attitude it last marked. See stuckClockStep in collide.js:
+   * a knock or a buzz where the craft lies no longer restarts it, a move does. */
+  const stuckClock = { since: -1, x: 0, y: 0, z: 0, upz: 1 };
+  /* Asked only of a craft no faster than a knock leaves a face
+   * (DULL_OUT_MAX), or whose clock is running, so a flight pays nothing for
+   * it. It was asked under STUCK_SPEED only, and a knock on a wedged craft
+   * writes exactly that, so the frame it most needed asking on never was. */
+  function besideSolid() {
+    return Boolean(view.colliders)
       && view.colliders.gapAt(pCurr.x, pCurr.y, pCurr.z, CRAFT_WORLD_R) < CRAFT_WORLD_R;
   }
   function stuckTick() {
     const st = stateCurr;
-    const still = mode === 'flight'
+    const can = mode === 'flight'
       && ui.screen === 'flight'
       && !poseLock
       && !launchStaging
       && !landed
       && !turtleFlip.active
       && !turtleRecover
-      && st
-      && heldStill(plantUpZ(st), plantSpeed(st), plantRateMag(st), besideSolid(st), run3d);
-    if (!still) {
-      stuckSinceMs = -1;
+      && st;
+    if (!can) {
+      stuckClock.since = -1;
       return;
     }
-    if (stuckSinceMs < 0) {
-      stuckSinceMs = simTimeMs;
+    const upz = plantUpZ(st);
+    const quiet = plantSpeed(st) < STUCK_SPEED && plantRateMag(st) < STUCK_RATE;
+    /* heldStill reads the solid only in the lean band, so it is asked only
+     * there: an upright hover and a tumble never pay for the query. */
+    const base = run3d ? Math.abs(upz) : upz;
+    const leaning = base >= TURTLE_EXIT_UPZ && base < STUCK_LEAN_UPZ;
+    const posed = heldStill(upz, 0, 0,
+      leaning && (plantSpeed(st) <= DULL_OUT_MAX || stuckClock.since >= 0) && besideSolid(), run3d);
+    const wasRunning = stuckClock.since >= 0;
+    if (!stuckClockStep(stuckClock, simTimeMs, pCurr.x, pCurr.y, pCurr.z, upz, posed, quiet) || !wasRunning) {
       return;
     }
     const turtling = turtleWait || manualFlip || crashflipOn;
-    if (simTimeMs - stuckSinceMs < (turtling ? STUCK_TURTLE_MS : STUCK_MS)) {
+    if (simTimeMs - stuckClock.since < (turtling ? STUCK_TURTLE_MS : STUCK_MS)) {
       return;
     }
-    stuckSinceMs = -1;
+    stuckClock.since = -1;
     setManualFlip(false);
     setCrashflip(false);
     turtleRecover = false;
@@ -16136,7 +16149,7 @@ export async function boot({ loading, bootStart, mapId }) {
       upZ: st ? r2(plantUpZ(st)) : null,
       speed: st ? r1(plantSpeed(st)) : null,
       at: [r1(shell.quad.position.x), r1(shell.quad.position.y), r1(shell.quad.position.z)],
-      stillS: stuckSinceMs >= 0 ? r1((simTimeMs - stuckSinceMs) / 1000) : 0,
+      stillS: stuckClock.since >= 0 ? r1((simTimeMs - stuckClock.since) / 1000) : 0,
       setDowns: {
         n: recent.length,
         lastAgoS: last ? Math.round((now - last.atMs) / 1000) : null,

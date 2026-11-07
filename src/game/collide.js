@@ -3373,6 +3373,79 @@ export const STUCK_SPEED = 0.3;   /* m/s */
 export const STUCK_RATE = 1.5;    /* rad/s */
 export const STUCK_LEAN_UPZ = 0.9063;
 
+/*
+ * A KNOCK IS NOT A MOVE: stuckTick's clock, one frame at a time.
+ *
+ * Found on the bug board run of 2026-11-07, chasing bug-20d37c64 ("the screen
+ * is stopped, I only hear it moving"): crash-check's own head on hit at 10 m/s
+ * with the throttle cut, in the town, about one run in two. The craft drops
+ * off the shopfront into the 10 cm slot between it and the wooden fence in
+ * front of it, and lies there on its side (up 0.13 past vertical, 0.13 m up)
+ * for good. Its position did not change by a millimetre in seven seconds, and
+ * it was never set down, while the bounce counter ran on at about fifteen a
+ * second, which is what the pilot hears.
+ *
+ * The reason is in two numbers. A knock (CrashJudge.knock) puts the craft off
+ * the face at DULL_OUT_MIN, 0.3 m/s, and a craft is still only under
+ * STUCK_SPEED, also 0.3 m/s. So every knock is a frame that is not still, the
+ * frame trace shows them every few hundred milliseconds at exactly 0.300 m/s
+ * and no spin, and the contact jitter between them reaches 1.75 rad/s against
+ * STUCK_RATE's 1.5. Each one restarted the 1.5 s clock, and the craft that
+ * the clock exists for, held where no stick does anything, could buzz in
+ * place for ever.
+ *
+ * So the clock asks whether the craft MOVED, not whether this frame was
+ * quiet. A quiet frame (under both limits) runs it as before and marks where
+ * the craft lies. A frame that is not quiet runs it on only while the craft
+ * is still within STUCK_DRIFT_M of that mark and its upZ within
+ * STUCK_DRIFT_UPZ of it: a knock or a buzz where it lies. A tumble, a slide,
+ * a flip or a pilot flying out moves it past either and stops the clock,
+ * which is the rule's own sentence in src/main.js. The pose half is
+ * heldStill's, asked with the motion taken out.
+ *
+ * Any frame in that pose starts the clock and marks the place, quiet or not,
+ * because the same craft stood on edge across the slot is knocked on EVERY
+ * frame (0.300 m/s and no spin, frame after frame) and never has a quiet one.
+ * That is safe for the reason the rule was safe: a craft past the perch's
+ * tilt beside a solid, or past 60 degrees anywhere, cannot stay within 5 cm
+ * of one place for a second and a half in the air. Falling covers 5 cm in a
+ * tenth of a second, and a craft in flight in any pose leaves the mark in a
+ * frame or two.
+ *
+ * `c` is the clock: { since, x, y, z, upz }, since -1 when stopped, on the
+ * caller's own time base. Returns whether the craft counts as held this
+ * frame; the caller compares now with c.since. Allocation free.
+ */
+export const STUCK_DRIFT_M = 0.05;
+export const STUCK_DRIFT_UPZ = 0.1;
+
+export function stuckClockStep(c, nowMs, x, y, z, upz, posed, quiet) {
+  if (!posed) {
+    c.since = -1;
+    return false;
+  }
+  if (c.since >= 0 && !quiet) {
+    const dx = x - c.x;
+    const dy = y - c.y;
+    const dz = z - c.z;
+    const du = upz - c.upz;
+    if (dx * dx + dy * dy + dz * dz > STUCK_DRIFT_M * STUCK_DRIFT_M
+      || du > STUCK_DRIFT_UPZ || du < -STUCK_DRIFT_UPZ) {
+      c.since = -1;
+      return false;
+    }
+    return true;
+  }
+  if (c.since < 0) {
+    c.since = nowMs;
+  }
+  c.x = x;
+  c.y = y;
+  c.z = z;
+  c.upz = upz;
+  return true;
+}
+
 export function heldStill(upz, speed, rateMag, onSolid, threeD) {
   if (!(speed < STUCK_SPEED) || !(rateMag < STUCK_RATE)) {
     return false;

@@ -793,6 +793,17 @@ export const FLIGHT_STYLES = ['expert', 'arcade'];
  */
 export const PACING_MODES = ['auto', 'timer', 'display'];
 
+/*
+ * THE RECOMMENDED ARENAS (R2M-8, the owner's call of 2026-11-06). The arena
+ * picker used to open on whatever was flown last, which for a first time
+ * pilot is whatever boot seated, often a race field. Two maps wear a
+ * Recommended stamp on it, and each game opens on its own until the pilot
+ * has fought somewhere (settings.fightArena). The reasons, and the frame
+ * cost each was picked on, are in PROGRESS.md for 2026-11-07.
+ */
+export const ARENA_PICKS = { dogfight: 'dome', ribbon: 'airfield' };
+const ARENA_IDS = [...new Set(Object.values(ARENA_PICKS))];
+
 export function pacingTimerOn(s) {
   if (s.pacing === 'timer') {
     return true;
@@ -1477,6 +1488,13 @@ const DEFAULTS = {
    * is not a seat this can put the pilot back in.
    */
   lastFlyMode: '',
+  /*
+   * THE LAST ARENA A DOGFIGHT OR RIBBON CUTTING WAS SET ON, a freestyle map
+   * id, or '' when this browser has not fought (R2M-8). The arena picker
+   * opens on it; until there is one it opens on the game's recommended
+   * arena (ARENA_PICKS). Written by armFightPages.
+   */
+  fightArena: '',
   /*
    * WHETHER EACH KIND OF PLACE HAS HAD ITS FIRST FLIGHT GUIDE: a five inch
    * race track, a whoop room, a freestyle world. See src/ui/firstflight.js.
@@ -2385,6 +2403,9 @@ export function loadSettings() {
    * track id sitting in the freestyle slot, means nothing was chosen. */
   if (!MAPS.some((m) => m.id === s.freestyleMap && m.mode === 'freestyle')) {
     s.freestyleMap = '';
+  }
+  if (!MAPS.some((m) => m.id === s.fightArena && m.mode === 'freestyle')) {
+    s.fightArena = '';
   }
   /*
    * ANYTHING STILL BELONGING TO THE OTHER AIRCRAFT.
@@ -15765,7 +15786,10 @@ export class Ui {
             id, name: it.label, note: it.note, thumb: own ? '' : `assets/thumbs/${id === 'built' ? 'yard' : id}.jpg`,
           }],
         });
-        out.push({ ...e, key: it.action, stamp: own ? 'Yours' : '', item: it });
+        /* A dogfight's or a ribbon cutting's arena picker stamps the two
+         * recommended arenas (ARENA_PICKS). */
+        const rec = this.arenaPicking() && ARENA_IDS.includes(id);
+        out.push({ ...e, key: it.action, stamp: own ? 'Yours' : rec ? 'Recommended' : '', stampCls: rec ? 'is-official' : '', item: it });
       } else if (it.boardMap) {
         const [e] = this.pickerLib.entriesFrom({ maps: [it.boardMap], board });
         out.push({ ...e, key: it.action, item: it });
@@ -15781,7 +15805,7 @@ export class Ui {
       return;
     }
     const entries = this.pickerEntries();
-    const fed = `${this.screen}|${entries.map((e) => `${e.key}:${e.rating.count}:${e.times}:${e.thumb}`).join('|')}`;
+    const fed = `${this.screen}|${entries.map((e) => `${e.key}:${e.rating.count}:${e.times}:${e.thumb}:${e.stamp || ''}`).join('|')}`;
     const loading = this.screen === 'courses' ? this.boardLoading : this.boardMapsLoading;
     if (fed !== this.pickerFed) {
       this.pickerFed = fed;
@@ -15796,6 +15820,7 @@ export class Ui {
       this.pickerOpened = true;
       const seated = this.screen === 'courses'
         ? (this.cardSubject || (entries.find((e) => e.item.course.kind === 'current') || {}).key)
+        : this.arenaPicking() ? `map:${this.arenaFor(this.fightPick.game)}`
         : (this.settings.map === 'built' && this.sharedMap ? `boardmap:${this.sharedMap.id}` : `map:${this.settings.map}`);
       if (seated) {
         this.picker.select(seated);
@@ -16102,6 +16127,7 @@ export class Ui {
     }
     if (isCardScreen(this.screen) && this.pickerShelf() === 'maps') {
       this.paintHostPick();
+      this.selectArena();
       return;
     }
     if (this.onGate()) {
@@ -16110,6 +16136,38 @@ export class Ui {
     }
     this.pickerShelfChosen('maps');
     this.paintHostPick();
+    this.selectArena();
+  }
+
+  /* The recommended arena's name, as the maps list names it. */
+  arenaName(game) {
+    const m = MAPS.find((x) => x.id === (ARENA_PICKS[game] || ARENA_PICKS.dogfight));
+    return m ? m.name : 'Any map';
+  }
+
+  /* Whether the picker is up for a dogfight's or a ribbon cutting's arena,
+   * the two games ARENA_PICKS recommends for. */
+  arenaPicking() {
+    return Boolean(this.fightPick && !this.fightPick.door && ARENA_PICKS[this.fightPick.game]);
+  }
+
+  /* The arena the picker opens on: the last one fought on, or the game's
+   * recommendation for a pilot who has not fought yet. */
+  arenaFor(game) {
+    const last = this.settings.fightArena;
+    return last && MAPS.some((m) => m.id === last && m.mode === 'freestyle') ? last : ARENA_PICKS[game] || ARENA_PICKS.dogfight;
+  }
+
+  /* Put the picker's choice on that arena, when the picker is already up
+   * (feedPicker does it on a picker that opens after this). */
+  selectArena() {
+    if (!this.arenaPicking()) {
+      return;
+    }
+    this.feedPicker();
+    if (this.picker && this.pickerOpened) {
+      this.picker.select(`map:${this.arenaFor(this.fightPick.game)}`);
+    }
   }
 
   /*
@@ -16149,6 +16207,11 @@ export class Ui {
     this.fightPick = null;
     this.fightArmed = false;
     this.paintHostPick();
+    /* The Recommended stamps are the arena picker's: the Maps room is fed
+     * again without them (a string compare when nothing changed). */
+    if (this.picker && isCardScreen(this.screen)) {
+      this.feedPicker();
+    }
   }
 
   /* The dogfight's two pages, fetched the first time they are wanted. */
@@ -16211,6 +16274,12 @@ export class Ui {
     this.dogfight = got.rules;
     this.fightArenaName = name;
     this.fightArmed = true;
+    /* Where this pilot fights now: the picker opens here next time. */
+    const arena = entry && entry.item && entry.item.map ? entry.item.map.id : '';
+    if (ARENA_PICKS[game] && arena && MAPS.some((m) => m.id === arena && m.mode === 'freestyle') && this.settings.fightArena !== arena) {
+      this.settings.fightArena = arena;
+      saveSettings(this.settings);
+    }
     this.pickerAction(id, entry, ev);
   }
 
@@ -16418,8 +16487,8 @@ export class Ui {
             ? ['Ridgeline MX', 'The riders are out', 'Set the chase, then fly.', 'Ridgeline MX']
             : ['Drift Matsuri', 'The cars are out', 'Set the shoot, then fly.', 'Drift Matsuri'])
           : ribbon
-          ? ['Ribbon cutting', 'Pick a map', 'Any map works. Double click a map, or choose it and press Fly here.', 'Ribbon cutting']
-          : ['Dogfight', 'Pick an arena', 'Any map works. Double click a map, or choose it and press Fight here.', 'Dogfight arena'])
+          ? ['Ribbon cutting', 'Pick a map', `${this.arenaName('ribbon')} is a good first map. Any map works. Double click a map, or choose it and press Fly here.`, 'Ribbon cutting']
+          : ['Dogfight', 'Pick an arena', `${this.arenaName('dogfight')} is a good first arena. Any map works. Double click a map, or choose it and press Fight here.`, 'Dogfight arena'])
         : move ? ['Change map', 'Pick the room\'s next map', 'Everybody votes to come with you or stay. Double click a map, or choose it and press Move the room here.', 'Moving the room']
         : this.hostPick.game === 'ribbon' ? ['Ribbon cutting room', 'Pick the map for your room', 'Any map works. Double click a map, or choose it and press Host a room here.', 'Hosting ribbon cutting']
         : this.hostPick.game === 'dogfight' ? ['Dogfight room', 'Pick the arena for your room', 'Any map works. Double click a map, or choose it and press Host a room here.', 'Hosting a dogfight']

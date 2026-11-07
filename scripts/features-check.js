@@ -2123,6 +2123,54 @@ async function scenarioEye() {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* arena: the dogfight's and ribbon cutting's recommended arenas (R2M-8) */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The arena picker opens on the game's recommended arena for a pilot who has
+ * not fought, both recommendations wear a Recommended stamp while it is up,
+ * the band names the game's one, and a pilot who has fought somewhere opens
+ * on that arena instead. The last map flown is the town, which is what the
+ * picker used to open on.
+ */
+async function scenarioArena() {
+  const { ARENA_PICKS } = await import('../src/ui/ui.js');
+  const { MAPS } = await import('../src/maps/registry.js');
+  const page = await openPage({ root, width: 1280, height: 720, seed: [BOARD_STUB, settingsSeed({ airframe: '5inch', map: 'city', hasFlown: true })] });
+  const read = `(() => { const ui = window.__ui; const cur = ui.picker && ui.picker.current();
+    return { cur: cur ? cur.key : '', stamps: [...document.querySelectorAll('.wp-card')].filter((c) => /Recommended/.test(c.querySelector('.wp-stamp') ? c.querySelector('.wp-stamp').textContent : '')).map((c) => c.dataset.key).sort(),
+      line: (document.querySelector('.host-band-line') || {}).textContent || '' }; })()`;
+  const want = Object.values(ARENA_PICKS).map((id) => `map:${id}`).sort();
+  try {
+    await page.until('window.__shellReady === true && !!window.__ui', 120000);
+    await page.evaluate(PAST_GATE);
+    for (const [game, call] of [['dogfight', 'ui.pickDogfight()'], ['ribbon', 'ui.pickRibbons()']]) {
+      await page.evaluate(`(() => { const ui = window.__ui; ui.endFightPick(); ui.show('title'); ${call}; return 1; })()`);
+      await page.until(`(() => { const ui = window.__ui; const c = ui.picker && ui.picker.current(); return c && c.key === 'map:${ARENA_PICKS[game]}'; })()`, 30000).catch(() => {});
+      await page.sleep(300);
+      const r = await json(page, read);
+      const name = MAPS.find((m) => m.id === ARENA_PICKS[game]).name;
+      check(`arena: the ${game} picker opens on its recommended arena, ${name}, not the last map flown`, r.cur === `map:${ARENA_PICKS[game]}`, JSON.stringify(r));
+      check(`arena: and both recommended arenas wear the Recommended stamp`, JSON.stringify(r.stamps) === JSON.stringify(want), JSON.stringify(r.stamps));
+      check(`arena: and the band names it as a good first one`, r.line.startsWith(`${name} is a good first`), r.line);
+    }
+    await page.evaluate("(() => { const ui = window.__ui; ui.endFightPick(); ui.settings.fightArena = 'sunny'; ui.show('title'); ui.pickDogfight(); return 1; })()");
+    await page.until("(() => { const c = window.__ui.picker && window.__ui.picker.current(); return c && c.key === 'map:sunny'; })()", 30000).catch(() => {});
+    const fought = await json(page, read);
+    check('arena: a pilot who has fought somewhere opens on that arena', fought.cur === 'map:sunny', JSON.stringify(fought));
+    await page.evaluate("(() => { const ui = window.__ui; ui.endFightPick(); return 1; })()");
+    await page.sleep(300);
+    const plain = await json(page, read);
+    check('arena: and the stamp is the arena picker\'s alone, gone from the Maps room after it', plain.stamps.length === 0, JSON.stringify(plain.stamps));
+    errorsCheck(page, 'arena');
+  } catch (e) {
+    check('arena: the scenario ran to the end', false, e.message);
+  } finally {
+    await page.close();
+  }
+}
+
 const SCENARIOS = {
   quad: scenarioQuad,
   lazy: scenarioLazy,
@@ -2142,6 +2190,7 @@ const SCENARIOS = {
   results: scenarioResults,
   front: scenarioFront,
   eye: scenarioEye,
+  arena: scenarioArena,
 };
 
 const t0 = Date.now();

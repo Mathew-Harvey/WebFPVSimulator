@@ -574,7 +574,9 @@ function picture(doc, entry, eager, draw) {
 
 function stampOf(entry) {
   if (entry.stamp) {
-    return { text: entry.stamp, cls: entry.official ? 'is-official' : '' };
+    /* stampCls lets a host colour its own stamp (the shell's Recommended
+     * arenas) without claiming the entry is official. */
+    return { text: entry.stamp, cls: entry.stampCls || (entry.official ? 'is-official' : '') };
   }
   if (entry.kind === 'world') {
     return { text: 'World', cls: 'is-world' };

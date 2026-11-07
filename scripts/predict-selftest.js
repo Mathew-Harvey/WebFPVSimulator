@@ -31,6 +31,9 @@
 
 import { moveRigid, mulQuat, predictDelta, rotateVec } from '../src/render/predict.js';
 import { simQuatToThree } from '../src/render/frame.js';
+import { Colliders } from '../src/game/collide.js';
+import { CAMERA_FOVS, fpvFov } from '../src/render/lens.js';
+import { readFileSync } from 'node:fs';
 
 let passed = 0;
 let failed = 0;
@@ -190,6 +193,66 @@ section('prediction composes, and a camera stays on its mount');
   moveRigid(camPos, camQuat, new Vec(1, 1.9, 3.05), unit(new Quat(0, 0.3, 0, 0.95)), dp, dq, new Quat(), new Vec());
   check('a craft at rest moves the camera nowhere', near(camPos.x, 1) && near(camPos.y, 2) && near(camPos.z, 3)
     && sameRotation(camQuat, before), `${camPos.x}, ${camPos.y}, ${camPos.z}`);
+}
+
+/*
+ * THE EYE'S SWEEP (Colliders.sweepPoint): the predicted view moves the eye
+ * on by up to 25 ms of travel, and this is the one query that stops it
+ * short of a solid. A ball of radius r from a to b: the earliest t it
+ * touches, -1 for open air, 0 when it starts touching.
+ */
+{
+  const c = new Colliders();
+  /* A wall whose near face is x = 1, a post at x = 0, z = 5, and a car. */
+  c.addBox('wall', 1, 0, -2, 1.4, 3, 2);
+  c.addPost('tree', 0, 5, 0, 3, 0.2);
+  c.addMoving('train', 0.5, 0.5, 0.5);
+  c.build();
+  c.seatMoving(0, 0, 1, -8);
+  const r = 0.01;
+  const open = c.sweepPoint(0, 1, 0, -0.3, 1, 0, r);
+  check('open air: the eye goes the whole way', open === -1, String(open));
+  const t = c.sweepPoint(0.7, 1, 0, 1.03, 1, 0, r);
+  /* The ball touches at x = 1 - r: (0.99 - 0.7) / 0.33. */
+  check('into a wall: the eye stops a radius short of its face', near(t, 0.29 / 0.33, 1e-9), String(t));
+  const inside = c.sweepPoint(1.2, 1, 0, 1.3, 1, 0, r);
+  check('starting inside a wall stops it where it is', inside === 0, String(inside));
+  const post = c.sweepPoint(0, 1, 4.5, 0, 1, 4.9, r);
+  /* The post's face is at z = 4.8, the ball's at 4.79: (4.79 - 4.5) / 0.4. */
+  check('into a post: a radius short of the capsule (stored as float32)', near(post, 0.29 / 0.4, 1e-6), String(post));
+  const car = c.sweepPoint(0, 1, -7, 0, 1, -7.6, r);
+  /* The car's face is at z = -7.5, the ball's at -7.49: 0.49 / 0.6. */
+  check('into a moving box where it is now', near(car, 0.49 / 0.6, 1e-9), String(car));
+  const along = c.sweepPoint(0.9, 1, -1, 0.9, 1, 1, r);
+  check('along a wall a hand off its face: open', along === -1, String(along));
+  const still = c.sweepPoint(0.995, 1, 0, 0.995, 1, 0, r);
+  check('a point already within the radius, not moving: 0', still === 0, String(still));
+}
+
+/*
+ * THE LENS ON A WIDER SCREEN (R2M-2): fpvFov keeps the 16:9 horizontal
+ * field above 16:9 and leaves 16:9 and narrower alone, to the bit, so every
+ * desktop's picture and every budget measured at 16:9 are what they were.
+ */
+{
+  section('fpvFov: the 16:9 width held on a wider screen');
+  const deg = Math.PI / 180;
+  const across = (v, aspect) => 2 * Math.atan(Math.tan((v * deg) / 2) * aspect) / deg;
+  const same = CAMERA_FOVS.every((v) => fpvFov(v, 16 / 9) === v && fpvFov(v, 1280 / 720) === v && fpvFov(v, 4 / 3) === v && fpvFov(v, 9 / 19.5) === v);
+  check('16:9, 4:3 and a portrait phone: the setting, unchanged to the bit', same);
+  for (const [name, aspect] of [['a phone on its side, 844 by 390', 844 / 390], ['21:9', 21 / 9], ['32:9', 32 / 9]]) {
+    const worst = Math.max(...CAMERA_FOVS.map((v) => Math.abs(across(fpvFov(v, aspect), aspect) - across(v, 16 / 9))));
+    check(`${name}: every stop is as wide across as it is on 16:9`, worst < 1e-9, `${worst} degrees off`);
+    check(`${name}: and narrower vertically than the setting`, CAMERA_FOVS.every((v) => fpvFov(v, aspect) < v));
+  }
+  const d85 = across(fpvFov(85, 844 / 390), 844 / 390);
+  check('the default 85 on a phone is 116.9 degrees across, as on 16:9, where it was 126.5', Math.abs(d85 - 116.91) < 0.01 && Math.abs(across(85, 844 / 390) - 126.48) < 0.01, `${d85.toFixed(2)} against ${across(85, 844 / 390).toFixed(2)}`);
+  check('a nonsense setting or aspect gives a sane lens', fpvFov(NaN, 2) === 85 && fpvFov(85, NaN) === 85 && fpvFov(85, 0) === 85 && fpvFov(85, Infinity) === 85);
+  /* Every site in the shell that sets the pilot's lens from the setting goes
+   * through it, so no camera path is left on the raw vertical figure. */
+  const main = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const raw = main.split('\n').map((l, i) => [i + 1, l]).filter(([, l]) => /\b(?:ui\.settings|s)\.cameraFov\b/.test(l) && !/fpvFov\((?:ui\.settings|s)\.cameraFov,/.test(l));
+  check('src/main.js reads the lens setting only through fpvFov', raw.length === 0, raw.map(([n, l]) => `${n}: ${l.trim()}`).join(' | '));
 }
 
 console.log(failed ? `\n${failed} failed, ${passed} passed` : `\nall ${passed} passed`);

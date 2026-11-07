@@ -2413,7 +2413,7 @@ export class View3D {
       /* gateSupportFeet gives the -widthAxis leg first. A leg is the foot of
        * its upright, so it goes when the upright does, as it does in the
        * world. */
-      if (h < 0.02 || unbuilt || (!shaped && !poleBuilt(el, i === 0 ? 'left' : 'right', 0))) {
+      if (h < 0.02 || unbuilt || el.floating === true || (!shaped && !poleBuilt(el, i === 0 ? 'left' : 'right', 0))) {
         continue;
       }
       const leg = new THREE.Mesh(new THREE.BoxGeometry(tube * 1.4, tube * 1.4, h), legMat);

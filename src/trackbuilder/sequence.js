@@ -48,6 +48,8 @@ export function addToSequence(doc, elementId, apertureIndex = 0, atIndex = null)
   if (!el || !isSequenceable(el)) {
     return null;
   }
+  /* A gate that is flown is not decor (isDecor in elements.js). */
+  delete el.decor;
   const entry = createSequenceEntry(doc, elementId, apertureIndex);
   if (atIndex == null || atIndex < 0 || atIndex >= doc.sequence.length) {
     doc.sequence.push(entry);

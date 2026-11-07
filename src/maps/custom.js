@@ -107,7 +107,8 @@ export async function buildMap(shell, onProgress, options) {
    * renderer refuses a room anyway. Only the picture changes, never a gate,
    * a collider or the clock, so a lap at night is the same lap.
    */
-  if (course.trackClass === 'full' && !(doc && doc.mode === 'freestyle')) {
+  const raceTimeApplies = course.trackClass === 'full' && !(doc && doc.mode === 'freestyle');
+  if (raceTimeApplies) {
     if (opts.raceTime === 'night') {
       course.night = true;
     } else if (opts.raceTime === 'day') {
@@ -115,6 +116,10 @@ export async function buildMap(shell, onProgress, options) {
     }
   }
   const map = await buildFieldScene(shell, reporter(progress), course, q);
+  /* So the shell rebuilds this world for a Race time change only when the
+   * pick can change its picture (loadMap and worldMatchesSettings in
+   * src/main.js; bugs.md BUG-11). */
+  map.raceTimeApplies = raceTimeApplies;
   /* Dan, in the corner of a RaceGOW room, judging the pilot. Loaded only for
    * a RaceGOW track, his picture included: see src/maps/dan/index.js. A track
    * is one by its credited series or by its name, because the board's

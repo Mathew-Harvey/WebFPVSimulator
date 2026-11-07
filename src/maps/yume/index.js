@@ -47,8 +47,16 @@ import {
   yumeLayout, yumeMarkSpots, W, D, worldAt, chunkOf,
 } from './plan.js';
 import { yumeDocument } from './yard.js';
+import { LAKE, LAKE_BOX, LAKE_DEEP } from './grounds.js';
 import { paintSigns, signMesh } from './signs.js';
 import { nearOf } from './frame.js';
+import { inkWater } from '../built/sea.js';
+
+/* The lake's deep middle: the sea's tones a shade down, its base the
+ * colour the deep poly had (ymWaterDeep, retired with it). */
+const LAKE_DEEP_TONES = {
+  base: '#7fa6c0', trough: '#7399b4', sky: '#93b8ce', ink: '#4a6886', glint: '#e2eef4', light: '#c4dbe7',
+};
 import { drawTrack } from './track.js';
 import { buildRides } from './drawrides.js';
 import { ridesSeat } from './rides.js';
@@ -329,6 +337,28 @@ export async function buildMap(shell, onProgress, options) {
   }
   /* The signs, one mesh on one picture. */
   const atlas = paintSigns(T.signs);
+  /* The lake in the sea's ink (round 2 R2M-5): its cell clipped to the
+   * shore, and the deep middle over it a shade down. */
+  if (atlas.cells.ymLake) {
+    const g = atlas.canvas.getContext('2d');
+    const B = LAKE_BOX;
+    const wM = B.x1 - B.x0;
+    const hM = B.y1 - B.y0;
+    const shore = (pts) => (c, sx, sy) => {
+      pts.forEach(([x, y], i) => {
+        const u = (x - B.x0) * sx;
+        const v = (B.y1 - y) * sy;
+        if (i === 0) {
+          c.moveTo(u, v);
+        } else {
+          c.lineTo(u, v);
+        }
+      });
+      c.closePath();
+    };
+    inkWater(g, atlas.cells.ymLake, { wM, hM, tileM: 32, clip: shore(LAKE) });
+    inkWater(g, atlas.cells.ymLake, { wM, hM, tileM: 32, tones: LAKE_DEEP_TONES, clip: shore(LAKE_DEEP), clear: false });
+  }
   const tex = new THREE.CanvasTexture(atlas.canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 4;

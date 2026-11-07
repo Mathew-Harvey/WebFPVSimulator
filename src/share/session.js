@@ -199,8 +199,38 @@ export function writeShareImport(payload) {
      * as a copy. Written as a boolean so a stale seat cannot smuggle
      * anything else in under the name. */
     stock: Boolean(payload.stock),
+    /* A shipped track seated only because the board did not answer a cold
+     * boot (ART-20, adoptMostFlownTrack in src/share/board.js): it holds
+     * the seat so the pilot is not left in an empty field, and gives it up
+     * to the board's most flown track the next time the board answers. */
+    standIn: Boolean(payload.standIn),
     importedUtc: new Date().toISOString(),
   });
+}
+
+/* Whether the seat holds such a stand in, which a cold boot may replace. */
+export function shareSeatIsStandIn(cls) {
+  const seat = readShareImport(cls);
+  return Boolean(seat && seat.standIn);
+}
+
+/*
+ * THE STAND IN BECOMES THE PILOT'S SEAT (R2D-6, the owner's call of
+ * 2026-11-06). A stand in is a placeholder only until somebody flies it.
+ * Once the pilot has launched on it, the laps and the bests they set there
+ * are theirs, and the next boot that reaches the board must not swap Fly
+ * again over to a track they never chose. So the first launch on a stand in
+ * clears the mark and keeps everything else, stock included: it is still a
+ * shipped track that takes no board time. Returns whether a mark was
+ * cleared. Nothing in flight reads it; it is one storage write on the press
+ * that launches.
+ */
+export function keepStandIn(cls) {
+  const seat = readShareImport(cls);
+  if (!seat || !seat.standIn) {
+    return false;
+  }
+  return writeShareImport({ ...seat, standIn: false });
 }
 
 export function clearShareImport(cls) {

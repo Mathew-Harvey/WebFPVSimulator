@@ -109,6 +109,31 @@ const RETIRED = [
   { re: /\b[Ll]eaderboard\b/, use: 'Maps and Tracks, or the board' },
 ];
 
+/*
+ * UNITS, COUNTS AND FIRMWARE NAMES THAT LEFT THE PLAYER'S TEXT (round 1
+ * FUN-13, 2026-11-06). The rule is the owner's: player facing text has no
+ * dev details, no metres, no millimetres, no piece counts, no firmware
+ * version. Numbers stay in the OSD, the firmware bench and the tune pages,
+ * and the builder keeps the gate standards an author builds to (5 ft, 28
+ * inch, RaceGOW). These are the phrases that were taken out, pinned to the
+ * file each was in, matched in string literals only (never comments), so
+ * the next edit cannot put one back unseen. The career's lessons still
+ * say metres and are another batch's file (src/career/curriculum.js), so
+ * they are not pinned here.
+ */
+const PINNED = [
+  { file: 'src/ui/ui.js', re: /\bdegrees vertical\b/, use: 'the lens row\'s words, Narrow to Widest' },
+  { file: 'src/ui/ui.js', re: /piece\$\{/, use: 'no piece count on a map card' },
+  { file: 'src/ui/ui.js', re: /sixty metre field|65 mm 1S|710 gram 6S|forty metres a second/, use: 'an outdoor field, a tiny whoop, a big fast quad' },
+  { file: 'configs/airframes.js', re: /\b\d+ mm\b|710 gram|forty metres a second/, use: 'Whoop, and words for size and speed' },
+  { file: 'configs/registry.js', re: /Factory \d|feedforward/, use: 'what the tune does, not its version and its keys' },
+  /* The plot sizes came back to the builder on the owner's call of
+   * 2026-11-06 (R2D-11): the builder is an author's tool, and its chooser
+   * now says them from the figures a new document is made with
+   * (groundOf in that file). The aircraft's size stays out. */
+  { file: 'src/trackbuilder/app.js', re: /65 mm whoop/, use: 'the whoop' },
+];
+
 /* Every problem with one piece of visible text, the noun and the retired
  * names together. */
 function offences(visible) {
@@ -290,6 +315,14 @@ async function main() {
     }
 
     for (const lit of literals(raw)) {
+      for (const pin of PINNED) {
+        const m = pin.file === rel ? lit.text.match(pin.re) : null;
+        if (m) {
+          findings.push({
+            rel, line: lineOf(raw, lit.at), text: lit.text.trim().replace(/\s+/g, ' ').slice(0, 90), bad: [`${m[0]}: use ${pin.use}`],
+          });
+        }
+      }
       const visible = stripInterpolations(lit.text);
       if (isMachineText(visible)) {
         continue;
@@ -307,7 +340,7 @@ async function main() {
     }
   }
 
-  console.log(`noun lint: ${scanned} file(s) scanned for a player-visible "course" and ${RETIRED.length} retired names`);
+  console.log(`noun lint: ${scanned} file(s) scanned for a player-visible "course", ${RETIRED.length} retired names and ${PINNED.length} retired units`);
   if (!findings.length) {
     console.log(`  allowed, with reasons in this file: ${ALLOWED.length}`);
     console.log('\nPASS, the player only ever sees a track, and every thing has one name');

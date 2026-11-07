@@ -489,6 +489,15 @@ const SIGNS = {
     words(g, 'SUNNYFIELD PARK', w / 2, h * 0.4, w * 0.9, h * 0.34, CREAM);
     words(g, 'NO FLYING AFTER DARK', w / 2, h * 0.76, w * 0.8, h * 0.2, '#f6c431', BOLD);
   } },
+  /* The gorge's waterfall and its pool, the sea's own ink (round 2 R2M-4):
+   * ./index.js paints them over these with ../built/sea.js inkWater once
+   * the atlas is made, because that picture needs a browser's canvas and
+   * this file is read in Node too. The flat fill is what Node would see. */
+  waterfall: { h: 256, paint: (g, w, h) => {
+    g.fillStyle = '#48b4e8';
+    g.fillRect(0, 0, w, h);
+  } },
+  pool: { h: 128, paint: () => {} },
 };
 
 /* The keys a map may name, for a check that every sign it hangs is

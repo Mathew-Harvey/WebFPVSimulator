@@ -1181,6 +1181,45 @@ console.log('when things go wrong');
   }
   check('an attitude of zeros is drawn level between poses, never as NaN', between > 5 && level === between, `${level} of ${between}`);
 
+  /*
+   * A pilot who stops dead. The sender's uplink sends nothing while the
+   * pose is unchanged, and the reader carries a pilot on along the last
+   * segment for up to 150 ms past the newest pose, so without one pose
+   * at rest the reader draws the craft past where it stopped for as long
+   * as it stays parked (the finding of 2026-11-06 in PROGRESS.md: 1.8 m
+   * in one step, drawn 1.67 m further on). One resend of the resting pose
+   * is all it may cost.
+   */
+  {
+    let clock = 1000;
+    const sent = [];
+    const parked = new RoomSession({
+      url: 'ws://never.invalid/', key: 'c'.repeat(32), handle: 'Parker', WebSocketImpl: Hanging, RTC: null, now: () => clock,
+    });
+    parked.link.state = 'in';
+    parked.link.sendPose = (bytes) => { sent.push({ at: clock, bytes: Uint8Array.from(bytes) }); return true; };
+    const reader = new RemotePilot(4);
+    const drawn = {};
+    let afterStop = 0;
+    let delivered = 0;
+    for (let f = 0; f < 240; f += 1) {
+      clock = 1000 + f * (1000 / 60);
+      /* At rest at 0, then 1.8 m along in one step at 1 s, and held. */
+      const x = f < 60 ? 0 : 1.8;
+      if (parked.uplink(x, 0.1, 2, 0, 0, 0, 1) && f > 61) afterStop += 1;
+      while (delivered < sent.length && sent[delivered].at + 40 <= clock) {
+        const v = new DataView(sent[delivered].bytes.buffer);
+        reader.push(decodePoseAt(v, 1, parked.units, {}), 5000 + sent[delivered].at + 40);
+        delivered += 1;
+      }
+      reader.sample(5000 + clock, drawn);
+    }
+    check('a pilot who stops dead is drawn where they stopped, not carried on past it',
+      Math.abs(drawn.px - 1.8) < 0.02, `drawn at ${drawn.px && drawn.px.toFixed(3)}, stopped at 1.800`);
+    check('and that costs one pose at rest, no more', afterStop <= 1, `${afterStop} poses after the stop`);
+    parked.link.leave();
+  }
+
   /* Direct links, against a stand in for WebRTC that does what it is told. */
   class Channel {
     constructor() {

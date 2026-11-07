@@ -718,6 +718,7 @@ function askRules(ui, kit, mapName, spec) {
       rowsEl.append(r);
       return { r, chipEls };
     });
+    const hasBotsRow = ROWS.some((x) => x.id === 'bots');
     const paint = () => {
       ROWS.forEach((row, ri) => {
         const { r, chipEls } = rowEls[ri];
@@ -727,9 +728,11 @@ function askRules(ui, kit, mapName, spec) {
           chipEls[oi].classList.toggle('is-on', on);
           chipEls[oi].setAttribute('aria-checked', on ? 'true' : 'false');
         });
-        /* Skill means nothing with no bots. */
+        /* Skill means nothing with no bots, on a page whose bots are a
+         * row. Quad Ball always has bots (its rows have a side's size and
+         * no bots row), and its skill row was greyed in every match. */
         if (row.id === 'skill') {
-          r.style.opacity = rules.bots ? '' : '0.5';
+          r.style.opacity = hasBotsRow && !rules.bots ? '0.5' : '';
         }
       });
       says.textContent = spec.says(rules);

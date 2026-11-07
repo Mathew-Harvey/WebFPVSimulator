@@ -73,6 +73,7 @@ import {
 import { airframeById } from '../configs/airframes.js';
 import { RATE_DEFAULTS } from '../configs/rates.js';
 import { Race } from '../src/game/race.js';
+import { racegowNonStopNote } from '../src/ui/ui.js';
 
 /* configs/airframes.js gravityBase times the weight, to three places: what
  * gravityScaleFor in src/ui/ui.js says, without importing a page. */
@@ -287,6 +288,83 @@ check('airtime in words', airtimeWords(1) === '1 second' && airtimeWords(45) ===
   stock.log.push({ n: 1, ms: 21000, weight: 100 });
   check('a stock run is what it always was', stock.boardRow().lapMs === 21000 && stock.boardRow().tuned === false && stock.hasTunedLaps() === false
     && Object.keys(stock.log[0]).join(',') === 'n,ms,weight');
+}
+
+/* ------------------------------------------------------------------ */
+/* What the race calls, and where a retry seats the craft              */
+/* ------------------------------------------------------------------ */
+
+{
+  /* Gates as the shell hands them over (gatesOf in src/game/track.js): a
+   * square opening 2 m on a side, centred 1.5 m up. */
+  const gateAt = (x, z) => ({
+    position: { x, y: 0, z }, heading: 0, pitch: 0, kindName: 'gate', apertureIndex: 0,
+    apertures: [{ shape: 'square', index: 0, sillH: 0, centreY: 1.5, clearW: 2, clearH: 2 }],
+  });
+  /* Through gate i the way it is flown, at simMs. */
+  const through = (race, i, simMs) => {
+    const g = race.gates[i];
+    const a = { x: g.x - g.az.x * 5, y: 1.5, z: g.z - g.az.z * 5 };
+    const b = { x: g.x + g.az.x * 5, y: 1.5, z: g.z + g.az.z * 5 };
+    race.prevSimMs = simMs - 1;
+    return race.update(a, b, simMs, simMs).passed;
+  };
+
+  /*
+   * bugs.md BUG-7: the running "Best three" was called from the last three
+   * laps whatever weight they were flown at, and the board takes three only
+   * at one weight (boardRow), so a Weight moved mid session called a total
+   * the board would never post.
+   */
+  for (const cls of ['micro', 'full']) {
+    const race = new Race([gateAt(0, 0)], cls);
+    race.callThree = true;
+    race.reset();
+    let ms = 1000;
+    race.setWeight(100);
+    through(race, 0, ms);
+    const calls = [];
+    for (const w of [100, 100, 110, 110, 110]) {
+      race.setWeight(w);
+      ms += 20000;
+      through(race, 0, ms);
+      calls.push(race.lastThreeBest);
+    }
+    check(`${cls}: best three is called only for three laps in a row at one weight, the board's rule`,
+      calls[2] == null && calls[3] == null && calls[4] != null && race.runThreeMs === calls[4], JSON.stringify(calls));
+  }
+
+  /* And the Laps note promises the three to the board only where the
+   * shell sends it: a room's, never a full size track's (main.js sends
+   * threeMs for a micro track alone). */
+  const roomNote = racegowNonStopNote(true);
+  const fieldNote = racegowNonStopNote(false);
+  check('the Non stop note says the best three posts to the board in a room, and only there',
+    /best three posts to the public board/.test(roomNote) && !/three posts to the public board/.test(fieldNote) && /fastest lap/.test(fieldNote), fieldNote);
+
+  /*
+   * bugs.md BUG-10: retry from the last gate when that gate is the timing
+   * gate, which it is from every lap's first crossing to its second gate,
+   * seated the craft past it with the next station the second gate, so the
+   * clock stayed stopped for a whole untimed lap. Now the craft goes down
+   * before the timing gate and its next crossing starts the clock.
+   */
+  {
+    const race = new Race([gateAt(0, 0), gateAt(30, 0)], 'full');
+    race.reset();
+    through(race, 0, 1000);
+    const started = race.lapStartMs != null;
+    race.retryFrom('Retry from the last gate', 0);
+    const before = typeof race.retrySeatsBefore === 'function' && race.retrySeatsBefore();
+    through(race, race.timingIdx, 5000);
+    check('a retry from the timing gate seats before it, and the next crossing starts the clock',
+      started && before && race.lapStartMs != null && Math.abs(race.lapStartMs - 5000) <= 1 && race.next === 1, `seats before ${before}, clock ${race.lapStartMs}, next ${race.next}`);
+    /* And from any other gate it is as it was: past it, the next one after. */
+    through(race, 1, 9000);
+    race.retryFrom('Retry from the last gate', 0);
+    check('a retry from any other gate seats past it, the next station the one after',
+      typeof race.retrySeatsBefore === 'function' && !race.retrySeatsBefore() && race.next === 0 && race.lapStartMs == null, `next ${race.next}`);
+  }
 }
 
 /* ------------------------------------------------------------------ */

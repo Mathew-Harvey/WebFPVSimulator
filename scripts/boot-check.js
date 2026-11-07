@@ -73,13 +73,38 @@ const loadingSrc = await readFile(join(root, 'src/ui/loading.js'), 'utf8');
   /* The open paren, not the empty pair: the call takes the seated class as
    * an argument now, and an assertion about ORDER should not break on an
    * argument list. */
-  const flownAdopt = mainSrc.indexOf('await adoptMostFlownTrack(');
+  const flownAdopt = mainSrc.indexOf('adoptMostFlownTrack(airframeById');
   check(
     'the flight controller is requested before the board',
     simFetch > 0 && shareAdopt > simFetch && flownAdopt > simFetch,
     simFetch < 0
       ? 'no concurrent simBytes fetch found in boot'
       : `wasm at ${simFetch}, share adopt at ${shareAdopt}, most flown at ${flownAdopt}`,
+  );
+}
+
+/*
+ * 1b. THE MOST FLOWN TRACK IS ASKED FOR BESIDE THE BOOT, NOT IN FRONT OF IT
+ *     (core.md CORE-3).
+ *
+ * A first visit has nothing seated, which is when the board is asked for
+ * its most flown track: up to 4 s for the list and 8 s for the document.
+ * Awaited in line, in the board stage, that wait sat in front of the flight
+ * controller, its tune and the map's modules, on the visit that matters
+ * most. So the call in the board stage must not be awaited where it is
+ * made, and its answer must be awaited only after the flight controller is
+ * instantiated and before the world is built.
+ */
+{
+  const start = mainSrc.indexOf('featuredWait = adoptMostFlownTrack(');
+  const inline = /await adoptMostFlownTrack\(/.test(mainSrc.slice(0, mainSrc.indexOf("loading.start('sim')")));
+  const simUp = mainSrc.indexOf('const sim = await loadSim(');
+  const settled = mainSrc.indexOf('await featuredSettled();');
+  const worldBuild = mainSrc.indexOf('view = await loadMap(shell, ui.settings.map, loading');
+  check(
+    'the most flown track is not waited for before the flight controller',
+    start > 0 && !inline && simUp > start && settled > simUp && worldBuild > settled,
+    `asked at ${start}, awaited in line ${inline}, sim up at ${simUp}, awaited at ${settled}, world built at ${worldBuild}`,
   );
 }
 

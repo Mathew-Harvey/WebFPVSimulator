@@ -35,9 +35,9 @@
  * THE PICTURE is the board's thumbnail: a frame of the real layout in the
  * renderer the game flies, drawn by the publishing browser at Publish
  * (src/share/orbit.js, THUMB_SHOT), 960 by 540 with no wordmark. An entry
- * published before thumbnails existed falls back to its share card, and
- * one with neither gets a halftone panel with its initial, never a broken
- * image. Only the caption's picture loads eagerly; the panels' load as
+ * published before thumbnails existed falls back to its share card, one
+ * with neither to its plan when the host draws plans (drawPlan), and only
+ * then to a halftone panel with its initial, never a broken image. Only the caption's picture loads eagerly; the panels' load as
  * they scroll in, so a shelf of seventy costs what the visible ten cost.
  *
  * LATENCY. None in flight: nothing here runs while a pilot is flying, the
@@ -384,8 +384,13 @@ scroll-margin:24px 0 132px}
 .wp-sk{position:absolute;inset:0 -16%;transform:skewX(calc(-1 * var(--lean,0deg)))}
 .wp-pic{position:absolute;inset:0;overflow:hidden;background:var(--wp-ink)}
 .wp-pic img{display:block;width:100%;height:100%;object-fit:cover}
+.wp-plan{position:absolute;top:0;left:0;width:100%;height:100%;display:block}.wp-sk .wp-plan{left:12%;width:76%}
 .wp-blank{position:absolute;inset:0;display:grid;place-items:center;background:var(--wp-ink) radial-gradient(circle,rgba(243,234,212,.16) 0 1.2px,transparent 1.7px) 0 0/7px 7px;
 font-weight:900;font-style:italic;font-size:56px;line-height:1;color:var(--wp-slate)}
+/* On a card the name is lettered over the lower left, so the initial goes to the top right corner, smaller, where it
+   reads as a mark and never prints through a word (art.md ART-15). The picture is 16% wider than the card each side,
+   for the lean (.wp-sk), so its right padding first steps back in by that much: 16/132 of its own width. */
+.wp-card .wp-blank{place-items:start end;padding:14px calc(12.2% + 16px) 0 0;font-size:40px}
 .wp-dt{position:absolute;inset:0;background:radial-gradient(circle,rgba(11,17,22,.9) 0 1px,transparent 1.5px) 0 0/4px 4px;opacity:.1;pointer-events:none}
 .wp-sh{position:absolute;inset:0;background:linear-gradient(to top,rgba(11,17,22,.74),rgba(11,17,22,0) 42%);pointer-events:none}
 .wp-fl{position:absolute;inset:0;opacity:0;pointer-events:none;
@@ -489,13 +494,62 @@ function letter(doc, box, lines, px, maxW) {
   }
 }
 
-/* The picture, with the card as its fallback and an initial under both. */
-function picture(doc, entry, eager) {
+/*
+ * THE PLAN, after the picture and the card and before the initial (FUN-17):
+ * a track or a map with neither picture is drawn as its plan, the way the
+ * simulator's board map cards already fall back. The drawing is the host's,
+ * `drawPlan(canvas, entry)` returning whether it drew, because the plan
+ * renderer is the simulator's src/share/plan.js and this file is copied to
+ * the board with one relative import; a host that gives none keeps the
+ * initial. A canvas waits for layout to be drawn (paintPlan), at most once,
+ * when its panel first comes near the window or the caption is built.
+ */
+function planBox(doc, box, entry, draw) {
+  if (typeof draw !== 'function') {
+    return null;
+  }
+  const c = doc.createElement('canvas');
+  c.className = 'wp-plan';
+  c.setAttribute('aria-hidden', 'true');
+  c.planEntry = entry;
+  c.planDraw = draw;
+  box.append(c);
+  return c;
+}
+
+function paintPlan(c) {
+  if (!c || c.dataset.done) {
+    return;
+  }
+  let drew = false;
+  try {
+    drew = Boolean(c.planDraw(c, c.planEntry));
+  } catch (e) {
+    drew = false;
+  }
+  if (drew) {
+    c.dataset.done = '1';
+    const blank = c.parentNode && c.parentNode.querySelector('.wp-blank');
+    if (blank) {
+      blank.remove();
+    }
+  } else if (c.getBoundingClientRect().width >= 8) {
+    /* Laid out and still nothing: the entry has no plan. The initial stays. */
+    c.remove();
+  }
+}
+
+/* The picture, with the card as its fallback, the plan after both (when
+ * the host draws plans) and an initial under all of them. */
+function picture(doc, entry, eager, draw) {
   const box = make(doc, 'span', 'wp-pic');
   const blank = make(doc, 'span', 'wp-blank', (entry.name.trim()[0] || '?').toUpperCase());
   blank.setAttribute('aria-hidden', 'true');
   box.append(blank);
   const sources = [entry.thumb, entry.fallback].filter(Boolean);
+  if (!sources.length) {
+    planBox(doc, box, entry, draw);
+  }
   if (sources.length) {
     const img = doc.createElement('img');
     img.alt = '';
@@ -508,6 +562,7 @@ function picture(doc, entry, eager) {
         img.src = sources[at];
       } else {
         img.remove();
+        paintPlan(planBox(doc, box, entry, draw));
       }
     });
     img.addEventListener('load', () => { blank.remove(); });
@@ -519,7 +574,9 @@ function picture(doc, entry, eager) {
 
 function stampOf(entry) {
   if (entry.stamp) {
-    return { text: entry.stamp, cls: entry.official ? 'is-official' : '' };
+    /* stampCls lets a host colour its own stamp (the shell's Recommended
+     * arenas) without claiming the entry is official. */
+    return { text: entry.stamp, cls: entry.stampCls || (entry.official ? 'is-official' : '') };
   }
   if (entry.kind === 'world') {
     return { text: 'World', cls: 'is-world' };
@@ -553,6 +610,9 @@ function stampOf(entry) {
  *                which has no rooms to fly, leaves it out
  *   rooms        the Rooms tab's count, '' for none, and setRooms later
  *   roomsPicture the Rooms tab's picture
+ *   drawPlan     (canvas, entry) => boolean: draw the entry's plan into a
+ *                laid out canvas, for an entry with no picture; without it
+ *                such an entry shows its initial
  *
  * Returns a controller: setEntries, setShelf, setLoading, setRooms, select,
  * move, moveShelf, activate, current, handleKey, nav, setZone, zone, refresh
@@ -634,6 +694,7 @@ export function createPicker(host, opts = {}) {
     : null;
 
   function letterCard(card) {
+    paintPlan(card.querySelector('canvas.wp-plan'));
     const box = card.querySelector('.wp-nm');
     if (!box || box.dataset.done) {
       return;
@@ -850,7 +911,7 @@ export function createPicker(host, opts = {}) {
     if (!entry) {
       return;
     }
-    cap.append(picture(doc, entry, true));
+    cap.append(picture(doc, entry, true, opts.drawPlan));
     const who = make(doc, 'div', 'wp-who');
     const name = make(doc, 'div', 'wp-name');
     name.setAttribute('role', 'heading');
@@ -923,6 +984,7 @@ export function createPicker(host, opts = {}) {
       box.append(primary);
     }
     cap.append(box);
+    paintPlan(cap.querySelector('canvas.wp-plan'));
     const w = who.offsetWidth || 360;
     letter(doc, nameBox, nameLines(entry.name, 44).map((l) => [[l, shelfOf(entry.shelf).ink]]), 26, w);
     markActs();
@@ -942,7 +1004,7 @@ export function createPicker(host, opts = {}) {
     b.setAttribute('aria-label', `${entry.name}, ${stamp.text}`);
     b.dataset.key = entry.key;
     const sk = make(doc, 'span', 'wp-sk');
-    sk.append(picture(doc, entry, false), make(doc, 'span', 'wp-dt'), make(doc, 'span', 'wp-sh'), make(doc, 'span', 'wp-fl'));
+    sk.append(picture(doc, entry, false, opts.drawPlan), make(doc, 'span', 'wp-dt'), make(doc, 'span', 'wp-sh'), make(doc, 'span', 'wp-fl'));
     sk.append(make(doc, 'span', `wp-stamp ${stamp.cls}`, stamp.text));
     sk.append(make(doc, 'span', 'wp-nm'));
     const meta = make(doc, 'span', 'wp-cmeta');

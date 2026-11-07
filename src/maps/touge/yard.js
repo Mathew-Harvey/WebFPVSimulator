@@ -42,8 +42,12 @@ export const TOUGE_NAME = 'Momiji Pass';
 
 const DEG = Math.PI / 180;
 
-/* Where the pilot starts: the car park, facing south. */
-export const SPAWN = { x: 136, y: 292, h: SUMMIT, deg: -90 };
+/* Where the pilot starts: the car park. It faced south, off the road over
+ * the guard rail at the valley and the sky (round 2 R2M-3,
+ * spawn-touge.png); it now faces a little east of north, at the shrine's
+ * torii between its two yellow ginkgos, with the cut slope and the forest
+ * standing above the camera's uptilt line. */
+export const SPAWN = { x: 136, y: 292, h: SUMMIT, deg: 75 };
 
 /* The moving cars: style and paint, five a way round the loop. */
 const CARS = [

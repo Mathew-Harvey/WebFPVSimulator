@@ -286,7 +286,7 @@ function frameCaps(structure, yaw, pitch, out) {
   for (let k = 0; k < stack; k += 1) {
     const sill = d.sillH + k * d.levelPitch;
     const parts = frameParts(
-      structure.shape ?? 'square', d.clearW / 2, d.clearH / 2, TUBE_R, sill, pitch, false,
+      structure.shape ?? 'square', d.clearW / 2, d.clearH / 2, TUBE_R, sill, pitch, false, structure.floating === true,
     );
     for (const c of parts.caps) {
       out.push({

@@ -300,6 +300,56 @@ function houseInk(post) {
   }
 }
 
+/*
+ * NICK'S LAWN IS MOWN (round 2 R2M-5, fly-house-8.png): it was one flat
+ * green from the air. The plot's own grass tile (../built/ground.js, a
+ * canvas made for this build and no other) gets the mower's stripes, light
+ * and dark bands a metre and a half wide, and a few hatched tufts in the
+ * ink's green, painted into it once before it is first uploaded. The tile
+ * repeats every 12 m, so the stripes are four pairs to a tile and meet
+ * across its seam. The ground's file is the landing page's too and is not
+ * touched: this is the house's own, on its own copy of the picture. One
+ * canvas paint at build; the same texture fetch per pixel as before, no
+ * draw call, nothing per frame.
+ */
+function mowLawn(plot) {
+  const tex = plot && plot.material ? plot.material.map : null;
+  const c = tex && tex.image;
+  if (!c || typeof c.getContext !== 'function') {
+    return;
+  }
+  const g = c.getContext('2d');
+  const S = c.width;
+  const pair = S / 4;
+  for (let k = 0; k < 4; k += 1) {
+    g.fillStyle = 'rgba(184, 214, 160, 0.2)';
+    g.fillRect(k * pair, 0, pair / 2, S);
+    g.fillStyle = 'rgba(86, 124, 92, 0.12)';
+    g.fillRect(k * pair + pair / 2, 0, pair / 2, S);
+  }
+  /* The hatched tufts: four short strokes side by side, leaning, seeded. */
+  let seed = 0x4e1c;
+  const rand = () => {
+    seed = (Math.imul(seed, 1103515245) + 12345) >>> 0;
+    return seed / 4294967296;
+  };
+  g.lineCap = 'round';
+  g.strokeStyle = 'rgba(44, 66, 66, 0.55)';
+  g.lineWidth = 1.6;
+  for (let n = 0; n < 14; n += 1) {
+    const x = 8 + rand() * (S - 28);
+    const y = 16 + rand() * (S - 24);
+    const lean = (rand() - 0.5) * 4;
+    g.beginPath();
+    for (let j = 0; j < 4; j += 1) {
+      g.moveTo(x + j * 3, y);
+      g.lineTo(x + j * 3 + lean, y - 7 - rand() * 3);
+    }
+    g.stroke();
+  }
+  tex.needsUpdate = true;
+}
+
 export async function buildMap(shell, onProgress, options) {
   const L = houseLayout();
   const extra = {
@@ -325,6 +375,7 @@ export async function buildMap(shell, onProgress, options) {
   map.yardTrack = houseYardTrack();
   openGround(map.scene, 'plot', STAIR_HOLE);
   openGround(map.scene, 'terrain', STAIR_HOLE);
+  mowLawn(map.scene.getObjectByName('plot'));
   /* Nick at his patio table (./nick.js, ./nickdraw.js): in the map's scene,
    * so its dispose frees him, posed at the clock the map is handed, and his
    * two programs linked now beside the rest, since the map warmed its own

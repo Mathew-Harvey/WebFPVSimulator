@@ -34,6 +34,11 @@
  * with WebFPV. If not, see <https://www.gnu.org/licenses/>.
  */
 
+/* The small window: a phone, or a window too short for seven rows. The
+ * tree is a list there (see below), and screens.js reads the same query so
+ * a hover never chooses a part in the list. */
+export const SMALL_WINDOW = '(max-width: 760px), (max-height: 560px)';
+
 export const CAREER_CSS = `
 #career {
   --c-cream: var(--cream, #f3ead4);
@@ -191,6 +196,10 @@ body.career-flight:not(.career-score) #ui .score-combo { visibility: hidden; }
 }
 #career .cr-legend .cr-legend-key { color: var(--c-cream); font-weight: 800; margin-right: 6px; }
 #career .cr-legend span[hidden] { display: none; }
+/* A finger is the hands (screens.js, hands): no key bar and no keycap on a
+   button, because there is no key to press (round 3 R3-4). */
+#career[data-hands="touch"] .cr-legend,
+#career[data-hands="touch"] .cr-btn .cr-key { display: none; }
 
 #career .cr-stars { display: inline-flex; gap: 2px; align-items: center; }
 #career .cr-stars .cr-star { width: 20px; height: 20px; }
@@ -565,7 +574,12 @@ body.career-flight:not(.career-score) #ui .score-combo { visibility: hidden; }
 #career .cr-res-page { flex: 1 0 auto; display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 4fr); gap: clamp(18px, 2.6vw, 44px); align-items: start; }
 #career .cr-res-page > :only-child { grid-column: 1 / -1; }
 #career .cr-res-main { display: flex; flex-direction: column; gap: clamp(10px, 1.8vh, 20px); min-width: 0; }
-#career .cr-res-word { animation: cr-word-in 0.5s cubic-bezier(.2,1.6,.4,1) both; transform-origin: left center; }
+/* The word is as wide as its lettering, not its column: the word-in
+   overshoots past scale(1), and a heading the width of the page grew 25 px
+   past a phone's edge at 200 ms of it, so the results scrolled sideways
+   while it landed (check:careerui). Its lettering is capped at half the
+   window, which the overshoot never takes to the edge. */
+#career .cr-res-word { align-self: flex-start; max-width: 100%; animation: cr-word-in 0.5s cubic-bezier(.2,1.6,.4,1) both; transform-origin: left center; }
 @keyframes cr-word-in { 0% { transform: scale(0.4) rotate(-6deg); opacity: 0; } 100% { transform: scale(1) rotate(-2deg); opacity: 1; } }
 #career .cr-res-time { align-self: flex-start; flex-direction: row; align-items: baseline; flex-wrap: wrap; gap: 6px 16px; transform: rotate(-0.6deg); }
 #career .cr-res-time b { font-size: clamp(34px, 4vw, 62px); font-weight: 900; font-style: italic; letter-spacing: 0.01em; line-height: 1; font-variant-numeric: tabular-nums; }
@@ -711,7 +725,7 @@ body.career-score #career .cr-obj { top: 150px; }
 /* A phone, or a window too short for seven rows: the tree is a list, up
    the trunk and then each branch, with the chosen part's lessons under it,
    and every page is one column. */
-@media (max-width: 760px), (max-height: 560px) {
+@media ${SMALL_WINDOW} {
   /* The key row is fixed over the foot of a page that scrolls, so the page
      ends clear of it and a key's scroll stops above it. */
   #career .cr-screen.has-paper { padding-bottom: 52px; scroll-padding-bottom: 52px; }
@@ -726,9 +740,29 @@ body.career-score #career .cr-obj { top: 150px; }
   #career .cr-continue { min-height: clamp(240px, 60vh, 420px); }
   #career .cr-brief-page {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: "hero" "coach" "job" "sticks" "go";
+    grid-template-areas: "hero" "coach" "job" "sticks" "medals" "go";
     grid-template-rows: minmax(clamp(200px, 46vh, 360px), auto);
   }
+  /* Fly rides along the foot of the briefing, as the paint tray does, so
+     a phone on its side has it on the first view and not four screens down
+     (round 3 R3-4). The go column comes apart into its two parts, so the
+     row's sticky box is the whole page's and not the column's. */
+  #career .cr-brief-go { display: contents; }
+  #career .cr-brief-medals { grid-area: medals; }
+  #career .cr-brief-go > .cr-row {
+    grid-area: go; position: sticky; bottom: 0; z-index: 2;
+    margin: 0 calc(-1 * clamp(16px, 3vw, 52px)); padding: 10px clamp(16px, 3vw, 52px);
+    background-color: var(--c-paper); border-top: 4px solid var(--c-ink);
+  }
+  #career .cr-brief { scroll-padding-bottom: 130px; }
+  #career[data-hands="touch"] .cr-screen.has-paper { padding-bottom: 12px; }
+  #career[data-hands="touch"] .cr-screen.has-paper.cr-brief { padding-bottom: 0; }
+  /* The cover's Start (or Continue) is the foot of a tall window, so it
+     rides at the foot of the view while that window is on it, for the same
+     reason. Its own ink and drop carry it over the caption. */
+  #career .cr-continue .cr-btn { position: sticky; bottom: 10px; z-index: 2; }
+  #career[data-hands="touch"] .cr-tree { padding-bottom: 12px; }
+  #career[data-hands="touch"] .cr-screen.has-paper.cr-paint > .cr-paint-side { bottom: -12px; padding-bottom: 12px; }
   #career .cr-brief-coach { flex-direction: row-reverse; align-items: center; gap: 14px; }
   #career .cr-brief-coach .cr-balloon { margin: 0; }
   #career .cr-brief-coach .cr-balloon::after { right: auto; left: -18px; bottom: 26px; transform: rotate(135deg); }
@@ -777,6 +811,16 @@ body.career-score #career .cr-obj { top: 150px; }
   #career .cr-paint-show { grid-template-columns: 48px minmax(0, 1fr); padding: 5px 10px; }
   #career .cr-paint-pic { width: 48px; }
   #career .cr-paint-name { font-size: 17px; }
+}
+/* A desktop window a little short of the cover, 720 p and the like: the
+   cover's gaps and the side column's panels close up, so its foot (Back
+   and the save note) sits above the key bar instead of under it (core.md
+   CORE-21). Above the small window, which is a list with room to scroll. */
+@media (min-height: 561px) and (max-height: 800px) and (min-width: 761px) {
+  #career .cr-cover { padding-top: 12px; gap: 10px; padding-bottom: 44px; }
+  #career .cr-cover-side { gap: 12px; }
+  #career .cr-cover-side .cr-panel { padding-top: 12px; padding-bottom: 12px; }
+  #career .cr-way { padding: 9px 12px; }
 }
 @media (max-height: 820px) {
   #career .cr-res-time b { font-size: clamp(28px, 3.2vw, 44px); }

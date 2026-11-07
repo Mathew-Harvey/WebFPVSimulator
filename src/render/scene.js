@@ -3569,6 +3569,9 @@ function coursePlacements(course) {
      * lights, and no pipe is built for it. See isUnbuilt in
      * src/trackbuilder/elements.js. */
     unbuilt: structure.unbuilt === true,
+    /* Hung in the air: no uprights to the floor and no feet (isFloating in src/trackbuilder/elements.js). Not there for a
+     * gate that stands, which is every gate that has ever shipped. */
+    ...(structure.floating ? { floating: true } : {}),
     /* 'circle' for a hoop and 'hex' for a hex gate; not there for a gate. */
     ...(structure.shape ? { shape: structure.shape } : {}),
     /* A letter: which one, which way round it is built, and the size of its PRIMARY hole, which is what its pipe is
@@ -3857,7 +3860,7 @@ function tiltedGate(spec, index, isStart, pitch, opts = {}) {
     }
     const foot = at(sx * upX, -(halfH + tubeR));
     const postH = foot.y;
-    if (postH > 0.02) {
+    if (postH > 0.02 && spec.floating !== true) {
       const post = new THREE.Mesh(
         new THREE.CylinderGeometry(mastR, mastR, postH, 8),
         mats.frame,
@@ -4028,7 +4031,7 @@ function shapedGate(spec, index, isStart, pitch, opts = {}) {
   const halfH = clearH * 0.5;
   /* Where every tube, joint, post and solid is, from src/props/aperture.js: the same numbers a flight
    * check flies against. What is built here is a mesh for each. */
-  const parts = frameParts(shape, halfW, halfH, tubeR, spec.sillH, pitch, spec.unbuilt === true);
+  const parts = frameParts(shape, halfW, halfH, tubeR, spec.sillH, pitch, spec.unbuilt === true, spec.floating === true);
   const centreY = parts.centreY;
 
   const pivot = new THREE.Group();
@@ -4324,7 +4327,9 @@ function obstacle(spec, index, isStart, opts = {}) {
    * runs either side of the gap. A stretch spans from the member between it and the opening below to the one
    * above it, so two built stretches meet at a member and a run ends at the member that holds its last opening. */
   const sillsAt = (k) => sills[k] + heights[k] + tubeR;
-  const stretchLo = (k) => (k === 0 ? 0 : sillsAt(k - 1));
+  /* A floating gate's uprights begin at the member under the lowest opening, not at the grass, and it has no feet. */
+  const floating = spec.floating === true && spec.sillH > 0;
+  const stretchLo = (k) => (k === 0 ? (floating ? spec.sillH - tubeR : 0) : sillsAt(k - 1));
   const stretchHi = (k) => (k === stack - 1 ? upTop : sillsAt(k));
   for (const sx of (unbuilt ? [] : [-1, 1])) {
     if (!postBuilt(sx)) {
@@ -4357,8 +4362,8 @@ function obstacle(spec, index, isStart, opts = {}) {
       g.add(post);
       caps.push({ kind: 'gate', ax: runX, ay: lo, az: 0, bx: runX, by: hi, bz: 0, r: tubeR });
     }
-    /* The foot stands under the lowest opening's stretch, so it goes with it. */
-    if (!stretchBuilt(sx, 0)) {
+    /* The foot stands under the lowest opening's stretch, so it goes with it. A floating gate stands on nothing. */
+    if (!stretchBuilt(sx, 0) || floating) {
       continue;
     }
 

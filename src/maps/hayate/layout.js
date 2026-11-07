@@ -180,8 +180,16 @@ export function hayateGaps() {
   ];
 }
 
-/* Where the pilot starts: the pit roof over the line, facing the stand. */
-export const SPAWN = { px: PAD.x, py: PAD.y, h: PAD.h, yaw: -Math.PI / 2 };
+/* Where the pilot starts: the pit roof over the line. It faced the stand
+ * due south, and with the 30 degree camera three centimetres over the roof
+ * that was the roof's front kerb and the back of the stand's roof, a dark
+ * band under sky (round 2 R2M-3, spawn-hayate.png). It now looks up the
+ * straight, fifteen degrees short of west, with the stand's roof sweeping
+ * in from the left and the control tower standing above the camera's
+ * uptilt line in the middle of the view. Moving the pad to the roof's
+ * front edge was weighed and left: the kerb there stands above the eye, so
+ * nearer it hides more, not less. */
+export const SPAWN = { px: PAD.x, py: PAD.y, h: PAD.h, yaw: (-165 * Math.PI) / 180 };
 
 let CACHE = null;
 

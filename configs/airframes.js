@@ -80,8 +80,8 @@ export const AIRFRAMES = [
     name: 'Five inch',
     short: '5 inch',
     /* What a pilot calls it out loud, for a card and for the board. */
-    blurb: 'A 710 gram 6S freestyle and race quad. Eight and a half to one, forty metres a second, and a field big enough to use it.',
-    facts: ['6S', '220 mm', '8.4 : 1'],
+    blurb: 'A full size freestyle and race quad: light for its power, very fast, and a field big enough to use it.',
+    facts: ['6S', 'Full size', 'Fast'],
     /* Track class. The builder, the world and the board all branch on this
      * rather than on the airframe id, because what changes is the SIZE OF
      * THE PLACE and one day there may be two airframes that fly the same
@@ -249,10 +249,10 @@ export const AIRFRAMES = [
      * it at 1.62 and the owner calls that great, so 1.62 is what it gets.
      */
     simId: 0,
-    name: '65 mm whoop',
+    name: 'Whoop',
     short: 'Whoop',
-    blurb: 'A 65 mm ducted whoop indoors. The hall and its gates are built to match it, so what you see is a whoop through 28 inch gates.',
-    facts: ['1S', '65 mm', 'Indoors'],
+    blurb: 'A tiny ducted whoop indoors. The hall and its gates are built to match it, so what you see is a whoop through whoop gates.',
+    facts: ['1S', 'Tiny', 'Indoors'],
     trackClass: 'micro',
     /*
      * 1S, AND SINCE 2026-10-09 THAT IS WHAT FLIES IT: the whoop's own plant

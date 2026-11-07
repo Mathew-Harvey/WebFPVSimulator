@@ -591,7 +591,19 @@ export class Race {
    *
    * Returns the station retried from, or null when there is none to retry
    * from (nothing credited yet this run, or freestyle).
+   *
+   * EXCEPT AT THE TIMING GATE. When the station last credited is the one
+   * that starts and ends the lap, which it is from the first crossing of
+   * every lap to the second gate, a seat past it would leave the clock
+   * stopped for a whole untimed lap before the next timing crossing. So the
+   * shell seats the craft just BEFORE it instead (retrySeatsBefore), and the
+   * next station to fly is that gate itself: the next crossing starts the
+   * clock, as a run's first does.
    */
+  retrySeatsBefore() {
+    return this.lastPassed === this.timingIdx;
+  }
+
   retryFrom(reason, wallMs) {
     if (this.freestyle || this.lastPassed < 0 || this.lastPassed >= this.gates.length) {
       return null;
@@ -603,7 +615,7 @@ export class Race {
     this.lapStartMs = null;
     this.mixed = false;
     this.splits = [];
-    this.next = (this.lastPassed + 1) % this.gates.length;
+    this.next = this.retrySeatsBefore() ? this.timingIdx : (this.lastPassed + 1) % this.gates.length;
     this.flownM = Infinity;
     this.held = [];
     this.prevSimMs = null;
@@ -885,9 +897,13 @@ export class Race {
         this.laps.push(this.lastLapMs);
         /* `tuned` only when it is, so a stock lap's entry is the shape it
          * always was. */
+        /* `splits` is the lap's own gate times, the array this lap just
+         * finished filling and that is never written again (a new one is
+         * made for the next lap below), so keeping it costs a reference.
+         * The results screen reads it for the gate by gate breakdown. */
         this.log.push(this.tuned || this.mixed
-          ? { n: this.lapNumber(), ms: this.lastLapMs, weight: this.weight, tuned: true }
-          : { n: this.lapNumber(), ms: this.lastLapMs, weight: this.weight });
+          ? { n: this.lapNumber(), ms: this.lastLapMs, weight: this.weight, tuned: true, splits: this.lastSplits }
+          : { n: this.lapNumber(), ms: this.lastLapMs, weight: this.weight, splits: this.lastSplits });
         let msgText = `Lap ${this.log.length}   ${fmt(this.lastLapMs)}`;
         /* Kept for the shell's spoken call (src/render/voice.js), so the
          * voice reads the flash's decision rather than making its own. */
@@ -915,7 +931,11 @@ export class Race {
         this.lastThreeBest = null;
         if ((this.micro || this.callThree) && this.log.length >= 3) {
           const w = this.log.slice(-3);
-          if (w[0].ms != null && w[1].ms != null && w[2].ms != null) {
+          /* Three clean laps at ONE weight, the rule boardRow keeps, so the
+           * total called is one the board would take: a Weight moved
+           * between laps makes three laps that are not one run of three. */
+          if (w[0].ms != null && w[1].ms != null && w[2].ms != null
+            && w[0].weight === w[2].weight && w[1].weight === w[2].weight) {
             const total = w[0].ms + w[1].ms + w[2].ms;
             if (this.runThreeMs == null || total < this.runThreeMs) {
               this.runThreeMs = total;
@@ -995,8 +1015,30 @@ export class Race {
     return fastestLap(this.laps);
   }
 
+  /* At ONE weight as well, the rule the running call and boardRow keep:
+   * three clean laps with the Weight slider moved between them are not one
+   * run of three, so the results screen used to show a best three the call
+   * had not made and the board would not take. fastestThreeConsecutive in
+   * track.js stays the MultiGP rule it cites, and is used when the log
+   * names no weight, which is a log from before weights were kept. */
   bestThreeMs() {
-    return fastestThreeConsecutive(this.log);
+    if (!this.log.some((e) => e.weight != null)) {
+      return fastestThreeConsecutive(this.log);
+    }
+    let best = null;
+    for (let i = 2; i < this.log.length; i += 1) {
+      const a = this.log[i - 2];
+      const b = this.log[i - 1];
+      const c = this.log[i];
+      if (a.ms == null || b.ms == null || c.ms == null || a.weight !== c.weight || b.weight !== c.weight) {
+        continue;
+      }
+      const total = a.ms + b.ms + c.ms;
+      if (best == null || total < best) {
+        best = total;
+      }
+    }
+    return best;
   }
 
   /*

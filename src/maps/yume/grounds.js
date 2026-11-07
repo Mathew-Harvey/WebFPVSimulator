@@ -54,6 +54,13 @@ export const LAKE = [
   [112, 197], [150, 191], [200, 194], [236, 203], [246, 226], [234, 250],
   [198, 263], [150, 266], [117, 260], [108, 238], [109, 214],
 ];
+/* The lake's plan bounds, which its inked sign spans, and its deep middle,
+ * the shore drawn in seven tenths of the way to (176, 228). */
+export const LAKE_BOX = {
+  x0: Math.min(...LAKE.map((p) => p[0])), x1: Math.max(...LAKE.map((p) => p[0])),
+  y0: Math.min(...LAKE.map((p) => p[1])), y1: Math.max(...LAKE.map((p) => p[1])),
+};
+export const LAKE_DEEP = LAKE.map(([x, y]) => [176 + (x - 176) * 0.7, 228 + (y - 228) * 0.7]);
 /* Ryusei's station, round the first 36 m of the line. */
 export const STATION = { x0: 116.4, x1: 133.6, y0: 68, y1: 108, roof: 6.6, platform: 1.75, track: 124 };
 /* The dragon mountain the tunnel runs through. */
@@ -589,9 +596,17 @@ function castle(T) {
 function lake(T) {
   T.poly('ymStone', LAKE.map(([x, y]) => [x + (x - 176) * 0.03, y + (y - 228) * 0.05]), 0.002, 0.03);
   T.poly('ymWater', LAKE, 0.03, 0.045);
-  T.wide(() => {
-    T.poly('ymWaterDeep', LAKE.map(([x, y]) => [176 + (x - 176) * 0.7, 228 + (y - 228) * 0.7]), 0.045, 0.05);
-  });
+  /*
+   * THE WATER INKED, not two flat tones (round 2 R2M-5, fly-yume-8.png):
+   * the sea's picture (../built/sea.js) in Shiokaze's canal blues, which is
+   * this lake's own colour, lying on the flat water as one sign over the
+   * lake's bounds on the map's sign mesh, clipped to the shore, with its
+   * deeper middle painted in the same picture a shade down (./index.js).
+   * The deep tone was a poly of its own; the picture carries it now, so
+   * that poly is gone and the sign costs no draw call.
+   */
+  T.sign('ymLake', (LAKE_BOX.x0 + LAKE_BOX.x1) / 2, (LAKE_BOX.y0 + LAKE_BOX.y1) / 2, 0.046,
+    LAKE_BOX.x1 - LAKE_BOX.x0, LAKE_BOX.y1 - LAKE_BOX.y0, 'up', 0.004);
   /* Swan boats, drawn only, at rest by the north shore. */
   T.dress(() => {
     for (const [x, y] of [[160, 255], [168, 257], [176, 258]]) {

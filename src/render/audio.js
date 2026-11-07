@@ -94,6 +94,8 @@ import { Music } from './music.js';
  * N revolutions per minute radiates at 3N/60 Hz.
  */
 const BLADES = 3;
+/* The kinds the menus click with (Audio.ui). Audio.event hands them on. */
+const UI_KINDS = new Set(['select', 'back', 'move', 'adjust']);
 
 /*
  * The motor lowpass tracks the fundamental so the timbre holds across the
@@ -739,8 +741,17 @@ export class MotorAudio {
    *
    * A cue also ducks the bed, which is what keeps it audible with everything
    * else at maximum.
+   *
+   * A menu kind ('select', 'back', 'move', 'adjust') is the UI's click, not
+   * a cue: the game HUDs send 'select' for a kick off, overtime, a reset or
+   * a goal against (ballhud, dogfighthud, ribbonhud), and it used to fall
+   * through to the landing thump below (fun.md FUN-5).
    */
   event(kind, atTime, level) {
+    if (UI_KINDS.has(kind)) {
+      this.ui(kind);
+      return;
+    }
     if (!this.ctx || !this.cueGain) {
       return;
     }

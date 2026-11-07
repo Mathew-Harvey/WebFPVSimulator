@@ -95,6 +95,24 @@ const HINT_MS = 5500;
 const SETTLE_MS = 650;
 /* One crash, however many of the game's crash paths saw it. */
 const CRASH_DEBOUNCE_MS = 1200;
+/*
+ * THE SOFT CEILING (R3-10, the owner's call of 2026-11-06). In the trunk's
+ * first lessons a stick held a little high climbed a beginner to 85 to 100
+ * m in nine seconds, where the training field is a fogged square in the
+ * haze and the lesson cannot be finished without a long way down. Nothing
+ * here touches the flight: above SOFT_CEILING_M the coach asks the pilot to
+ * come down, after CEILING_NAG_MS it names the way back to the pad, and a
+ * pilot still above FAR_ABOVE_M after FAR_RESET_MS is put back on the pad
+ * by the lesson's own restart, the same restart R is. SOFT_CEILING_M is
+ * ten metres over the highest space any of these lessons asks a pilot into
+ * (3-1's box, whose top is 15 m; every other is under 8), and FAR_ABOVE_M is the built map's fog start (FOG_NEAR, 40 to 50 m by
+ * preset, src/maps/built/index.js), past which the ground straight below
+ * begins to fade. Heights above the ground, as the gauge reads them.
+ */
+const SOFT_CEILING_M = 25;
+const CEILING_NAG_MS = 3000;
+const FAR_ABOVE_M = 45;
+const FAR_RESET_MS = 4000;
 /* A held direction on the pad repeats after this, then this often. */
 const PAD_REPEAT_FIRST_MS = 380;
 const PAD_REPEAT_MS = 150;
@@ -116,6 +134,9 @@ export function createCareer(shell) {
   const proj = new THREE.Vector3();
   const coach = { text: '', since: 0, last: {} };
   let detailSince = { key: '', at: 0 };
+  /* When the craft went over the soft ceiling, and over FAR_ABOVE_M, in
+   * sim ms, or -1: see ceilingLine and ceilingReset. */
+  const ceiling = { highSince: -1, farSince: -1 };
 
   /* Where the briefing and Set my level were opened from, for Back. */
   let briefFrom = 'tree';
@@ -391,8 +412,11 @@ export function createCareer(shell) {
         airframe: lesson.airframe || '5inch',
       });
     } catch (e) {
-      console.error(e);
+      /* A load the pilot walked away from (Esc, or another lesson opened)
+       * is nobody's error: its world wait runs on to its timeout and lands
+       * here long after, so it is dropped silently, as a success would be. */
       if (token === loadToken && state === 'briefing') {
+        console.error(e);
         screens.setReady(false, `${e && e.message ? e.message : 'This lesson could not be loaded.'} Back to the career and try again.`);
       }
       return;
@@ -455,6 +479,8 @@ export function createCareer(shell) {
     coach.text = '';
     coach.last = {};
     detailSince = { key: '', at: 0 };
+    ceiling.highSince = -1;
+    ceiling.farSince = -1;
     lastCrashAt = -1e9;
     screens.coach(null);
     syncObjective(0);
@@ -474,6 +500,11 @@ export function createCareer(shell) {
         return;
       }
       state = 'flight';
+      /* The trunk before the Rookie Licence flies a simple OSD (R2M-10). */
+      const part = partOf(lesson.id);
+      if (shell.simpleOsd) {
+        shell.simpleOsd(Boolean(part && part.branch === 'trunk' && part.id !== 'rk'));
+      }
       mountVisuals();
       newRun();
       screens.showFlight(lesson);
@@ -497,9 +528,19 @@ export function createCareer(shell) {
     toTree(lesson && partOf(lesson.id) ? partOf(lesson.id).id : null);
   }
 
-  async function leave() {
+  /*
+   * Out of the career. `keepWorld` is for a flight that is not the
+   * career's own starting while a lesson is up (round 3 R3-13): the
+   * lesson's display, checklist, objective, mode and camera all go, as
+   * they do here always, but the world and the aircraft the pilot just
+   * picked are left where they are rather than swapped back.
+   */
+  async function leave({ keepWorld = false } = {}) {
     loadToken += 1;
     state = 'idle';
+    if (shell.simpleOsd) {
+      shell.simpleOsd(false);
+    }
     run = null;
     lesson = null;
     lastStatus = null;
@@ -507,7 +548,11 @@ export function createCareer(shell) {
     shell.setCamera(null);
     shell.setFlightMode(null);
     screens.screen = '';
-    await shell.leaveWorld();
+    if (keepWorld && shell.dropWorld) {
+      shell.dropWorld();
+    } else {
+      await shell.leaveWorld();
+    }
     shell.presence({ steam_display: '#Menu' });
   }
 
@@ -568,6 +613,10 @@ export function createCareer(shell) {
     if (!f.landed && f.vel.y < -6.5 && f.height < 5 && lesson.mode === 'angle') {
       return { text: 'Throttle up: you are falling.', tone: 'warn' };
     }
+    const roof = ceilingLine(f, t);
+    if (roof) {
+      return roof;
+    }
     const key = `${cur.kind}:${d}`;
     if (detailSince.key !== key) {
       detailSince = { key, at: t };
@@ -587,6 +636,51 @@ export function createCareer(shell) {
       return { text: cur.hint, tone: 'info' };
     }
     return null;
+  }
+
+  /* Whether this lesson flies under the soft ceiling: the trunk before the
+   * Rookie Licence, the lessons that teach a beginner to hold a height. */
+  function underCeiling() {
+    const part = lesson ? partOf(lesson.id) : null;
+    return Boolean(part && part.branch === 'trunk' && !part.licence);
+  }
+
+  /* The coach's line over the soft ceiling, or null under it. */
+  function ceilingLine(f, t) {
+    if (!underCeiling() || f.landed || !(f.height > SOFT_CEILING_M)) {
+      ceiling.highSince = -1;
+      return null;
+    }
+    if (ceiling.highSince < 0 || t < ceiling.highSince) {
+      ceiling.highSince = t;
+    }
+    if (t - ceiling.highSince < CEILING_NAG_MS) {
+      return { text: 'Too high: ease off the throttle and come back down to the field.', tone: 'warn' };
+    }
+    return {
+      text: flyingOnKeys()
+        ? 'Still too high. Come down, or press R to start again on the pad.'
+        : 'Still too high. Come down, or restart the lesson from the pause menu.',
+      tone: 'warn',
+    };
+  }
+
+  /* Far above the field for long enough: the lesson's own restart. */
+  function ceilingReset(f, t) {
+    if (!underCeiling() || f.landed || !(f.height > FAR_ABOVE_M)) {
+      ceiling.farSince = -1;
+      return false;
+    }
+    if (ceiling.farSince < 0 || t < ceiling.farSince) {
+      ceiling.farSince = t;
+    }
+    if (t - ceiling.farSince < FAR_RESET_MS || !shell.restart) {
+      return false;
+    }
+    ceiling.farSince = -1;
+    screens.flash('Back to the pad. Keep it low over the field.');
+    shell.restart();
+    return true;
   }
 
   /* A ring with a speed on it (Brake Points) says what it wants for as
@@ -675,7 +769,7 @@ export function createCareer(shell) {
         return null;
       case 'trick':
         if (d === 'low') {
-          return { text: `Higher: above ${o.minHeight} m.`, tone: 'warn' };
+          return { text: 'Higher. Climb more before the trick.', tone: 'warn' };
         }
         if (d === 'sloppy') {
           return { text: 'Clean it up: one smooth rotation.', tone: 'info' };
@@ -689,7 +783,7 @@ export function createCareer(shell) {
         return null;
       case 'segmented':
         if (d === 'low') {
-          return { text: `Higher: above ${o.minHeight} m before you start.`, tone: 'warn' };
+          return { text: 'Higher. Climb more before you start.', tone: 'warn' };
         }
         if (d === 'nostop') {
           return { text: 'Stop between the halves: count "one", then go.', tone: 'info' };
@@ -882,6 +976,7 @@ export function createCareer(shell) {
     paintCoach(coachLine(st, f, t), t);
     paintAltitude(st, f);
     paintMarker(st, f);
+    ceilingReset(f, t);
   }
 
   /* Every frame, whatever is up: the display shows only over the flight

@@ -157,6 +157,11 @@ try {
   await click('.df-doorcard:nth-child(1)');
   await until("return Boolean(document.querySelector('.df-rows'))", 8000);
   await sleep(500);
+  /* Every Quad Ball match has bots, so its Bot skill row is never greyed
+   * as if it meant nothing (fun.md FUN-6: it tested rules.bots, which
+   * the ball's rules do not have). */
+  const skill = await ev("const r = [...document.querySelectorAll('.df-row')].find((x) => /skill/i.test(x.textContent)); return r ? getComputedStyle(r).opacity : 'no skill row';");
+  check('the Bot skill row is not greyed on Quad Ball', skill === '1', skill);
   await click('.qp-fly');
   await answerQuadPicker(page).catch(() => {});
   check('Bots flies the solo match', await until("return Boolean(window.__dogfight && window.__dogfight())", 150000));

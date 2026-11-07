@@ -1779,9 +1779,14 @@ async function touchLaptopPage(page) {
   await finger('touchMove', zone.x + 90, zone.y);
   await page.sleep(250);
   const drag = JSON.parse(await ev(snap));
+  const moved = await ev("const t = window.__touch(); return JSON.stringify({ raw: t.rawMoves, moves: t.moves, offered: 'onpointerrawupdate' in window });").then(JSON.parse);
   await finger('touchEnd');
   check('and a thumb on the plate flies it: roll follows the drag',
     drag.ch.roll > 0.2 && drag.source === 'the touch sticks', JSON.stringify(drag));
+  /* CORE-16, round 1: where the browser offers the raw move, the plate is
+   * flown by it and not by the frame aligned pointermove. */
+  check('the drag reached the plate as a raw move, not one held to the frame',
+    moved.offered && moved.raw && moved.moves.raw > 0 && moved.moves.frame === 0, JSON.stringify(moved));
 
   const again = await hold('KeyD', 'input.channels.yaw > 0.2');
   check('and a stick key takes the sticks again, the other way',
@@ -1909,6 +1914,35 @@ async function keyboardPage(page) {
   await page.tap('ArrowLeft');
   await page.until("window.__input.keyThrottle === 'hover'", 3000).catch(() => {});
   check('one arrow left is the spring again', await ev("return input.keyThrottle === 'hover' && ui.settings.keyThrottle === 'hover';"));
+
+  /* CORE-1 and CORE-9, round 1: a gamepad's deadzone and throttle, on the
+   * rows after the keyboard's, written to storage and to the input. */
+  const pad = await ev(`
+    ui.show('pilot');
+    const items = ui.items();
+    const k = items.findIndex((it) => it && it.label === 'Keyboard throttle');
+    const dz = items.findIndex((it) => it && it.label === 'Stick deadzone');
+    const th = items.findIndex((it) => it && it.label === 'Gamepad throttle');
+    const before = { dz: items[dz] && items[dz].value, th: items[th] && items[th].value, idz: input.padDeadzone, ith: input.padThrottle };
+    ui.setCursor(th);
+    return JSON.stringify({ k, dz, th, before });
+  `).then(JSON.parse);
+  check('Settings has Stick deadzone and Gamepad throttle rows, after Keyboard throttle',
+    pad.k >= 0 && pad.dz === pad.k + 1 && pad.th === pad.k + 2, JSON.stringify(pad));
+  check('they start on Auto and Upper half, in the rows and in the input',
+    pad.before.dz === 'Auto' && pad.before.th === 'Upper half' && pad.before.idz === 'auto' && pad.before.ith === 'upper',
+    JSON.stringify(pad));
+  await page.tap('ArrowRight');
+  await page.until("window.__input.padThrottle === 'full'", 3000).catch(() => {});
+  const padFull = await ev(`
+    const stored = JSON.parse(localStorage.getItem(${JSON.stringify(SETTINGS_KEY)}) || '{}').padThrottle;
+    return JSON.stringify({ value: ui.items()[ui.cursor].value, mode: input.padThrottle, stored });
+  `).then(JSON.parse);
+  check('one arrow right is Whole stick, in the input and in storage',
+    padFull.value === 'Whole stick' && padFull.mode === 'full' && padFull.stored === 'full', JSON.stringify(padFull));
+  await page.tap('ArrowLeft');
+  await page.until("window.__input.padThrottle === 'upper'", 3000).catch(() => {});
+  check('one arrow left is the upper half again', await ev("return input.padThrottle === 'upper' && ui.settings.padThrottle === 'upper';"));
 
   /* Into a real race, on the start line, through the Race room and the
    * launch card, which is how a pilot gets there. */
@@ -2225,9 +2259,19 @@ async function freestylePage(page) {
    *     row is labelled Map since the second world arrived.
    * ------------------------------------------------------------------ */
   section('freestyle: a town that failed to load leaves a way in, not a room with nothing to press');
+  /*
+   * Only the page's own frame is counted and failed. Since the owner's
+   * "if click on free style i should see freestyle maps" (2026-11-01) the
+   * Freestyle card opens the room's picker, whose cards preview their worlds
+   * in orbit.html iframes, and a preview that took the dropped request
+   * failed where the page never saw it: the town then loaded fine, nothing
+   * failed, and this section went red as if for fonts (bugs.md BUG-15).
+   */
+  const mainFrame = (await page.cdp.send('Page.getFrameTree', {}, page.sessionId)).frameTree.frame.id;
   let townRequests = 0;
   page.cdp.onEvent((msg) => {
     if (msg.sessionId === page.sessionId && msg.method === 'Fetch.requestPaused'
+      && msg.params.frameId === mainFrame
       && /\/src\/maps\/city\/index\.js/.test(msg.params.request.url)) {
       townRequests += 1;
       if (townRequests === 1) {
@@ -2244,9 +2288,15 @@ async function freestylePage(page) {
   const cards = await ev("if (ui.onGate()) { ui.turnGate('solo'); } return JSON.stringify(ui.items().map((it) => it && it.action));").then(JSON.parse);
   await ev(`ui.setCursor(${cards.indexOf('way-freestyle-5inch')}); return 1;`);
   await page.tap('Enter');
+  /* The card opens the Freestyle room's picker, and the town is pressed in
+   * it, which is the load that fails. */
+  await page.until("window.__ui.screen === 'freestyle'", 30000).catch(() => {});
+  await ev("ui.act('map:city'); return 1;");
   /* Settled: the fallback has built the track and adopted it. */
   await page.until(`(() => { const m = window.__map(); const ui = window.__ui;
     return m.ready && m.id === 'custom' && ui.settings.map === 'custom' && !!ui.loadFailure; })()`, 60000).catch(() => {});
+  /* The row is the title's. */
+  await ev("ui.show('title'); return 1;");
   const left = await ev(`const town = ui.items().find((x) => x && x.label === 'Map');
     return JSON.stringify({ mode: ui.mode, map: ui.settings.map, screen: ui.screen,
       value: town && town.value, note: town && town.note, failure: ui.bugSnapshot().loadFailure || null });`).then(JSON.parse);
@@ -2471,8 +2521,11 @@ async function builderChooserPages() {
         at: items.findIndex((it) => it.action === 'builder') }); })()`).then(JSON.parse);
     /* Builder, its one name since MENUS-PLAN.md 4.1: this card said Map
      * builder and the builder's own bar said Track builder. */
-    check('the gate\'s Fly solo page carries a last card, Builder, after the career and the three ways in',
-      gate.cards.join() === 'Career,Five inch racing,Whoop racing,Freestyle,Builder' && gate.at === 4, JSON.stringify(gate));
+    /* And Mini games after it, since the owner's "i should see single player
+     * or multiplayer, no mini games" moved that door off the cover to the
+     * end of this page (2026-11-01, GATE_MINI in src/ui/gatepages.js). */
+    check('the gate\'s Fly solo page carries Builder after the career and the three ways in, then Mini games',
+      gate.cards.join() === 'Career,Five inch racing,Whoop racing,Freestyle,Builder,Mini games' && gate.at === 4, JSON.stringify(gate));
     await page.evaluate(`(() => { window.__ui.setCursor(${gate.at}); return 1; })()`);
     await page.tap('Enter');
     await page.until("location.pathname.endsWith('/src/trackbuilder/index.html') && !!window.trackBuilder", 60000).catch(() => {});

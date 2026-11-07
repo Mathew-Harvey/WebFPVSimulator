@@ -103,7 +103,11 @@ const across = L.decor.filter((d) => (d.t === 'fence' || d.t === 'panel')
   && nearestOn(L.line, (d.a[0] + d.b[0]) / 2, (d.a[1] + d.b[1]) / 2).d < ROAD_WIDTH / 2 + 1);
 check('no fence crosses the course', across.length === 0, `${across.length} runs across`);
 const pad = doc.elements.find((e) => e.type === 'startPads');
-check('the start pad is on the tower roof', pad && pad.position.x === TOWER.x && pad.position.z === TOWER.top);
+/* On the roof, anywhere the whole pad fits on it: since round 2 R2M-3 it
+ * stands flush with the east edge, not in the middle. */
+check('the start pad is on the tower roof', pad && pad.position.z === TOWER.top
+  && Math.abs(pad.position.x - TOWER.x) + 0.45 <= TOWER.half + 1e-9 && Math.abs(pad.position.y - TOWER.y) + 0.45 <= TOWER.half + 1e-9,
+`${pad && pad.position.x}, ${pad && pad.position.y}`);
 /* The start as the built map seats it: the document seated, then the
  * structure added (addExtra in src/maps/built/index.js, restated, with
  * ./index.js's padBase). Without padBase the seating sets the pad down on

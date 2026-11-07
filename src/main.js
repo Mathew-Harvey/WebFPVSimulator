@@ -60,7 +60,7 @@ import { createLatencyMeter } from './render/latency.js';
 import { moveRigid, predictDelta, PREDICT_MAX_MS } from './render/predict.js';
 import { simPosToThree, simQuatToThree, simLenToWorld, threePosToSim, threeDirToSim, WORLD_SCALE, setWorldScale } from './render/frame.js';
 import { setFisheye, fisheyeNdc } from './render/fisheye.js';
-import { CAMERA_LENS_FORWARD, CAMERA_LENS_UP, CAMERA_MOUNT_FORWARD, CAMERA_MOUNT_UP, cameraTiltRad, clampCameraAngle, makeLensShake, fpvLensClear } from './render/lens.js';
+import { CAMERA_LENS_FORWARD, CAMERA_LENS_UP, CAMERA_MOUNT_FORWARD, CAMERA_MOUNT_UP, cameraTiltRad, clampCameraAngle, makeLensShake, fpvLensClear, fpvFov, FPV_NEAR_CLEAR } from './render/lens.js';
 import { MotorAudio } from './render/audio.js';
 import { LapVoice, lapCall } from './render/voice.js';
 import { ClipVoice } from './render/clips.js';
@@ -126,6 +126,7 @@ import {
   clearPendingTime,
   readEditKey,
   readPendingTime,
+  shareSeatIsStandIn,
   writePendingTime,
   writePostedBest,
   writeShareImport,
@@ -251,6 +252,11 @@ const GROUND_CUE_GAP_MS = 220;
  * only; nothing in the flight reads it.
  */
 const PAD_FLYING_STICK = 0.12;
+/* The throttle still down on the pad, for the stick cluster's ink plate
+ * (R2M-11): the gimbals are dead until it moves, and while they wait they
+ * sit small, on ink, rather than over the strip of world a 30 degree
+ * camera leaves a pilot on the ground. */
+const PAD_WAIT_THROTTLE = 0.02;
 /*
  * How long after a takeoff the contact cues stay muted, on the WALL clock.
  *
@@ -463,6 +469,13 @@ async function fetchBytes(url, onProgress) {
 const AXIS_Y = new THREE.Vector3(0, 1, 0);
 const AXIS_X = new THREE.Vector3(1, 0, 0);
 
+/* The Quad room's flight mode caption (syncAngleMode), one of four fixed
+ * strings, so choosing it on a frame builds nothing. */
+const CAPTION_ANGLE = 'Angle. Sticks are tilt. Hands off levels.';
+const CAPTION_ACRO = 'Acro. Sticks are rates. Hands off holds.';
+const CAPTION_KEYS_ANGLE = `Keyboard races fly ${CAPTION_ANGLE}`;
+const CAPTION_KEYS_ACRO = `Keyboard races fly ${CAPTION_ACRO}`;
+
 /*
  * Bring one map in and make it the world.
  *
@@ -480,7 +493,8 @@ const AXIS_X = new THREE.Vector3(1, 0, 0);
  * index.js, animation.js, bake.js, drawn.js and references.js, plus the
  * eight under places/ that build the works road, the disused works, the
  * municipal pool, the training field and the blossom that falls over the
- * first three: 72 in all. It was 63 while vendored/world/petals.js sat
+ * first three: 72 in all, and 70 since the perf pass of 2026-11-06 (sim
+ * PR 239), measured by check 16 on a cold load. It was 63 while vendored/world/petals.js sat
  * in the tree unimported, and 64 once the falling blossom was built again.
  * scan.js is ours and harness only, so it never arrives on a player's
  * load. Check 16 asserts the city count against what the browser actually
@@ -499,7 +513,7 @@ const AXIS_X = new THREE.Vector3(1, 0, 0);
  * alone. The entry is written out because it has moved with the directory:
  * it was three before looks.js came and four before egg.js, and with no
  * entry then the bar sat at 75 percent until the import resolved. */
-const MAP_MODULE_COUNT = { field: 1, city: 72, custom: 1, built: 5, house: 3, heads: 4, bardwell: 4, warehouse: 3, goats: 9, sunny: 12, factory: 9, drift: 3, towers: 11, alps: 6, office: 4, kaza: 10, sana: 6, shiokaze: 10, fmx: 8, airfield: 9, dunes: 5, arctic: 9, haikyo: 11 };
+const MAP_MODULE_COUNT = { field: 1, city: 70, custom: 1, built: 5, house: 3, heads: 4, bardwell: 4, warehouse: 3, goats: 9, sunny: 12, factory: 9, drift: 3, towers: 11, alps: 6, office: 4, kaza: 10, sana: 6, shiokaze: 10, fmx: 8, airfield: 9, dunes: 5, arctic: 9, haikyo: 11 };
 /* Kamome Wharf (src/maps/dock/): its ten. */
 MAP_MODULE_COUNT.dock = 10;
 /* Hayate Circuit (src/maps/hayate/): its ten. */
@@ -632,8 +646,11 @@ async function loadMap(shell, id, loading, options) {
   /* The Gem look, once a world is built: colours and vertex tones only, nothing per frame (look.js). */
   applyLook(map.scene, shell.quad);
   map.shadowsOff = Boolean(options && options.quality && options.quality.shadowsOff);
-  /* The Race time pick this world was built with: see raceTimeOf. */
-  map.raceTime = raceTimeOf(options);
+  /* The Race time pick this world was built with: see raceTimeOf. 'n/a'
+   * on a world the pick cannot change (a whoop room, a freestyle map, any
+   * world but a five inch race track: src/maps/custom.js), so changing it
+   * never rebuilds one to draw the same picture (bugs.md BUG-11). */
+  map.raceTime = map.raceTimeApplies ? raceTimeOf(options) : 'n/a';
   /* The published map a built world was made from, or null for the
    * pilot's own. The world does not say, because to it a document is a
    * document, and the shell has to tell two of them apart: see
@@ -1088,6 +1105,18 @@ export async function boot({ loading, bootStart, mapId }) {
   } catch (e) {
     ui.setBanner(`Could not open that TinyLaps track.\n${e.message ?? e}`, true);
   }
+  /*
+   * THE MOST FLOWN TRACK IS ASKED FOR, NOT WAITED FOR, HERE (core.md CORE-3).
+   * A first visit has nothing seated, which is exactly when the board is
+   * asked for its most flown track: up to 4 s for the list and 8 s for the
+   * document. That used to be awaited here, in line, before the flight
+   * controller was instantiated, its tune fetched and the map's modules
+   * asked for, so a cold board added all of it to the loading screen of
+   * the visit that matters most. The ask now runs beside all of that and is
+   * awaited only where its answer is needed: just before the world is
+   * built, which has to know which track it is building (featuredSettled).
+   */
+  let featuredWait = null;
   try {
     const fromUrl = fromTinyLaps || await adoptShareFromLocation();
     if (fromUrl) {
@@ -1106,15 +1135,42 @@ export async function boot({ loading, bootStart, mapId }) {
       ui.seatCraftForDoc(fromUrl.document);
       ui.settings.map = 'custom';
       ui.renderMenu();
-    } else if (mapById(ui.settings.map).mode !== 'freestyle' && !hasFlyableTrack()) {
-      const featured = await adoptMostFlownTrack(airframeById(ui.settings.airframe).trackClass);
-      if (featured) {
-        ui.settings.map = 'custom';
-        ui.renderMenu();
-      }
+    } else if (mapById(ui.settings.map).mode !== 'freestyle' && (!hasFlyableTrack() || shareSeatIsStandIn())) {
+      featuredWait = adoptMostFlownTrack(airframeById(ui.settings.airframe).trackClass).then(
+        (featured) => ({ featured, error: null }),
+        (error) => ({ featured: null, error }),
+      );
+      /* The world it seats is a race track, so its modules are asked for
+       * now, beside the board, rather than after it. */
+      preloadMapModules('custom');
     }
   } catch (e) {
     ui.setBanner(`Could not open that published track.\n${e.message ?? e}`, true);
+  }
+  /* Where the world needs the answer: seat what came back. If it is still
+   * on its way the board stage is named again, so the screen says what is
+   * being waited for (the bar never runs backwards: see aim in loading.js). */
+  async function featuredSettled() {
+    if (!featuredWait) {
+      return;
+    }
+    let pending = true;
+    featuredWait.then(() => { pending = false; });
+    await Promise.resolve();
+    if (pending) {
+      loading.start('board');
+    }
+    const { featured, error } = await featuredWait;
+    featuredWait = null;
+    if (pending) {
+      loading.done('board');
+    }
+    if (error) {
+      ui.setBanner(`Could not open that published track.\n${error.message ?? error}`, true);
+    } else if (featured) {
+      ui.settings.map = 'custom';
+      ui.renderMenu();
+    }
   }
   /*
    * A PUBLISHED FREESTYLE MAP arrives as ?mapshare=id, from the board's Fly
@@ -1505,6 +1561,8 @@ export async function boot({ loading, bootStart, mapId }) {
       ? { document: sharedMap.document, shared: sharedMap }
       : {};
   };
+  /* The most flown track, asked for in the board stage: see featuredWait. */
+  await featuredSettled();
   try {
     view = await loadMap(shell, ui.settings.map, loading, {
       quality: qualityOf(ui.settings),
@@ -3569,30 +3627,54 @@ export async function boot({ loading, bootStart, mapId }) {
     const k = simLenToWorld(1);
     return k < 1 ? k : 1;
   }
+  /*
+   * THE EYE SWEEP'S BALL. The near plane is CAMERA_NEAR_FRACTION of the
+   * clearance and never under CAMERA_NEAR_MIN, so a ball of the least
+   * plane's own size (what the sweep used to be given) stops the eye where
+   * that plane's CENTRE is on the face and its corners, about twice as far
+   * out, are through it: round 3's R3-2. A ball of least / fraction stops
+   * it where the clamped plane is still the fraction of the clearance, so
+   * the corners stay in front of the face. 2.2 cm on a five inch, 0.65 cm
+   * on a whoop in the town. Used by the frame and by __eyeSweep alike.
+   */
+  function eyeSweepRadius() {
+    return CAMERA_NEAR_MIN * nearScale() / CAMERA_NEAR_FRACTION;
+  }
+  /* What the last fpvNear found that a collider sweep cannot see: the
+   * nearest car or sail, and the floor under the point asked (negative
+   * when the point is below it). The predicted eye reads them: R3-7. */
+  let fpvMoverGap = Infinity;
+  let fpvFloorGap = Infinity;
   function fpvNear(p) {
     const k = nearScale();
     const open = CAMERA_NEAR_OPEN * k;
     const least = CAMERA_NEAR_MIN * k;
     const reach = open / CAMERA_NEAR_FRACTION;
     let gap = view.colliders ? view.colliders.gapAt(p.x, p.y, p.z, reach) : Infinity;
+    let mover = Infinity;
     /* A car is solid too, and not a collider: its drawn box, as last drawn. */
     if (trafficOn) {
       const car = view.carGap(p.x, p.y, p.z, reach);
-      if (car < gap) {
-        gap = car;
+      if (car < mover) {
+        mover = car;
       }
     }
     /* And a windmill's sails, where they are drawn at the lap clock. */
     if (sails) {
       const sail = sails.gapAt(p.x, p.y, p.z, reach, simTimeMs);
-      if (sail < gap) {
-        gap = sail;
+      if (sail < mover) {
+        mover = sail;
       }
+    }
+    if (mover < gap) {
+      gap = mover;
     }
     const floor = p.y - view.height(p.x, p.z, p.y - SURFACE_BIAS, p.y);
     if (floor < gap) {
       gap = floor;
     }
+    fpvMoverGap = mover;
+    fpvFloorGap = floor;
     const near = gap * CAMERA_NEAR_FRACTION;
     return near < least ? least : (near > open ? open : near);
   }
@@ -3863,6 +3945,10 @@ export async function boot({ loading, bootStart, mapId }) {
    */
   let ghostTop = []; /* the course's top laps with a ghost, fastest first, decoded */
   let ghostTopBusy = false;
+  /* Board top 3 fetched and decoded while a lap was running, held for the
+   * next lap start so a lap is never chased against two different laps
+   * (see takeGhostTop). */
+  let ghostTopPending = null;
   const ghostExtraRigs = [];
   const ghostExtraSample = { px: 0, py: 0, pz: 0, qx: 0, qy: 0, qz: 0, qw: 1, cut: false };
   function ghostExtraRig(i) {
@@ -3993,10 +4079,14 @@ export async function boot({ loading, bootStart, mapId }) {
     if (ghostChoice.startsWith('board:')) {
       return ghostBoardLap && `board:${ghostBoardLap.timeId}` === ghostChoice ? ghostBoardLap : null;
     }
-    if (ghostChoice === 'top3') {
-      return ghostTop[0] || null;
-    }
     const key = ghostCourseKey();
+    /* Board top 3 on a track the board has no ghosts for (the field, the
+     * stock tracks, the career, any track not on the board), or before
+     * they arrive: the pilot's own best flies, rather than nothing, and it
+     * is the lap the gap is read against anyway (bugs.md BUG-8). */
+    if (ghostChoice === 'top3') {
+      return ghostTop[0] || ghostBook.best(key);
+    }
     return ghostChoice === 'previous' ? ghostBook.previous(key) : ghostBook.best(key);
   }
 
@@ -4046,8 +4136,11 @@ export async function boot({ loading, bootStart, mapId }) {
       if (ghostTopBusy) {
         return 'Fetching the three fastest laps from the board.';
       }
+      if (ghostTopPending) {
+        return 'The three fastest laps on the board are here and join you from the next lap.';
+      }
       if (!ghostTop.length) {
-        return 'The three fastest laps on the board fly beside you, on any track the board has laps with ghosts for. This one has none yet, or the board could not be reached.';
+        return 'The three fastest laps on the board fly beside you, on any track the board has laps with ghosts for. This one has none yet, or the board could not be reached, so your best lap flies instead.';
       }
       return `The ${ghostTop.length === 1 ? 'fastest lap' : `${ghostTop.length} fastest laps`} on the board fly beside you as translucent pacers. The OSD reads your gap to the fastest at every gate.`;
     }
@@ -4100,10 +4193,15 @@ export async function boot({ loading, bootStart, mapId }) {
     if (id === 'top3') {
       ui.settings.ghost = id;
       ui.persistSettings();
-      if (ghostTop.length) {
-        armGhost();
-        syncGhostRow();
-      } else {
+      /* Armed now: the board's laps if they are here, the pilot's best
+       * until they are (resolveGhost). Laps held for the next lap start
+       * are taken now only when no lap is running. */
+      if (race.lapStartMs == null) {
+        takeGhostTop();
+      }
+      armGhost();
+      syncGhostRow();
+      if (!ghostTop.length && !ghostTopPending) {
         loadGhostTop();
       }
       return;
@@ -4202,7 +4300,7 @@ export async function boot({ loading, bootStart, mapId }) {
    * ghostCourseChanged asks for; this is called again when they arrive. */
   function loadGhostTop() {
     const listing = ghostListing();
-    if (!listing || !ghostBoardTimes || ghostTopBusy) {
+    if (!listing || !ghostBoardTimes || ghostTopBusy || ghostTopPending) {
       syncGhostRow();
       return;
     }
@@ -4222,6 +4320,12 @@ export async function boot({ loading, bootStart, mapId }) {
           if (ghostCourseKey() !== key) {
             return;
           }
+          /* Decoded in idle time, not on whichever flight frame the answer
+           * lands on (bugs.md BUG-9). */
+          await idleTurn();
+          if (ghostCourseKey() !== key) {
+            return;
+          }
           const lap = new GhostLap(decodeGhost(ghostFromBase64(payload.ghost)), {
             label: 'Board lap',
             name: payload.name || t.name || '',
@@ -4236,13 +4340,38 @@ export async function boot({ loading, bootStart, mapId }) {
       if (ghostCourseKey() !== key) {
         return;
       }
-      ghostTop = laps.sort((a, b) => a.durationMs - b.durationMs);
       ghostTopBusy = false;
-      if (ghostChoice === 'top3') {
+      ghostTopPending = laps.sort((a, b) => a.durationMs - b.durationMs);
+      /* Armed now only when no lap is running; otherwise at the next lap
+       * start, where ghostOnRaceStep arms (bugs.md BUG-9). */
+      if (race.lapStartMs == null && takeGhostTop() && ghostChoice === 'top3') {
         armGhost();
       }
       syncGhostRow();
     })();
+  }
+
+  /* Board top 3's laps become the ones flown, if a fetch left any. True
+   * when they did. */
+  function takeGhostTop() {
+    if (!ghostTopPending) {
+      return false;
+    }
+    ghostTop = ghostTopPending;
+    ghostTopPending = null;
+    return true;
+  }
+
+  /* One turn of the event loop in idle time, so work that can wait does
+   * not land inside a flight frame. */
+  function idleTurn() {
+    return new Promise((resolve) => {
+      if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(() => resolve(), { timeout: 1000 });
+      } else {
+        setTimeout(resolve, 0);
+      }
+    });
   }
 
   function ghostListing() {
@@ -4268,10 +4397,12 @@ export async function boot({ loading, bootStart, mapId }) {
     ghostChased = null;
     ghostGap = null;
     ghostBoardTimes = null;
+    ui.boardGhostTimes = null;
     ghostBoardLap = null;
     ghostBoardBusy = false;
     ghostTop = [];
     ghostTopBusy = false;
+    ghostTopPending = null;
     parkGhostExtras();
     ghostPrev.valid = false;
     ghostRig.setPresence(0);
@@ -4298,6 +4429,8 @@ export async function boot({ loading, bootStart, mapId }) {
         /* The five fastest recorded laps are plenty of rivals for one
          * menu row; the full table lives on the board page. */
         ghostBoardTimes = times.filter((t) => t.hasGhost && t.id).slice(0, 5);
+        /* The results' rival row reads the same five (R2M-9). */
+        ui.boardGhostTimes = ghostBoardTimes;
         syncGhostRow();
         if (ghostChoice === 'top3') {
           loadGhostTop();
@@ -4378,6 +4511,7 @@ export async function boot({ loading, bootStart, mapId }) {
         pCurr.x, pCurr.y, pCurr.z,
         qPrev.x, qPrev.y, qPrev.z, qPrev.w,
       );
+      takeGhostTop();
       armGhost();
     } else if (race.lapStartMs != null) {
       ghostRecorder.push(
@@ -4821,7 +4955,7 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   if (mpOn) {
-    ui.roomsOn = true;
+    ui.turnRoomsOn();
     ui.onFlyTogether = (entry) => {
       loadTogether().then((t) => t && t.openHost(entry));
     };
@@ -5390,6 +5524,12 @@ export async function boot({ loading, bootStart, mapId }) {
   const predDq = new THREE.Quaternion();
   const predR = new THREE.Quaternion();
   const predV = new THREE.Vector3();
+  /* The mount before the lead, and the last sweep's answer (-1 for open air), for the check. */
+  const predMount = new THREE.Vector3();
+  let predictClippedT = -1;
+  /* The point the FPV branch wants its near plane sized at, when the
+   * predicted view does not size it: null on every other camera. */
+  let fpvNearAt = null;
   let lastCamClear = 0;
   let lastCamFwdY = 0;
   let lastCamUpY = 0;
@@ -6001,7 +6141,12 @@ export async function boot({ loading, bootStart, mapId }) {
      * belly landing does not spin the props down. */
     if (kind !== 'ground' && typeof sim.e.sim_prop_strike === 'function') {
       sim.e.sim_prop_strike(IMPACT_PROP_MAX * u);
-      stateCurr = readState();
+      /* Into the step loop's own buffers (CORE-13), not a fresh copy: a
+       * whoop held against a ceiling strikes a prop every few frames, and
+       * each copy was a new array for the collector in a flying frame. Its
+       * only caller runs after the step loop, where the arrays alive are
+       * statePrev and stateCurr, which readStateStep never hands out. */
+      stateCurr = readStateStep(null);
     }
     if (u > 0.25) {
       padRumble(u);
@@ -6321,12 +6466,61 @@ export async function boot({ loading, bootStart, mapId }) {
     }
   }
 
+  /* How many whole state copies the shell has asked for, for the harness
+   * (window.__readStateCalls): a flying frame should make none. */
+  let readStateCalls = 0;
   function readState() {
+    readStateCalls += 1;
     const { code, state } = sim.readState();
     if (code !== SIM_OK) {
       throw new Error(`sim_state: ${simErrorName(code)}`);
     }
     return state;
+  }
+
+  /* The sim clock in seconds, the state's first double, with nothing
+   * allocated: see readClock in tests/lib/simmod.js. A failed read goes
+   * through readState, which throws with the module's code. */
+  function readClock() {
+    const t = sim.readClock();
+    return Number.isFinite(t) ? t : readState()[0];
+  }
+
+  /*
+   * THE STEP LOOP'S STATE, READ INTO BUFFERS IT OWNS (core.md CORE-13).
+   * readState above copies the block into a new array, which the loop did
+   * once a step: a thousand arrays and a thousand wrappers a simulated
+   * second for the collector to sweep, in the frames a pilot is flying. In
+   * the loop the only arrays alive across a read are the step before
+   * (stBefore), and the frame's statePrev and stateCurr, which the render
+   * interpolates between and the next frame starts from; nothing the loop
+   * hands a step to keeps one (the crash judge, the counter, the traffic
+   * chase, the film and the trick detector read numbers out and let go).
+   * So four buffers always leave one that none of the three is holding, and
+   * the step reads into it. The values are the same bytes readState copies,
+   * so nothing about the trajectory changes, only who owns the memory.
+   * Everywhere else still calls readState and gets an array of its own.
+   */
+  const stepPool = [];
+  function readStateStep(before) {
+    if (!stepPool.length) {
+      const n = sim.stateLength();
+      for (let k = 0; k < 4; k += 1) {
+        stepPool.push(new Float64Array(Math.max(0, n)));
+      }
+    }
+    let out = stepPool[0];
+    for (let k = 0; k < stepPool.length; k += 1) {
+      out = stepPool[k];
+      if (out !== before && out !== statePrev && out !== stateCurr) {
+        break;
+      }
+    }
+    const code = sim.readStateInto(out);
+    if (code !== SIM_OK) {
+      throw new Error(`sim_state: ${simErrorName(code)}`);
+    }
+    return out;
   }
 
   /*
@@ -6669,12 +6863,15 @@ export async function boot({ loading, bootStart, mapId }) {
     if (!g) {
       return false;
     }
-    /* Down past the gate along its travel, at the ground there. */
+    /* Down past the gate along its travel, at the ground there, or before
+     * it when it is the timing gate, so the next crossing starts the clock
+     * rather than leaving a whole lap untimed (race.retrySeatsBefore). */
     const fx = g.az.x;
     const fz = g.az.z;
     const flat = Math.hypot(fx, fz) || 1;
-    const px = g.x + (fx / flat) * RETRY_PAST_M;
-    const pz = g.z + (fz / flat) * RETRY_PAST_M;
+    const along = race.retrySeatsBefore() ? -RETRY_PAST_M : RETRY_PAST_M;
+    const px = g.x + (fx / flat) * along;
+    const pz = g.z + (fz / flat) * along;
     const py = recoverGroundAt(px, pz, g.y + 2) + 0.6;
     const keepOut = trafficOn ? (view.restKeepOut ?? null) : null;
     if (!findRestSpot(view.colliders, recoverGroundAt, restW(), px, py, pz, null, restSpot, keepOut)) {
@@ -7962,7 +8159,7 @@ export async function boot({ loading, bootStart, mapId }) {
       && wantQ === view.graphics
       && Boolean(ui.settings.shadowsOff) === Boolean(view.shadowsOff)
       /* Only a race track reads Race time, so only one is rebuilt for it. */
-      && (wantId !== 'custom' || raceTimeOf(ui.settings) === view.raceTime)
+      && (wantId !== 'custom' || view.raceTime === 'n/a' || raceTimeOf(ui.settings) === view.raceTime)
       && wantedCourseKey(wantId) === loadedCourseKey(view);
   }
 
@@ -8155,10 +8352,12 @@ export async function boot({ loading, bootStart, mapId }) {
     /* The thumb sticks are a proportional stick, so they are a RADIO here,
      * not a keyboard: they fly whichever mode the setting says. Keys keep
      * forcing angle because a key is a bang-bang input and acro on one is
-     * a crash generator. */
-    if (input.isTouchPrimary()) {
-      return 'flightMode';
-    }
+     * a crash generator. That test is made last, below, because it is the
+     * only one that lists the pads (navigator.getGamepads, and a copy of a
+     * Firefox pad's axes), and this runs every frame through
+     * wantAngleMode: the harness and freestyle tests above it answer
+     * flightMode whatever the pads say, so asking them first costs nothing
+     * and skips the list (round 2 review R2D-5). */
     /*
      * THE HARNESS OVERRIDE IS A GIMBAL, NOT A KEY.
      *
@@ -8205,10 +8404,13 @@ export async function boot({ loading, bootStart, mapId }) {
     if (view && view.mode === 'freestyle') {
       return 'flightMode';
     }
-    return input.isKeyboardPrimary() ? 'keyRaceMode' : 'flightMode';
+    /* One list of the pads for both questions: no pad and the thumbs
+     * active is the touch case, no pad otherwise is the keyboard. */
+    return input.primaryKind() === 'keys' ? 'keyRaceMode' : 'flightMode';
   }
 
-  function wantAngleMode() {
+  /* key: flightModeSetting(), when the caller already has it. */
+  function wantAngleMode(key = null) {
     if (crashflipOn || turtleRecover) {
       return false;
     }
@@ -8222,7 +8424,7 @@ export async function boot({ loading, bootStart, mapId }) {
     if (careerFlightMode) {
       return careerFlightMode === 'angle';
     }
-    return ui.settings[flightModeSetting()] === 'angle';
+    return ui.settings[key || flightModeSetting()] === 'angle';
   }
 
   /*
@@ -8386,15 +8588,30 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   function syncAngleMode() {
-    const want = wantAngleMode();
+    const key = careerFlightMode ? null : flightModeSetting();
+    const want = wantAngleMode(key);
     if (want !== angleModeOn) {
       angleModeOn = want;
       sim.setAngleMode(want);
     }
-    if (ui.setCraftCaption && !(showcase && showcase.failed)) {
-      ui.setCraftCaption(want
-        ? 'Angle. Sticks are tilt. Hands off levels.'
-        : 'Acro. Sticks are rates. Hands off holds.');
+    /*
+     * Which of the Quad room's two mode rows decides, said in the caption:
+     * on the keyboard a race flies Keyboard races, not Flight mode, so the
+     * room showed Acro lit over a quad captioned Angle and a beginner could
+     * not tell which one they would fly (fun.md FUN-21). The words are
+     * compared before they are written (Ui.text).
+     *
+     * NOT IN FLIGHT. The caption is only seen in the Quad room, and this
+     * runs every frame: round 1 had it list the pads again and build a
+     * string on every flight frame (round 2 review R2D-5). In flight it is
+     * skipped; the first menu frame after it writes the right words, and
+     * the key it reads is the one already worked out above.
+     */
+    if (ui.screen !== 'flight' && ui.setCraftCaption && !(showcase && showcase.failed)) {
+      const keys = key === 'keyRaceMode';
+      ui.setCraftCaption(keys
+        ? (want ? CAPTION_KEYS_ANGLE : CAPTION_KEYS_ACRO)
+        : (want ? CAPTION_ANGLE : CAPTION_ACRO));
     }
   }
 
@@ -8744,6 +8961,10 @@ export async function boot({ loading, bootStart, mapId }) {
     /* What the throttle keys do when let go. The collective stays where it
      * is across a change, so this is safe mid flight. */
     input.setKeyThrottle(s.keyThrottle);
+    /* A gamepad's stick deadzone and what its throttle is: read on the
+     * next poll, so safe mid flight too. See PAD_DEADZONES in input.js. */
+    input.setPadDeadzone(s.padDeadzone);
+    input.setPadThrottle(s.padThrottle);
     /* The thumb stick size: one CSS variable, written only when it moves,
      * so nothing here runs per frame. The plates' travel is measured off
      * the drawn plate at touchdown and follows on its own. */
@@ -8760,8 +8981,10 @@ export async function boot({ loading, bootStart, mapId }) {
     /* Vertical field of view. The default 100 keeps every measured budget
      * comparable; the setting exists because how roomy a course feels is a
      * pilot preference on real quads too, set by lens choice. */
-    if (shell.camera.fov !== s.cameraFov) {
-      shell.camera.fov = s.cameraFov;
+    /* Held to the 16:9 width on a wider screen: fpvFov in src/render/lens.js. */
+    const lensFov = fpvFov(s.cameraFov, shell.camera.aspect);
+    if (shell.camera.fov !== lensFov) {
+      shell.camera.fov = lensFov;
       shell.camera.updateProjectionMatrix();
     }
     /* Render scale changes are free, no world rebuild. See
@@ -8835,7 +9058,7 @@ export async function boot({ loading, bootStart, mapId }) {
         /* Any freestyle world, not only the town: a pilot seated on Your
          * map has no race track to be missing, and adopting one here would
          * move them off the map they chose. */
-        if (mapById(s.map).mode !== 'freestyle' && !hasFlyableTrack()) {
+        if (mapById(s.map).mode !== 'freestyle' && (!hasFlyableTrack() || shareSeatIsStandIn())) {
           adoptMostFlownTrack(wantCls).then((got) => {
             if (!got) {
               return;
@@ -10150,7 +10373,9 @@ export async function boot({ loading, bootStart, mapId }) {
     kind: '', step: null, device: '', stickMode: 0, angle: false, text: '',
   };
   const guideLine = (kind, step) => {
-    const device = input.isTouchPrimary() ? 'touch' : (input.firstGamepad() ? 'pad' : 'keys');
+    /* One list of the pads, not two (round 2 review R2D-5's reasoning,
+     * applied to the guided frames). */
+    const device = input.primaryKind();
     const stickMode = ui.settings.stickMode;
     const m = guideMemo;
     if (m.kind !== kind || m.step !== step || m.device !== device
@@ -10206,8 +10431,14 @@ export async function boot({ loading, bootStart, mapId }) {
    * write the share seat, tell the shell which course it is now holding. The
    * screen then acts map:custom and the world builds around it.
    */
-  ui.onBoardCourse = async (track) => {
+  /* `wanted` is the press's own question, still asked when the track
+   * lands: a pilot who has left the screen that asked gets nothing seated
+   * (ui.boardAsker), and their share seat is not overwritten. */
+  ui.onBoardCourse = async (track, wanted = null) => {
     const payload = await fetchTrackDocument(track.id, track.board);
+    if (wanted && !wanted()) {
+      return false;
+    }
     const doc = payload.document || payload;
     const share = {
       id: payload.id || track.id,
@@ -10248,6 +10479,9 @@ export async function boot({ loading, bootStart, mapId }) {
   };
   /* Menu clicks. The key handler has already woken the audio context by
    * the time the menu moves, so the first keypress is audible too. */
+  /* A line the menus want the pilot to read (a dialog that would not
+   * fetch). mpSay is the notice every screen shows. */
+  ui.onNotice = (text) => mpSay(text, 6000);
   ui.onUiSound = (kind) => {
     if (typeof audio.ui === 'function') {
       audio.ui(kind);
@@ -10366,6 +10600,13 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     ghostQueryId = time.id;
   };
+  /* The results' rival row (R2M-9): the course flown is seated, so its lap
+   * is picked as the ghost row would pick it, fetched once and armed. */
+  ui.onChaseRival = (time) => {
+    if (time && time.id) {
+      pickGhost(`board:${time.id}`);
+    }
+  };
 
   /*
    * FULLSCREEN IN FLIGHT. See fullscreenFly in ui.js for why: a desktop
@@ -10438,6 +10679,18 @@ export async function boot({ loading, bootStart, mapId }) {
   });
 
   ui.onAction = (action, s) => {
+    /*
+     * A FLIGHT THAT IS NOT THE LESSON'S (round 3 R3-13). A lesson flies
+     * through careerFly, never through this action, so a Fly arriving here
+     * while the career is up is some other door: a map from the picker, a
+     * board track, a room. The lesson's checklist, gauge, clock, coach and
+     * objective must not ride along onto it and go on judging, so the
+     * career lets go first, keeping the world just picked. Its synchronous
+     * part runs before the settings below are applied.
+     */
+    if (action === 'fly' && career && career.active()) {
+      career.leave({ keepWorld: true });
+    }
     if (s) {
       applySettings(s);
     }
@@ -10741,9 +10994,11 @@ export async function boot({ loading, bootStart, mapId }) {
     if (together && together.handleKey(code, repeat)) {
       return;
     }
-    /* Steam edition: career. Its screens take the keys while they are up. */
+    /* Steam edition: career. Its screens take the keys while they are up.
+     * True back to input.js, which then keeps Enter from also clicking a
+     * career button the mouse left focused: one press, one choice. */
     if (career && career.handleKey(code, repeat)) {
-      return;
+      return true;
     }
     /*
      * NOT WHILE A WORLD BUILDS. The loading screen covers the menu that was
@@ -10933,6 +11188,12 @@ export async function boot({ loading, bootStart, mapId }) {
   let liftFloorY = null;
   let liftAnchorX = 0;
   let liftAnchorZ = 0;
+  /* How far the lens floor lifted the mount this frame, the same on the last
+   * parked frame, and that frame's view height: carried into the release so
+   * the pad's hold does not let go before the craft lifts. Camera only. */
+  let floorRaise = 0;
+  let parkedFloorRaise = 0;
+  let parkedViewY = null;
 
   /*
    * World contact, already spawn-offset, back into plant metres. Inverse of
@@ -11571,7 +11832,9 @@ export async function boot({ loading, bootStart, mapId }) {
      * move: set by that branch below, and only by it. And whether it did. */
     predictCam = false;
     predictApplied = false;
+    predictClippedT = -1;
     fpvLens = false;
+    fpvNearAt = null;
     /* Once a frame, whatever the window did since the last one. */
     applyResizeIfDirty();
     if (!mapReady) {
@@ -11819,7 +12082,9 @@ export async function boot({ loading, bootStart, mapId }) {
       /* The module is the source of truth. If sim_init ran and JS time was
        * left behind, raising ts to lastTs would stamp every sample seconds
        * into the future. Snap the shell to step_index instead. */
-      const moduleIdx = Math.round(readState()[0] * SIM_HZ);
+      /* The clock alone, read with no copy (sim.readClock): this runs every
+       * flying frame, and readState()[0] made a whole array for one number. */
+      const moduleIdx = Math.round(readClock() * SIM_HZ);
       if (simStepIdx !== moduleIdx) {
         acc = 0;
         simStepIdx = moduleIdx;
@@ -12018,7 +12283,7 @@ export async function boot({ loading, bootStart, mapId }) {
             /* And the windmills' sails, round where the craft starts it. */
             pushSails(simTimeMs + i, stNow);
             sim.step(1);
-            stNow = readState();
+            stNow = readStateStep(stBefore);
             /* This step's world report and nothing else, for the crash
              * judge; folded into the frame's for everything that reads it
              * once a frame. See readStepReport. */
@@ -12788,7 +13053,9 @@ export async function boot({ loading, bootStart, mapId }) {
        * picture looks into the dirt; a high inverted pass stays put. */
       const camFloor = view.height(fpvPos.x, fpvPos.z, fpvPos.y - SURFACE_BIAS, fpvPos.y)
         + fpvLensClear(camFwd.y, camUp.y);
+      floorRaise = 0;
       if (fpvPos.y < camFloor) {
+        floorRaise = camFloor - fpvPos.y;
         fpvPos.y = camFloor;
       }
       lastCamFloor = camFloor;
@@ -12800,12 +13067,34 @@ export async function boot({ loading, bootStart, mapId }) {
     if (parked) {
       liftFloorY = null;
       parkedLift += (simLenToWorld(PARKED_LIFT) - parkedLift) * Math.min(1, dt * 0.006);
+      parkedFloorRaise = floorRaise;
     } else if (poseLock) {
       liftFloorY = null;
+      parkedViewY = null;
+      parkedFloorRaise = 0;
       parkedLift += (0 - parkedLift) * Math.min(1, dt * 0.006);
     } else {
       if (liftFloorY === null) {
+        /*
+         * THE PAD'S HOLD IS CARRIED TOO (check:takeoff, the owner's word of
+         * 2026-11-06). Parked on a start pad the lens floor's near clearance
+         * (FPV_NEAR_CLEAR in src/render/lens.js) held the mount above where
+         * it sits, and it let go the frame the craft was released, so the
+         * view sank 13 cm before the craft lifted. The floor is the higher of
+         * this frame's view and the last parked frame's, and the lift may
+         * carry what the lens floor was holding as well as its own 30 cm,
+         * so the view stays put until the craft's own lens climbs past it.
+         * Camera only: the plant and its pose never see either number.
+         */
         liftFloorY = fpvPos.y + parkedLift;
+        /* Bounded by what the floor and the lift could have held, so a
+         * parked frame somewhere else (a reset) is never carried. */
+        if (parkedViewY !== null && parkedViewY > liftFloorY
+          && parkedViewY - liftFloorY <= FPV_NEAR_CLEAR + simLenToWorld(PARKED_LIFT)) {
+          liftFloorY = parkedViewY;
+        }
+        parkedLift += parkedFloorRaise;
+        parkedFloorRaise = 0;
         liftAnchorX = pCurr.x;
         liftAnchorZ = pCurr.z;
       }
@@ -12816,6 +13105,7 @@ export async function boot({ loading, bootStart, mapId }) {
     if (parkedLift > 0.001) {
       fpvPos.y += parkedLift;
     }
+    parkedViewY = parked ? fpvPos.y : null;
     lastFpvY = fpvPos.y;
     fpvQuat.copy(qPrev).multiply(qTilt);
     /*
@@ -12936,7 +13226,8 @@ export async function boot({ loading, bootStart, mapId }) {
       const narrow = shell.camera.aspect < 0.95;
       shell.camera.translateX((narrow ? 0 : -0.20) * dist * pull);
       shell.camera.translateY((narrow ? -0.14 : -0.04) * dist * pull);
-      const fov = ui.settings.cameraFov + (FINISH_FOV - ui.settings.cameraFov) * pull;
+      const lensFov = fpvFov(ui.settings.cameraFov, shell.camera.aspect);
+      const fov = lensFov + (FINISH_FOV - lensFov) * pull;
       if (Math.abs(shell.camera.fov - fov) > 0.05) {
         shell.camera.fov = fov;
         shell.camera.updateProjectionMatrix();
@@ -13039,7 +13330,7 @@ export async function boot({ loading, bootStart, mapId }) {
 
       const fovMid = 46;
       const fov = zoomU > 0
-        ? fovMid + (ui.settings.cameraFov - fovMid) * zoomU
+        ? fovMid + (fpvFov(ui.settings.cameraFov, shell.camera.aspect) - fovMid) * zoomU
         : INTRO_FOV + (fovMid - INTRO_FOV) * approachU;
       if (Math.abs(shell.camera.fov - fov) > 0.05) {
         shell.camera.fov = fov;
@@ -13052,7 +13343,7 @@ export async function boot({ loading, bootStart, mapId }) {
         shell.quad.visible = false;
         shell.camera.position.copy(fpvPos);
         shell.camera.quaternion.copy(fpvQuat);
-        shell.camera.fov = ui.settings.cameraFov;
+        shell.camera.fov = fpvFov(ui.settings.cameraFov, shell.camera.aspect);
         shell.camera.updateProjectionMatrix();
       }
     } else {
@@ -13066,8 +13357,9 @@ export async function boot({ loading, bootStart, mapId }) {
           replayScratchTilt.setFromAxisAngle(AXIS_X, cameraTiltRad(camTilt));
           shell.camera.position.copy(replayScratchPos);
           shell.camera.quaternion.copy(replayScratchQuat).multiply(replayScratchTilt);
-          if (shell.camera.fov !== ui.settings.cameraFov) {
-            shell.camera.fov = ui.settings.cameraFov;
+          const lensFov = fpvFov(ui.settings.cameraFov, shell.camera.aspect);
+          if (shell.camera.fov !== lensFov) {
+            shell.camera.fov = lensFov;
             shell.camera.updateProjectionMatrix();
           }
         } else {
@@ -13132,9 +13424,13 @@ export async function boot({ loading, bootStart, mapId }) {
          * moves: see predictView before the draw. */
         predictCam = !held;
         fpvLens = true;
-        setCameraNear(fpvNear(held ? manga.holdPos : fpvPos));
-        if (shell.camera.fov !== ui.settings.cameraFov) {
-          shell.camera.fov = ui.settings.cameraFov;
+        /* Sized once, after the predicted view has had its say: where it
+         * moves the eye it sizes the plane there, and the mount's answer
+         * would be thrown away (R3-9). See the foot of predictView. */
+        fpvNearAt = held ? manga.holdPos : fpvPos;
+        const lensFov = fpvFov(ui.settings.cameraFov, shell.camera.aspect);
+        if (shell.camera.fov !== lensFov) {
+          shell.camera.fov = lensFov;
           shell.camera.updateProjectionMatrix();
         }
       }
@@ -13342,14 +13638,64 @@ export async function boot({ loading, bootStart, mapId }) {
         horizon = PREDICT_MAX_MS;
       }
       predictDelta(stateCurr, horizon, qSpawn, predDp, predDq);
+      predMount.copy(shell.camera.position);
       moveRigid(shell.camera.position, shell.camera.quaternion, shell.quad.position, shell.quad.quaternion,
         predDp, predDq, predR, predV);
       if (shell.camera.position.y < lastCamFloor) {
         shell.camera.position.y = lastCamFloor;
       }
+      /*
+       * NEVER PAST A WALL. A 25 ms lead at 20 m/s is 0.33 m, nearly twice
+       * the craft's radius, so on the frame before a strike the predicted
+       * eye could stand inside the face with a near plane sized for the
+       * mount. One sweep of a ball the size of the least near plane from
+       * the mount to the predicted eye (Colliders.sweepPoint): on a touch
+       * the eye stops where the ball first touches, so the POSITION lead
+       * is cut for that frame and the ROTATION lead, the part of the
+       * prediction the sticks feel most, is kept. In open air nothing
+       * changes. Then the near plane is sized again where the eye now is.
+       */
+      const eyeR = eyeSweepRadius();
+      if (view.colliders) {
+        const t = view.colliders.sweepPoint(
+          predMount.x, predMount.y, predMount.z,
+          shell.camera.position.x, shell.camera.position.y, shell.camera.position.z,
+          eyeR,
+        );
+        predictClippedT = t;
+        if (t >= 0) {
+          shell.camera.position.lerpVectors(predMount, shell.camera.position, t);
+        }
+      }
+      /*
+       * WHAT THE SWEEP CANNOT SEE (R3-7). The sweep knows colliders only,
+       * and the floor clamp above is the MOUNT's floor, so a lead over a
+       * rising slope or a kerb, or into a car or a windmill's sail, can
+       * still put the eye inside one. fpvNear at the eye already asks all
+       * three to size the plane, so the open air frame pays nothing more
+       * for reading its answer: a car or sail nearer than the ball keeps
+       * the mount (the lead is dropped, as a touch at the start of the
+       * sweep would), and a floor nearer than the ball lifts the eye onto
+       * it. Either is a second query on that rare frame only.
+       */
+      let near = fpvNear(shell.camera.position);
+      if (fpvMoverGap < eyeR) {
+        shell.camera.position.copy(predMount);
+        predictClippedT = 0;
+        near = fpvNear(shell.camera.position);
+      } else if (fpvFloorGap < eyeR) {
+        shell.camera.position.y += eyeR - fpvFloorGap;
+        near = fpvNear(shell.camera.position);
+      }
+      setCameraNear(near);
       shell.camera.updateMatrixWorld();
       predictLastMs = horizon;
       predictApplied = true;
+    }
+    /* The FPV mount's near plane, where no prediction sized it (R3-9). A
+     * harness camera has sized its own. */
+    if (fpvNearAt && !predictApplied && !camOverride) {
+      setCameraNear(fpvNear(fpvNearAt));
     }
     if (worldLive && drawThis) {
       placePropView();
@@ -13693,6 +14039,9 @@ export async function boot({ loading, bootStart, mapId }) {
             || Math.abs(ch.pitch) > PAD_FLYING_STICK
             || Math.abs(ch.yaw) > PAD_FLYING_STICK),
         touch: touchFlying,
+        /* On the pad, before this run's first takeoff and with the throttle
+         * still down: the cluster sits on a small ink plate (R2M-11). */
+        padWait: !aloft && !flownThisRun && ch.throttle <= PAD_WAIT_THROTTLE,
       });
       /* The chips fade on the same test: see syncChipFade. */
       ui.syncChipFade(aloft, nowWall);
@@ -13915,7 +14264,7 @@ export async function boot({ loading, bootStart, mapId }) {
        * line that promises what starts. See PRACTICE_LAPS. */
       let second = runLaps === PRACTICE_LAPS
         ? (view.racegow
-          ? '\nNon stop: every lap called, best three in a row kept. The green gate starts your lap'
+          ? '\nNon stop: best three in a row kept. The green gate starts your lap'
           : '\nPractice: no lap limit. The green gate starts your lap')
         : '\nThe green gate starts your lap';
       if (race.freestyle && view.filmGame && fightGame) {
@@ -14348,11 +14697,42 @@ export async function boot({ loading, bootStart, mapId }) {
     textures: shell.renderer.info.memory.textures,
     programs: shell.renderer.info.programs ? shell.renderer.info.programs.length : 0,
   });
-  /* The Show FPS readout's API label and its MEM row, which walks the live
-   * scene every few seconds: see setPerfSource in ui.js and vram.js. */
+  /*
+   * The Show FPS readout's API label and its MEM row: see setPerfSource in
+   * ui.js and vram.js. The row asks every few seconds from inside the frame,
+   * and the walk it answers with visits every node of the scene and every
+   * key of every material, several hundred thousand visits on the town, so
+   * the readout pilots use to report a hitch would make one. So the walk
+   * runs once per world, on the first ask after it is adopted, and again
+   * only when the renderer's own counts of geometries and textures have
+   * moved (a lazy load, a swap) and the pilot is not flying: in flight the
+   * row keeps the world's figure, which is all it is for. window.__memWalks
+   * counts the walks, for scripts/features-check.js.
+   */
+  let memKeyView = null;
+  let memKeyScene = null;
+  let memKeyGeo = -1;
+  let memKeyTex = -1;
+  let memMB = 0;
+  window.__memWalks = 0;
   ui.setPerfSource({
     api: shell.renderer.capabilities && shell.renderer.capabilities.isWebGL2 ? 'WebGL2' : 'WebGL',
-    memoryMB: () => (view && view.scene ? estimateSceneBytes(view.scene).bytes / 1048576 : 0),
+    memoryMB: () => {
+      if (!view || !view.scene) {
+        return 0;
+      }
+      const mem = shell.renderer.info.memory;
+      const fresh = view !== memKeyView || view.scene !== memKeyScene;
+      if (fresh || (mode !== 'flight' && (mem.geometries !== memKeyGeo || mem.textures !== memKeyTex))) {
+        memMB = estimateSceneBytes(view.scene).bytes / 1048576;
+        memKeyView = view;
+        memKeyScene = view.scene;
+        memKeyGeo = mem.geometries;
+        memKeyTex = mem.textures;
+        window.__memWalks += 1;
+      }
+      return memMB;
+    },
   });
   /* Handles the screenshot harness uses to reach a screen that would
    * otherwise need a flown lap. Nothing in the shell reads them. */
@@ -14628,6 +15008,16 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     return view.colliders.gapAt(x, y, z, r);
   };
+  /* The predicted view's eye sweep, as the frame asks it (radius
+   * eyeSweepRadius). Harness only: check:features eye times it in the town. */
+  window.__eyeSweep = (ax, ay, az, bx, by, bz) => (view.colliders
+    ? view.colliders.sweepPoint(ax, ay, az, bx, by, bz, eyeSweepRadius()) : -1);
+  window.__eyeSweepRadius = () => eyeSweepRadius();
+  /* The near plane as the frame sizes it at a point, colliders, cars,
+   * sails and floor: the one fpvNear a predicted frame now pays (R3-9).
+   * Harness only. */
+  const fpvNearProbe = new THREE.Vector3();
+  window.__fpvNear = (x, y, z) => fpvNear(fpvNearProbe.set(x, y, z));
   window.__segmentCrossesAny = (ax, ay, az, bx, by, bz) => {
     if (!view.colliders) {
       return false;
@@ -15130,6 +15520,8 @@ export async function boot({ loading, bootStart, mapId }) {
       boardTimes: (ghostBoardTimes || []).length,
       /* Board top 3: the laps fetched and which extra rigs are in the air. */
       top: ghostTop.map((l) => l.durationMs),
+      /* Fetched while a lap ran, held for the next lap start. */
+      pendingTop: ghostTopPending ? ghostTopPending.length : 0,
       extrasVisible: ghostExtraRigs.map((r) => r.group.visible),
       /* What one rig asks of a frame: its meshes and its tag, each a draw. */
       rigDraws: (() => {
@@ -15251,6 +15643,10 @@ export async function boot({ loading, bootStart, mapId }) {
     reset();
     return WORLD_SCALE;
   };
+  /* The frame's state array itself, not a copy, so a check can see whether
+   * the step loop made a new one (readStateStep): harness only. */
+  window.__stateRef = () => stateCurr;
+  window.__readStateCalls = () => readStateCalls;
   window.__craftState = () => ({
     mode,
     flownThisRun,
@@ -15413,6 +15809,8 @@ export async function boot({ loading, bootStart, mapId }) {
     haveRecoverFrom = false;
     parkedLift = 0;
     liftFloorY = null;
+    parkedViewY = null;
+    parkedFloorRaise = 0;
     adoptSimClock();
     acc = 0;
     groundY = hy;
@@ -15456,7 +15854,7 @@ export async function boot({ loading, bootStart, mapId }) {
     fpvQuat.copy(qPrev).multiply(qTilt);
     shell.camera.position.copy(fpvPos);
     shell.camera.quaternion.copy(fpvQuat);
-    shell.camera.fov = ui.settings.cameraFov;
+    shell.camera.fov = fpvFov(ui.settings.cameraFov, shell.camera.aspect);
     shell.camera.updateProjectionMatrix();
     return window.__craftState();
   };
@@ -15653,6 +16051,8 @@ export async function boot({ loading, bootStart, mapId }) {
     flying: angleModeOn ? 'angle' : 'acro',
     keyRaceMode: ui.settings.keyRaceMode,
     keyThrottle: input.keyThrottle,
+    padDeadzone: input.padDeadzone,
+    padThrottle: input.padThrottle,
     keyHover: Math.round(input.kbHover * 1000) / 10,
     /* Which axes are being flown and what they read: see mapReport.
      * bug-c9423f3e could not be checked without it. */
@@ -15806,6 +16206,10 @@ export async function boot({ loading, bootStart, mapId }) {
     horizonMs: predictLastMs,
     turnDeg: 2 * Math.acos(Math.min(1, Math.abs(predDq.w))) * 180 / Math.PI,
     moveM: predDp.length(),
+    /* The last eye sweep: -1 in open air, else the fraction of the lead kept,
+     * and the near plane the drawn eye was given. */
+    clippedT: predictClippedT,
+    near: shell.camera.near,
     /* The body rate and speed it predicted from, so a probe can check the
      * turn is the rate times the horizon. */
     rateDegS: stateCurr ? Math.hypot(stateCurr[11], stateCurr[12], stateCurr[13]) * 180 / Math.PI : 0,
@@ -16140,6 +16544,9 @@ export async function boot({ loading, bootStart, mapId }) {
    * only; nothing in the shell reads these. */
   window.__map = () => ({
     id: view.id,
+    /* The Race time pick the world was built with, 'n/a' where it cannot
+     * change the picture: see loadMap. */
+    raceTime: view.raceTime,
     /* The key the tune invitation counts this course under: harness only. */
     course: ghostCourseKey(),
     name: view.name,
@@ -16377,12 +16784,23 @@ export async function boot({ loading, bootStart, mapId }) {
    * swap is started by applySettings and may queue behind one in flight, so
    * this nudges syncWorld once the way is clear, as the swap's own tail
    * does. */
+  /* Waits still polling, for career-ui-check.js (window.__career.waits). */
+  let careerWaits = 0;
   function careerWaitWorld(key, timeoutMs = 90000) {
     const t0 = performance.now();
+    careerWaits += 1;
     return new Promise((resolve, reject) => {
       const tick = () => {
         if (careerFailed === key) {
           reject(new Error('This lesson\'s world could not be built.'));
+          return;
+        }
+        /* A later lesson asked for another world: this one will never be
+         * the one built, so the wait ends now rather than polling on to its
+         * timeout, which used to land in the career as an error 90 s after
+         * the pilot had moved on. The career drops it (its load token). */
+        if (careerWorld && careerWorld.key !== key) {
+          reject(new Error('This lesson\'s world was replaced by another.'));
           return;
         }
         if (mapReady && !swapInFlight) {
@@ -16401,12 +16819,17 @@ export async function boot({ loading, bootStart, mapId }) {
         setTimeout(tick, 40);
       };
       tick();
+    }).finally(() => {
+      careerWaits -= 1;
     });
   }
 
   /* To the title, quietly: the career's screens are over it. */
   function careerToTitle() {
     ui.setCareerLesson(null);
+    if (ui.osd) {
+      ui.osd.classList.remove('osd-simple');
+    }
     if (mode !== 'title') {
       mode = 'title';
       reset();
@@ -16433,6 +16856,23 @@ export async function boot({ loading, bootStart, mapId }) {
     applySettings(ui.settings);
     await careerWaitWorld(key);
     return view;
+  }
+
+  /* Out of the career with the world as it now stands: the lesson's hold
+   * on the mode, the camera, the simple OSD and the pause menu is let go,
+   * and the pilot's own world is not put back, because they have just
+   * chosen another one (R3-13). careerSaved goes with it: the pick made
+   * since is the pilot's own now. */
+  function careerDropWorld() {
+    careerWorld = null;
+    careerFlightMode = null;
+    careerCamera = null;
+    careerSaved = null;
+    ui.setCareerLesson(null);
+    if (ui.osd) {
+      ui.osd.classList.remove('osd-simple');
+    }
+    syncAngleMode();
   }
 
   async function careerLeaveWorld() {
@@ -17003,7 +17443,7 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   function watchFrame(nowWall) {
-    watchHome.fov = ui.settings.cameraFov;
+    watchHome.fov = fpvFov(ui.settings.cameraFov, shell.camera.aspect);
     if (ovOn && ovCam) {
       overviewFrame(nowWall);
     }
@@ -17126,6 +17566,7 @@ export async function boot({ loading, bootStart, mapId }) {
   const careerShell = {
     enterWorld: careerEnterWorld,
     leaveWorld: careerLeaveWorld,
+    dropWorld: careerDropWorld,
     fly: careerFly,
     freeze: careerFreeze,
     idle: careerToTitle,
@@ -17136,6 +17577,23 @@ export async function boot({ loading, bootStart, mapId }) {
     setCamera(c) {
       careerCamera = c === 'chase' ? 'chase' : null;
       careerChaseCam.atMs = -1;
+    },
+    /* The lesson's own restart, as R is in flight: the soft ceiling's way
+     * back (R3-10, src/career/controller.js). After the frame that asked,
+     * never inside it, so the step loop and the career finish the frame on
+     * the state they started it with. */
+    restart() {
+      queueMicrotask(() => {
+        if (career && mode === 'flight' && ui.screen === 'flight') {
+          reset();
+        }
+      });
+    },
+    /* The first lessons' simple OSD (R2M-10): one class, CSS does the rest. */
+    simpleOsd(on) {
+      if (ui.osd) {
+        ui.osd.classList.toggle('osd-simple', Boolean(on));
+      }
     },
     get camera() {
       return shell.camera;
@@ -17194,7 +17652,14 @@ export async function boot({ loading, bootStart, mapId }) {
   }
   ui.onCareer = (action) => {
     if (action === 'career') {
-      loadCareer().then((c) => c.openHub());
+      /* The pilot's press. A chunk that will not fetch (a flaky link, a
+       * deploy mid session) says so, as loadTogether does, rather than
+       * leaving an unhandled rejection and a card that does nothing. The
+       * harness hooks below keep the rejection, which is their answer. */
+      loadCareer().then((c) => c.openHub(), (e) => {
+        console.warn('career did not load', e);
+        mpSay('Could not open the career. Check the connection, then reload the page.', 6000);
+      });
     } else if (career && action === 'career-briefing') {
       career.briefing();
     } else if (career && action === 'career-hub') {
@@ -17216,6 +17681,9 @@ export async function boot({ loading, bootStart, mapId }) {
     fly: () => career.fly(),
     state: () => (career ? career.state() : null),
     status: () => (career ? career.status() : null),
+    /* Lesson world waits still polling: none once every load the pilot
+     * walked away from has let go. */
+    waits: () => careerWaits,
     leave: () => career.leave(),
     /* The keycaps in a pad player's hands or a keyboard player's. */
     hands: (h) => loadCareer().then((c) => c.hands(h)),
@@ -17252,7 +17720,7 @@ export async function boot({ loading, bootStart, mapId }) {
       subject: captureSubject,
       /* 0 gives the lens back to the shell. */
       fov: (v) => {
-        const want = v > 0 ? v : ui.settings.cameraFov;
+        const want = v > 0 ? v : fpvFov(ui.settings.cameraFov, shell.camera.aspect);
         if (shell.camera.fov !== want) {
           shell.camera.fov = want;
           shell.camera.updateProjectionMatrix();

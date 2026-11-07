@@ -92,8 +92,9 @@ const KEYS = { device: 'keys', stickMode: 2, angle: true };
  * a blob that says they have not flown yet is a first run whatever else is
  * stored beside it (detectFirstRun).
  */
-function seedFor({ settings, keys = {} }) {
-  return `try {
+function seedFor({ settings, keys = {}, extra = '' }) {
+  return `${extra}
+  try {
     if (!sessionStorage.getItem('ff-seeded')) {
       sessionStorage.setItem('ff-seeded', '1');
       localStorage.setItem(${JSON.stringify(SETTINGS_KEY)}, JSON.stringify(${JSON.stringify({
@@ -202,13 +203,19 @@ async function scenario(name, opts, run) {
 /* ---- A: a newcomer, a whoop room, by link ------------------------------- */
 
 const WHOOP_LINK = '/index.html?map=custom&craft=whoop65&fly=1';
+/* Every whoop room preset is a RaceGOW track, and since 2026-11-06 (sim
+ * PR 241, the owner's "any track with racegow in the name") a RaceGOW track
+ * launches non stop, so the room's launch prompt carries the non stop line
+ * under the take off line. The guide owns the first line; this is the
+ * second, as main.js prints it. */
+const ROOM_SECOND = 'Non stop: best three in a row kept. The green gate starts your lap';
 
 await scenario('A whoop room by link', { url: WHOOP_LINK, settings: NEWCOMER, keys: WHOOP_ROOM }, async (page) => {
   await launched(page);
   const s0 = await state(page);
   check('A: the link took them past the menu to the grid, on the whoop, with the room guide armed',
     s0.screen === 'flight' && s0.airframe === 'whoop65' && s0.guided === 'whoop', JSON.stringify(s0));
-  const pre = await bannerIs(page, 'Hold W to take off\nThe green gate starts your lap');
+  const pre = await bannerIs(page, 'Hold W to take off\n' + ROOM_SECOND);
   check('A: before take off the banner names the throttle key', pre.ok, JSON.stringify(pre.got));
   check('A: and the room is marked as guided only now it is on the glass',
     s0.flags === 'FTF' && s0.stored === 'FTF', `flags ${s0.flags}, stored ${s0.stored}`);
@@ -229,7 +236,7 @@ await scenario('A whoop room by link', { url: WHOOP_LINK, settings: NEWCOMER, ke
 
   await visit(page, WHOOP_LINK);
   await launched(page);
-  const again = await bannerIs(page, 'Throttle up to take off\nThe green gate starts your lap');
+  const again = await bannerIs(page, 'Throttle up to take off\n' + ROOM_SECOND);
   const s1 = await state(page);
   check('A: the second visit is the usual prompt, with no guide', again.ok && s1.guided === false,
     `${JSON.stringify(again.got)} guided ${s1.guided}`);
@@ -252,7 +259,42 @@ await scenario('B five inch track by link', { url: FIVE_LINK, settings: NEWCOMER
   check('B: in the air it is the words this simulator has always said',
     step0.ok && step0.got === 'Tip forward with the up arrow, then throttle\nThe green gate starts your lap',
     JSON.stringify(step0.got));
+  /* The Weight card waits for the ground (core.md CORE-5): in the air on
+   * keys it sat over the next gate's chevron for the first eight seconds,
+   * the ones a new pilot most needs it. Read over two seconds of air. */
+  const weightCard = "(() => { const c = document.querySelector('.osd-air .osd-air-hint:not(.osd-tune-hint):not(.osd-invite-hint)'); return Boolean(c && !c.hidden && c.getClientRects().length); })()";
+  let upInAir = false;
+  for (let i = 0; i < 10; i += 1) {
+    upInAir = upInAir || (await page.evaluate(weightCard)) === true;
+    await sleep(200);
+  }
+  const airborne = await page.evaluate('window.__craftState().flownThisRun === true');
+  check('B: in the air the Weight card is not over the picture', airborne && !upInAir, `card up in the air: ${upInAir}`);
 });
+
+/* ---- I: the banner on a desktop never on the lap clock ----------------- */
+
+/*
+ * The guide's words and the launch prompt's second lines, on keys, at the
+ * two short desktop windows core.md CORE-4 found them printed over the gate
+ * count, the record line and the AIR digits: measured with FIT_PROBE below,
+ * which H uses for a phone. A race's clock block is the tallest one. The
+ * centre third is the phone's own rule (scripts/device-check.js) and is
+ * not asked of a desktop, whose banner has centred at 22 percent of the
+ * height by design; what is asked is the finding: never on the clock.
+ */
+const DESK_STRINGS = [];
+for (const kind of ['race', 'whoop', 'freestyle']) {
+  for (const second of ['The green gate starts your lap', 'Practice: no lap limit. The green gate starts your lap']) {
+    DESK_STRINGS.push([`${kind} take off over "${second.slice(0, 14)}"`, `${textOf(kind, TAKEOFF, KEYS)}\n${second}`]);
+  }
+  for (const step of [0, 1, 2]) {
+    const text = textOf(kind, step, KEYS);
+    if (text && !DESK_STRINGS.some(([, t]) => t === text)) {
+      DESK_STRINGS.push([`${kind} step ${step}`, `${text}\nThe green gate starts your lap`]);
+    }
+  }
+}
 
 /* ---- C: a newcomer, the town, by link ----------------------------------- */
 
@@ -261,6 +303,10 @@ await scenario('C the town by link', { url: '/index.html?map=city&craft=5inch&fl
    * inch the town recommends, which is what a newcomer gets. */
   await answerQuadPicker(page, 240000);
   await launched(page, 240000);
+  /* The banner is written by the first flight frame after the launch, and
+   * on a loaded machine that frame came after this read: a probe saw the
+   * guide's line 0.7 s later (round 2 batch S6). Waited for, not slept. */
+  await page.until("window.__ui.banner.textContent !== ''", 30000).catch(() => {});
   const s0 = await state(page);
   const pre = await banner(page);
   check('C: the town gets the freestyle guide and the banner leads with the throttle key',
@@ -309,7 +355,7 @@ await scenario('D veteran meets the whoop', {
 }, async (page) => {
   await launched(page);
   const s0 = await state(page);
-  const pre = await bannerIs(page, 'Hold W to take off\nThe green gate starts your lap');
+  const pre = await bannerIs(page, 'Hold W to take off\n' + ROOM_SECOND);
   check('D: and the first room they fly gets the room guide, not the track one',
     s0.guided === 'whoop' && pre.ok, `${s0.guided} ${JSON.stringify(pre.got)}`);
   check('D: the lap on file marked the track as had, the room is marked now it is on the glass',
@@ -334,7 +380,7 @@ await scenario('E phone, whoop room by link', {
 }, async (page) => {
   await launched(page);
   const s0 = await state(page);
-  const pre = await bannerIs(page, 'Push the left plate up to take off\nThe green gate starts your lap');
+  const pre = await bannerIs(page, 'Push the left plate up to take off\n' + ROOM_SECOND);
   check('E: on glass the banner names the plate, not a key', s0.guided === 'whoop' && pre.ok,
     `${s0.guided} ${JSON.stringify(pre.got)}`);
 });
@@ -377,15 +423,16 @@ await scenario('G the First flight row', { url: '/index.html', settings: NEWCOME
 /*
  * Every string the guide can put on the banner for a touch pilot, with the
  * line of the launch prompt that sits under it, so that the combination
- * that is new is the one measured. The three second lines are the longest
- * main.js prints under a guided first line: a race's, a practice run's and
- * a scored freestyle run's. Both wordings of the freestyle step are here,
+ * that is new is the one measured. The four second lines are the longest
+ * main.js prints under a guided first line: a race's, a practice run's, a
+ * RaceGOW room's non stop run's and a scored freestyle run's. Both wordings of the freestyle step are here,
  * because Acro's is the longer.
  */
 const TOUCH = { device: 'touch', stickMode: 2, angle: true };
 const SECOND_LINES = [
   'The green gate starts your lap',
   'Practice: no lap limit. The green gate starts your lap',
+  'Non stop: best three in a row kept. The green gate starts your lap',
   'No clock and no gates. Lines and tricks count as you fly them.',
 ];
 const PHONE_STRINGS = [];
@@ -411,7 +458,7 @@ for (const kind of ['race', 'whoop', 'freestyle']) {
  * parked, where main.js says the same line every frame and the banner's
  * memo therefore does not rewrite it.
  */
-const FIT_PROBE = (strings) => `(() => {
+const FIT_PROBE = (strings, { centre = true, settle = false } = {}) => `(async () => {
   const ui = window.__ui;
   const W = innerWidth;
   const H = innerHeight;
@@ -424,6 +471,9 @@ const FIT_PROBE = (strings) => `(() => {
   let widest = 0;
   for (const [tag, text] of ${JSON.stringify(strings)}) {
     ui.banner.textContent = text;
+    /* A desktop banner is placed from its own height, which ui.js writes
+     * from a ResizeObserver before the frame paints: read after a frame. */
+    if (${settle}) { await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))); }
     const r = ui.banner.getBoundingClientRect();
     /* The glyphs' own extent, not the box's: a box with a maximum width
      * stays inside the screen while an unbreakable run of text does not. */
@@ -432,7 +482,7 @@ const FIT_PROBE = (strings) => `(() => {
     const t = ink.getBoundingClientRect();
     tallest = Math.max(tallest, r.height);
     widest = Math.max(widest, t.width);
-    if (meets(r, cell) || meets(t, cell)) { bad.push(tag + ': in the centre third, down to ' + Math.round(Math.max(r.bottom, t.bottom)) + ' of ' + H); }
+    if (${centre} && (meets(r, cell) || meets(t, cell))) { bad.push(tag + ': in the centre third, down to ' + Math.round(Math.max(r.bottom, t.bottom)) + ' of ' + H); }
     if (r.top < clock.bottom - 0.5) { bad.push(tag + ': over the lap clock'); }
     if (Math.min(r.left, t.left) < -0.5 || Math.max(r.right, t.right) > W + 0.5) {
       bad.push(tag + ': runs off the screen, ' + Math.round(Math.min(r.left, t.left)) + ' to ' + Math.round(Math.max(r.right, t.right)) + ' of ' + W);
@@ -458,6 +508,79 @@ for (const [w, h] of [[844, 390], [740, 360]]) {
       r.bad.length === 0, r.bad.slice(0, 3).join(' | ') || `tallest ${r.tallest} px, widest ${r.widest} px`);
   });
 }
+
+for (const [w, h] of [[1280, 720], [960, 540]]) {
+  await scenario(`I desktop ${w}x${h}, every string`, { url: FIVE_LINK, settings: NEWCOMER, keys: FIVE_TRACK, width: w, height: h }, async (page) => {
+    await launched(page);
+    /* The record line under the gate count, as a pilot with a best lap has
+     * it: the tallest the clock block gets. */
+    await page.evaluate("(() => { window.__ui.osdBest.textContent = 'Best 0:31.20'; window.__ui.osdLast.textContent = 'Last 0:32.00'; return 1; })()");
+    await sleep(300);
+    const r = JSON.parse(await page.evaluate(FIT_PROBE(DESK_STRINGS, { centre: false, settle: true })));
+    check(`I: ${w}x${h}: all ${DESK_STRINGS.length} strings clear the lap clock and the screen's edges`,
+      r.bad.length === 0, r.bad.slice(0, 3).join(' | ') || `tallest ${r.tallest} px, widest ${r.widest} px`);
+  });
+}
+
+/* ---- J: a first visit, and a board slow to name its most flown track ---- */
+
+/*
+ * core.md CORE-3. A newcomer has nothing seated, so the boot asks the board
+ * for its most flown track: up to 4 s for the list and 8 s for the document.
+ * That was awaited in line, in front of the flight controller's tune and
+ * the world's modules. Here the board takes 3 s to list its tracks, and the
+ * tune must have been asked for before it answered, and the world built
+ * must still be the track it named.
+ */
+const SLOW_BOARD = 'http://127.0.0.1:3100';
+const FEATURED = { id: 'trk-feat0001', name: 'Featured Field' };
+const SLOW_BOARD_SEED = `(() => {
+  const board = ${JSON.stringify(SLOW_BOARD)};
+  const doc = ${JSON.stringify({ ...FULL_DOC, id: FEATURED.id, name: FEATURED.name })};
+  const realFetch = window.fetch.bind(window);
+  window.__reqLog = [];
+  const answer = (body) => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+  window.fetch = (input, opts = {}) => {
+    const url = String(input && input.url ? input.url : input);
+    window.__reqLog.push([url.replace(location.origin, ''), performance.now()]);
+    if (!url.startsWith(board)) {
+      return realFetch(input, opts);
+    }
+    /* Without the query: the list is asked as /api/tracks?plans=0, since
+     * the cold boot draws no plan (round 2 batch S6). */
+    const path = url.slice(board.length).split('?')[0];
+    if (path === '/api/tracks') {
+      return new Promise((resolve) => setTimeout(() => {
+        window.__listAnsweredAt = performance.now();
+        resolve(answer({ tracks: [{ id: ${JSON.stringify(FEATURED.id)}, name: ${JSON.stringify(FEATURED.name)}, author: 'firstflight', trackClass: 'full', gates: 4, times: 9 }] }));
+      }, 3000));
+    }
+    if (path === '/api/tracks/' + ${JSON.stringify(FEATURED.id)} + '/document') {
+      return Promise.resolve(answer({ id: ${JSON.stringify(FEATURED.id)}, name: ${JSON.stringify(FEATURED.name)}, author: 'firstflight', document: doc }));
+    }
+    return Promise.reject(new TypeError('Failed to fetch'));
+  };
+  navigator.sendBeacon = () => true;
+})();`;
+
+await scenario('J first visit with a slow board', {
+  url: `/index.html?board=${encodeURIComponent(SLOW_BOARD)}`, settings: { ...NEWCOMER, airframe: '5inch', airframeAsked: true }, extra: SLOW_BOARD_SEED,
+}, async (page) => {
+  await page.until('window.__shellReady === true', 150000);
+  const r = JSON.parse(await page.evaluate(`JSON.stringify((() => {
+    const tune = window.__reqLog.find(([u]) => /configs\\/[^/]+\\.diff/.test(u));
+    const list = window.__reqLog.find(([u]) => /\\/api\\/tracks(\\?|$)/.test(u));
+    return { tuneAt: tune ? Math.round(tune[1]) : null, listAskedAt: list ? Math.round(list[1]) : null,
+      listAnsweredAt: window.__listAnsweredAt ? Math.round(window.__listAnsweredAt) : null,
+      map: window.__map().id, name: window.__map().name, course: window.__map().course, setting: window.__ui.settings.map };
+  })())`));
+  check('J: the tune is asked for while the board is still thinking, not after it answers',
+    r.tuneAt != null && r.listAnsweredAt != null && r.listAskedAt != null && r.tuneAt < r.listAnsweredAt,
+    `list asked at ${r.listAskedAt} ms, answered at ${r.listAnsweredAt} ms, tune asked at ${r.tuneAt} ms`);
+  check('J: and the world built is the track the board named', r.map === 'custom' && r.setting === 'custom'
+    && (/Featured Field/.test(r.name || '') || /trk-feat0001/.test(r.course || '')),
+    `${r.map} ${r.setting} ${JSON.stringify(r.name)} ${JSON.stringify(r.course)}`);
+});
 
 /* ---- report ------------------------------------------------------------- */
 

@@ -24,6 +24,7 @@ import { fileURLToPath } from 'node:url';
 import {
   ABSENT_FIELDS,
   APPLIED_INERT_KEYS,
+  FEATURES,
   FIELDS,
   GATED_KEYS,
   STATUS,
@@ -146,6 +147,16 @@ for (const id of REQUIRED_TABS) {
 for (const t of TABS) {
   if (t.grey && (!t.reason || !String(t.reason).trim())) {
     failures.push(`grey tab ${t.id} is missing a reason string`);
+  }
+}
+
+/* The simulator HAS a 3D mode, in Settings (ui.js mode3dRow, main.js
+ * apply3d). A reason that says there is none tells a pilot reading the
+ * bench the opposite of what the Settings page offers (core.md CORE-19). */
+for (const r of [...FIELDS, ...FEATURES]) {
+  const why = String(r.reason || '');
+  if (/3D/.test(why) && /no 3D mode|not reverse/i.test(why)) {
+    failures.push(`${r.key || r.name}: says there is no 3D mode, but Settings has one: "${why}"`);
   }
 }
 

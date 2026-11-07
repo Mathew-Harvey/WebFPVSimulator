@@ -133,6 +133,7 @@ function makePad(axes, buttons = 0, id = 'Selftest radio') {
 installEnv(null);
 const {
   InputManager, calSteps, SELECT_STEP, KEY_THROTTLE_MODES, normaliseKeyThrottle,
+  PAD_DEADZONES, normalisePadDeadzone, PAD_THROTTLES, normalisePadThrottle,
 } = await import('../src/input/input.js');
 const { hoverStickPercent } = await import('../configs/rates.js');
 const {
@@ -2714,6 +2715,10 @@ section('the check step picks a stick by hand: "let us pick which stick does wha
   rig.ax(0, 0.2); rig.step();
   check('a nudge is not a pick', rig.view().listening === 'roll' && rig.im.calibration.draft.roll.axis === 3);
   rig.ax(0, 1); rig.step();
+  check('the axis is chosen, but the pick waits for the end of the push', rig.view().listening === 'roll'
+    && rig.im.calibration.draft.roll.axis === 3, JSON.stringify(rig.im.calibration.draft.roll));
+  /* Held against the stop, the pick closes once the stick stops moving. */
+  rig.run(480);
   const d = rig.im.calibration.draft;
   check('axis 0 pushed right is roll now', d.roll.axis === 0 && rig.view().listening === null, JSON.stringify(d.roll));
   check('yaw, which had axis 0, takes roll\'s old axis', d.yaw.axis === 3, JSON.stringify(d.yaw));
@@ -2741,6 +2746,8 @@ section('the check step picks a stick by hand: "let us pick which stick does wha
   rig.im.startCalibrationCheck();
   rig.im.listenForChannel('throttle');
   rig.ax(4, 1); rig.step();
+  /* Let go: a sprung stick comes back to the middle, which ends the push. */
+  rig.ax(4, 0); rig.step();
   const t = rig.im.calibration.draft.throttle;
   check('a throttle pushed up from the middle is sprung, zero where it rested', t.axis === 4 && t.sprung === true
     && t.low === 0, JSON.stringify(t));
@@ -2749,6 +2756,162 @@ section('the check step picks a stick by hand: "let us pick which stick does wha
   check('the old throttle axis went to nobody it should not', rig.im.calibration.draft.pitch.axis === 1);
   rig.im.cancelCalibration();
   check('outside the check step it does nothing', rig.im.listenForChannel('roll') === false);
+}
+
+section('a hand pick records the end of a push, not where it crossed the bar (BUG-1)');
+{
+  /*
+   * A real hand takes 100 to 200 ms over a push, six to twelve polls. The
+   * pick used to choose its axis AND take the end of travel at the first
+   * poll past IDENT_DELTA, so roll came out full at half stick and a parked
+   * throttle full at a quarter. Every push here ramps over several polls.
+   */
+  const ramp = (rig, axis, values) => {
+    for (const v of values) {
+      rig.ax(axis, v); rig.step();
+    }
+  };
+  const rig = new Rig(makePad([0, 0, -1, 0, 0], 4, 'Picked by hand, slowly'));
+  driveWizard(rig, {
+    roll: 3, pitch: 1, yaw: 0, thr: 2, thrRest: -1, thrReturn: -1,
+  });
+  rig.im.acceptCalibration();
+  rig.im.startCalibrationCheck();
+  rig.im.listenForChannel('roll');
+  /* Pushed over six polls, then let go over three. */
+  ramp(rig, 0, [0.15, 0.3, 0.5, 0.7, 0.9, 1.0, 0.6, 0.3, 0]);
+  const r = rig.im.calibration.draft.roll;
+  check('a ramped roll push records the stop as full stick', r.axis === 0 && r.pos === 1 && r.neg === -1
+    && rig.view().listening === null, JSON.stringify(r));
+  rig.ax(0, 0.5); rig.step();
+  check('and half stick reads half roll', Math.abs(rig.view().channels.roll - 0.5) < 1e-9,
+    JSON.stringify(rig.view().channels));
+  rig.ax(0, 1); rig.step();
+  check('and full stick reads full roll', rig.view().channels.roll === 1, JSON.stringify(rig.view().channels));
+  rig.ax(0, 0); rig.step();
+  /* A radio's throttle, parked at the bottom, pushed up over five polls and
+   * left at the top: the dwell closes the pick. */
+  rig.im.listenForChannel('throttle');
+  ramp(rig, 2, [-0.8, -0.5, 0, 0.5, 1.0]);
+  check('a throttle still at the top keeps the pick open', rig.view().listening === 'throttle');
+  rig.run(480);
+  const t = rig.im.calibration.draft.throttle;
+  check('a ramped parked throttle records the whole travel and is not sprung', t.axis === 2 && t.low === -1
+    && t.high === 1 && !t.sprung && rig.view().listening === null, JSON.stringify(t));
+  for (const [v, want] of [[-0.5, 0.25], [0, 0.5]]) {
+    rig.ax(2, v); rig.step();
+    check(`throttle stick ${v} reads ${want}`, Math.abs(rig.view().channels.throttle - want) < 1e-9,
+      JSON.stringify(rig.view().channels));
+  }
+  rig.im.cancelCalibration();
+}
+
+section('a gamepad at rest does not drift, and full stick is still full (CORE-1)');
+{
+  const near = (a, b) => Math.abs(a - b) < 1e-9;
+  const std = (axes = [0, 0, 0, 0]) => ({ ...makePad(axes, 17, 'Worn pad (STANDARD GAMEPAD)'), mapping: 'standard' });
+  check('the deadzone choices are a closed list, auto by default',
+    PAD_DEADZONES.join() === 'auto,small,medium,large' && normalisePadDeadzone('huge') === 'auto'
+    && normalisePadDeadzone('large') === 'large');
+  {
+    const rig = new Rig(std());
+    const im = rig.im;
+    check('a new manager is on auto', im.padDeadzone === 'auto');
+    /* A worn pad's right stick resting four percent off: Mode 2 roll. */
+    rig.ax(2, 0.04); rig.step();
+    check('a gamepad resting 0.04 off centre reads no roll on auto', im.channels.roll === 0, JSON.stringify(im.channels));
+    rig.ax(2, 1); rig.step();
+    check('and full stick is exactly full roll', im.channels.roll === 1, JSON.stringify(im.channels));
+    rig.ax(2, -1); rig.step();
+    check('both ways', im.channels.roll === -1, JSON.stringify(im.channels));
+    rig.ax(2, 0.525); rig.step();
+    check('half way past the band is half roll: rescaled, not a step', near(im.channels.roll, 0.5), JSON.stringify(im.channels));
+    rig.ax(2, 0.06); rig.step();
+    check('just past the band is a sliver, not a jump to 0.06', im.channels.roll > 0 && im.channels.roll < 0.012,
+      JSON.stringify(im.channels));
+    im.setPadDeadzone('small');
+    rig.ax(2, 0.04); rig.step();
+    check('Small is the radio floor: 0.04 passes through as it always did', near(im.channels.roll, 0.04), JSON.stringify(im.channels));
+    im.setPadDeadzone('large');
+    rig.ax(2, 0.08); rig.step();
+    check('Large swallows 0.08', im.channels.roll === 0, JSON.stringify(im.channels));
+    rig.ax(2, 1); rig.step();
+    check('and still reaches full', im.channels.roll === 1, JSON.stringify(im.channels));
+    rig.ax(2, 0);
+  }
+  {
+    /* A radio on auto is bit for bit what it was: the hard 1.2 percent
+     * floor and nothing else. */
+    const rig = new Rig(makePad([0, 0, -1, 0, 0], 8, 'Some radio'));
+    const im = rig.im;
+    for (const v of [0.011, 0.013, 0.04, 0.5, 0.987]) {
+      rig.ax(0, v); rig.step();
+      const want = v < 0.012 ? 0 : v;
+      check(`a radio on auto: roll ${v} reads ${want}`, im.channels.roll === want, JSON.stringify(im.channels));
+    }
+    rig.ax(0, 0);
+  }
+}
+
+section('a gamepad throttle can be the whole stick or the right trigger, and defaults to the upper half (CORE-9)');
+{
+  const near = (a, b) => Math.abs(a - b) < 1e-9;
+  const std = (axes = [0, 0, 0, 0]) => ({ ...makePad(axes, 17, 'Throttle pad (STANDARD GAMEPAD)'), mapping: 'standard' });
+  check('the throttle choices are a closed list, upper half by default',
+    PAD_THROTTLES.join() === 'upper,full,trigger' && normalisePadThrottle('nope') === 'upper');
+  const pad = std();
+  const rig = new Rig(pad);
+  const im = rig.im;
+  check('a new manager flies the upper half', im.padThrottle === 'upper');
+  rig.step();
+  check('upper half: rest is no throttle', im.channels.throttle === 0, JSON.stringify(im.channels));
+  rig.ax(1, 0.8); rig.step();
+  check('upper half: below centre is idle', im.channels.throttle === 0, JSON.stringify(im.channels));
+  rig.ax(1, -0.5); rig.step();
+  check('upper half: half way up is half', near(im.channels.throttle, 0.5), JSON.stringify(im.channels));
+  im.setPadThrottle('full');
+  rig.ax(1, 1); rig.step();
+  check('whole stick: the bottom is no throttle', im.channels.throttle === 0, JSON.stringify(im.channels));
+  rig.ax(1, 0); rig.step();
+  check('whole stick: rest is half', near(im.channels.throttle, 0.5), JSON.stringify(im.channels));
+  rig.ax(1, -1); rig.step();
+  check('whole stick: the top is full', near(im.channels.throttle, 1), JSON.stringify(im.channels));
+  im.setPadThrottle('trigger');
+  rig.ax(1, -1);
+  pad.buttons[7] = { pressed: false, value: 0 }; pad.timestamp += 1; rig.step();
+  check('trigger: the stick up does nothing, the trigger let go is no throttle', im.channels.throttle === 0,
+    JSON.stringify(im.channels));
+  pad.buttons[7] = { pressed: true, value: 0.35 }; pad.timestamp += 1; rig.step();
+  check('trigger: squeezed a third is a third', near(im.channels.throttle, 0.35), JSON.stringify(im.channels));
+  check('and the dogfight gun moves to the left bumper', im.weaponSpecFor('gun', pad).index === 4
+    && im.weaponLabels(pad).gun.pad === 'Left bumper', JSON.stringify(im.weaponLabels(pad)));
+  im.set3d(true);
+  rig.step();
+  check('trigger in 3D flies the stick, which can reverse', near(im.channels.throttle, 1), JSON.stringify(im.channels));
+  im.set3d(false);
+  im.setPadThrottle('upper');
+  rig.step();
+  check('back on the upper half, the stick at the top is full again', near(im.channels.throttle, 1)
+    && im.weaponSpecFor('gun', pad).index === 7, JSON.stringify(im.channels));
+  /* A radio's throttle is not sprung: neither stick choice moves it. */
+  const rrig = new Rig(makePad([0, 0, -1, 0, 0], 8, 'Some radio'));
+  rrig.im.setPadThrottle('full');
+  rrig.step();
+  check('a radio\'s parked throttle stays at zero on whole stick', rrig.im.channels.throttle === 0,
+    JSON.stringify(rrig.im.channels));
+  rrig.im.setPadThrottle('trigger');
+  rrig.ax(2, 1); rrig.step();
+  check('and a radio, which has no trigger, flies its stick on trigger', near(rrig.im.channels.throttle, 1),
+    JSON.stringify(rrig.im.channels));
+  /* A radio Firefox lists as standard (firefoxRadio), whose Rz Firefox
+   * puts into button 7: Right trigger must not read that button, because
+   * the setting says a gamepad only (round 2 review R2D-7). */
+  const fpad = { ...makePad([0, 0, 0, 0, 0, 0], 17, '1209-4f54-EdgeTX Radiomaster Pocket Joystick'), mapping: 'standard' };
+  const frig = new Rig(fpad);
+  frig.im.setPadThrottle('trigger');
+  fpad.buttons[7] = { pressed: true, value: 1 }; fpad.timestamp += 1; frig.step();
+  check('a radio listed as a standard pad does not fly button 7 on trigger', frig.im.channels.throttle !== 1
+    && frig.im.weaponSpecFor('gun', fpad).index !== 4, `${JSON.stringify(frig.im.channels)} gun ${frig.im.weaponSpecFor('gun', fpad).index}`);
 }
 
 /* ------------------------------------------------------------------------

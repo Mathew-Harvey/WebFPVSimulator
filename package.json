@@ -90,6 +90,7 @@
     "check:dan": "node scripts/dan-check.js",
     "check:clips": "node scripts/clips-check.js",
     "check:career": "node --test tests/career/career-laps.test.js tests/career/career-maps.test.js tests/career/career-objectives.test.js tests/career/career-words.test.js tests/career/career-progress.test.js tests/career/career-wiring.test.js",
+    "check:careerui": "node scripts/career-ui-check.js",
     "check:career:rig": "node --test tests/career/rig.test.js",
     "check:bardwell": "node scripts/bardwell-check.js",
     "check:sunny": "node scripts/sunny-check.js",
@@ -108,6 +109,7 @@
     "check:yard": "node scripts/yardtrack-check.js",
     "check:windmill": "node scripts/windmill-check.js",
     "check:room": "node scripts/room-check.js",
+    "check:rooms": "node scripts/rooms-check.js",
     "check:roads": "node scripts/roads-check.js",
     "check:clip": "node src/trackbuilder/selftest.js",
     "check:builder": "node scripts/builder-flow-check.js",
@@ -116,6 +118,7 @@
     "check:orbit": "node scripts/orbit-check.js",
     "check:path": "node scripts/path-check.js",
     "check:raceline": "node scripts/raceline-check.js",
+    "check:features": "node scripts/features-check.js",
     "check:fresh": "node scripts/fresh-check.js",
     "gen:catalog": "node scripts/fc-catalog-gen.js",
     "gen:music": "node scripts/music.js",
@@ -172,6 +175,7 @@
     "check:firstflight": "node scripts/firstflight-check.js",
     "check:tuneinvite": "node scripts/tuneinvite-check.js",
     "feel:response": "node scripts/stick-response.js",
-    "feel:measure": "node scripts/tune-measure.js"
+    "feel:measure": "node scripts/tune-measure.js",
+    "coverage": "node scripts/coverage.js"
   }
 }

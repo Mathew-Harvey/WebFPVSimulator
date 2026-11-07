@@ -32,7 +32,7 @@
 
 import {
   ELEMENTS, GATE_PRESETS, KIND, apertureShapeOf, applyGatePreset, elementByKey, elementHeight, isFiveInchPiece, isLetterPiece, labelOf, letterDimsForSize,
-  letterExtent, levelPitchFor, toolByKey, trackClassOf, docModeOf, lowestBase,
+  letterExtent, levelPitchFor, toolByKey, trackClassOf, docModeOf, lowestBase, TUNING,
 } from './elements.js';
 import { LETTER_DEFAULT, letterOf } from '../props/letters.js';
 import { styleOf as propStyleOf, tiltOf } from '../props/types.js';
@@ -55,7 +55,7 @@ import {
   replaceWith, rowPlan, snapTurn, turnGroups, turnStepFor,
 } from './snap.js';
 import {
-  addSpiral, canBecomeLetter, canBeInvisible, flyOver, placeBarHurdle, placeHurdle, placeInvisibleGate, placeUpGate, placeWall,
+  addSpiral, canBecomeLetter, canBeInvisible, canBeFloating, canBeDecor, setFloating, setDecor, flyOver, placeBarHurdle, placeHurdle, placeInvisibleGate, placeUpGate, placeWall,
   removeSpiral, reverseWall, roundFlagOf, setFlags, setInvisible, setWallFlags, setHurdleAngle, setHurdleLine, setHurdleSize,
   setWallSize, setWallWeave, turnIntoGate, turnIntoLetter, wallOf,
 } from './parts.js';
@@ -359,27 +359,46 @@ function keepSentence(noun) {
  * The pictures are the only thing taken from the simulator's side, and they
  * are files, not modules: the builder still imports none of the shell.
  */
+/*
+ * THE GROUND EACH CANVAS STARTS ON, in the figures a new document is made
+ * with (TUNING in ./elements.js), so the words cannot drift from the canvas.
+ * Round 1 took the sizes out with the player text's units; the owner put
+ * them back here on 2026-11-06 (R2D-11), because the builder is an author's
+ * tool and how much room there is to build in is what an author needs to
+ * know. A square plot is said once: "160 metre plot", not "160 by 160".
+ */
+function groundOf(canvas) {
+  const t = canvas === 'micro' ? TUNING.micro : canvas === 'freestyle' ? TUNING.freestyle : TUNING;
+  const noun = canvas === 'micro' ? 'hall' : canvas === 'freestyle' ? 'plot' : 'field';
+  const n = (x) => String(Math.round(x * 10) / 10);
+  const span = t.fieldWidth === t.fieldDepth ? n(t.fieldWidth) : `${n(t.fieldWidth)} by ${n(t.fieldDepth)}`;
+  return { words: `${span} metre ${noun}`, fact: `${span} m ${noun}` };
+}
+
 const CHOICES = [
   {
     canvas: 'full',
     label: 'Five inch racing',
     art: '../../assets/gate/race.jpg',
-    blurb: 'A race track on a sixty metre field. MultiGP gates, flags and dive gates on a grid in metres, flown on the five inch and published to the board.',
-    facts: ['5 ft gates', '60 m field', 'The board'],
+    quad: '../../assets/quads/5inch.webp',
+    blurb: `A race track on a ${groundOf('full').words}. MultiGP gates, flags and dive gates on a grid in metres, flown on the five inch and published to the board.`,
+    facts: ['5 ft gates', groundOf('full').fact, 'The board'],
   },
   {
     canvas: 'micro',
     label: 'Whoop racing',
     art: '../../assets/gate/whoop.jpg',
-    blurb: 'A room for the 65 mm whoop. RaceGOW’s 28 inch gates in a ten by twelve metre hall, a grid in inches, and RaceGOW’s own rules checking the layout.',
-    facts: ['28 in gates', 'Indoors', 'RaceGOW'],
+    quad: '../../assets/quads/whoop.webp',
+    blurb: `A room for the whoop. RaceGOW’s 28 inch gates in a ${groundOf('micro').words}, a grid in inches, and RaceGOW’s own rules checking the layout.`,
+    facts: ['28 in gates', groundOf('micro').fact, 'RaceGOW'],
   },
   {
     canvas: 'freestyle',
     label: 'Freestyle',
     art: '../../assets/gate/freestyle.jpg',
-    blurb: 'A map of your own on a 160 metre plot. Buildings, cranes, a skate set and named gaps wherever you put them, flown on the five inch with no gates and no clock.',
-    facts: ['No gates', '160 m plot', 'Five inch'],
+    quad: '../../assets/quads/5inch.webp',
+    blurb: `A map of your own on a ${groundOf('freestyle').words}. Buildings, cranes, a skate set and named gaps wherever you put them, flown on the five inch with no gates and no clock.`,
+    facts: ['No gates', groundOf('freestyle').fact, 'Five inch'],
   },
 ];
 
@@ -2804,6 +2823,22 @@ export class App {
     });
   }
 
+  /* A raised gate with no legs to the floor, or its legs put back. One undo step. */
+  setPieceFloating(id, on) {
+    if (!canBeFloating(elementById(this.doc, id))) {
+      return;
+    }
+    this.edit(on ? 'take the legs off' : 'put the legs back', (d) => { setFloating(d, id, on); });
+  }
+
+  /* A gate that stays where it is, solid, and is not part of the race: no prompt, no count. One undo step. */
+  setPieceDecor(id, on) {
+    if (!canBeDecor(elementById(this.doc, id))) {
+      return;
+    }
+    this.edit(on ? 'take it out of the race' : 'put it back in the race', (d) => { setDecor(d, id, on); });
+  }
+
   /*
    * A GATE, OR A LETTER, WITH NO FRAME: an invisible gate, or the frame put back. One undo step, and what is
    * selected stays so. See setInvisible in parts.js for what goes with the frame.
@@ -3838,13 +3873,13 @@ export class App {
         : `"${seated.name}" is in Load.`;
     }
     /* Kept already, so loadDocument is told so rather than keeping it twice. */
-    return this.loadDocument(fresh, [map ? 'New map, on a 160 metre plot.' : 'New track.', said].filter(Boolean).join(' '), { ok: true, said: '' });
+    return this.loadDocument(fresh, [map ? `New map, on a ${groundOf('freestyle').words}.` : 'New track.', said].filter(Boolean).join(' '), { ok: true, said: '' });
   }
 
   newTrack() {
     if (docModeOf(this.doc) === 'freestyle') {
       this.confirm('Start a new map?', 'Anything unsaved in the current one is gone.', () => {
-        this.loadDocument(newMap(), 'New map, on a 160 metre plot.');
+        this.loadDocument(newMap(), `New map, on a ${groundOf('freestyle').words}.`);
       });
       return;
     }
@@ -4114,7 +4149,7 @@ export class App {
       if (typeof navigator !== 'undefined' && navigator.onLine === false) {
         throw new Error('This device is offline.');
       }
-      tracks = (await fetchTrackList(origin)).filter((t) => t.trackClass === 'full');
+      tracks = (await fetchTrackList(origin, { plans: false })).filter((t) => t.trackClass === 'full');
     } catch (e) {
       if (!shown.box.isConnected) {
         return;
@@ -6216,9 +6251,9 @@ export class App {
     const held = readAutosave(cls, mode);
     const doc = (held && held.doc) || (mode === 'freestyle' ? newMap() : createTrack(undefined, cls));
     const fresh = {
-      full: 'A new five inch track, on a sixty metre field.',
-      micro: 'A new whoop track, in a ten by twelve metre hall.',
-      freestyle: 'A new freestyle map, on a 160 metre plot.',
+      full: `A new five inch track, on a ${groundOf('full').words}.`,
+      micro: `A new whoop track, in a ${groundOf('micro').words}.`,
+      freestyle: `A new freestyle map, on a ${groundOf('freestyle').words}.`,
     }[want];
     /*
      * WHAT THE SWITCH DID, said (MENUS-PLAN.md 4.2c). It has two effects an
@@ -6285,6 +6320,16 @@ export class App {
       img.alt = '';
       img.decoding = 'async';
       art.append(img);
+      /* The quad it is flown on, the quad picker's own drawing, stuck on
+       * the corner of the picture (round 2 R2M-7). */
+      if (c.quad) {
+        const quad = document.createElement('img');
+        quad.className = 'tb-choose-quad';
+        quad.src = c.quad;
+        quad.alt = '';
+        quad.decoding = 'async';
+        art.append(quad);
+      }
       const text = document.createElement('span');
       text.className = 'tb-choose-body';
       const name = document.createElement('span');

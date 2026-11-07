@@ -50,7 +50,7 @@
  */
 
 import { adminAuthHeaders, writeAdminSession } from './admin.js';
-import { readShareImport, writeShareImport } from './session.js';
+import { readShareImport, shareSeatIsStandIn, writeShareImport } from './session.js';
 import { byRating, cleanRating, raterKey, rememberStars } from './rating.js';
 
 /*
@@ -242,9 +242,19 @@ async function readJson(res) {
     body = null;
   }
   if (!res.ok) {
-    const message = (body && body.error) || text || `The board answered ${res.status}.`;
+    let message = (body && body.error) || text || `The board answered ${res.status}.`;
+    /* A name, a track's or a map's words, or a tune's, refused by the
+     * board's closed list of words (code WORDS, its src/validate.js). The
+     * board's sentence names the field and never the word; this says it
+     * plainly, in the field's own words, for whoever shows err.message. */
+    const words = Boolean(body && body.code === 'WORDS');
+    if (words) {
+      const what = /^(.+?) has a word in it/.exec(String(body.error || ''));
+      message = `${what ? what[1] : 'That name'} is not allowed. Pick another.`;
+    }
     const err = new Error(message);
     err.status = res.status;
+    err.words = words;
     err.conflict = Boolean(body && body.conflict) || res.status === 409;
     /* The board's refusal for a track an admin has marked official: a 403
      * that is neither a collision (conflict) nor a wrong key, and which the
@@ -325,9 +335,17 @@ function msOrNull(v) {
   return v == null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v);
 }
 
-export async function fetchTrackList(origin = boardOrigin()) {
+/*
+ * `plans: false` asks the board for the list without each track's plan
+ * drawing (?plans=0, which the board has served since round 1: the plans
+ * are most of the answer). Only a caller that draws plans asks for them,
+ * the Race room and the Freestyle room; one that wants ids, names or
+ * documents does not. A board from before ?plans=0 ignores it and sends
+ * the plans anyway, which costs bytes and nothing else.
+ */
+export async function fetchTrackList(origin = boardOrigin(), { plans = true } = {}) {
   const board = trimOrigin(origin);
-  const res = await boardGet(`${board}/api/tracks`);
+  const res = await boardGet(`${board}/api/tracks${plans ? '' : '?plans=0'}`);
   const body = await readJson(res);
   const tracks = body && Array.isArray(body.tracks) ? body.tracks : [];
   return tracks.map((t) => ({
@@ -454,7 +472,7 @@ export async function adoptMostFlownTrack(cls) {
    * is per class too.
    */
   const want = cls === 'micro' ? 'micro' : 'full';
-  if (readShareImport()) {
+  if (readShareImport() && !shareSeatIsStandIn()) {
     return null;
   }
   try {
@@ -464,7 +482,7 @@ export async function adoptMostFlownTrack(cls) {
      * particular course should not wait the full eight seconds to find out
      * the board is asleep. A Fly link, which DID name a course, gets the
      * full deadline through fetchTrackDocument. */
-    const res = await boardGet(`${trimOrigin(origin)}/api/tracks`, 4000);
+    const res = await boardGet(`${trimOrigin(origin)}/api/tracks?plans=0`, 4000);
     const body = await readJson(res);
     const tracks = body && Array.isArray(body.tracks) ? body.tracks : [];
     const list = tracks.map((t) => ({
@@ -481,7 +499,7 @@ export async function adoptMostFlownTrack(cls) {
     })).filter((t) => t.id && t.trackClass === want);
     const top = pickMostFlownTrack(list);
     if (!top) {
-      return null;
+      return seatStandIn(want);
     }
     const payload = await fetchTrackDocument(top.id, top.board);
     const document = payload.document || payload;
@@ -496,6 +514,53 @@ export async function adoptMostFlownTrack(cls) {
       return null;
     }
     return share;
+  } catch (e) {
+    return seatStandIn(want);
+  }
+}
+
+/*
+ * NO BOARD, AND STILL A TRACK (ART-20). A cold boot whose board did not
+ * answer, or had no track for this aircraft, used to build the Track map
+ * with nothing seated: an empty field, no gates, which is the first thing a
+ * visitor offline saw. So it seats a track that ships with the simulator,
+ * the first chapter's for the five inch and the first RaceGOW5 room for the
+ * whoop, as a stock seat (not published, takes no time) marked as a stand
+ * in, which the next boot that reaches the board replaces with the most
+ * flown track. A stand in already seated is kept. The presets are fetched
+ * only here, so a boot that reaches the board never asks for them.
+ */
+async function seatStandIn(want) {
+  const held = readShareImport();
+  if (held && held.standIn) {
+    return held;
+  }
+  if (held) {
+    return null;
+  }
+  try {
+    const { presetById } = await import('../trackbuilder/presets.js');
+    let document = null;
+    if (want === 'micro') {
+      document = presetById('racegow5-track1');
+    } else {
+      const { FIVE_INCH_PRESETS } = await import('../trackbuilder/presets5.js');
+      const first = FIVE_INCH_PRESETS.find((d) => d.id === 'trk-178a4de4') || FIVE_INCH_PRESETS[0];
+      document = first ? JSON.parse(JSON.stringify(first)) : null;
+    }
+    if (!document || (document.trackClass === 'micro' ? 'micro' : 'full') !== want) {
+      return null;
+    }
+    const share = {
+      id: document.id,
+      name: document.name,
+      author: '',
+      board: '',
+      document,
+      stock: true,
+      standIn: true,
+    };
+    return writeShareImport(share) ? share : null;
   } catch (e) {
     return null;
   }
@@ -808,9 +873,9 @@ export async function fetchMapDocument(id, origin = boardOrigin()) {
  * today and never a broken room, so every caller treats a rejection that
  * way.
  */
-export async function fetchMapList(origin = boardOrigin()) {
+export async function fetchMapList(origin = boardOrigin(), { plans = true } = {}) {
   const board = trimOrigin(origin);
-  const res = await boardGet(`${board}/api/maps`);
+  const res = await boardGet(`${board}/api/maps${plans ? '' : '?plans=0'}`);
   const body = await readJson(res);
   const maps = body && Array.isArray(body.maps) ? body.maps : [];
   return maps.map((m) => ({

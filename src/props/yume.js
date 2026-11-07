@@ -55,7 +55,6 @@ export const MATERIALS = {
   ymMoss: { c: 0x7d9c74, tint: 0x4f6878 },
   /* water: the town's pond */
   ymWater: { f: 0x93b8ce, noCast: true },
-  ymWaterDeep: { f: 0x7fa6c0, noCast: true },
   /* steel */
   ymSteel: { c: 0xb8bcc6, tint: 0x666090 },
   ymSteelDark: { c: 0x878b96, tint: TD },

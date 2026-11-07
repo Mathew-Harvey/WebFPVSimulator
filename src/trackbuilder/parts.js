@@ -938,6 +938,54 @@ export function setInvisible(doc, id, on) {
 }
 
 /*
+ * A GATE HUNG IN THE AIR, AND A GATE THAT IS ONLY THERE (isFloating and isDecor in elements.js).
+ *
+ * Floating takes the legs off a raised gate: it needs a height to hang at, so it is offered on a gate that is off
+ * the floor, and kept if it is already set. Decor takes the gate out of the race and leaves it standing: its passes
+ * are removed from the flying order (the lap and every number after it close up) and the flag is set, and turning
+ * it off puts one pass back at the end of the order, where "Add to the track" would. Both return true when the
+ * document changed. A cube's faces and a letter are not offered either: they are not a gate on its own.
+ */
+export function canBeFloating(el) {
+  return Boolean(el) && kindOf(el) === KIND.APERTURE && !el.group && !isLetterPiece(el)
+    && ((el.dims?.sillH ?? 0) > 0 || el.floating === true);
+}
+
+export function setFloating(doc, id, on) {
+  const el = elementById(doc, id);
+  if (!canBeFloating(el) || (el.floating === true) === Boolean(on)) {
+    return false;
+  }
+  if (on) {
+    el.floating = true;
+  } else {
+    delete el.floating;
+  }
+  return true;
+}
+
+export function canBeDecor(el) {
+  return Boolean(el) && kindOf(el) === KIND.APERTURE && !el.group && !isLetterPiece(el);
+}
+
+export function setDecor(doc, id, on) {
+  const el = elementById(doc, id);
+  if (!canBeDecor(el) || (el.decor === true) === Boolean(on)) {
+    return false;
+  }
+  if (on) {
+    for (const seq of doc.sequence.filter((q) => q.elementId === id)) {
+      removeFromSequence(doc, seq.id);
+    }
+    el.decor = true;
+  } else {
+    delete el.decor;
+    addToSequence(doc, id, 0);
+  }
+  return true;
+}
+
+/*
  * PUT AN INVISIBLE GATE DOWN, in the flying order, where a gate would go and facing the way a gate would face:
  * it is placed by the rule every gate is (placeOnTrack in snap.js), and then its frame is taken away. Returns the
  * element.

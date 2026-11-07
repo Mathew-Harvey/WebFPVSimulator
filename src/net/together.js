@@ -1207,7 +1207,7 @@ export function createTogether(shell) {
   async function hasWorld(r) {
     if (STEAM_EDITION && !shipped) {
       if (!shippedLoading) {
-        shippedLoading = Promise.all([fetchMapList().catch(() => []), fetchTrackList().catch(() => [])])
+        shippedLoading = Promise.all([fetchMapList(undefined, { plans: false }).catch(() => []), fetchTrackList(undefined, { plans: false }).catch(() => [])])
           .then(([maps, tracks]) => {
             shipped = new Set([...maps, ...tracks].map((x) => x.id));
           });

@@ -179,6 +179,9 @@ export function mountTouchSticks({ onPause } = {}) {
     right: null, /* { id, x, y } */
   };
   let visible = false;
+  /* Which move events flew the sticks, for the harness. See bindZone. */
+  const RAW_MOVES = typeof window !== 'undefined' && 'onpointerrawupdate' in window;
+  const moves = { raw: 0, frame: 0 };
   /* See setRestThrottle. */
   let restThrottle = 0;
 
@@ -209,15 +212,39 @@ export function mountTouchSticks({ onPause } = {}) {
         throttle: ch.throttle,
         deflect: t.deflect,
         sweep: t.sweep,
+        raw: false,
       };
       plate.classList.add('is-held');
     });
-    zone.addEventListener('pointermove', (e) => {
+    /*
+     * THE THUMB'S MOVE AS SOON AS THE BROWSER HAS IT (review CORE-16,
+     * round 1). Chrome holds pointermove back to the next frame and hands
+     * over one event for the whole frame, so a thumb that moved just after
+     * a frame began reached the 2 ms poller up to a frame late. Where the
+     * browser offers pointerrawupdate (Chrome, on a secure page) it arrives
+     * as the move happens, and the poller stamps the stick that much
+     * sooner. Both are listened to, because a browser may offer the raw
+     * event and still not send it for touch: once a grip has had a raw
+     * move, its frame aligned moves are dropped at the first line, so the
+     * same move is never applied twice and no frame does more work than
+     * it did. getCoalescedEvents is not called: the dispatched event
+     * already carries the newest coalesced point, which is all a stick
+     * level needs, and the list is an allocation per move.
+     */
+    const move = (e) => {
       const g = grip[side];
       if (!g || e.pointerId !== g.id) {
         return;
       }
-      e.preventDefault();
+      if (e.type === 'pointerrawupdate') {
+        g.raw = true;
+        moves.raw += 1;
+      } else if (g.raw) {
+        return;
+      } else {
+        e.preventDefault();
+        moves.frame += 1;
+      }
       const dx = (e.clientX - g.x) / g.deflect;
       const dyPx = g.y - e.clientY;
       /* The plate writes whichever channels this mode put under this thumb.
@@ -233,7 +260,11 @@ export function mountTouchSticks({ onPause } = {}) {
       } else {
         ch.pitch = clamp(-(dyPx / g.deflect), -1, 1);
       }
-    });
+    };
+    zone.addEventListener('pointermove', move);
+    if (RAW_MOVES) {
+      zone.addEventListener('pointerrawupdate', move);
+    }
     const drop = (e) => {
       const g = grip[side];
       if (!g || e.pointerId !== g.id) {
@@ -382,6 +413,8 @@ export function mountTouchSticks({ onPause } = {}) {
         visible,
         channels: { ...ch },
         held: { left: Boolean(grip.left), right: Boolean(grip.right) },
+        rawMoves: RAW_MOVES,
+        moves: { ...moves },
       };
     },
   };

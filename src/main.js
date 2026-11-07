@@ -17575,6 +17575,17 @@ export async function boot({ loading, bootStart, mapId }) {
       careerCamera = c === 'chase' ? 'chase' : null;
       careerChaseCam.atMs = -1;
     },
+    /* The lesson's own restart, as R is in flight: the soft ceiling's way
+     * back (R3-10, src/career/controller.js). After the frame that asked,
+     * never inside it, so the step loop and the career finish the frame on
+     * the state they started it with. */
+    restart() {
+      queueMicrotask(() => {
+        if (career && mode === 'flight' && ui.screen === 'flight') {
+          reset();
+        }
+      });
+    },
     /* The first lessons' simple OSD (R2M-10): one class, CSS does the rest. */
     simpleOsd(on) {
       if (ui.osd) {

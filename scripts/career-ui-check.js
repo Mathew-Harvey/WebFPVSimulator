@@ -815,6 +815,61 @@ async function run(size) {
     const kept = await page.evaluate("[document.querySelector('#career .cr-continue-title .cr-title-text').textContent, document.querySelector('#career .cr-licence-line').textContent.trim(), document.querySelector('#career .cr-paintcard .cr-panel-line').textContent]");
     check('and the career opens where it was left, paint and all', kept[0] === check10.title && /, \d+ of \d+ lessons$/.test(kept[1]) && !/^0 stars/.test(kept[1]) && kept[2].startsWith(`${rookie.name} paint.`), kept.join(' / '));
 
+    /* ---------------- the first lessons' soft ceiling (R3-10) ---------------- */
+    /* Held over the field, the coach asks the pilot down, then names the way
+     * back; held far above it, the lesson puts the craft back on the pad by
+     * its own restart. The plant is untouched: the craft is put up there by
+     * the harness and the sticks hover it. */
+    {
+      await page.evaluate("window.__career.open('1-1')");
+      await page.until(state('briefing'), 60000);
+      await page.until("(() => { const b = document.querySelector('#career .cr-brief .cr-btn.primary'); return b && !b.disabled; })()", 90000);
+      await page.evaluate('window.__career.fly()');
+      await page.until(state('flight'), 60000);
+      const pad = await page.evaluate('(() => { const c = window.__craftState(); return { x: c.worldX, y: c.worldY, z: c.worldZ }; })()');
+      const coachNow = "(() => { const n = document.querySelector('#career .cr-coach'); return n && n.classList.contains('show') ? n.textContent : ''; })()";
+      const holdAt = async (up, until, ms) => {
+        const end = Date.now() + ms;
+        for (;;) {
+          await page.evaluate(`(window.__stick(0, 0, 0, 0.5), window.__placeCraft(${pad.x}, ${pad.y + up}, ${pad.z}), 1)`);
+          await page.sleep(250);
+          const got = await page.evaluate(until);
+          if (got || Date.now() > end) {
+            return got;
+          }
+        }
+      };
+      const first = await holdAt(30, `/^Too high/.test(${coachNow}) && ${coachNow}`, 20000);
+      check('over the field, the first lesson\'s coach asks the pilot down, with no metres in it', Boolean(first) && !/\d/.test(first), first || await page.evaluate(coachNow));
+      const nag = await holdAt(30, `/^Still too high/.test(${coachNow}) && ${coachNow}`, 30000);
+      check('held up there, the coach names the way back to the pad', Boolean(nag) && /R to start again on the pad|pause menu/.test(nag) && !/\d/.test(nag), nag || await page.evaluate(coachNow));
+      /* The restart is seen as the plant's clock going back to the start
+       * of a run, and the harness stops putting the craft up there the
+       * moment it does, or it would lift it straight off the pad again. */
+      const clock = 'window.__stateRef()[0]';
+      let lastClock = await page.evaluate(clock);
+      let back = false;
+      for (const end = Date.now() + 40000; !back && Date.now() < end;) {
+        await page.evaluate(`(window.__stick(0, 0, 0, 0), window.__placeCraft(${pad.x}, ${pad.y + 60}, ${pad.z}), 1)`);
+        for (let k = 0; k < 5 && !back; k += 1) {
+          await page.sleep(50);
+          const now = await page.evaluate(clock);
+          back = now < lastClock - 0.5;
+          lastClock = now;
+        }
+      }
+      await page.sleep(500);
+      const after = await page.evaluate(`({ landed: window.__craftState().landed, nearPad: Math.abs(window.__craftState().worldY - ${pad.y}) < 1,
+        ob: document.querySelector('#career .cr-hud .cr-obj-text').textContent, state: window.__career.state() })`);
+      check('held far above it, the lesson puts the craft back on its pad and starts again', back && after.landed && after.nearPad && after.state === 'flight' && after.ob === lessonById('1-1').objectives[0].text, JSON.stringify({ back, ...after }));
+      await page.evaluate('window.__stick()');
+      await tap('Escape');
+      await page.until("window.__ui.screen === 'paused'");
+      await page.evaluate('window.__career.leave()');
+      await page.until(`${state('cover')} || ${state('tree')} || ${state('idle')} || window.__career.state() === 'idle'`, 30000).catch(() => {});
+
+    }
+
     /* ---------------- another door while a lesson flies (R3-13) ---------------- */
     /* A Fly that is not the lesson's, here the shell's own, as a map picked
      * from the picker would send: the lesson lets go of the display and

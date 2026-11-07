@@ -1,6 +1,7 @@
 /*
  * yardtrack.js: a RaceGOW track standing in a house map's yard, timed. The
- * owner's ask of 2026-10-24: the board's RaceGOW6 Track 3 (./course.js)
+ * owner's ask of 2026-10-24: the board's RaceGOW6 track (./course.js, Track 3
+ * then, Track 4 since 2026-11-07)
  * "functional (with timer callout and gates etc) placed in heads front yard,
  * in nicks back yard and in josh bardwells yard near the wood chopping shed
  * out the back ... with logos on the floor of sponsors, i should be able to
@@ -215,6 +216,17 @@ export function yardTrack(spot) {
     } else if (s.type === 'pole') {
       const [x, z] = F.at(s.x, s.z);
       P.cap(spot.pipe, [x, F.y(s.baseY), z], [x, F.y(s.baseY + s.dims.height), z], F.k * s.dims.poleRadius, { kind: 'pole', seg: 8, name: 'yard pole' });
+    } else if (s.type === 'horizontalPole') {
+      /* A bar lying at its own height, a pipe from end to end along its
+       * heading (stage.js builds the same span in the document's frame).
+       * Document y is the course's -z, so the heading's sine flips. */
+      headingSinCos(s.yaw, sc);
+      const hw = s.dims.width / 2;
+      const rr = Math.max(s.dims.depth, s.dims.height) / 2;
+      const [ax, az] = F.at(s.x - sc.c * hw, s.z + sc.s * hw);
+      const [bx, bz] = F.at(s.x + sc.c * hw, s.z - sc.s * hw);
+      const h = F.y(s.baseY + rr);
+      P.cap(spot.pipe, [ax, h, az], [bx, h, bz], F.k * rr, { kind: 'obstacle', seg: 8, name: 'yard bar' });
     }
   }
   /* The stations, in the shape Race takes and scene.js hands it. */
@@ -281,8 +293,24 @@ export function yardTrack(spot) {
     const cx = (g.position.x - 10 / 2) * MICRO_SCALE;
     const cz = -(g.position.y - 12 / 2) * MICRO_SCALE;
     const [x, z] = F.at(cx, cz);
+    /* A piece lies a hair off a quarter turn in the document, and is laid
+     * square, as the gates are. Its width runs along its own heading in the
+     * document and its depth a quarter turn on from it, both flipped into
+     * the course's z. */
+    const pq = quarterTurns(g.yaw);
+    const pc = quarterSinCos(pq);
+    const [rx, rz] = F.dir(pc.c, -pc.s);
+    const [ux, uz] = F.dir(-pc.s, -pc.c);
     return {
-      id: g.id, x, z, yaw: F.turn, w: spot.scale * g.dims.width, d: spot.scale * g.dims.depth,
+      id: g.id,
+      mark: g.logo,
+      x,
+      z,
+      yaw: F.turn + (pq * Math.PI) / 2,
+      w: spot.scale * g.dims.width,
+      d: spot.scale * g.dims.depth,
+      right: [rx, 0, rz],
+      up: [ux, 0, uz],
     };
   });
   return {
@@ -350,26 +378,22 @@ export { leftTrack, inAskZone } from '../../game/yardrace.js';
 
 /*
  * THE TRACK'S OWN FLOOR LOGOS, the two its author published with it on the
- * board: MiniFigs.me on the big ground logo piece and RaceGOW6 on the small
- * one (the owner, 2026-10-24: "when i said the sponsors i meant minifig.me
- * and racegow only, the other logos as before"). The pictures are the
- * board's own, saved as WebP (assets/yardtrack/, NOTICE), fetched only by
- * the three maps that stand the track.
+ * board: Neo's UV Creations on the larger ground logo piece and RaceGOW6 on
+ * the smaller one. The pictures are the board's own, saved as WebP
+ * (assets/yardtrack/, NOTICE), fetched only by the three maps that stand
+ * the track.
  *
  * The board stretches each picture over its piece. These are fitted inside
- * instead, at their own shape, because the big piece is long and MiniFigs
- * is wide: it lies down the piece's length, reading from the course's east
- * side with its top to the west, which is how it fills the piece, and
- * RaceGOW6 lies across the small one with its top to the course's north.
- * The small piece lies over the big one's north end, so MiniFigs keeps to
- * what of the big one shows.
+ * instead, at their own shape, centred on the piece and turned as the piece
+ * is: the picture's right along the piece's width and its top along the
+ * piece's depth.
  */
 export const FLOOR_MARKS = [
   {
-    key: 'minifigs', url: new URL('../../../assets/yardtrack/minifigs.webp', import.meta.url).href, aspect: 624 / 400, piece: 0, along: true,
+    key: 'neos', url: new URL('../../../assets/yardtrack/neos.webp', import.meta.url).href, aspect: 402 / 180,
   },
   {
-    key: 'racegow6', url: new URL('../../../assets/yardtrack/racegow6.webp', import.meta.url).href, aspect: 287 / 180, piece: 1, along: false,
+    key: 'racegow6', url: new URL('../../../assets/yardtrack/racegow6.webp', import.meta.url).href, aspect: 384 / 241,
   },
 ];
 
@@ -382,28 +406,11 @@ const FLOOR_FILL = 0.94;
  * (floorQuad).
  */
 export function floorLogos(t) {
-  const [big, small] = t.logos;
-  const q = quarterSinCos(quarterTurns(big.yaw));
-  /* The course's north and west in the world: -z and -x turned. */
-  const north = [-q.s, 0, -q.c];
-  const west = [-q.c, 0, q.s];
-  /* What of the big piece shows: from lo to hi along its length (north
-   * positive), metres from its middle. */
-  const at = (small.x - big.x) * north[0] + (small.z - big.z) * north[2];
-  let lo = -big.d / 2;
-  let hi = big.d / 2;
-  if (at < 0) {
-    lo = Math.max(lo, at + small.d / 2);
-  } else {
-    hi = Math.min(hi, at - small.d / 2);
-  }
   return FLOOR_MARKS.map((m) => {
-    const rect = m.piece === 0 ? big : small;
-    const mid = m.piece === 0 ? (lo + hi) / 2 : 0;
-    const len = m.piece === 0 ? hi - lo : rect.d;
-    /* The room across the picture and up it. */
-    const across = (m.along ? len : rect.w) * FLOOR_FILL;
-    const upward = (m.along ? rect.w : len) * FLOOR_FILL;
+    const rect = t.logos.find((g) => g.mark === m.key);
+    /* The room along the picture's width and up it. */
+    const across = rect.w * FLOOR_FILL;
+    const upward = rect.d * FLOOR_FILL;
     let w = across;
     let h = w / m.aspect;
     if (h > upward) {
@@ -411,12 +418,7 @@ export function floorLogos(t) {
       w = h * m.aspect;
     }
     return {
-      key: m.key,
-      cx: rect.x + mid * north[0],
-      cz: rect.z + mid * north[2],
-      up: m.along ? west : north,
-      w,
-      h,
+      key: m.key, cx: rect.x, cz: rect.z, up: rect.up, w, h,
     };
   });
 }

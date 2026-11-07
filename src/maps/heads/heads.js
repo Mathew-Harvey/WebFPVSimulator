@@ -1791,7 +1791,7 @@ function scaledParts(a) {
 
 /*
  * THE YARD TRACK on the front lawn (../yardtrack/), the owner's ask of
- * 2026-10-24: RaceGOW6 Track 3 between the stoop and the drive, its start
+ * 2026-10-24 and since 2026-11-07 RaceGOW6 Track 4 (Track 3 before it) between the stoop and the drive, its start
  * gate at the street end so a run is flown in toward the house, at the
  * house's own S, so a 28 inch gate is a 28 inch gate against the front
  * door. Clear of the stoop, the beds, the drive and the cars on it, the

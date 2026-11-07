@@ -3352,7 +3352,7 @@ function scaledParts(a) {
  */
 /*
  * THE YARD TRACK on the back lawn (../yardtrack/), the owner's ask of
- * 2026-10-24: RaceGOW6 Track 3 on the lawn north of the pavilion, between
+ * 2026-10-24 and since 2026-11-07 RaceGOW6 Track 4 (Track 3 before it) on the lawn north of the pavilion, between
  * the pool deck and the tall fence, its start gate on the pavilion's side
  * so a run is flown out toward the back fence, at the house's own S. Clear
  * of the pavilion, the fences and the trees' crowns over it

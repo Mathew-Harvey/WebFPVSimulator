@@ -1347,7 +1347,7 @@ function scaledParts(a) {
  */
 /*
  * THE YARD TRACK out the back (../yardtrack/), the owner's ask of
- * 2026-10-24: RaceGOW6 Track 3 on the lawn north east of the woodshed and
+ * 2026-10-24 and since 2026-11-07 RaceGOW6 Track 4 (Track 3 before it) on the lawn north east of the woodshed and
  * its chopping block, turned a quarter so its start gate is at the east end
  * and a run is flown in toward the shed, north of the line the map's own
  * race leaves the start pads on. This place is life size and a five inch
@@ -1358,7 +1358,9 @@ function scaledParts(a) {
  * whoop (src/main.js), and is not timed until they do. One broadleaf in the
  * line is left out (CLEAR). White pipe, the start gate yellow.
  */
-export const YARD_AT = { px: 9.0, py: 32.8, q: 1 };
+/* py 33.3, half a metre north of Track 3's 32.8: Track 4's far logo piece reaches
+ * further, and its landing zone must stay clear of the map's own start. */
+export const YARD_AT = { px: 9.0, py: 33.3, q: 1 };
 export function bardwellYardTrack() {
   return yardTrackOn(worldAt, YARD_AT, { id: 'bardwell', scale: MICRO_SCALE, pipe: 'homeTrim', start: 'bardwellYellow' });
 }

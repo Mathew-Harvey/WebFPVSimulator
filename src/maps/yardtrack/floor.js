@@ -1,5 +1,5 @@
 /*
- * floor.js: the yard track's floor logos, MiniFigs.me and RaceGOW6, for a
+ * floor.js: the yard track's floor logos, Neo's UV Creations and RaceGOW6, for a
  * map with no picture of its own to put them in (Nick Burns' house, whose
  * one sheet is his stickers). One small atlas of the two pictures and one
  * lit mesh of their quads, so one draw call, and only while it is in view:

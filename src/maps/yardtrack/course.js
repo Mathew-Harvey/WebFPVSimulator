@@ -1,15 +1,17 @@
 /*
- * course.js: the yard track, RaceGOW6 Track 3 by the Lego Dans, as the board
- * published it (trk-85c74ecc, by andAgainFPV, last changed on the board at
- * 2026-10-24T02:55:48Z). The owner's ask of 2026-10-24: "i want this track,
- * functional (with timer callout and gates etc) placed in heads front yard,
- * in nicks back yard and in josh bardwells yard".
+ * course.js: the yard track, RaceGOW6 Track 4 by Hotspur and Cumber, as the
+ * board published it (trk-eb699343, by andAgainFPV, last changed on the
+ * board at 2026-11-07T02:49:43Z). It took the place of Track 3 in the
+ * three yards on the owner's ask of 2026-11-07: "i want this track to
+ * replace the current tracks on bardwell, Nick burns and heads map".
+ * Track 3 is trk-85c74ecc, in git history. Both are 10 by 12 metre micro
+ * fields, so the same spots hold it.
  *
  * A copy and not a fetch, for two reasons. The house maps are built with no
  * network in the loop, so a board that is down cannot take the track out of
  * the yard; and the owner pays for what is served, so the track's two logo
- * pictures (380 kB of PNG in the board's copy) are not carried in the
- * document but saved beside it as WebP (assets/yardtrack/, 44 kB). Only
+ * pictures (350 kB of PNG in the board's copy) are not carried in the
+ * document but saved beside it as WebP (assets/yardtrack/, 33 kB). Only
  * the pieces and the flying order are kept, in the document's own RaceGOW
  * metres, exactly as published, and the two ground logo pieces as
  * rectangles, where the yard lays those pictures (./yardtrack.js). A later
@@ -36,65 +38,77 @@
  * Handed out as a fresh copy each time (courseDocument), because a reader
  * may repair what it is given in place. */
 const COURSE_DOCUMENT = {
-  id: 'trk-85c74ecc',
-  name: 'RaceGOW6 Track 3 sponsored by Minifigs.me and designed by the Lego Dans',
+  id: 'trk-eb699343',
+  name: "RaceGow6 Track4 sponsored by Neo's UV Creations and designed by Hotspur and Cumber",
   schemaVersion: 3,
   trackClass: 'micro',
   field: {depth: 12, width: 10, gridSize: 0.0254},
   settings: {tangentScale: 1.1, minCurveRadius: 0.45, samplesPerSegment: 48},
   elements: [
-    {id: 'el-1', yaw: 1.570796, dims: {sillH: 0, clearH: 0.7112, clearW: 0.7112, levels: 1, levelPitch: 0.762}, name: '', type: 'gate', pitch: 0, position: {x: 4.6482, y: 4.9276, z: 0}, yawOverridden: true},
-    {id: 'el-2', yaw: 3.141593, dims: {sillH: 0, clearH: 0.7112, clearW: 0.7112, levels: 1, levelPitch: 0.762}, name: '', type: 'gate', pitch: 0, position: {x: 4.2672, y: 5.3086, z: 0}, yawOverridden: true},
-    {id: 'el-3', yaw: 0, dims: {sillH: 0, clearH: 0.7112, clearW: 0.7112, levels: 1, levelPitch: 0.762}, name: '', type: 'gate', pitch: 0, position: {x: 4.2672, y: 6.0706, z: 0}, yawOverridden: true},
-    {id: 'el-4', yaw: 3.141593, dims: {sillH: 0.762, clearH: 0.7112, clearW: 2.286, levels: 1, levelPitch: 0.762}, name: '', type: 'gate', pitch: 0, unbuilt: true, position: {x: 4.2672, y: 6.0706, z: 0}, yawOverridden: true},
-    {id: 'el-5', yaw: 0, dims: {sillH: 0, clearH: 0.7112, clearW: 0.7112, levels: 1, levelPitch: 0.762}, name: '', type: 'gate', pitch: 0, position: {x: 4.2672, y: 6.8326, z: 0}, yawOverridden: true},
-    {id: 'el-6', yaw: 1.570796, dims: {sillH: 0, clearH: 1.4478, clearW: 0.7112, levels: 1, levelPitch: 0.762}, name: '', type: 'gate', pitch: 0, position: {x: 3.8862, y: 7.2136, z: 0}, yawOverridden: true},
-    {id: 'el-7', yaw: 1.570796, dims: {sillH: 0, clearH: 0.7112, clearW: 0.7112, levels: 1, levelPitch: 0.762}, name: '', type: 'gate', pitch: 0, position: {x: 4.6482, y: 7.2136, z: 0}, yawOverridden: true},
-    {id: 'el-8', yaw: 1.570796, dims: {sillH: 0, clearH: 2.286, clearW: 2.54, levels: 1, levelPitch: 0.762}, name: '', type: 'gate', pitch: 0, unbuilt: true, position: {x: 5.6896, y: 7.112, z: 0}, yawOverridden: true},
-    {id: 'el-9', yaw: 0, dims: {sillH: 0, clearH: 0.7112, clearW: 0.7112, levels: 1, levelPitch: 0.762}, name: '', type: 'gate', pitch: 0, unbuilt: true, position: {x: 4.2672, y: 6.8326, z: 0}, yawOverridden: true},
-    {id: 'el-10', yaw: -1.570796, dims: {sillH: 0, clearH: 2.286, clearW: 2.286, levels: 1, levelPitch: 0.762}, name: '', type: 'gate', pitch: 0, unbuilt: true, position: {x: 6.1976, y: 7.1882, z: 0}, yawOverridden: true},
-    {id: 'el-11', yaw: 3.141593, dims: {sillH: 0, clearH: 0.7112, clearW: 2.2606, levels: 1, levelPitch: 0.762}, name: '', type: 'gate', pitch: 0, unbuilt: true, position: {x: 4.2672, y: 6.0706, z: 0.762}, yawOverridden: true},
-    {id: 'el-12', yaw: 1.570796, dims: {sillH: 0, clearH: 1.4732, clearW: 0.7112, levels: 1, levelPitch: 0.762}, name: '', type: 'gate', pitch: 0, unbuilt: true, position: {x: 3.8862, y: 7.2136, z: 0}, yawOverridden: true},
-    {id: 'el-13', yaw: 0, dims: {sillH: 1.524, clearH: 2.286, clearW: 2.286, levels: 1, levelPitch: 0.762}, name: '', type: 'gate', pitch: 0, position: {x: 4.2672, y: 6.096, z: 0}, unbuiltSides: ['top', 'left'], yawOverridden: true},
-    {id: 'el-14', yaw: 3.141593, dims: {sillH: 0, clearH: 0.7112, clearW: 2.286, levels: 1, levelPitch: 0.762}, name: '', type: 'gate', pitch: 0, unbuilt: true, position: {x: 4.2672, y: 6.0706, z: 0.762}, yawOverridden: true},
-    {id: 'el-15', yaw: 0, dims: {sillH: 0, clearH: 2.286, clearW: 2.286, levels: 1, levelPitch: 0.762}, name: '', type: 'gate', pitch: 0, unbuilt: true, position: {x: 4.2672, y: 8.382, z: 0}, yawOverridden: true},
-    {id: 'el-16', yaw: -1.570796, dims: {sillH: 0, clearH: 0.7112, clearW: 0.7112, levels: 1, levelPitch: 0.762}, name: '', type: 'gate', pitch: 0, unbuilt: true, position: {x: 4.6482, y: 4.953, z: 0}, yawOverridden: true},
-    {id: 'el-17', yaw: 0.349066, dims: {height: 1.5, clearance: 0.5334, poleRadius: 0.013335}, name: '', type: 'pole', pitch: 0, position: {x: 4.2672, y: 4.953, z: 0}, yawOverridden: true},
-    {id: 'el-20', yaw: -0.3473, dims: {height: 0.35, clearance: 0, poleRadius: 0.008}, name: '', type: 'waypoint', pitch: 0, position: {x: 3.796631, y: 7.857625, z: 0.599078}, yawOverridden: false},
-    {id: 'el-21', yaw: -0.884728, dims: {height: 0.35, clearance: 0, poleRadius: 0.008}, name: '', type: 'waypoint', pitch: 0, position: {x: 5.510548, y: 7.343145, z: 0.513383}, yawOverridden: false},
-    {id: 'el-22', yaw: -0.43296, dims: {height: 0.35, clearance: 0, poleRadius: 0.008}, name: '', type: 'waypoint', pitch: 0, position: {x: 5.030377, y: 7.913559, z: 0.533495}, yawOverridden: false},
+    {id: 'el-3', yaw: 1.570796, dims: {depth: 0.02667, width: 0.762, height: 0.02667}, name: '', type: 'horizontalPole', pitch: 0, position: {x: 4.3434, y: 5.3594, z: 0}, yawOverridden: false},
+    {id: 'el-4', yaw: 1.570796, dims: {depth: 0.02667, width: 0.762, height: 0.02667}, name: '', type: 'horizontalPole', pitch: 0, position: {x: 4.3434, y: 6.8834, z: 0}, yawOverridden: false},
+    {id: 'el-5', yaw: 1.570796, dims: {sillH: 0, clearH: 0.7112, clearW: 0.7112, levels: 1, levelPitch: 0.762}, name: '', type: 'gate', pitch: 0, position: {x: 4.7244, y: 4.9784, z: 0}, unbuiltSides: ['bottom'], yawOverridden: true},
+    {id: 'el-6', yaw: 1.570796, dims: {sillH: 0, clearH: 0.7112, clearW: 1.4224, levels: 1, levelPitch: 0.762}, name: '', type: 'gate', pitch: 0, position: {x: 5.08, y: 7.2644, z: 0}, unbuiltSides: ['bottom'], yawOverridden: true},
+    {id: 'el-7', yaw: -3.141593, dims: {sillH: 0, clearH: 0.7112, clearW: 0.7112, levels: 1, levelPitch: 0.762}, name: '', type: 'gate', decor: true, pitch: 0, position: {x: 4.3434, y: 6.1214, z: 0}, unbuiltSides: ['bottom'], yawOverridden: true},
+    {id: 'el-8', yaw: -2.322873, dims: {height: 1.5, clearance: 0.3556, poleRadius: 0.013335}, name: '', type: 'pole', decor: true, pitch: 0, position: {x: 4.3434, y: 6.477, z: 0}, yawOverridden: false},
+    {id: 'el-9', yaw: -3.141593, dims: {sillH: 0, clearH: 1.4224, clearW: 1.524, levels: 1, levelPitch: 0.762}, name: '', type: 'gate', pitch: 0, unbuilt: true, position: {x: 4.3434, y: 5.715, z: 0.7112}, yawOverridden: true},
+    {id: 'el-10', yaw: -1.951163, dims: {height: 0.35, clearance: 0, poleRadius: 0.008}, name: '', type: 'waypoint', pitch: 0, position: {x: 6.016533, y: 7.482922, z: 0.849148}, yawOverridden: false},
+    {id: 'el-11', yaw: -2.113039, dims: {height: 0.35, clearance: 0, poleRadius: 0.008}, name: '', type: 'waypoint', pitch: 0, position: {x: 6.02683, y: 6.244633, z: 1.043593}, yawOverridden: false},
+    {id: 'el-12', yaw: 1.570796, dims: {sillH: 0.762, clearH: 0.7112, clearW: 0.7112, levels: 1, levelPitch: 0.762}, name: '', type: 'gate', decor: true, pitch: 0, floating: true, position: {x: 4.7244, y: 7.2644, z: 0}, yawOverridden: true},
+    {id: 'el-13', yaw: -1.570796, dims: {sillH: 0.762, clearH: 0.7112, clearW: 0.7112, levels: 1, levelPitch: 0.762}, name: '', type: 'gate', decor: true, pitch: 0, floating: true, position: {x: 5.4356, y: 7.2644, z: 0}, yawOverridden: true},
+    {id: 'el-14', yaw: 1.570796, dims: {height: 2.286, clearance: 0.3556, poleRadius: 0.013335}, name: '', type: 'pole', decor: true, pitch: 0, position: {x: 4.3434, y: 7.2644, z: 0}, yawOverridden: false},
+    {id: 'el-15', yaw: 0.819283, dims: {height: 2.286, clearance: 0.3556, poleRadius: 0.013335}, name: '', type: 'pole', decor: true, pitch: 0, position: {x: 5.7912, y: 7.2644, z: 0}, yawOverridden: false},
+    {id: 'el-16', yaw: 1.570796, dims: {sillH: 1.4732, clearH: 1.27, clearW: 1.4478, levels: 1, levelPitch: 0.762}, name: '', type: 'gate', pitch: 0, unbuilt: true, position: {x: 5.08, y: 7.2644, z: 0}, yawOverridden: true},
+    {id: 'el-17', yaw: 1.080091, dims: {height: 0.35, clearance: 0, poleRadius: 0.008}, name: '', type: 'waypoint', pitch: 0, position: {x: 4.070707, y: 7.33547, z: 1.742752}, yawOverridden: false},
+    {id: 'el-18', yaw: -1.570796, dims: {sillH: 0.762, clearH: 0.7112, clearW: 0.7112, levels: 1, levelPitch: 0.762}, name: '', type: 'gate', pitch: 0, unbuilt: true, position: {x: 5.4356, y: 7.2644, z: 0}, yawOverridden: true},
+    {id: 'el-19', yaw: 0.88731, dims: {height: 0.35, clearance: 0, poleRadius: 0.008}, name: '', type: 'waypoint', pitch: 0, position: {x: 6.246281, y: 7.432677, z: 1.77842}, yawOverridden: false},
+    {id: 'el-20', yaw: 0.281033, dims: {height: 0.35, clearance: 0, poleRadius: 0.008}, name: '', type: 'waypoint', pitch: 0, position: {x: 5.685044, y: 6.956554, z: 1.971469}, yawOverridden: false},
+    {id: 'el-21', yaw: -1.570796, dims: {sillH: 0, clearH: 0.7112, clearW: 1.4224, levels: 1, levelPitch: 0.762}, name: '', type: 'gate', pitch: 0, unbuilt: true, position: {x: 5.08, y: 7.239, z: 0}, yawOverridden: true},
+    {id: 'el-22', yaw: 1.570796, dims: {height: 0.35, clearance: 0, poleRadius: 0.008}, name: '', type: 'waypoint', pitch: 0, position: {x: 5.984324, y: 6.929247, z: 0.902177}, yawOverridden: false},
+    {id: 'el-23', yaw: 2.501893, dims: {height: 0.35, clearance: 0, poleRadius: 0.008}, name: '', type: 'waypoint', pitch: 0, position: {x: 5.935761, y: 7.861314, z: 0.650328}, yawOverridden: false},
+    {id: 'el-24', yaw: 1.570796, dims: {sillH: 0.762, clearH: 0.7112, clearW: 0.7112, levels: 1, levelPitch: 0.762}, name: '', type: 'gate', pitch: 0, unbuilt: true, position: {x: 4.7244, y: 7.2644, z: 0}, yawOverridden: true},
+    {id: 'el-25', yaw: 1.570796, dims: {sillH: 1.4732, clearH: 1.27, clearW: 1.4478, levels: 1, levelPitch: 0.762}, name: '', type: 'gate', pitch: 0, unbuilt: true, position: {x: 5.08, y: 7.2644, z: 0}, yawOverridden: true},
+    {id: 'el-26', yaw: -1.570796, dims: {sillH: 0.762, clearH: 0.7112, clearW: 0.7112, levels: 1, levelPitch: 0.762}, name: '', type: 'gate', pitch: 0, unbuilt: true, position: {x: 5.461, y: 7.2644, z: 0}, yawOverridden: true},
+    {id: 'el-28', yaw: 3.141593, dims: {sillH: 0, clearH: 0.7112, clearW: 0.7112, levels: 1, levelPitch: 0.762}, name: '', type: 'gate', pitch: 0, unbuilt: true, position: {x: 4.3434, y: 6.1214, z: 0}, yawOverridden: true},
+    {id: 'el-31', yaw: -1.570796, dims: {sillH: 0, clearH: 0.7112, clearW: 0.7112, levels: 1, levelPitch: 0.762}, name: '', type: 'gate', pitch: 0, unbuilt: true, position: {x: 4.7244, y: 4.9784, z: 0}, yawOverridden: true},
+    {id: 'el-32', yaw: -1.364054, dims: {height: 0.35, clearance: 0, poleRadius: 0.008}, name: '', type: 'waypoint', pitch: 0, position: {x: 4.026637, y: 5.01981, z: 0.3556}, yawOverridden: false},
+    {id: 'el-33', yaw: -1.570796, dims: {sillH: 0, clearH: 2.286, clearW: 2.286, levels: 1, levelPitch: 0.762}, name: '', type: 'gate', pitch: 0, unbuilt: true, position: {x: 3.16282, y: 6.477, z: 0}, yawOverridden: true},
+    {id: 'el-34', yaw: -0.117498, dims: {height: 0.35, clearance: 0, poleRadius: 0.008}, name: '', type: 'waypoint', pitch: 0, position: {x: 4.151876, y: 5.221216, z: 0.824347}, yawOverridden: false},
   ],
   sequence: [
-    {id: 'sq-1', entry: 1, passSide: null, clearance: null, elementId: 'el-1', overridden: true, apertureIndex: 0},
-    {id: 'sq-3', entry: -1, passSide: null, clearance: null, elementId: 'el-3', overridden: true, apertureIndex: 0},
-    {id: 'sq-2', entry: -1, passSide: null, clearance: null, elementId: 'el-2', overridden: true, apertureIndex: 0},
-    {id: 'sq-4', entry: 1, passSide: null, clearance: null, elementId: 'el-4', overridden: true, apertureIndex: 0},
-    {id: 'sq-6', entry: 1, passSide: null, clearance: null, elementId: 'el-6', overridden: true, apertureIndex: 0},
-    {id: 'sq-18', entry: null, passSide: 'left', clearance: 0, elementId: 'el-20', overridden: false, apertureIndex: null},
-    {id: 'sq-20', entry: null, passSide: 'left', clearance: 0, elementId: 'el-22', overridden: false, apertureIndex: null},
-    {id: 'sq-19', entry: null, passSide: 'left', clearance: 0, elementId: 'el-21', overridden: false, apertureIndex: null},
-    {id: 'sq-7', entry: 1, passSide: null, clearance: null, elementId: 'el-7', overridden: true, apertureIndex: 0},
-    {id: 'sq-10', entry: 1, passSide: null, clearance: null, elementId: 'el-10', overridden: true, apertureIndex: 0},
-    {id: 'sq-5', entry: -1, passSide: null, clearance: null, elementId: 'el-5', overridden: true, apertureIndex: 0},
-    {id: 'sq-11', entry: -1, passSide: null, clearance: null, elementId: 'el-11', overridden: true, apertureIndex: 0},
-    {id: 'sq-12', entry: -1, passSide: null, clearance: null, elementId: 'el-12', overridden: true, apertureIndex: 0},
-    {id: 'sq-15', entry: 1, passSide: null, clearance: null, elementId: 'el-15', overridden: true, apertureIndex: 0},
-    {id: 'sq-13', entry: -1, passSide: null, clearance: null, elementId: 'el-13', overridden: true, apertureIndex: 0},
-    {id: 'sq-14', entry: -1, passSide: null, clearance: null, elementId: 'el-14', overridden: false, apertureIndex: 0},
-    {id: 'sq-17', entry: null, passSide: 'right', clearance: 1.524, elementId: 'el-17', overridden: false, apertureIndex: null},
-    {id: 'sq-16', entry: -1, passSide: null, clearance: null, elementId: 'el-16', overridden: true, apertureIndex: 0},
+    {id: 'sq-1', entry: 1, passSide: null, clearance: null, elementId: 'el-5', overridden: true, apertureIndex: 0},
+    {id: 'sq-2', entry: 1, passSide: null, clearance: null, elementId: 'el-6', overridden: true, apertureIndex: 0},
+    {id: 'sq-4', entry: null, passSide: 'left', clearance: 0, elementId: 'el-10', overridden: false, apertureIndex: null},
+    {id: 'sq-5', entry: null, passSide: 'left', clearance: 0, elementId: 'el-11', overridden: false, apertureIndex: null},
+    {id: 'sq-3', entry: 1, passSide: null, clearance: null, elementId: 'el-9', overridden: true, apertureIndex: 0},
+    {id: 'sq-7', entry: null, passSide: 'left', clearance: 0, elementId: 'el-17', overridden: false, apertureIndex: null},
+    {id: 'sq-6', entry: -1, passSide: null, clearance: null, elementId: 'el-16', overridden: true, apertureIndex: 0},
+    {id: 'sq-10', entry: null, passSide: 'right', clearance: 0, elementId: 'el-20', overridden: false, apertureIndex: null},
+    {id: 'sq-9', entry: null, passSide: 'right', clearance: 0, elementId: 'el-19', overridden: false, apertureIndex: null},
+    {id: 'sq-8', entry: 1, passSide: null, clearance: null, elementId: 'el-18', overridden: true, apertureIndex: 0},
+    {id: 'sq-12', entry: null, passSide: 'right', clearance: 0, elementId: 'el-22', overridden: false, apertureIndex: null},
+    {id: 'sq-13', entry: null, passSide: 'right', clearance: 0, elementId: 'el-23', overridden: false, apertureIndex: null},
+    {id: 'sq-11', entry: 1, passSide: null, clearance: null, elementId: 'el-21', overridden: true, apertureIndex: 0},
+    {id: 'sq-14', entry: 1, passSide: null, clearance: null, elementId: 'el-24', overridden: true, apertureIndex: 0},
+    {id: 'sq-15', entry: -1, passSide: null, clearance: null, elementId: 'el-25', overridden: true, apertureIndex: 0},
+    {id: 'sq-16', entry: -1, passSide: null, clearance: null, elementId: 'el-26', overridden: true, apertureIndex: 0},
+    {id: 'sq-23', entry: 1, passSide: null, clearance: null, elementId: 'el-33', overridden: true, apertureIndex: 0},
+    {id: 'sq-24', entry: null, passSide: 'right', clearance: 0, elementId: 'el-34', overridden: false, apertureIndex: null},
+    {id: 'sq-18', entry: 1, passSide: null, clearance: null, elementId: 'el-28', overridden: true, apertureIndex: 0},
+    {id: 'sq-22', entry: null, passSide: 'right', clearance: 0, elementId: 'el-32', overridden: false, apertureIndex: null},
+    {id: 'sq-21', entry: -1, passSide: null, clearance: null, elementId: 'el-31', overridden: true, apertureIndex: 0},
   ],
 };
 
-/* The two ground logo pieces: where each lies, how it is turned and its
- * size, document metres. */
+/* The two ground logo pieces: where each lies, how it is turned, its size
+ * and the picture it wears (./yardtrack.js FLOOR_MARKS), document metres. */
 export const GROUND_LOGOS = [
-  {id: 'el-18', position: {x: 5.6896, y: 6.0706, z: 0}, yaw: 0.003491, dims: {depth: 4, width: 2.54}},
-  {id: 'el-19', position: {x: 5.6896, y: 8.0264, z: 0}, yaw: -0.006981, dims: {depth: 1.27, width: 2.54}},
+  {id: 'el-35', logo: 'neos', position: {x: 5.08, y: 6.1214, z: 0}, yaw: 1.576032, dims: {depth: 1.1684, width: 2.032}},
+  {id: 'el-36', logo: 'racegow6', position: {x: 4.8006, y: 4.44552, z: 0}, yaw: 0.010472, dims: {depth: 1.0541, width: 1.524}},
 ];
 
 export const COURSE_ID = COURSE_DOCUMENT.id;
-export const COURSE_NAME = 'RaceGOW6 Track 3';
+export const COURSE_NAME = 'RaceGOW6 Track 4';
 
 export function courseDocument() {
   return JSON.parse(JSON.stringify(COURSE_DOCUMENT));

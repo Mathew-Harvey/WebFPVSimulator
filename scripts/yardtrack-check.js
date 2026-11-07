@@ -1,6 +1,6 @@
 /*
  * yardtrack-check.js: the yard track (src/maps/yardtrack/), RaceGOW6 Track
- * 3 in Heads' front yard, Nick Burns' back yard and out the back of Joshua
+ * 4 in Heads' front yard, Nick Burns' back yard and out the back of Joshua
  * Bardwell's, proved in plain Node to stand clear of each place and to time
  * a lap the way the shell times it (src/game/yardrace.js).
  *
@@ -11,7 +11,7 @@
  *                through the race: every station in order, three laps
  *   3. leave     flying out of reach resets the race; a disarmed race (a
  *                five inch at Bardwell's) scores nothing
- *   4. floor     MiniFigs.me and RaceGOW6 inside the board's two ground
+ *   4. floor     Neo's UV Creations and RaceGOW6 inside the board's two ground
  *                logo pieces, apart, flat on the grass, at their own shape
  *   5. zone      Bardwell's landing zone holds the track and not the
  *                map's own start

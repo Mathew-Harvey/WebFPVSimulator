@@ -643,11 +643,16 @@ async function scenarioRoom() {
     const pooled = await json(page, `(async () => {
       const seen = new Set();
       const t0 = window.__stateRef()[0];
+      const c0 = window.__readStateCalls();
       for (let k = 0; k < 40; k += 1) { await new Promise((r) => requestAnimationFrame(r)); seen.add(window.__stateRef()); }
-      return { arrays: seen.size, simS: window.__stateRef()[0] - t0 };
+      return { arrays: seen.size, simS: window.__stateRef()[0] - t0, copies: window.__readStateCalls() - c0 };
     })()`);
     check('room: forty frames of flight hold their state in at most four arrays, never a new one a step',
       pooled.simS > 0.05 && pooled.arrays <= 4, JSON.stringify(pooled));
+    /* And the frame's check of the module's step count reads the clock
+     * alone (readClock), so a flying frame copies no whole state at all. */
+    check('room: and those forty frames made no whole state copy, the step count read without one',
+      pooled.simS > 0.05 && pooled.copies === 0, JSON.stringify(pooled));
     await page.evaluate('window.__stick(0, 0, 0, 0), 1');
     const shown = await json(page, `(() => {
       let pts = null;

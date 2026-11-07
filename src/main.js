@@ -6466,12 +6466,24 @@ export async function boot({ loading, bootStart, mapId }) {
     }
   }
 
+  /* How many whole state copies the shell has asked for, for the harness
+   * (window.__readStateCalls): a flying frame should make none. */
+  let readStateCalls = 0;
   function readState() {
+    readStateCalls += 1;
     const { code, state } = sim.readState();
     if (code !== SIM_OK) {
       throw new Error(`sim_state: ${simErrorName(code)}`);
     }
     return state;
+  }
+
+  /* The sim clock in seconds, the state's first double, with nothing
+   * allocated: see readClock in tests/lib/simmod.js. A failed read goes
+   * through readState, which throws with the module's code. */
+  function readClock() {
+    const t = sim.readClock();
+    return Number.isFinite(t) ? t : readState()[0];
   }
 
   /*
@@ -12061,7 +12073,9 @@ export async function boot({ loading, bootStart, mapId }) {
       /* The module is the source of truth. If sim_init ran and JS time was
        * left behind, raising ts to lastTs would stamp every sample seconds
        * into the future. Snap the shell to step_index instead. */
-      const moduleIdx = Math.round(readState()[0] * SIM_HZ);
+      /* The clock alone, read with no copy (sim.readClock): this runs every
+       * flying frame, and readState()[0] made a whole array for one number. */
+      const moduleIdx = Math.round(readClock() * SIM_HZ);
       if (simStepIdx !== moduleIdx) {
         acc = 0;
         simStepIdx = moduleIdx;
@@ -15598,6 +15612,7 @@ export async function boot({ loading, bootStart, mapId }) {
   /* The frame's state array itself, not a copy, so a check can see whether
    * the step loop made a new one (readStateStep): harness only. */
   window.__stateRef = () => stateCurr;
+  window.__readStateCalls = () => readStateCalls;
   window.__craftState = () => ({
     mode,
     flownThisRun,

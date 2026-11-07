@@ -233,6 +233,30 @@ export class Sim {
     return code;
   }
 
+  // The state block's first double, the sim clock in seconds (the step
+  // index over the step rate), read through the same view readStateInto
+  // copies from and with nothing copied or allocated. The shell asks for it
+  // once a frame to see whether its step count still matches the module's,
+  // which used to be readState()[0], a whole new array a frame for one
+  // number. Same sim_state call, same bytes, so the value is the one
+  // readState()[0] gives. NaN on any code but SIM_OK; readState then names
+  // the code.
+  readClock() {
+    const n = this.ensureStateBuffer();
+    if (n <= 0) {
+      return NaN;
+    }
+    if (this.e.sim_state(this.statePtr) !== SIM_OK) {
+      return NaN;
+    }
+    const buf = this.e.memory.buffer;
+    if (this.stateView === undefined || this.stateViewBuf !== buf || this.stateView.length !== n) {
+      this.stateView = new Float64Array(buf, this.statePtr, n);
+      this.stateViewBuf = buf;
+    }
+    return this.stateView[0];
+  }
+
   // The number of doubles in the state block, for a caller sizing its own
   // buffers for readStateInto.
   stateLength() {

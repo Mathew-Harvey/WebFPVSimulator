@@ -75228,3 +75228,11 @@ The owner, 2026-11-06 23:29Z, on the review's owner calls: "Do everything except
 - Latency: no change to the flight loop or input. Yard draw cost is the same meshes as before: the same two floor logos in the same atlas/mesh, one more capsule bar pair of parts baked into the batches the maps already draw; logo files are 33 kB against 44 kB, fetched only by these three maps. Checked by counting parts (32 vs 31) and files, not by timing.
 
 - The owner, 2026-11-07 03:01Z, in this thread: "push to main". It covers the Track 4 yard change above (PR 246). Main had not moved, so main fast forwards to the branch. He named no verification scale, so nothing beyond the checks recorded above was run. Not flown.
+
+## 2026-11-07 | yard track | Track 4's floating gates were drawn with legs to the floor
+
+- Report: the owner, 2026-11-07 03:04Z, flying Track 4 in Nick's yard, with a screenshot: "the bottom middle legs are wrong, this is not how the track is".
+- Root cause: the board track hangs two gates (el-12 and el-13, sillH 0.762 m, `floating: true`, decor) from the two tall poles. `gatePipes` in src/maps/yardtrack/yardtrack.js ran every upright from the floor and gave every gate a foot, because Track 3 had no floating gate. The builder's own rule (stage.js, `isFloating`): a floating gate has no post and no foot.
+- Fix: a floating gate's uprights run from its sill (minus the pipe) up, with no foot. Other pieces read from the document were compared with the builder's rules: decor gates and poles are built (they are scenery, not in the flying order), `unbuilt` gates are skipped, `unbuiltSides: ['bottom']` leaves the bottom bar out; those were already right.
+- Check: new line in `check:yard`, "only gates that stand have feet" (6 feet for 3 standing gates, 2 floating); `check:yard`, `check:house`, `check:heads`, `check:bardwell` all pass. Not run: verify, shots. Not flown again. Latency: none (fewer parts: 4 legs shorter, 4 feet fewer).
+- Pushed to main straight away: the defect was live on main from the push at 03:01Z (the owner's "push to main" for PR 246), and the fix is the smaller, checked, drawing only change.

@@ -152,10 +152,16 @@ function gatePipes(P, m, s, put, r, rw) {
     if (!built(sx < 0 ? 'xNeg' : 'xPos')) {
       continue;
     }
-    P.cap(m, put(sx * upX, 0, 0), put(sx * upX, upTop, 0), rw, { kind: 'gate', seg: 8, name: 'yard gate' });
-    /* The stub foot lying flat, in line with travel: one pipe thick, four
-     * long, as in every photograph of one. */
-    P.cap(m, put(sx * upX, r * 0.8, -r * 2), put(sx * upX, r * 0.8, r * 2), rw, { kind: 'obstacle', seg: 6, name: 'yard gate foot' });
+    /* A floating gate hangs on its pole with no legs to the floor: its
+     * uprights frame the opening only, and it has no foot (isFloating in
+     * src/trackbuilder/elements.js; stage.js draws it the same way). */
+    const legFrom = s.floating ? d.sillH - r : 0;
+    P.cap(m, put(sx * upX, legFrom, 0), put(sx * upX, upTop, 0), rw, { kind: 'gate', seg: 8, name: 'yard gate' });
+    if (!s.floating) {
+      /* The stub foot lying flat, in line with travel: one pipe thick, four
+       * long, as in every photograph of one. */
+      P.cap(m, put(sx * upX, r * 0.8, -r * 2), put(sx * upX, r * 0.8, r * 2), rw, { kind: 'obstacle', seg: 6, name: 'yard gate foot' });
+    }
   }
   const len = d.clearW + 4 * r;
   if (built('top')) {

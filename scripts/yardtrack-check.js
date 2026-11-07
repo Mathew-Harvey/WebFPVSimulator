@@ -39,6 +39,8 @@ import { houseLayout, houseYardTrack } from '../src/maps/house/house.js';
 import { bardwellLayout, bardwellYardTrack, worldAt as bardwellAt, SPAWN } from '../src/maps/bardwell/bardwell.js';
 import { floorQuads, inAskZone, FLOOR_MARKS } from '../src/maps/yardtrack/yardtrack.js';
 import { YardRace } from '../src/game/yardrace.js';
+import { courseFromDocument } from '../src/game/trackdoc.js';
+import { courseDocument } from '../src/maps/yardtrack/course.js';
 
 /* The race keeps its best lap in the browser's storage. */
 globalThis.localStorage = { getItem: () => null, setItem() {} };
@@ -132,6 +134,11 @@ for (const M of MAPS) {
     }
   }
   check('nothing of the place in the track\'s way', hits.size === 0, [...hits].slice(0, 6).join(', ') || `${probes.length} probes`);
+  /* A floating gate hangs on its pole: no foot, and nothing of it down at the grass (the owner, 2026-11-07, seeing legs under Track 4's hung gates). */
+  const gatesBuilt = courseFromDocument(courseDocument()).structures.filter((q) => q.type === 'gate' && !q.unbuilt);
+  const standing = gatesBuilt.filter((q) => !q.floating).length;
+  const feetDrawn = t.parts.filter((p) => p.name === 'yard gate foot').length;
+  check('only gates that stand have feet', feetDrawn === standing * 2, `${feetDrawn} feet, ${standing} standing gates, ${gatesBuilt.length - standing} floating`);
   check('the track is all in the layout', t.parts.every((p) => L.parts.includes(p)), `${t.parts.length} parts`);
 
   /* 2. laps */

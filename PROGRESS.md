@@ -75237,6 +75237,21 @@ The owner, 2026-11-06 23:29Z, on the review's owner calls: "Do everything except
 - Check: new line in `check:yard`, "only gates that stand have feet" (6 feet for 3 standing gates, 2 floating); `check:yard`, `check:house`, `check:heads`, `check:bardwell` all pass. Not run: verify, shots. Not flown again. Latency: none (fewer parts: 4 legs shorter, 4 feet fewer).
 - Pushed to main straight away: the defect was live on main from the push at 03:01Z (the owner's "push to main" for PR 246), and the fix is the smaller, checked, drawing only change.
 
+## 2026-11-08: own names in every room but a school safe one
+
+Mat's word, 09:37Z, in the thread "Add custom room names without abuse": "in all multi player, if i don't select school mode, i should be able to make my own name. Lets put a black list of words to keep it clean." That is the approval for changing the rooms rule of 2026-10-25 that listed and streamer rooms show made up names only.
+
+Board (branch claude/project-thread-6aprtm): listed and streamer rooms now show the name a pilot typed, if `nameShowable` lets it: the closed word list in `src/words.js` (grown by about a hundred words), no run of five or more digits (a phone number) and no contact app (snapchat, instagram, discord and the like). A name that fails is shown as the pilot's made up or picked handle. A school safe room still shows made up names only. A host can give any typed name a made up one for the rest of the room; it rides in the tickets with the dropped stream accounts, so neither a new typed name nor rejoining gets round it. Preset chat and hidden addresses in listed and streamer rooms are unchanged.
+
+Sim: the host's pilot card offers "Made up name" for a typed name as for a stream name (`own: true` from the board); the pilot hears why; help text on the pilot sheet, the host sheet and the Tag tab now says school safe rooms are the made up ones; the host sheet keeps a listed or streamer room named after the host.
+
+Latency: none. Room menus and the room's control messages only.
+
+Checks run: board `npm test` all passed; `npm run net:selftest` all passed; `node scripts/together-shots.js --only=names,host,stream,shelf,lobby` all passed. Their old checks that listed and streamer rooms hide typed names were rewritten to the new rule, not loosened: each now checks the typed name is shown. Not run: `npm run verify` (no physics, plant, ABI or build change). Not flown with two people.
+
+What went wrong: the first shots baseline was run on stashed sim files but against the changed board beside it, so it failed the same streamer checks and proved nothing about main; and the stash pop then hit a screenshot the run had rewritten, which had to be put back by hand.
+
+Approval and follow up, 2026-11-08 10:02Z: Mat wrote "search for a github repo with an extensive list of banned names, and use it, then push to main". The board now also blocks every variant of dsojevic/profanity-list's en.json (MIT, 793 variants, copied with its notice into the board's `src/badwords.js`), matched as whole words, leaving out the religious entries that are ordinary names (Jesus, Christ, hell, damn). LDNOOBW's list was the other candidate and was not used: it is CC BY 4.0 and a flat list without the variants. The board's `npm test` passed with it, including the innocent phrases it keeps (class, Scunthorpe, the pen is). Known overreach: names such as "Dick Smith", "Pussycat" and "Coon Rapids" now show as made up names; the word list already caught "Dick". The "push to main" covers board PR 80 and this sim PR 247.
 ## 2026-11-08 | mini game | Infected, solo with bots (branch)
 
 - Ask: the owner, 2026-11-08 09:09Z, a multiplayer tag game: one infected pilot (green) against the rest (white), a tagged pilot joins the infected, the last clean one wins, a head start, a small map with low ceilings and tight crossing ways, a time limit, points per tag with a multiplier for several inside 30 s, a big bonus for the last one and a bonus for being clean at the bell. Mock-ups were sent; the owner's answers at 09:25Z: whoops only, the sniff yes, the ring on Low yes (+1 draw call), every mini game has its own waiting room, the name is "Infected" and nothing else, bots fill any seats in any mix with humans at easy, medium or hard and "should play well". 09:36Z: "build it".

@@ -337,6 +337,7 @@ export class RoomLink {
         if (p && typeof m.handle === 'string') {
           p.handle = m.handle;
           p.via = m.via || null;
+          p.own = m.own === true;
         }
         this.onEvent('named', m);
         break;
@@ -368,6 +369,7 @@ export class RoomLink {
       case 'settingsRefused':
       case 'voteRefused':
       case 'claim':
+      case 'madeUp':
       case 'peers':
       case 'signal':
       case 'pong':

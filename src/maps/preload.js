@@ -2623,5 +2623,6 @@ export const MAP_PRELOAD = {
     'maps/school/school.js',
     'maps/school/yard.js',
     'maps/school/pictures.js',
+    'render/hatch.js',
   ],
 };

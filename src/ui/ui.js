@@ -5235,6 +5235,91 @@ function flightModeItem(s, key) {
   );
 }
 
+/*
+ * EVERY MINI GAME'S PAUSE, ONE SHAPE. The owner, 2026-11-08: "Yes make
+ * standard menu systems". The six were written one at a time, each a copy
+ * of the last with its words changed, and they had drifted: a dogfight
+ * restarted "the round" but changed and left "the fight", Infected
+ * restarted "the match" and left "the round", ribbon cutting changed "the
+ * ribbons" and left "ribbon cutting", and five of the six said Quit to
+ * title over a press that lands on the Mini games page (fromGame in act).
+ * Now one table holds what differs, the one word for what the game plays
+ * (a match, a round, a fight) and the two notes, and this builds the same
+ * rows in the same order for every game:
+ *
+ *   Resume / Restart the X / Change the X / the game's own extras
+ *   Does it feel wrong?  tune, flight mode, rates
+ *   Elsewhere            Settings / Leave the X / Back to Mini games
+ *
+ * so Escape, down, down is Change on every game, and the way out reads the
+ * same wherever the pilot paused. The results table's Change button uses
+ * the same word, in each game's own HUD file. Back to Mini games says where
+ * the press lands, which is the Mini games page only when there is one:
+ * with rooms off (the Steam build's offline single player) it is Quit to
+ * title, because that is where it goes.
+ */
+const MINI_GAME_PAUSE = {
+  ball: {
+    noun: 'match',
+    change: 'How many a side, how well the bots play, and when it ends.',
+    leave: 'Fly on here alone, with no bots and no clock.',
+  },
+  drift: {
+    noun: 'round',
+    change: 'Bots, and how well they film.',
+    leave: 'Film on here alone, with no bots.',
+  },
+  infected: {
+    noun: 'match',
+    change: 'The waiting room: the bots, how good each one is, the round and the head start.',
+    leave: 'Fly the school on your own, with no bots.',
+  },
+  goats: {
+    noun: 'round',
+    change: 'Bots, how well they herd, and when the round ends.',
+    leave: 'Herd on here alone, with no bots and no clock.',
+  },
+  ribbon: {
+    noun: 'round',
+    change: 'Bots, how good they are, how long the ribbons are and the round.',
+    leave: 'Fly on here with no ribbons and no bots.',
+  },
+  dogfight: {
+    noun: 'fight',
+    change: 'Bots, how good they are, the round and how hard hits land.',
+    leave: 'Fly on here with no guns and no bots.',
+    extra: [{ label: 'Gun and missile buttons', action: 'fight-buttons', note: 'Pick a button or switch for each, and test them.' }],
+  },
+};
+
+/* The way out of a mini game, for its pause and for a game room's. */
+function miniGameExitLabel(roomsOn) {
+  return roomsOn ? 'Back to Mini games' : 'Quit to title';
+}
+
+function miniGamePauseItems(s, game, flightKey, roomsOn) {
+  const g = MINI_GAME_PAUSE[game] || MINI_GAME_PAUSE.dogfight;
+  return [
+    { label: 'Resume', action: 'resume', primary: true },
+    { label: `Restart the ${g.noun}`, action: 'restart' },
+    { label: `Change the ${g.noun}`, action: 'fight-change', note: g.change },
+    ...(g.extra || []),
+    { label: 'Does it feel wrong?', section: true },
+    tuneItem(s, true),
+    flightModeItem(s, flightKey),
+    {
+      label: 'Rates',
+      value: ratesShort(s.rates),
+      action: 'rates',
+      note: 'How far the sticks go, and the throttle limit. Changing them here leaves the quad where it is and the clock running.',
+    },
+    { label: 'Elsewhere', section: true },
+    { label: 'Settings', action: 'pilot', note: 'Your name, your radio, graphics and sound.' },
+    { label: `Leave the ${g.noun}`, action: 'fight-leave', note: g.leave },
+    { label: miniGameExitLabel(roomsOn), action: 'title', note: `Ends the ${g.noun}.` },
+  ];
+}
+
 /* The way back into the flight feel question, after its one automatic
  * offer. On Results and the pause menu only: those are the two places a
  * pilot has just been flying, which is when a feel report is worth
@@ -11936,139 +12021,17 @@ export class Ui {
         { label: 'Elsewhere', section: true },
         { label: 'Settings', action: 'pilot', note: 'Your name, your radio, graphics and sound.' },
         { label: 'Leave room', action: 'room-leave', note: 'Fly on here, solo.' },
-        { label: 'Quit to title', action: 'room-title', note: 'Leaves the room too.' },
-      ];
-    }
-    if (this.screen === 'paused' && this.dogfight && this.dogfight.game === 'ball') {
-      /* A Quad Ball match's pause: goat herding's, with a ball. */
-      return [
-        { label: 'Resume', action: 'resume', primary: true },
-        { label: 'Restart the match', action: 'restart' },
-        { label: 'Change the match', action: 'fight-change', note: 'How many a side, how well the bots play, and when it ends.' },
-        { label: 'Does it feel wrong?', section: true },
-        tuneItem(s, true),
-        flightModeItem(s, this.flightModeKey()),
+        /* A game room's way out lands on the Mini games page (room-title in
+         * act), so it says so, as the game's solo pause does. */
         {
-          label: 'Rates',
-          value: ratesShort(s.rates),
-          action: 'rates',
-          note: 'How far the sticks go, and the throttle limit. Changing them here leaves the quad where it is and the clock running.',
+          label: (r.ball || r.goats || r.drift || r.dogfight || r.ribbon || r.infected) ? miniGameExitLabel(true) : 'Quit to title',
+          action: 'room-title',
+          note: 'Leaves the room too.',
         },
-        { label: 'Elsewhere', section: true },
-        { label: 'Settings', action: 'pilot', note: 'Your name, your radio, graphics and sound.' },
-        { label: 'Leave the match', action: 'fight-leave', note: 'Fly on here alone, with no bots and no clock.' },
-        { label: 'Quit to title', action: 'title' },
-      ];
-    }
-    if (this.screen === 'paused' && this.dogfight && this.dogfight.game === 'drift') {
-      /* A Drift Matsuri round's pause: goat herding's, with a take. */
-      return [
-        { label: 'Resume', action: 'resume', primary: true },
-        { label: 'Restart the round', action: 'restart' },
-        { label: 'Change the round', action: 'fight-change', note: 'Bots, and how well they film.' },
-        { label: 'Does it feel wrong?', section: true },
-        tuneItem(s, true),
-        flightModeItem(s, this.flightModeKey()),
-        {
-          label: 'Rates',
-          value: ratesShort(s.rates),
-          action: 'rates',
-          note: 'How far the sticks go, and the throttle limit. Changing them here leaves the quad where it is and the clock running.',
-        },
-        { label: 'Elsewhere', section: true },
-        { label: 'Settings', action: 'pilot', note: 'Your name, your radio, graphics and sound.' },
-        { label: 'Leave the round', action: 'fight-leave', note: 'Film on here alone, with no bots.' },
-        { label: 'Quit to title', action: 'title' },
-      ];
-    }
-    if (this.screen === 'paused' && this.dogfight && this.dogfight.game === 'infected') {
-      /* An Infected round's pause: the goats', with the waiting room. */
-      return [
-        { label: 'Resume', action: 'resume', primary: true },
-        { label: 'Restart the match', action: 'restart' },
-        { label: 'Waiting room', action: 'fight-change', note: 'The bots, how good each one is, the round and the head start.' },
-        { label: 'Does it feel wrong?', section: true },
-        tuneItem(s, true),
-        flightModeItem(s, this.flightModeKey()),
-        {
-          label: 'Rates',
-          value: ratesShort(s.rates),
-          action: 'rates',
-          note: 'How far the sticks go, and the throttle limit. Changing them here leaves the quad where it is and the clock running.',
-        },
-        { label: 'Elsewhere', section: true },
-        { label: 'Settings', action: 'pilot', note: 'Your name, your radio, graphics and sound.' },
-        { label: 'Leave the round', action: 'fight-leave', note: 'Fly the school on your own, with no bots.' },
-        /* Where it lands, said: Quit from a mini game is back on the Mini
-         * games page when there is one (fromGame in act). */
-        { label: this.roomsOn ? 'Back to Mini games' : 'Quit to title', action: 'title' },
-      ];
-    }
-    if (this.screen === 'paused' && this.dogfight && this.dogfight.game === 'goats') {
-      /* A goat herding round's pause: the ribbons', with goats. */
-      return [
-        { label: 'Resume', action: 'resume', primary: true },
-        { label: 'Restart the round', action: 'restart' },
-        { label: 'Change the round', action: 'fight-change', note: 'Bots, how well they herd, and when the round ends.' },
-        { label: 'Does it feel wrong?', section: true },
-        tuneItem(s, true),
-        flightModeItem(s, this.flightModeKey()),
-        {
-          label: 'Rates',
-          value: ratesShort(s.rates),
-          action: 'rates',
-          note: 'How far the sticks go, and the throttle limit. Changing them here leaves the quad where it is and the clock running.',
-        },
-        { label: 'Elsewhere', section: true },
-        { label: 'Settings', action: 'pilot', note: 'Your name, your radio, graphics and sound.' },
-        { label: 'Leave the round', action: 'fight-leave', note: 'Herd on here alone, with no bots and no clock.' },
-        { label: 'Quit to title', action: 'title' },
-      ];
-    }
-    if (this.screen === 'paused' && this.dogfight && this.dogfight.game === 'ribbon') {
-      /* Ribbon cutting's pause: the dogfight's, with nothing to fire. */
-      return [
-        { label: 'Resume', action: 'resume', primary: true },
-        { label: 'Restart the round', action: 'restart' },
-        { label: 'Change the ribbons', action: 'fight-change', note: 'Bots, how good they are, how long the ribbons are and the round.' },
-        { label: 'Does it feel wrong?', section: true },
-        tuneItem(s, true),
-        flightModeItem(s, this.flightModeKey()),
-        {
-          label: 'Rates',
-          value: ratesShort(s.rates),
-          action: 'rates',
-          note: 'How far the sticks go, and the throttle limit. Changing them here leaves the quad where it is and the clock running.',
-        },
-        { label: 'Elsewhere', section: true },
-        { label: 'Settings', action: 'pilot', note: 'Your name, your radio, graphics and sound.' },
-        { label: 'Leave ribbon cutting', action: 'fight-leave', note: 'Fly on here with no ribbons and no bots.' },
-        { label: 'Quit to title', action: 'title' },
       ];
     }
     if (this.screen === 'paused' && this.dogfight) {
-      /* A dogfight's pause: the fight's own rows, then the tuning a pilot
-       * pauses for, then the ways out. Leave the fight flies on here with
-       * no guns and no bots. */
-      return [
-        { label: 'Resume', action: 'resume', primary: true },
-        { label: 'Restart the round', action: 'restart' },
-        { label: 'Change the fight', action: 'fight-change', note: 'Bots, how good they are, the round and how hard hits land.' },
-        { label: 'Gun and missile buttons', action: 'fight-buttons', note: 'Pick a button or switch for each, and test them.' },
-        { label: 'Does it feel wrong?', section: true },
-        tuneItem(s, true),
-        flightModeItem(s, this.flightModeKey()),
-        {
-          label: 'Rates',
-          value: ratesShort(s.rates),
-          action: 'rates',
-          note: 'How far the sticks go, and the throttle limit. Changing them here leaves the quad where it is and the clock running.',
-        },
-        { label: 'Elsewhere', section: true },
-        { label: 'Settings', action: 'pilot', note: 'Your name, your radio, graphics and sound.' },
-        { label: 'Leave the fight', action: 'fight-leave', note: 'Fly on here with no guns and no bots.' },
-        { label: 'Quit to title', action: 'title' },
-      ];
+      return miniGamePauseItems(s, this.dogfight.game, this.flightModeKey(), this.roomsOn);
     }
     if (this.screen === 'paused') {
       /* Resume is the button. The conditional Edit a copy that used to

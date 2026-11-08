@@ -663,7 +663,7 @@ export class InfectedHud extends DogfightHud {
     cols.append(table, medals);
     const row = el('div', 'df-row');
     const again = el('button', 'df-btn is-go', match ? 'New match' : `Round ${g.leg + 2}`);
-    const change = el('button', 'df-btn', 'Waiting room');
+    const change = el('button', 'df-btn', 'Change the match');
     const leave = el('button', 'df-btn', 'Leave');
     again.type = 'button';
     change.type = 'button';

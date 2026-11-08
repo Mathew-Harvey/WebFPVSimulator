@@ -128,8 +128,38 @@ async function main() {
     await ev("window.__ui.act('pause'); window.__ui.show('paused'); return 1;");
     await until("return window.__ui.screen === 'paused'", 5000);
     const labels = await ev("return window.__ui.items().map((i) => i.label);");
-    check('the pause has the waiting room, Leave the round and Back to Mini games', ['Resume', 'Waiting room', 'Leave the round', 'Back to Mini games'].every((l) => labels.includes(l))
+    check('the pause has Change the match, Leave the match and Back to Mini games', ['Resume', 'Change the match', 'Leave the match', 'Back to Mini games'].every((l) => labels.includes(l))
       && !labels.some((l) => /swap|change map/i.test(l)), labels.join(' | '));
+    /* Every mini game's pause is the same menu (miniGamePauseItems in
+     * src/ui/ui.js, the owner's "make standard menu systems"): the same
+     * rows in the same order, the one word for what the game plays in
+     * Restart, Change and Leave, and the way out saying it lands on Mini
+     * games. Read off the live pause with each game's rules swapped in and
+     * put back, so nothing is flown. And a game room's way out says so too. */
+    const shapes = await ev(`
+      const ui = window.__ui; const keep = ui.dogfight; const out = {};
+      for (const game of ['ball', 'drift', 'infected', 'goats', 'ribbon', 'dogfight']) {
+        ui.dogfight = Object.assign({}, keep, { game: game === 'dogfight' ? undefined : game });
+        out[game] = ui.items().map((i) => (i.section ? '#' : '') + i.label);
+      }
+      ui.dogfight = keep;
+      const room = ui.roomInfo; const ri = { code: 'ABCD', n: 2, host: false, infected: { phase: 'pit' } };
+      ui.roomInfo = ri; const inRoom = ui.items().map((i) => i.label);
+      ui.roomInfo = Object.assign({}, ri, { infected: null }); const raceRoom = ui.items().map((i) => i.label);
+      ui.roomInfo = room;
+      return { out, inRoom, raceRoom };`);
+    const NOUN = { ball: 'match', drift: 'round', infected: 'match', goats: 'round', ribbon: 'round', dogfight: 'fight' };
+    const bad = Object.entries(shapes.out).filter(([game, rows]) => {
+      const n = NOUN[game];
+      const tail = rows.slice(-4);
+      return rows[0] !== 'Resume' || rows[1] !== `Restart the ${n}` || rows[2] !== `Change the ${n}`
+        || tail.join('|') !== `#Elsewhere|Settings|Leave the ${n}|Back to Mini games`
+        || !rows.includes('#Does it feel wrong?') || rows.some((l) => /Quit to title/.test(l));
+    }).map(([game, rows]) => `${game}: ${rows.join(', ')}`);
+    check('every mini game\'s pause is the same menu in its own word', bad.length === 0, bad.join(' || '));
+    check('a game room\'s way out says Back to Mini games, a race room\'s Quit to title',
+      shapes.inRoom.includes('Back to Mini games') && !shapes.inRoom.includes('Quit to title') && shapes.raceRoom.includes('Quit to title'),
+      `${shapes.inRoom.join(', ')} / ${shapes.raceRoom.join(', ')}`);
     await ev("window.__ui.act('quad'); return 1;");
     await sleep(400);
     const craft = await ev("const a = window.__ui.items().find((i) => i.label === 'Aircraft'); return a ? { value: a.value || '', cards: Boolean(a.cards), note: a.note || '' } : null;");
@@ -235,6 +265,22 @@ async function main() {
     await ev("window.__ui.act('pause'); window.__ui.act('fight-leave'); return 1;");
     check('leaving ends the round', await until('return !window.__dogfight();', 10000));
     check('and the airtime clock is back', await until("const c = document.querySelector('.osd .osd-clock'); return Boolean(c) && getComputedStyle(c).visibility !== 'hidden';", 5000));
+    /* The pen hatching (src/render/hatch.js): on High every cel colour of
+     * the school's own parts is a hatched copy, all of them one program; on
+     * any other preset there is none and the school is as it was. Whatever
+     * preset this page booted on is read, then the other side of High is
+     * flown and read too. */
+    const HATCH = `const s = window.__mapScene(); const own = s && s.getObjectByName('props:extra'); let toon = 0; let hatched = 0; const keys = new Set();
+      if (own) { own.traverse((o) => { if (o.isMesh && o.material && o.material.isMeshToonMaterial) { toon += 1; if (o.material.userData.hatch) { hatched += 1; keys.add(o.material.customProgramCacheKey()); } } }); }
+      const m = window.__map(); return { graphics: m.graphics, id: m.id, toon, hatched, keys: keys.size };`;
+    const hatchRight = (h) => h.id === 'school' && h.toon > 0 && (h.graphics === 'high' ? h.hatched === h.toon && h.keys === 1 : h.hatched === 0);
+    const h0 = await ev(HATCH);
+    check(`on ${h0.graphics}, the school is ${h0.graphics === 'high' ? 'hatched, one program' : 'not hatched'}`, hatchRight(h0), JSON.stringify(h0));
+    const other = h0.graphics === 'high' ? 'medium' : 'high';
+    await ev(`const ui = window.__ui; ui.settings.map = 'school'; ui.settings.graphics = '${other}'; ui.settings.graphicsAuto = false; ui.onAction('fly', ui.settings); return 1;`);
+    await until(`const m = window.__map(); return Boolean(m && m.id === 'school' && m.ready && m.graphics === '${other}');`, 120000);
+    const h1 = await ev(HATCH);
+    check(`on ${other}, the school is ${other === 'high' ? 'hatched, one program' : 'not hatched'}`, hatchRight(h1), JSON.stringify(h1));
     /* The Mini games page, as Back from a game's own page opens it. */
     await ev("const u = window.__ui; u.mode = null; u.craftGate = true; u.gatePage = 'games'; u.gameReturn = false; u.show('title'); u.renderMenu(); return 1;");
     check('the Mini games page has the Infected card', await until("const e = document.querySelector('.gate-card-mg-infected'); if (!e) return false; const r = e.getBoundingClientRect(); return r.width > 120 && r.height > 30 && r.right <= innerWidth + 2 && r.bottom <= innerHeight + 2;", 15000));

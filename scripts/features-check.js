@@ -1143,7 +1143,7 @@ async function scenarioCity() {
       };
     })()`);
     check('city: the results list every pilot of the round, under a title', /Ribbon cutting/.test(result.title) && result.rows === 4, `${result.title}, ${result.rows - 1} pilots`);
-    check('city: with my medals and the way on', result.medals.some((m) => /Ribbons taken/.test(m)) && result.medals.some((m) => /a new best/.test(m)) && ['Again', 'Change the ribbons', 'Leave'].every((b) => result.buttons.includes(b)),
+    check('city: with my medals and the way on', result.medals.some((m) => /Ribbons taken/.test(m)) && result.medals.some((m) => /a new best/.test(m)) && ['Again', 'Change the round', 'Leave'].every((b) => result.buttons.includes(b)),
       `${result.medals.join(' | ')}; ${result.buttons.join(', ')}`);
     errorsCheck(page, 'city');
   } catch (e) {

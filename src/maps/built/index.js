@@ -1602,6 +1602,12 @@ export async function buildMap(shell, onProgress, options) {
    * to be passing the wall it was painted on. */
   const turning = mountTurning(props, kit.turners);
   scene.add(props);
+  /* A map's own last word on its baked parts, before anything is linked,
+   * so a material it swaps is never compiled for nothing: the school draws
+   * its shade with the pen on High (../school/index.js, render/hatch.js). */
+  if (extra && typeof extra.dress === 'function') {
+    extra.dress(props, q.id);
+  }
   progress(0.8);
 
   const wires = buildWires(placed, T.wire);

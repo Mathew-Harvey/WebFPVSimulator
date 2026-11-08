@@ -354,7 +354,7 @@ export class RibbonHud extends DogfightHud {
     cols.append(table, medals);
     const row = el('div', 'df-row');
     const again = el('button', 'df-btn is-go', 'Again');
-    const change = el('button', 'df-btn', 'Change the ribbons');
+    const change = el('button', 'df-btn', 'Change the round');
     const leave = el('button', 'df-btn', 'Leave');
     again.type = 'button';
     change.type = 'button';

@@ -9,7 +9,10 @@
  * chosen). Here, one chunk of fifteen colours, fifteen draw calls, the
  * pictures on the walls as one more (./pictures.js: the blackboards were a
  * colour of their own until they were drawn there, so the count is what it
- * was), and the partners' five signs, the same as every built map's.
+ * was), and the partners' five signs, the same as every built map's. On
+ * High only, the pen hatching in the shade (../../render/hatch.js, where
+ * its cost is measured): no draw call, two programs, arithmetic on the
+ * school's pixels; Low and Medium compile what they did before it.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -32,13 +35,17 @@ import { buildMap as buildBuilt } from '../built/index.js';
 import { warmPrograms } from '../../render/warm.js';
 import { paintMaterial } from '../../art/stf.js';
 import {
-  schoolLayout, signSpots, hallLoop, CARD_LENS, SCHOOL_PLAN,
+  schoolLayout, signSpots, hallLoop, CARD_LENS, SCHOOL_PLAN, S,
 } from './school.js';
 import { schoolDocument } from './yard.js';
 import { paintPictures, pictureMesh } from './pictures.js';
 import { INK_COLOR } from '../../render/comic.js';
+import { hatchMeshes } from '../../render/hatch.js';
 
 const CHUNK = 'extra';
+
+/* A pen stroke every 4.5 cm of real wall, 16 cm of the school's world. */
+const HATCH_PITCH = 0.045 * S;
 
 /* The houses' pen and grade (../heads/index.js houseInk says why), so the
  * school is inked the way the houses and the shop are. */
@@ -65,9 +72,18 @@ function houseInk(post) {
 
 export async function buildMap(shell, onProgress, options) {
   const L = schoolLayout();
+  /* On High, the shade on the school's own parts is drawn with the pen
+   * (src/render/hatch.js): the same meshes, a hatched copy of each colour,
+   * swapped in before the built map links its programs. Low and Medium
+   * build the school exactly as before. */
+  let hatched = 0;
   const extra = {
     el: { id: 'school', type: 'school' },
     parts: L.parts,
+    dress: (props, graphics) => {
+      const own = graphics === 'high' ? props.getObjectByName(`props:${CHUNK}`) : null;
+      hatched = own ? hatchMeshes(own, { pitch: HATCH_PITCH }) : 0;
+    },
   };
   /* The partners' signs hung by hand, the chooser's spots off: it sees the
    * yard and not the school. */
@@ -97,6 +113,8 @@ export async function buildMap(shell, onProgress, options) {
     tex.anisotropy = 4;
     map.scene.add(pictureMesh(THREE, L.pictures, atlas, paintMaterial(THREE, tex)));
   }
+  /* How many colours were hatched, for the checks: none below High. */
+  map.hatched = hatched;
   houseInk(map.post);
   await warmPrograms(shell.renderer, map.scene, shell.camera, map.post.rtScene);
   return map;

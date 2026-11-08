@@ -21,8 +21,14 @@
  * turn, so a name never gives a hider away through a wall. The last one is
  * the exception the rules make: everybody sees them, through everything.
  *
+ * IN A ROOM the other pilots, and the bots of the host's page, are drawn
+ * by the room's own craft (src/main.js mpDraw), which asks roomPilot for
+ * the game's colour and whether their name shows; the rings are drawn here
+ * for everybody in the round but this page's own pilot, where the room
+ * last drew them.
+ *
  * Nothing here runs outside Infected, and nothing here allocates per
- * frame.
+ * frame but a room pilot's first one.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -43,6 +49,7 @@
 import * as THREE from 'three';
 import { DogfightView } from './dogfight.js';
 import { CAP } from '../game/infected.js';
+import { ROOM_SLOTS } from '../game/dogroom.js';
 
 /* The game's three colours. The green is well off the school's own
  * hallway sage (src/props/school.js says why). */
@@ -89,8 +96,12 @@ export class InfectedView extends DogfightView {
     /* What each ring slot was last painted, so a colour is written only
      * when a pilot changes side. */
     this.ringHex = new Int32Array(CAP).fill(-1);
-    this.seen = new Uint8Array(CAP);
-    this.sightNext = 1;
+    this.seen = new Uint8Array(ROOM_SLOTS);
+    this.sightNext = 0;
+    /* A room's pilots as the room's craft draws them here: the board's
+     * pilot with the game's colour over their livery, one each, made
+     * once. */
+    this.roomPilots = new Map();
     this.camera = null;
     this.camQ = new THREE.Quaternion();
   }
@@ -120,7 +131,31 @@ export class InfectedView extends DogfightView {
     const p = super.pilotOf(g, i);
     p.hex = this.hexOf(g, i);
     p.pin = g.gold === i;
-    p.noTag = !p.pin && !this.seen[i];
+    p.noTag = g.inFight[i] === 1 && !p.pin && !this.seen[i];
+    return p;
+  }
+
+  /* Room pilot `id`, { handle, avatar, away }, as the room's craft should
+   * draw them: in the game's colours while they are in the round, and
+   * with their name only in sight; as they are otherwise. */
+  roomPilot(g, id, pilot) {
+    const s = g.slotOf ? g.slotOf(id) : -1;
+    if (s <= 0 || !g.inFight[s]) {
+      return pilot;
+    }
+    let p = this.roomPilots.get(id);
+    if (!p) {
+      p = {
+        id, handle: '', avatar: null, away: false, hex: CLEAN_HEX, pin: false, noTag: false,
+      };
+      this.roomPilots.set(id, p);
+    }
+    p.handle = pilot.handle;
+    p.avatar = pilot.avatar;
+    p.away = pilot.away;
+    p.hex = this.hexOf(g, s);
+    p.pin = g.gold === s;
+    p.noTag = !p.pin && !this.seen[s];
     return p;
   }
 
@@ -129,22 +164,23 @@ export class InfectedView extends DogfightView {
     return g ? this.hexOf(g, slot) : CLEAN_HEX;
   }
 
-  /* The sight lines, a few a frame, from the eye to the pilots. */
+  /* The sight lines, a few a frame, from the eye to the pilots in the
+   * round, in turn. A room's pilot is asked where the room drew them. */
   look(g, camPos) {
     const w = g.world;
     if (!w || !w.blocked) {
       this.seen.fill(1);
       return;
     }
-    for (let n = 0; n < SIGHT_PER_FRAME; n += 1) {
-      let i = this.sightNext;
-      this.sightNext = i + 1 >= g.cap ? 1 : i + 1;
-      if (!g.inFight[i]) {
-        i = -1;
-      }
-      if (i > 0) {
-        this.seen[i] = w.blocked(camPos.x, camPos.y, camPos.z, g.x[i], g.y[i], g.z[i]) < 0 ? 1 : 0;
-      }
+    const count = g.inCount;
+    const most = Math.min(SIGHT_PER_FRAME, count);
+    for (let m = 0; m < most; m += 1) {
+      const q = this.sightNext % count;
+      this.sightNext = q + 1;
+      const i = g.inList[q];
+      if (i <= 0) continue;
+      const far = g.puppet && g.puppet[i];
+      this.seen[i] = w.blocked(camPos.x, camPos.y, camPos.z, far ? g.tx[i] : g.x[i], far ? g.ty[i] : g.y[i], far ? g.tz[i] : g.z[i]) < 0 ? 1 : 0;
     }
   }
 
@@ -172,7 +208,8 @@ export class InfectedView extends DogfightView {
     this.pieceScale = 0.5;
     this.look(g, camPos);
     super.frame(g, t, camPos, dtMs, nowMs);
-    /* The rings, round every bot drawn, turned to the eye. */
+    /* The rings, round every bot drawn, and in a room round every pilot
+     * in the round but this page's own, turned to the eye. */
     const k = g.k;
     if (this.camera) {
       this.camera.getWorldQuaternion(this.camQ);
@@ -181,12 +218,17 @@ export class InfectedView extends DogfightView {
     let n = 0;
     let painted = false;
     this.s.setScalar(RING_R * k);
-    for (let i = 1; i < g.cap; i += 1) {
-      if (!g.isBot[i] || (puppet && puppet[i]) || !g.alive[i]) {
+    for (let i = 1; i < g.cap && n < CAP; i += 1) {
+      const far = Boolean(puppet && puppet[i]);
+      if (far ? !(g.inFight[i] && g.here(i)) : (!g.isBot[i] || !g.alive[i])) {
         continue;
       }
-      const pose = this.poseOf(g, i, t);
-      this.a.set(pose.px, pose.py, pose.pz);
+      if (far) {
+        this.a.set(g.tx[i], g.ty[i], g.tz[i]);
+      } else {
+        const pose = this.poseOf(g, i, t);
+        this.a.set(pose.px, pose.py, pose.pz);
+      }
       this.m.compose(this.a, this.camQ, this.s);
       this.rings.setMatrixAt(n, this.m);
       const hex = this.hexOf(g, i);

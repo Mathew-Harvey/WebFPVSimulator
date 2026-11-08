@@ -49,8 +49,9 @@ import { seatDocument } from '../src/maps/built/place.js';
 import { Colliders } from '../src/game/collide.js';
 import { SchoolMap, schoolWorld, CLASSES, ROOM } from '../src/game/infectbots.js';
 import {
-  InfectedRound, CAP, ME, DOGFIGHT_EVERY, LEGS,
+  InfectedRound, CAP, ME, DOGFIGHT_EVERY, LEGS, TAG_R, SHAVE_R, POINTS,
 } from '../src/game/infected.js';
+import { InfectedRoom } from '../src/game/infectedroom.js';
 
 const args = Object.fromEntries(process.argv.slice(2).map((a) => {
   const m = /^--([^=]+)(?:=(.*))?$/.exec(a);
@@ -320,6 +321,186 @@ function sameBlock(w) {
   check('one seed, one round, to the bit', a.hash === b.hash, a.hash.slice(0, 16));
 }
 
+/*
+ * A ROOM, two pages and a board played by hand: the host's page (pilot 1,
+ * flying bots 201 and 202) and a friend's (pilot 2). What is checked is
+ * what each page does with the board's word and what it says back.
+ */
+function roomBlock(w) {
+  console.log('\n5. room');
+  let clock = 1000;
+  const now = () => clock;
+  const toLocal = (t) => t;
+  const host = new InfectedRoom(w, { now, seed: 7, pen: { plan: P } });
+  const pal = new InfectedRoom(w, { now, seed: 8, pen: { plan: P } });
+  const seats = [{ id: 201, name: 'MOCHI', skill: 'ace' }, { id: 202, name: 'GIZMO', skill: 'rookie' }];
+  host.setYou(1, true);
+  pal.setYou(2, false);
+  const state = {
+    phase: 'pit', round: '2m', head: 5, first: 'me', n: 0, leg: 0, goAt: 0, huntAt: 0, endAt: 0, nextAt: 0, pz: -1, gold: -1, winner: null, rows: [],
+  };
+  host.heard(state, toLocal);
+  pal.heard(state, toLocal);
+  host.setBots(seats);
+  pal.setBots(seats);
+  const b1 = host.slotOf(201);
+  const b2 = host.slotOf(202);
+  const onPad = (g, i) => Math.hypot(g.x[i], g.z[i]) > 1 && g.y[i] > 0;
+  check('a room\'s bots sit on pads of their own in the pit, on the host\'s page', b1 > 0 && b2 > 0 && onPad(host, b1) && onPad(host, b2)
+    && Math.hypot(host.x[b1] - host.x[b2], host.z[b1] - host.z[b2]) > K);
+  check('flown by the host\'s page only', !host.puppet[b1] && pal.puppet[pal.slotOf(201)] === 1);
+  check('their skills are the seats\'', host.botSkill(b1) === 'hard' && host.botSkill(b2) === 'easy');
+  /* Where the pages' pilots are, as each page is told the other's. */
+  const meOf = (g) => ({
+    x: g.seatX[ME], y: g.seatY[ME] + 0.03 * K, z: g.seatZ[ME], fx: 1, fy: 0, fz: 0, ux: 0, uy: 1, uz: 0, flying: false,
+  });
+  const drawn = (g, id, x, y, z) => g.remote(id, {
+    px: x, py: y, pz: z, qx: 0, qy: 0, qz: 0, qw: 1, cut: false,
+  }, { handle: `P${id}`, avatar: null });
+  drawn(host, 2, 0, 0, 0);
+  drawn(pal, 1, 0, 0, 0);
+  const rows = (o) => [
+    { id: 1, inf: true, pad: -1, pts: 0, total: 0, tags: 0, shaves: 0, chain: 0, caughtAt: 0, last: false, left: false, cleanMs: 0, ...(o[1] || {}) },
+    { id: 2, inf: false, pad: 0, pts: 0, total: 0, tags: 0, shaves: 0, chain: 0, caughtAt: 0, last: false, left: false, cleanMs: 0, ...(o[2] || {}) },
+    { id: 201, inf: false, pad: 1, pts: 0, total: 0, tags: 0, shaves: 0, chain: 0, caughtAt: 0, last: false, left: false, cleanMs: 0, ...(o[201] || {}) },
+    { id: 202, inf: false, pad: 2, pts: 0, total: 0, tags: 0, shaves: 0, chain: 0, caughtAt: 0, last: false, left: false, cleanMs: 0, ...(o[202] || {}) },
+  ];
+  const goAt = clock + 5000;
+  const count = {
+    ...state, phase: 'count', n: 1, goAt, huntAt: goAt + 5000, endAt: goAt + 5000 + 120_000, pz: 1, rows: rows({}),
+  };
+  const hostSerial = host.seatSerial;
+  host.heard(count, toLocal);
+  pal.heard(count, toLocal);
+  const [tx, , tz] = P.worldAt(P.TANK_PAD.px, P.TANK_PAD.py, 0);
+  const [p0x, , p0z] = P.worldAt(P.PADS[0].px, P.PADS[0].py, 0);
+  check('the round seats this page\'s pilot: the first infected in the tank', host.seatSerial === hostSerial + 1
+    && Math.hypot(host.seatX[ME] - tx, host.seatZ[ME] - tz) < 0.01 && host.inf[ME] === 1 && host.pz === ME);
+  check('and the friend on the pad the board dealt them', Math.hypot(pal.seatX[ME] - p0x, pal.seatZ[ME] - p0z) < 0.01 && pal.inf[ME] === 0);
+  check('everybody is held through the countdown', host.holdsMe() && pal.holdsMe() && host.phase === 'wait');
+  const events = (g) => {
+    const out = [];
+    for (let n = 0; n < g.eventCount; n += 1) out.push(g.events[n].type);
+    g.eventCount = 0;
+    return out;
+  };
+  const feed = (g, me) => g.step(me, false);
+  const both = (ms) => {
+    const seen = { host: [], pal: [] };
+    for (let t = 0; t < ms; t += DOGFIGHT_EVERY) {
+      clock += DOGFIGHT_EVERY;
+      feed(host, meOf(host));
+      feed(pal, meOf(pal));
+      seen.host.push(...events(host));
+      seen.pal.push(...events(pal));
+    }
+    return seen;
+  };
+  let seen = both(5000);
+  check('GO on the board\'s time, on both pages', seen.host.includes('go') && seen.pal.includes('go'));
+  host.heard({ ...count, phase: 'live' }, toLocal);
+  pal.heard({ ...count, phase: 'live' }, toLocal);
+  check('the first infected stays held through the head start, the friend is free', host.holdsMe() && !pal.holdsMe() && host.phase === 'head');
+  const padAt = [host.x[b1], host.z[b1]];
+  seen = both(5200);
+  check('the head start ends: out of the tank', seen.host.includes('free') && seen.pal.includes('free') && !host.holdsMe());
+  seen = both(2000);
+  check('the host\'s clean bots fly off their pads', Math.hypot(host.x[b1] - padAt[0], host.z[b1] - padAt[1]) > 0.3 * K);
+  host.takeOutbox();
+  /* The friend's quad right on the host's: the host's page says the tag,
+   * once, and nothing is true until the board says it back. */
+  const at = (g, slot, x, y, z) => {
+    g.x[slot] = x; g.y[slot] = y; g.z[slot] = z;
+  };
+  const [hx, hy, hz] = P.worldAt(20, 8.7, P.floors[0] + 1.2);
+  const meAt = { ...meOf(host), x: hx, y: hy, z: hz };
+  drawn(host, 2, hx + 0.3 * K, hy, hz);
+  clock += DOGFIGHT_EVERY;
+  host.step(meAt, true);
+  let out = host.takeOutbox() || [];
+  const tag = out.find((m) => m.t === 'ifTag');
+  check('a touch with nothing between is sent to the board as a tag', tag && tag.to === 2 && tag.by === undefined && tag.n === 1, JSON.stringify(out));
+  check('and is not true until the board says so', host.inf[host.slotOf(2)] === 0);
+  clock += DOGFIGHT_EVERY;
+  drawn(host, 2, hx + 0.3 * K, hy, hz);
+  host.step(meAt, false);
+  out = host.takeOutbox() || [];
+  check('the same touch is not sent again while the board answers', !out.some((m) => m.t === 'ifTag'));
+  events(host);
+  events(pal);
+  const said = {
+    t: 'ifTag', n: 1, by: 1, to: 2, got: POINTS.tag, chain: 1, last: false,
+  };
+  host.heardTag(said);
+  pal.heardTag(said);
+  const ev = (g) => {
+    for (let n = 0; n < g.eventCount; n += 1) if (g.events[n].type === 'tag') return g.events[n];
+    return null;
+  };
+  const he = ev(host);
+  const pe = ev(pal);
+  check('the board\'s word makes the tag, on both pages', host.inf[host.slotOf(2)] === 1 && pal.inf[ME] === 1 && he && he.by === ME && he.pts === POINTS.tag && pe && pe.to === ME);
+  events(host);
+  events(pal);
+  /* A bot's tag goes from the host's page with the bot named. */
+  const infected = {
+    ...count, phase: 'live', rows: rows({ 2: { inf: true, caughtAt: clock }, 201: { inf: true, caughtAt: clock } }),
+  };
+  host.heard(infected, toLocal);
+  pal.heard(infected, toLocal);
+  const caughtAt = clock;
+  both(12_000);
+  check('a pilot caught keeps the alive points they had, and gets no more', pal.inf[ME] === 1 && pal.pts[ME] === POINTS.alive * Math.floor((caughtAt - count.huntAt) / 10000)
+    && host.pts[host.slotOf(202)] === POINTS.alive * Math.floor((clock - count.huntAt) / 10000), `${pal.pts[ME]} ${host.pts[host.slotOf(202)]}`);
+  at(host, b2, host.x[b1] + 0.3 * K, host.y[b1], host.z[b1]);
+  clock += DOGFIGHT_EVERY;
+  host.step(meOf(host), false);
+  out = host.takeOutbox() || [];
+  const botTag = out.find((m) => m.t === 'ifTag' && m.by === 201);
+  check('the host\'s page says its bot\'s tag, naming the bot', botTag && botTag.to === 202, JSON.stringify(out));
+  check('the friend\'s page judges nobody\'s bots', !(pal.takeOutbox() || []).some((m) => m.t === 'ifTag' && m.by));
+  /* A close shave: the friend clean again in a new round, an infected
+   * pilot close and then away. */
+  const r2 = {
+    ...count, phase: 'live', n: 2, leg: 1, goAt: clock - 20_000, huntAt: clock - 10_000, endAt: clock + 100_000, pz: 1, rows: rows({}),
+  };
+  host.heard(r2, toLocal);
+  pal.heard(r2, toLocal);
+  pal.takeOutbox();
+  const px = pal.x[ME];
+  const py = pal.y[ME] + 0.6 * K;
+  const pz0 = pal.z[ME];
+  const pme = { ...meOf(pal), x: px, y: py, z: pz0 };
+  drawn(pal, 1, px + (TAG_R + SHAVE_R) * 0.5 * K, py, pz0);
+  clock += DOGFIGHT_EVERY;
+  pal.step(pme, true);
+  drawn(pal, 1, px + 2.5 * K, py, pz0);
+  clock += DOGFIGHT_EVERY;
+  pal.step(pme, false);
+  out = pal.takeOutbox() || [];
+  const shave = out.find((m) => m.t === 'ifShave');
+  check('a close shave of this page\'s pilot is sent to the board', shave && shave.by === 1 && shave.to === undefined, JSON.stringify(out));
+  check('a clean pilot\'s alive points run on the board\'s clock', pal.pts[ME] === POINTS.alive * Math.floor((clock - r2.huntAt) / 10000), `${pal.pts[ME]}`);
+  pal.heardShave({
+    t: 'ifShave', n: 2, by: 1, to: 2, pts: POINTS.shave,
+  });
+  check('the board\'s word pays the shave', pal.shaves[ME] === 1 && pal.pts[ME] === POINTS.shave + POINTS.alive * Math.floor((clock - r2.huntAt) / 10000));
+  /* The last one, then the table. */
+  host.heard({ ...r2, gold: 2, endAt: clock + 45_000, rows: rows({ 201: { inf: true, caughtAt: clock }, 202: { inf: true, caughtAt: clock } }) }, toLocal);
+  check('the last one is gold on the others\' pages', host.gold === host.slotOf(2) && host.phase === 'last');
+  const results = {
+    ...r2, phase: 'results', gold: -1, winner: 2, nextAt: clock + 9000, endAt: clock, rows: rows({ 2: { pts: 1800, total: 1800, last: true, cleanMs: 60_000 }, 201: { inf: true }, 202: { inf: true } }),
+  };
+  host.heard(results, toLocal);
+  pal.heard(results, toLocal);
+  const top = pal.matchStandings()[0];
+  check('the round\'s table is the board\'s, and the last one wins', pal.over && pal.winner === ME && top.slot === ME && top.total === 1800 && host.winner === host.slotOf(2));
+  check('with the match not over yet', !pal.matchOver && pal.leg === 1);
+  check('nothing on a room page judges the round\'s end', host.judged === false);
+  const g0 = new InfectedRound(w, { bots: 3 }, 1, { plan: P });
+  check('the solo round is untouched by the room', typeof g0.judges === 'function' && g0.judges(0, 1) === true);
+}
+
 function main() {
   console.log('infected-arena: Infected\'s bots on Midori Gakuen');
   const t0 = performance.now();
@@ -330,6 +511,7 @@ function main() {
   mapBlock(w);
   roundsBlock(w);
   sameBlock(w);
+  roomBlock(w);
   console.log(failures ? `\n${failures} failed` : '\nall passed');
   process.exitCode = failures ? 1 : 0;
 }

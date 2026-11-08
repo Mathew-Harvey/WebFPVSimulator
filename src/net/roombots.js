@@ -50,23 +50,33 @@ import { encodePose, POSE_UP_BYTES } from './pose.js';
 export const KIND_BOTS = 2;
 export const BOT_ID_FIRST = 201;
 export const BOTS_MAX = 7;
+/* Infected's room seats a bot in any seat but the host's (the owner's
+ * "any ratio of bots to humans", 2026-11-08): fifteen, the board's
+ * IF_BOTS_MAX. BOTS_MOST is the most any room holds. */
+export const IF_BOTS_MAX = 15;
+export const BOTS_MOST = 15;
 export const BOT_SKILLS = Object.freeze(['rookie', 'pilot', 'ace']);
+/* The most bots the host may seat in a room playing `game`. */
+export function botsMaxFor(game) {
+  return game === 'infected' ? IF_BOTS_MAX : BOTS_MAX;
+}
 /* A bot's livery, by seat: the dogfight's (src/render/dogfight.js
  * BOT_LIVERY), so a bot is the same colour on the host's page, which draws
- * it as the dogfight draws its own, and on everybody else's. */
+ * it as the dogfight draws its own, and on everybody else's. Past the
+ * eighth, round again. */
 const BOT_LIVERY = [0, 2, 9, 1, 4, 7, 6, 5];
 const POSE_MS = 50;
 const ADD_WAIT_MS = 4000;
 
 export function isBotId(id) {
-  return id >= BOT_ID_FIRST && id < BOT_ID_FIRST + BOTS_MAX;
+  return id >= BOT_ID_FIRST && id < BOT_ID_FIRST + BOTS_MOST;
 }
 
 /* A bot as the room's pilot list holds a pilot. */
 export function botPilot(seat) {
   const slot = seat.id - BOT_ID_FIRST + 1;
   return {
-    id: seat.id, handle: seat.name, skill: seat.skill, bot: true, away: false, avatar: { livery: BOT_LIVERY[slot] + 1 },
+    id: seat.id, handle: seat.name, skill: seat.skill, bot: true, away: false, avatar: { livery: BOT_LIVERY[slot % BOT_LIVERY.length] + 1 },
   };
 }
 
@@ -109,7 +119,7 @@ export function createRoomBots(session) {
   const fns = new Set();
   const waiting = [];
   const up = new Uint8Array(POSE_UP_BYTES);
-  const frame = new Uint8Array(2 + BOTS_MAX * 16);
+  const frame = new Uint8Array(2 + BOTS_MOST * 16);
   const at = new Map();
   const q = {
     x: 0, y: 0, z: 0, w: 1,

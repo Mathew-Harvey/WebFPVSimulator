@@ -2437,6 +2437,7 @@ export async function boot({ loading, bootStart, mapId }) {
   const ROOM_GOATS_RULES = Object.freeze({ game: 'goats', room: true });
   const ROOM_DRIFT_RULES = Object.freeze({ game: 'drift', room: true });
   const ROOM_BALL_RULES = Object.freeze({ game: 'ball', room: true });
+  const ROOM_INFECTED_RULES = Object.freeze({ game: 'infected', room: true });
   /* The arena flown from the map picker with no match asked for: the ball,
    * kicked off, and nobody else (src/game/quadball.js, practice). Owner,
    * 2026-10-30: "when i choose freestyle and chose the quad ball map as a
@@ -2714,10 +2715,12 @@ export async function boot({ loading, bootStart, mapId }) {
      * whatever the pilot was doing; any other room plays no game of this
      * kind. */
     const inGame = together && ui.roomInfo ? together.gameRoom() : '';
-    const roomGame = inGame === 'ribbon' || inGame === 'dogfight' || inGame === 'goats' || inGame === 'drift' || inGame === 'ball' ? inGame : '';
+    const roomGame = inGame === 'ribbon' || inGame === 'dogfight' || inGame === 'goats' || inGame === 'drift' || inGame === 'ball' || inGame === 'infected' ? inGame : '';
     const roomRibbon = roomGame === 'ribbon';
     const rules = roomGame
-      ? ({ ribbon: ROOM_RIBBON_RULES, dogfight: ROOM_DOGFIGHT_RULES, goats: ROOM_GOATS_RULES, drift: ROOM_DRIFT_RULES, ball: ROOM_BALL_RULES })[roomGame]
+      ? ({
+        ribbon: ROOM_RIBBON_RULES, dogfight: ROOM_DOGFIGHT_RULES, goats: ROOM_GOATS_RULES, drift: ROOM_DRIFT_RULES, ball: ROOM_BALL_RULES, infected: ROOM_INFECTED_RULES,
+      })[roomGame]
       : (ui.dogfight || (view && view.ballGame && !ui.roomInfo ? FREE_BALL_RULES : null));
     /* Goat herding's round is the goat map's, and nowhere else. */
     const herdable = !rules || rules.game !== 'goats' || Boolean(view && view.goatGame);
@@ -2778,9 +2781,9 @@ export async function boot({ loading, bootStart, mapId }) {
               ...base, ...game, Game: game.BallRound, View: render.BallView, feedFraction: baseRender.feedFraction, Hud: hud.BallHud, kicker: 'Quad Ball', BallRoom: room.BallRoom,
             }))
           : kind === 'infected'
-          ? Promise.all([import('./game/infected.js'), import('./ui/infectedhud.js'), import('./game/dogfight.js'), import('./render/infected.js'), import('./render/dogfight.js')])
-            .then(([game, hud, base, render, baseRender]) => ({
-              ...base, ...game, Game: game.InfectedRound, View: render.InfectedView, feedFraction: baseRender.feedFraction, Hud: hud.InfectedHud, kicker: 'Infected',
+          ? Promise.all([import('./game/infected.js'), import('./ui/infectedhud.js'), import('./game/dogfight.js'), import('./render/infected.js'), import('./render/dogfight.js'), import('./game/infectedroom.js')])
+            .then(([game, hud, base, render, baseRender, room]) => ({
+              ...base, ...game, Game: game.InfectedRound, View: render.InfectedView, feedFraction: baseRender.feedFraction, Hud: hud.InfectedHud, kicker: 'Infected', InfectedRoom: room.InfectedRoom,
             }))
           : kind === 'goats'
           ? Promise.all([import('./game/goatround.js'), import('./ui/herdhud.js'), import('./game/dogfight.js'), import('./render/dogfight.js'), import('./game/goatroom.js')])
@@ -2839,6 +2842,9 @@ export async function boot({ loading, bootStart, mapId }) {
       fightGame = new fightMods.DriftRoom(world, { seed, pen: { film: view.filmGame.film, poses: () => (view.filmGame.posed ? view.filmGame.posed(carCurr) : carCurr) } });
     } else if (roomGame === 'ball') {
       fightGame = new fightMods.BallRoom(world, { seed, pen: view.ballGame });
+    } else if (roomGame === 'infected') {
+      fightGame = new fightMods.InfectedRoom(world, { seed, pen: view.infectedGame });
+      infectedSerial = -1;
     } else if (kind === 'goats') {
       fightGame = new Game(world, rules, seed, view.goatGame);
     } else if (kind === 'infected') {
@@ -2876,6 +2882,8 @@ export async function boot({ loading, bootStart, mapId }) {
               together.driftStart();
             } else if (fightKind === 'ball') {
               together.ballAgain();
+            } else if (fightKind === 'infected') {
+              together.infectedStart();
             } else {
               together.dogfightStart();
             }
@@ -2929,6 +2937,12 @@ export async function boot({ loading, bootStart, mapId }) {
       if (last) {
         fightGame.heard(last, together.boardToLocal);
       }
+    } else if (roomGame === 'infected') {
+      fightRoomSync();
+      const last = together.infectedLast();
+      if (last) {
+        fightGame.heard(last, together.boardToLocal);
+      }
     }
     fightNewRound();
     /* Ribbons and goats fire nothing: the gun and missile buttons stay
@@ -2956,6 +2970,10 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     if (fightKind === 'ball') {
       ballRoomSync();
+      return;
+    }
+    if (fightKind === 'infected') {
+      infectedRoomSync();
       return;
     }
     const who = together.ribbonWho();
@@ -3083,6 +3101,51 @@ export async function boot({ loading, bootStart, mapId }) {
     if (out) {
       for (const m of out) {
         together.sendGoats(m);
+      }
+    }
+  }
+
+  /* The same, in an Infected room (src/game/infectedroom.js): who this
+   * page is, the bot seats and, on the host's page, their places out to
+   * the room; the board's match, the tags and close shaves it believed;
+   * and this page's own touches out to it. */
+  function infectedRoomSync() {
+    const g = fightGame;
+    const who = together.ribbonWho();
+    if (who) {
+      g.setYou(who.you, who.host);
+    }
+    const bots = together.roomBots();
+    if (bots) {
+      const seats = bots.seats();
+      if (seats !== fightSeats) {
+        fightSeats = seats;
+        g.setBots(seats);
+      }
+      if (bots.mine()) {
+        fightBots = bots;
+        g.eachFlown(fightBotPose);
+      }
+    }
+    const toLocal = together.boardToLocal;
+    const st = together.takeInfected();
+    if (st) {
+      g.heard(st, toLocal);
+    }
+    const ins = together.takeInfectedIn();
+    if (ins) {
+      for (const m of ins) {
+        if (m.t === 'ifTag') {
+          g.heardTag(m);
+        } else if (m.t === 'ifShave') {
+          g.heardShave(m);
+        }
+      }
+    }
+    const out = g.takeOutbox();
+    if (out) {
+      for (const m of out) {
+        together.sendInfected(m);
       }
     }
   }
@@ -3217,6 +3280,10 @@ export async function boot({ loading, bootStart, mapId }) {
     const surface = view.height(x, z, g.seatY[ME] + 0.3 * k);
     resetCraft({ x, z, yaw: g.seatYaw[ME] - Math.PI / 2, surface });
     fightTeleported = true;
+    /* Where the next feed will find the craft, so the check above does not
+     * see the old place again before it. */
+    fightMe.x = x;
+    fightMe.z = z;
   }
 
   /* Whether Infected holds the pilot on the tank's pad: the first infected
@@ -3304,6 +3371,11 @@ export async function boot({ loading, bootStart, mapId }) {
       ballSeat(g, ME);
     }
     if (fightKind === 'infected' && mode === 'flight') {
+      /* Held on the pad and somewhere else (a restart while waiting puts
+       * the craft at the map's spawn): back to the pad. */
+      if (landed && g.holdsMe() && Math.hypot(fightMe.x - g.seatX[ME], fightMe.z - g.seatZ[ME]) > 1.5 * simLenToWorld(1)) {
+        infectedSerial = -1;
+      }
       infectedSeat(g, ME);
     }
     if (g.over && !fightSaved && !g.room) {
@@ -4764,13 +4836,17 @@ export async function boot({ loading, bootStart, mapId }) {
     if (fightGame && fightGame.room) {
       fightGame.remote(id, pose, pilot);
     }
+    /* An Infected room draws everybody in the round white, green or gold,
+     * with their name only in sight (src/render/infected.js roomPilot). */
+    const drawnAs = fightKind === 'infected' && fightGame && fightGame.room && fightView && fightView.roomPilot
+      ? fightView.roomPilot(fightGame, id, pilot) : pilot;
     const dx = pose.px - mpHx;
     const dy = pose.py - mpHy;
     const dz = pose.pz - mpHz;
     const d2 = dx * dx + dy * dy + dz * dz;
     /* The host's tag stays up however far: in a streamer room, the one the
      * viewers came to find. So does the tag of the pilot being watched. */
-    mpCraft.add(id, pose, pilot, d2, ovOn || id === mpHostId || id === watchId,
+    mpCraft.add(id, pose, drawnAs, d2, ovOn || id === mpHostId || id === watchId || drawnAs.pin === true,
       ovOn && ovPlaces ? (ovPlaces.get(id) || 0) : 0, ovOn && id === ovPick, ovOn && ovKeep && ovPick && id !== ovPick);
     if (ovField) {
       ovField.note(id, pose.px, pose.py, pose.pz, pose.cut, ovNow);

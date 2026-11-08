@@ -57,7 +57,7 @@
  */
 
 import {
-  BOTS_MAX, BOT_SKILLS, botPilot, createRoomBots,
+  BOT_SKILLS, botPilot, botsMaxFor, createRoomBots,
 } from './roombots.js';
 import { RoomSession } from './room.js';
 import { ROOM_MAX, STREAM_MAX, roomsUrl } from './link.js';
@@ -180,6 +180,16 @@ const CHAT_REFUSED = {
   links: 'No links, handles or phone numbers in chat.',
   slow: 'Easy: one line every two seconds.',
 };
+/* The most seats a room of `game` may have: Infected is played by sixteen,
+ * bots counted (the board's IF_CAP), every other room by its kind's most. */
+export const IF_CAP = 16;
+function gameMost(game, streamer) {
+  if (game === 'infected') {
+    return IF_CAP;
+  }
+  return streamer ? STREAM_MAX : ROOM_MAX;
+}
+
 const SETTINGS_FIELDS = {
   name: 'That name has a word the board does not allow, or is too short. Try another.',
   password: 'A password is 4 to 64 characters.',
@@ -1146,6 +1156,14 @@ export function createTogether(shell) {
         round: ballNow ? ballNow.state.round : '3m',
         bots: session.link.bots.size,
       } : null,
+      infected: r.game === 'infected' ? {
+        phase: infectedNow ? infectedNow.state.phase : 'pit',
+        round: infectedNow ? infectedNow.state.round : '3m',
+        head: infectedNow ? infectedNow.state.head : 10,
+        first: infectedNow ? infectedNow.state.first : 'random',
+        next: Boolean(infectedNow && infectedNow.state.nextAt),
+        bots: session.link.bots.size,
+      } : null,
     });
   }
 
@@ -1782,6 +1800,16 @@ export function createTogether(shell) {
       case 'gtHome':
         goatsIn.push(data);
         break;
+      case 'infected':
+        infectedHeard(data.infected);
+        break;
+      case 'ifTag':
+      case 'ifShave':
+        infectedIn.push(data);
+        if (infectedIn.length > 256) {
+          infectedIn.shift();
+        }
+        break;
       case 'drift':
         driftHeard(data.drift);
         break;
@@ -2079,6 +2107,59 @@ export function createTogether(shell) {
     return true;
   }
 
+  /*
+   * INFECTED (src/game/infectedroom.js InfectedRoom). As the goats': the
+   * board's match, and the tags and close shaves it believed, kept for the
+   * shell to take once a frame. Every page judges its own quad's touches.
+   */
+  let infectedNow = null;
+  let infectedIn = [];
+  function infectedHeard(f) {
+    if (!f || !race) {
+      infectedNow = null;
+      return;
+    }
+    infectedNow = { state: f, taken: false };
+    infoForShell();
+  }
+
+  function infectedRoom() {
+    const r = room();
+    return Boolean(r && r.game === 'infected');
+  }
+
+  /* The host's start: a new match, everybody here and every bot on a pad. */
+  function infectedStart() {
+    if (!infectedRoom() || !isHost()) {
+      return false;
+    }
+    const ph = infectedNow ? infectedNow.state.phase : 'pit';
+    if (ph !== 'pit' && ph !== 'results') {
+      return false;
+    }
+    if (ph === 'results' && infectedNow.state.nextAt) {
+      toast('The next round starts by itself.', 'info');
+      return true;
+    }
+    if (session.link.pilots.size + session.link.bots.size < 2) {
+      toast('Infected needs two. Add a bot or send the link.', 'warn');
+      return true;
+    }
+    session.link.raceSend({ t: 'ifStart' });
+    return true;
+  }
+
+  /* The host's rules between matches, one press a step round each list. */
+  const IF_LISTS = { round: ['2m', '3m', '5m'], head: [5, 10, 15], first: ['random', 'me', 'bot'] };
+  function infectedSet(field) {
+    if (!infectedRoom() || !isHost() || !infectedNow || !IF_LISTS[field]) {
+      return;
+    }
+    const order = IF_LISTS[field];
+    const at = order.indexOf(infectedNow.state[field]);
+    session.link.raceSend({ t: 'ifSet', [field]: order[(at + 1) % order.length] });
+  }
+
   /* The host's rules between rounds, one press a step round each list. */
   const DF_LISTS = { hits: ['arcade', 'hard'], round: ['3m', '5m', 'first10', 'none'] };
   function dogfightSet(field) {
@@ -2100,6 +2181,9 @@ export function createTogether(shell) {
    * 'left' and 'bots'. The host's only; anybody else has nothing to set.
    */
   const SKILL_NAMES = { rookie: 'Rookie', pilot: 'Pilot', ace: 'Ace' };
+  /* Infected says a bot's skill the way its waiting room does. */
+  const IF_SKILL_NAMES = { rookie: 'Easy', pilot: 'Medium', ace: 'Hard' };
+  const skillName = (s) => ((infectedRoom() ? IF_SKILL_NAMES : SKILL_NAMES)[s] || 'Pilot');
   let rosterSkill = 'pilot';
 
   function rosterFree() {
@@ -2108,7 +2192,7 @@ export function createTogether(shell) {
       return 0;
     }
     const seats = bots.seats().length;
-    return Math.max(0, Math.min(BOTS_MAX - seats, r.max - session.link.pilots.size - seats));
+    return Math.max(0, Math.min(botsMaxFor(r.game) - seats, r.max - session.link.pilots.size - seats));
   }
 
   function rosterFill() {
@@ -2140,7 +2224,7 @@ export function createTogether(shell) {
           seats.map((s) => seat([
             face(botPilot(s).avatar, 'calm', 44),
             h('b', { text: s.name }),
-            btn(SKILL_NAMES[s.skill] || 'Pilot', 'ghost.small', () => bots.skill(s.id, nextSkill(s.skill)), { 'data-k': `skill-${s.id}`, title: 'How good this bot is' }),
+            btn(skillName(s.skill), 'ghost.small', () => bots.skill(s.id, nextSkill(s.skill)), { 'data-k': `skill-${s.id}`, title: 'How good this bot is' }),
             btn('Drop', 'ghost.small', () => bots.drop(s.id), { 'data-k': `drop-${s.id}` }),
           ], '.is-bot')),
           Array.from({ length: Math.min(free, 8) }, (_, i) => seat([
@@ -2148,7 +2232,7 @@ export function createTogether(shell) {
             btn('+ Add a bot', 'small', () => bots.add(rosterSkill), { 'data-k': `add-${i}` }),
           ], '.is-empty'))),
         h('div.btnrow', null,
-          btn(`New bots: ${SKILL_NAMES[rosterSkill]}`, 'ghost', () => {
+          btn(`New bots: ${skillName(rosterSkill)}`, 'ghost', () => {
             rosterSkill = nextSkill(rosterSkill);
             refresh('botRoster');
           }, { 'data-k': 'newskill' }),
@@ -2188,6 +2272,10 @@ export function createTogether(shell) {
       if (rules.round === '3m' || rules.round === '5m' || rules.round === 'first5') {
         session.link.raceSend({ t: 'blSet', round: rules.round });
       }
+    } else if (r.game === 'infected') {
+      session.link.raceSend({
+        t: 'ifSet', round: rules.round, head: rules.head, first: rules.first,
+      });
     } else if (r.game !== 'drift') {
       return;
     }
@@ -2203,8 +2291,12 @@ export function createTogether(shell) {
       return;
     }
     const adds = [];
+    /* Infected's waiting room gives every seat its own skill, in its
+     * words; the board's are the dogfight's. */
+    const IF_WORDS = { easy: 'rookie', medium: 'pilot', hard: 'ace' };
     for (let i = 0; i < n; i += 1) {
-      adds.push(bots.add(rosterSkill));
+      const own = r.game === 'infected' && Array.isArray(rules.skills) ? IF_WORDS[rules.skills[i]] : '';
+      adds.push(bots.add(own || rosterSkill));
     }
     roundOwed = true;
     owedUntil = 0;
@@ -2254,6 +2346,8 @@ export function createTogether(shell) {
       driftStart();
     } else if (ballRoom()) {
       ballStart();
+    } else if (infectedRoom()) {
+      infectedStart();
     }
   }
 
@@ -2293,6 +2387,8 @@ export function createTogether(shell) {
     dogfightHeard(data.dogfight);
     goatsIn = [];
     goatsHeard(data.goats);
+    infectedIn = [];
+    infectedHeard(data.infected);
     driftIn = [];
     driftHeard(data.drift);
     ballIn = [];
@@ -3334,7 +3430,7 @@ export function createTogether(shell) {
       /* A Quad Ball match is as many seats as it has a side, so the board
        * hands a friend who joins a bot's seat (and its side) rather than
        * an extra one on top of a full match. */
-      max: entry && entry.game === 'ball' && entry.rules && Number(entry.rules.size) > 0 ? Math.min(ROOM_MAX, Number(entry.rules.size) * 2) : 16,
+      max: entry && entry.game === 'ball' && entry.rules && Number(entry.rules.size) > 0 ? Math.min(ROOM_MAX, Number(entry.rules.size) * 2) : Math.min(16, gameMost(entry && entry.game, false)),
       /* Off until the host turns it on, the owner's pick of 2026-10-26:
        * a host opening a room for friends has not yet thought about who
        * may type, and the switch is one press away for one who has. */
@@ -3351,7 +3447,7 @@ export function createTogether(shell) {
       /* Only a school safe room gives everybody a made up name (the owner's
        * word of 2026-11-08); the others show typed names, filtered. */
       const madeUpRoom = f.schoolSafe;
-      const most = f.streamer ? STREAM_MAX : ROOM_MAX;
+      const most = gameMost(entry.game, f.streamer);
       /* A room that gives everybody a made up name must not show the
        * host's own through its title: the suggestion made from it goes, and
        * comes back if the room is made ordinary again with nothing typed. */
@@ -3414,8 +3510,8 @@ export function createTogether(shell) {
                 type: 'button', role: 'radio', 'aria-checked': String(f.listed), 'data-k': 'listed', on: { click: () => { f.listed = true; f.streamer = false; f.max = Math.min(f.max, ROOM_MAX); again(); } },
               }, h('b', { text: 'Listed under Rooms' }), h('small', { text: 'Anyone can find it and join.' })),
               h('button.radio', {
-                type: 'button', role: 'radio', 'aria-checked': String(f.streamer), 'data-k': 'streamer', on: { click: () => { f.listed = false; f.streamer = true; f.max = STREAM_MAX; again(); } },
-              }, h('b', { text: 'Streamer room' }), h('small', { text: `Up to ${STREAM_MAX} viewers, by the code on your stream.` })))),
+                type: 'button', role: 'radio', 'aria-checked': String(f.streamer), 'data-k': 'streamer', on: { click: () => { f.listed = false; f.streamer = true; f.max = gameMost(entry.game, true); again(); } },
+              }, h('b', { text: 'Streamer room' }), h('small', { text: `Up to ${gameMost(entry.game, true)} viewers, by the code on your stream.` })))),
             h('div.field', null, h('label', { for: 'tg-pw' }, 'Password ', h('span', { style: { fontWeight: '600', textTransform: 'none', letterSpacing: '0' }, text: '(optional)' })), pwIn,
               h(`span.help${bad.has('password') ? '.bad' : ''}`, { text: bad.has('password') ? SETTINGS_FIELDS.password : 'Your invite link skips it, so you never have to say it out loud.' }))),
           h('div.stack', null,
@@ -4051,7 +4147,7 @@ export function createTogether(shell) {
             h('div.field', null, h('span.lab', { text: 'Pilots' }), h('div.stepper', null,
               h('button', { type: 'button', 'aria-label': 'Fewer', 'data-k': 'fewer', on: { click: () => { f.max = Math.max(Math.max(2, n), f.max - 1); again(); } } }, '−'),
               h('output', { text: String(f.max) }),
-              h('button', { type: 'button', 'aria-label': 'More', 'data-k': 'more', on: { click: () => { f.max = Math.min(r.streamer ? STREAM_MAX : ROOM_MAX, f.max + 1); again(); } } }, '+')),
+              h('button', { type: 'button', 'aria-label': 'More', 'data-k': 'more', on: { click: () => { f.max = Math.min(gameMost(r.game, r.streamer), f.max + 1); again(); } } }, '+')),
             h(`span.help${settingsBad.has('max') ? '.bad' : ''}`, { text: `Never below the ${n} ${n === 1 ? 'pilot' : 'pilots'} already in.` })),
             r.streamer ? streamField(r, f) : null),
           h('div.stack', null,
@@ -4285,13 +4381,14 @@ export function createTogether(shell) {
     const r = room();
     if (!r || !isHost()) return 'Only the host can swap quads.';
     if (r.way !== 'freestyle') return 'A race room keeps its quad. Host a free flight room to swap.';
+    if (r.game === 'infected') return 'Infected is flown on whoops only.';
     if (racingNow()) return 'Not during a race.';
     if (currentVote()) return 'Not while the room votes on a map.';
     return '';
   }
 
   function swapRow(r) {
-    return isHost() && r.way === 'freestyle' && !racingNow() && !currentVote() ? h('button.btn.ghost', {
+    return isHost() && r.way === 'freestyle' && r.game !== 'infected' && !racingNow() && !currentVote() ? h('button.btn.ghost', {
       type: 'button', 'data-k': 'swap-quad', on: { click: () => sheetSwapQuad() },
     }, h('span', { text: 'Swap quads' }), h('small', { text: 'Everyone swaps' })) : null;
   }
@@ -4394,7 +4491,9 @@ export function createTogether(shell) {
   function voteRows() {
     const v = currentVote();
     if (!v) {
-      return isHost() && !racingNow() ? h('button.btn.ghost', {
+      /* Infected is the school's game and nowhere else's: its room stays. */
+      const r = room();
+      return isHost() && !racingNow() && !(r && r.game === 'infected') ? h('button.btn.ghost', {
         type: 'button', 'data-k': 'move', on: { click: () => pickMove() },
       }, h('span', { text: 'Change map' }), h('small', { text: 'Everyone votes' })) : null;
     }
@@ -6154,6 +6253,11 @@ export function createTogether(shell) {
         return true;
       }
     }
+    if (code === 'KeyG' && infectedRoom() && isHost() && (shell.flying() || shell.paused())) {
+      if (infectedStart()) {
+        return true;
+      }
+    }
     /* G answers the race's panel, which also sits beside the results. */
     if (code === 'KeyG' && race && race.race && panelScreen()) {
       const rc = race.race;
@@ -6447,6 +6551,16 @@ export function createTogether(shell) {
       if (driftStart()) {
         shell.resume();
       }
+    } else if (action === 'room-if-start') {
+      if (infectedStart()) {
+        shell.resume();
+      }
+    } else if (action === 'room-if-round') {
+      infectedSet('round');
+    } else if (action === 'room-if-head') {
+      infectedSet('head');
+    } else if (action === 'room-if-first') {
+      infectedSet('first');
     } else if (action === 'room-df-hits') {
       dogfightSet('hits');
     } else if (action === 'room-df-round') {
@@ -6625,6 +6739,32 @@ export function createTogether(shell) {
       goatsHerd = n;
     },
     goatsStart,
+    /* An Infected room's, as the goats'. */
+    takeInfected() {
+      const d = infectedNow;
+      if (!d || d.taken) {
+        return null;
+      }
+      d.taken = true;
+      return d.state;
+    },
+    infectedLast() {
+      return infectedNow ? infectedNow.state : null;
+    },
+    takeInfectedIn() {
+      if (!infectedIn.length) {
+        return null;
+      }
+      const out = infectedIn;
+      infectedIn = [];
+      return out;
+    },
+    sendInfected(msg) {
+      if (session && session.inRoom && infectedRoom()) {
+        session.link.raceSend(msg);
+      }
+    },
+    infectedStart,
     /* A Quad Ball room's, as the goats'. */
     takeBall() {
       const d = ballNow;

@@ -4991,6 +4991,61 @@ function goatsRoomItems(info) {
 }
 
 /*
+ * An Infected room's pause rows: the host starts a match, seats bots in any
+ * seat at easy, medium or hard, and sets the hunt, the head start and who
+ * starts infected between matches. The rounds of a match follow each other
+ * by themselves.
+ */
+const IF_ROUND_NAMES = { '2m': '2 minutes', '3m': '3 minutes', '5m': '5 minutes' };
+const IF_FIRST_NAMES = { random: 'Anybody', me: 'You', bot: 'A bot' };
+function infectedRoomItems(info) {
+  const f = info.infected;
+  if (!f) {
+    return [];
+  }
+  const between = f.phase === 'pit' || (f.phase === 'results' && !f.next);
+  if (!info.host) {
+    return [{
+      label: 'Infected',
+      value: between ? 'Waiting' : 'Match on',
+      action: 'noop',
+      note: 'The host starts each match. Stay white and hide, or catch the white ones once you are green.',
+    }];
+  }
+  return [
+    {
+      label: between ? 'Start a match' : 'Match on',
+      action: between ? 'room-if-start' : 'noop',
+      note: between ? 'Three rounds. Everybody to a pad, the bots too. Or press G while flying.' : 'The rounds follow each other by themselves.',
+    },
+    {
+      label: 'Fill the roster',
+      value: `${f.bots || 0} bots`,
+      action: 'room-roster',
+      note: 'Your friends and the empty seats, and bots to fill them, easy, medium or hard. Bots fly from your computer and give a seat to a friend who joins.',
+    },
+    {
+      label: 'Round',
+      value: IF_ROUND_NAMES[f.round] || '3 minutes',
+      action: between ? 'room-if-round' : 'noop',
+      note: 'How long the hunt runs. Changes between matches.',
+    },
+    {
+      label: 'Head start',
+      value: `${f.head || 10} s`,
+      action: between ? 'room-if-head' : 'noop',
+      note: 'How long the first infected waits in the tank.',
+    },
+    {
+      label: 'First infected',
+      value: IF_FIRST_NAMES[f.first] || 'Anybody',
+      action: between ? 'room-if-first' : 'noop',
+      note: 'Who starts the match in the glass tank. After that, the first pilot caught starts the next round.',
+    },
+  ];
+}
+
+/*
  * A Quad Ball room's pause rows: the host starts a match, seats bots and
  * sets how long a match runs between matches.
  */
@@ -5032,6 +5087,14 @@ function ballRoomItems(info) {
 
 function roomCraftItem(s, info) {
   const af = airframeById(s.airframe);
+  if (info.infected) {
+    return {
+      label: 'Aircraft',
+      value: af.name,
+      note: 'Infected is flown on whoops only, so everybody in this room is on one.',
+      action: 'noop',
+    };
+  }
   if (info.host && info.freestyle) {
     return {
       label: 'Aircraft',
@@ -11833,6 +11896,7 @@ export class Ui {
         ...ribbonRoomItems(r),
         ...dogfightRoomItems(r),
         ...goatsRoomItems(r),
+        ...infectedRoomItems(r),
         ...driftRoomItems(r),
         ...ballRoomItems(r),
         {
@@ -15931,8 +15995,11 @@ export class Ui {
       } : null;
     }
     if (item.map && item.map.id !== 'built' && item.map.id !== 'custom') {
-      /* The host's own aircraft: the quad picker lets either fly any world. */
-      const craft = this.settings.airframe;
+      /* The host's own aircraft: the quad picker lets either fly any world.
+       * A map flown on one quad only opens its room on that quad, whatever
+       * the host flew last: Midori Gakuen is whoops only (2026-11-08), and
+       * the welcome swaps a host on the other one (quadHeard in together). */
+      const craft = item.map.craftOnly ? item.map.craft : this.settings.airframe;
       return {
         ...base, map: item.map.id, name: item.label || entry.name, way: 'freestyle', whoop: craft === 'whoop65',
       };
@@ -23048,10 +23115,10 @@ export class Ui {
         /* A game room's Quit to title is back on the Mini games page, as
          * the game's solo Quit is: read before the room is left. */
         const r = this.roomInfo;
-        const game = Boolean(r && (r.ball || r.goats || r.drift || r.dogfight || r.ribbon));
+        const game = Boolean(r && (r.ball || r.goats || r.drift || r.dogfight || r.ribbon || r.infected));
         if (game) {
           /* On the panel of the game just left. */
-          this.gameLast = r.ball ? 'mg-ball' : r.goats ? 'mg-goats' : r.drift ? (this.settings.map === 'moto' ? 'mg-moto' : 'mg-drift')
+          this.gameLast = r.ball ? 'mg-ball' : r.goats ? 'mg-goats' : r.infected ? 'mg-infected' : r.drift ? (this.settings.map === 'moto' ? 'mg-moto' : 'mg-drift')
             : r.ribbon ? 'mg-ribbon' : 'mg-dogfight';
         }
         if (this.onRoom) {

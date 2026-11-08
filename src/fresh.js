@@ -153,6 +153,7 @@
     'src/game/guide.js',
     'src/game/infectbots.js',
     'src/game/infected.js',
+    'src/game/infectedroom.js',
     'src/game/infectrules.js',
     'src/game/obstacles.js',
     'src/game/plantworld.js',

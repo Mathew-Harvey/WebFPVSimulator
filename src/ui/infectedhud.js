@@ -516,10 +516,16 @@ export class InfectedHud extends DogfightHud {
     let banner = '';
     if (!g.over && phase === 'wait') {
       const head = Math.round(g.headMs / 1000);
-      if (g.room) {
+      if (g.room && g.startedMs >= 0) {
+        /* The board's countdown: everybody on a pad. */
+        const inS = Math.max(1, Math.ceil((g.startedMs - g.clockMs) / 1000));
+        banner = g.pz === ME
+          ? `You start infected, in the glass tank. The others get ${head} s to hide. Starting in ${inS}`
+          : `${nameOf(g.pz, g)} starts infected. You get ${head} s to hide. Starting in ${inS}`;
+      } else if (g.room) {
         banner = g.host
-          ? 'Press G or the pause menu to start the round.'
-          : 'The host starts the round. Fly around and learn the halls.';
+          ? 'Press G or the pause menu to start the match.'
+          : 'The host starts the match. Fly around and learn the halls.';
       } else if (g.pz === ME) {
         banner = `You start infected, in the glass tank. Take off to start: the others get ${head} s to hide.`;
       } else {
@@ -547,8 +553,10 @@ export class InfectedHud extends DogfightHud {
     if (showing && this.resultKeys && L.nextRound !== nextRound) {
       L.nextRound = nextRound;
       const what = g.matchOver ? 'A new match' : `Round ${g.leg + 2}`;
-      this.resultKeys.textContent = g.room
-        ? (g.host ? 'Press G for the next round' : 'The host starts the next round')
+      /* A room's rounds follow each other by themselves, as a solo
+       * match's do; a new match is the host's. */
+      this.resultKeys.textContent = g.room && g.matchOver
+        ? (g.host ? 'Press G for a new match' : 'The host starts the next match')
         : `${what} in ${nextRound} s`;
     }
   }
@@ -653,7 +661,7 @@ export class InfectedHud extends DogfightHud {
       const fly = el('button', 'df-btn', 'Fly on');
       fly.type = 'button';
       fly.addEventListener('click', () => this.onFlyOn && this.onFlyOn());
-      row.append(...(g.host ? [again, fly] : [fly]), keys);
+      row.append(...(g.host && match ? [again, fly] : [fly]), keys);
     } else {
       row.append(again, change, leave, keys);
     }

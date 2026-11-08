@@ -421,6 +421,13 @@ export class RoomLink {
          * host's herd passed on. */
         this.onEvent(m.t, m);
         break;
+      case 'infected':
+      case 'ifTag':
+      case 'ifShave':
+        /* An Infected room's match, and a tag and a close shave the board
+         * believed. */
+        this.onEvent(m.t, m);
+        break;
       case 'refused':
         /* A resume the board cannot honour is the end of this room for
          * this pilot, which the shell says differently from a refusal at

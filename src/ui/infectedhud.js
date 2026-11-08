@@ -261,6 +261,17 @@ export class InfectedHud extends DogfightHud {
       this.slip([{ i: e.to, text: nameOf(e.to, g), cls: 'is-inf' }, ' is out of the tank!']);
       return null;
     }
+    if (e.type === 'tag' && e.by < 0) {
+      /* Nobody tagged them: the only infected pilot left the room and the
+       * board handed it on. */
+      if (e.to === ME) {
+        this.call('infected', nowMs, BIG_MS);
+        this.line("The infected pilot left, so you're infected now. Go get them!", nowMs, 3500, 'inf');
+        return 'crash';
+      }
+      this.slip([this.who(e.to, g), ' is infected now: the last infected pilot left']);
+      return null;
+    }
     if (e.type === 'tag') {
       this.slip([{ i: e.by, text: nameOf(e.by, g), cls: e.by === ME ? 'df-you' : 'is-inf' }, ' infected ', this.who(e.to, g)]);
       if (e.to === ME) {
@@ -444,10 +455,15 @@ export class InfectedHud extends DogfightHud {
     }
     if (phase === 'head') {
       const s = Math.max(1, Math.ceil(g.headLeftMs() / 1000));
-      if (g.pz === ME) {
+      if (g.pz === ME || (meInf && g.holdsMe())) {
         this.line(`You're infected! Your motors wake in <b>${s}</b>`, nowMs, 200, 'inf');
-      } else if (meIn) {
+      } else if (meIn && meInf) {
+        /* Handed the infection in the head start (the first one left). */
+        this.line(`You're infected! You can tag in <b>${s}</b>`, nowMs, 200, 'inf');
+      } else if (meIn && g.pz >= 0 && g.inFight[g.pz]) {
         this.line(`${esc(nameOf(g.pz, g))} is infected. They get out in <b>${s}</b>`, nowMs, 200, 'inf');
+      } else if (meIn) {
+        this.line(`Hide! The hunt starts in <b>${s}</b>`, nowMs, 200, 'inf');
       }
     } else if (phase === 'last' && meIn) {
       const left = clockText(g.leftMs());

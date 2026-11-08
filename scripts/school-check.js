@@ -4,8 +4,10 @@
  * scripts/warehouse-check.js proves Thomas More's Shop. In these blocks:
  *
  *   1. layout   every part finite, every colour one of src/props/school.js,
- *               at most the school's colour budget (each is a draw call), no
- *               two colours drawn in one plane, two builds the same to the bit
+ *               at most the school's colour budget (each is a draw call, and
+ *               the pictures on the walls are one more), every picture
+ *               painted and hung on something, no two colours drawn in one
+ *               plane, two builds the same to the bit
  *   2. placed   the document normalizes with no repairs, the school goes in
  *               as the built map puts it in, the start is seated on the
  *               floor with a ball clear over it, and the shape and candidate
@@ -57,6 +59,7 @@ import {
   schoolLayout, S, FLOOR0, F1, worldAt, FRAME, OPENINGS, PATHS, PADS, TANK_PAD, ROOMS, LEN, DEP, HIGH, floorOf,
 } from '../src/maps/school/school.js';
 import { schoolDocument } from '../src/maps/school/yard.js';
+import { paintsKey } from '../src/maps/school/pictures.js';
 import { MATERIALS as HOME_MATERIALS } from '../src/props/school.js';
 import { GAP_MIN } from '../src/props/parts.js';
 import { placeSolids, addSolids } from '../src/props/solids.js';
@@ -174,7 +177,51 @@ function hashOf(L) {
       num(v);
     }
   }
+  for (const u of L.pictures || []) {
+    h.update(`${u.key}|${u.face}`);
+    for (const v of [u.px, u.py, u.h, u.w, u.ht]) {
+      num(v);
+    }
+  }
   return h.digest('hex');
+}
+
+/* Every picture the plan hangs is one that is painted, and hangs on
+ * something: a drawn part is within six centimetres behind its middle and
+ * the picture itself is not inside one, so no poster floats in the air and
+ * none is buried in its wall. */
+const FACE_OUT = { n: [0, 0, -1], s: [0, 0, 1], e: [1, 0, 0], w: [-1, 0, 0] };
+function pictureLines(L) {
+  const uses = L.pictures || [];
+  const keys = [...new Set(uses.map((u) => u.key))];
+  const unpainted = keys.filter((k) => !paintsKey(k));
+  check('every picture the school hangs is painted', uses.length > 0 && unpainted.length === 0,
+    unpainted.join(', ') || `${uses.length} hung, ${keys.length} pictures`);
+  const boxes = L.parts.filter((p) => p.draw && p.t === 'box');
+  const inside = (q, eps = 0) => boxes.some((b) => q.every((v, i) => v >= b.lo[i] - eps && v <= b.hi[i] + eps));
+  const bad = [];
+  for (const u of uses) {
+    const nums = [u.px, u.py, u.h, u.w, u.ht];
+    const n = FACE_OUT[u.face];
+    if (!n || nums.some((v) => !Number.isFinite(v)) || u.w <= 0 || u.ht <= 0
+      || u.px < 0 || u.px > LEN || u.py < 0 || u.py > DEP || u.h < 0 || u.h > HIGH) {
+      bad.push(`${u.key} out of the school`);
+      continue;
+    }
+    const c = worldAt(u.px, u.py, u.h);
+    const at = (d) => c.map((v, i) => v + n[i] * S * d);
+    let backed = false;
+    for (let d = 0.002; d <= 0.06 && !backed; d += 0.002) {
+      backed = inside(at(-d));
+    }
+    if (!backed) {
+      bad.push(`${u.key} hangs on nothing`);
+    } else if (inside(at(0.001))) {
+      bad.push(`${u.key} is inside a part`);
+    }
+  }
+  check('every picture hangs on something and in front of it', bad.length === 0,
+    bad.slice(0, 6).join('; ') || `${uses.length} hung`);
 }
 
 function layoutBlock() {
@@ -188,8 +235,12 @@ function layoutBlock() {
   const colours = new Set([...own, ...L.prisms.map((q) => q.m), ...L.discs.map((d) => d.m), ...L.cones.map((c) => c.m)]);
   const unknown = [...colours].filter((m) => !HOME_MATERIALS[m]);
   check('every colour the school draws is one of src/props/school.js', unknown.length === 0, unknown.join(', ') || `${colours.size} colours`);
-  check(`the school draws at most ${HOUSE_COLOURS_MAX} colours, so its chunk is at most that many draw calls`,
-    colours.size <= HOUSE_COLOURS_MAX, `${colours.size}`);
+  /* The pictures on the walls (src/maps/school/pictures.js) are one mesh,
+   * so one draw call more than the colours: they took the blackboards'
+   * colour's place, and the budget is the same budget. */
+  check(`the school draws at most ${HOUSE_COLOURS_MAX} calls, its colours and its pictures`,
+    colours.size + 1 <= HOUSE_COLOURS_MAX, `${colours.size} colours and 1 picture sheet`);
+  pictureLines(L);
   /* The table is shared with the houses: their colours are checked as drawn by their own scripts. */
   const unused = Object.keys(HOME_MATERIALS).filter((m) => !colours.has(m));
   check('every colour in src/props/school.js is drawn', unused.length === 0, unused.join(', ') || 'all drawn');

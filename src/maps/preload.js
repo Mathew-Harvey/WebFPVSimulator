@@ -2622,5 +2622,6 @@ export const MAP_PRELOAD = {
     'maps/built/logosurface.js',
     'maps/school/school.js',
     'maps/school/yard.js',
+    'maps/school/pictures.js',
   ],
 };

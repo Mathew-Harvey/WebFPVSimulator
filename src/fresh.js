@@ -464,6 +464,7 @@
     'src/maps/sana/wards.js',
     'src/maps/sana/yard.js',
     'src/maps/school/index.js',
+    'src/maps/school/pictures.js',
     'src/maps/school/school.js',
     'src/maps/school/yard.js',
     'src/maps/shiokaze/frame.js',

@@ -363,6 +363,8 @@ function clip(rect, holes, m = 0) {
 class School {
   constructor() {
     this.P = new Parts();
+    /* The pictures hung on the walls (./pictures.js paints them). */
+    this.pictures = [];
   }
 
   /* A box between two plan corners, solid and drawn. */
@@ -413,6 +415,20 @@ class School {
     } else {
       this.paint(m, d0, a0, c0, d1, a1, c1);
     }
+  }
+
+  /* A picture on a wall's face, the size of the rectangle a face() would
+   * paint there, `lift` out of it: one quad on the school's one sheet of
+   * pictures (./pictures.js), keyed by what is painted on it. Drawn, never
+   * solid. A plan direction out of the face becomes the compass letter
+   * the sheet's mesh reads: 'x' faces north (+1) or south, 'y' east (+1) or
+   * west. */
+  picture(key, dir, at, side, a0, a1, c0, c1, lift = 0.03) {
+    const along = (a0 + a1) / 2;
+    const o = at + side * lift;
+    this.pictures.push(dir === 'x'
+      ? { key, px: along, py: o, h: (c0 + c1) / 2, w: a1 - a0, ht: c1 - c0, face: side > 0 ? 'n' : 's' }
+      : { key, px: o, py: along, h: (c0 + c1) / 2, w: a1 - a0, ht: c1 - c0, face: side > 0 ? 'e' : 'w' });
   }
 
   /* A face painted all over but its holes. */
@@ -811,19 +827,11 @@ function classroom(H, x0, f, o = {}) {
   H.block('scWood', wf, p0, x0 + 1.0, p1, lv, lv + 0.2, 'platform');
   const pc = o.podium ?? 3.7;
   H.block('scWood', x0 + 0.5, pc - 0.4, x0 + 1.0, pc + 0.4, lv + 0.2, lv + 1.05, 'podium');
-  H.face('scBoard', 'y', wf, 1, b0, b1, lv + 0.9, lv + 2.1);
+  /* The board and its chalk, drawn by hand on the sheet of pictures:
+   * each class has its own lesson on it (./pictures.js). */
+  H.picture(`board-${o.id}`, 'y', wf, 1, b0, b1, lv + 0.9, lv + 2.1, 0.012);
   H.frame('scWood', 'y', wf, 1, b0, b1, lv + 0.9, lv + 2.1, 0.05);
   H.face('scWhite', 'y', wf, 1, b0, b1, lv + 0.85, lv + 0.88, 0.024);
-  /* Chalk: a noughts and crosses grid and a line of the day's lesson. */
-  const g = b0 + 0.6;
-  for (const k of [0.25, 0.5]) {
-    H.face('scWhite', 'y', wf, 1, g + k, g + k + 0.025, lv + 1.25, lv + 1.95, 0.024);
-    H.face('scWhite', 'y', wf, 1, g, g + 0.75, lv + 1.25 + k * 1.4, lv + 1.275 + k * 1.4, 0.024);
-  }
-  for (let a = b0 + 1.8; a < b1 - 0.6; a += 0.34) {
-    H.face('scWhite', 'y', wf, 1, a, a + 0.22, lv + 1.8, lv + 1.83, 0.024);
-    H.face('scWhite', 'y', wf, 1, a + 0.06, a + 0.26, lv + 1.55, lv + 1.58, 0.024);
-  }
   /* The clock over the board. */
   H.face('scWhite', 'y', wf, 1, pc - 0.16, pc + 0.16, lv + 2.28, lv + 2.6);
   H.face('scDark', 'y', wf, 1, pc - 0.015, pc + 0.015, lv + 2.44, lv + 2.57, 0.024);
@@ -850,9 +858,11 @@ function classroom(H, x0, f, o = {}) {
   }
   const [n0, n1] = o.notice ?? [1.0, 6.0];
   H.face('scWood', 'y', wb, -1, n0, n1, lv + 1.3, lv + 2.25);
+  /* The papers pinned on it, drawn: a timetable, the class's goals, the
+   * children's pictures. */
   [[1.3, 1.8, 2.15], [2.2, 1.6, 2.0], [3.4, 1.85, 2.18], [4.3, 1.45, 1.95], [5.2, 1.7, 2.1]].forEach(([y, h0, h1], i) => {
     if (y >= n0 && y + 0.5 <= n1) {
-      H.face(i % 2 ? 'scWhite' : 'scPink', 'y', wb, -1, y, y + 0.5, lv + h0, lv + h1, 0.024);
+      H.picture(`paper-${(i + (o.id === '1b' || o.id === '2b' ? 2 : 0)) % 5}`, 'y', wb, -1, y, y + 0.5, lv + h0, lv + h1, 0.024);
     }
   });
   /* Lamps, the windows on the outside wall. */
@@ -957,11 +967,8 @@ function music(H) {
     H.box('scDark', x - 0.2, 3.38, lv + 1.05, x + 0.2, 3.42, lv + 1.35, { name: 'stand' });
   }
   /* The board on the east wall, its staves. */
-  H.face('scBoard', 'y', 36.94, -1, 1.2, 6.0, lv + 0.9, lv + 2.1);
+  H.picture('board-music', 'y', 36.94, -1, 1.2, 6.0, lv + 0.9, lv + 2.1, 0.012);
   H.frame('scWood', 'y', 36.94, -1, 1.2, 6.0, lv + 0.9, lv + 2.1, 0.05);
-  for (let k = 0; k < 5; k += 1) {
-    H.face('scWhite', 'y', 36.94, -1, 1.5, 5.7, lv + 1.3 + k * 0.1, lv + 1.32 + k * 0.1, 0.024);
-  }
   lamps(H, 1, [31.0, 33.0, 35.0], [2.2, 5.0]);
   outerWindows(H, 1, 29, 37, false);
 }
@@ -1012,8 +1019,11 @@ function lunch(H) {
   /* A water cooler and a menu board. */
   H.block('scWhite', 3.06, 16.3, 3.6, 17.0, lv, lv + 1.1, 'cooler');
   H.block('scBlue', 3.15, 16.4, 3.5, DEP, lv + 1.1, lv + 1.45, 'cooler');
-  H.face('scBoard', 'y', 3.06, 1, 11.0, 13.6, lv + 1.0, lv + 2.0);
+  H.picture('board-lunch', 'y', 3.06, 1, 11.0, 13.6, lv + 1.0, lv + 2.0, 0.012);
   H.frame('scWood', 'y', 3.06, 1, 11.0, 13.6, lv + 1.0, lv + 2.0, 0.05);
+  /* Two posters on the kitchen's wall, north of the hatch's counter. */
+  roomPoster(H, 'poster-hands', 14.94, -1, 11.2, lv);
+  roomPoster(H, 'poster-festival', 14.94, -1, 12.6, lv);
   lamps(H, 0, [5.0, 8.5, 12.0], [12.0, 14.8]);
   outerWindows(H, 0, 3, 15, true);
 }
@@ -1126,12 +1136,19 @@ function art(H) {
     H.cap('scWood', [x + 0.25, y + 0.1, lv], [x, y - 0.05, lv + 1.7], 0.025, { name: 'easel', seg: 6 });
     H.cap('scWood', [x, y + 0.45, lv], [x, y + 0.05, lv + 1.6], 0.025, { name: 'easel', seg: 6 });
     H.box('scWhite', x - 0.32, y - 0.12, lv + 0.85, x + 0.32, y - 0.08, lv + 1.55, { name: 'canvas' });
+    /* What the club has been painting on it. */
+    H.picture(`easel-${Math.round((x - 11.3) / 1.2)}`, 'x', y - 0.12, -1, x - 0.3, x + 0.3, lv + 0.87, lv + 1.53, 0.004);
   }
   H.block('scWood', 11.2, 11.0, 12.4, 11.6, lv, lv + 1.6, 'rack');
   for (let k = 1; k < 8; k += 1) {
     H.face('scDark', 'x', 11.0, -1, 11.25, 12.35, lv + k * 0.2, lv + k * 0.2 + 0.02);
   }
   H.block('scWhite', 3.06, 11.0, 3.7, 13.0, lv, lv + 0.85, 'sink');
+  /* The club's own posters, both end walls. */
+  roomPoster(H, 'poster-kind', 3.06, 1, 13.9, lv);
+  roomPoster(H, 'poster-club', 3.06, 1, 15.3, lv);
+  roomPoster(H, 'poster-sports', 14.94, -1, 11.4, lv);
+  roomPoster(H, 'poster-read', 14.94, -1, 14.2, lv);
   /* The plaster bust on its stand. */
   H.block('scWhite', 8.6, 16.6, 9.0, DEP, lv, lv + 1.0, 'stand');
   H.cap('scWhite', [8.8, 16.8, lv + 1.15], [8.8, 16.8, lv + 1.2], 0.14, { name: 'bust', look: 'capsule', seg: 8 });
@@ -1191,6 +1208,61 @@ function club(H) {
   outerWindows(H, 1, 27, 37, true);
 }
 
+/*
+ * THE POSTERS, in every stretch of hallway wall clear of a door, a window,
+ * a pillar stub, a notice board and the fittings, at eye height over the
+ * wainscot: the school's own, drawn by hand on the sheet of pictures
+ * (./pictures.js), dealt down the hallways in this order.
+ */
+export const POSTERS = ['poster-flying', 'poster-festival', 'poster-club', 'poster-hands', 'poster-cat', 'poster-sports', 'poster-read', 'poster-kind'];
+const POSTER_W = 0.5;
+const POSTER_H = [1.21, 1.89];
+/* What else is on a hallway wall at that height: [f, side, a0, a1]. */
+const HALL_FITTINGS = [
+  [0, 's', 18.55, 19.5], [0, 's', 32.4, 34.2], [0, 'n', 13.6, 14.8], [0, 'n', 17.4, 18.85], [0, 'n', 31.15, 32.5],
+  [1, 's', 18.55, 19.5], [1, 'n', 23.55, 24.5], [1, 'n', 36.5, 37.0],
+];
+/* One poster on a room's end wall: the wall at px = at, facing east
+ * (side 1) or west (-1), its middle at py = y. */
+function roomPoster(H, key, at, side, y, lv) {
+  H.picture(key, 'y', at, side, y - POSTER_W / 2, y + POSTER_W / 2, lv + POSTER_H[0], lv + POSTER_H[1], 0.012);
+}
+
+function posters(H) {
+  let next = 0;
+  for (const f of [0, 1]) {
+    const lv = floorOf(f);
+    for (const side of ['s', 'n']) {
+      const wallAt = side === 's' ? HALL_S : HALL_N;
+      const blocked = OPENINGS
+        .filter((o) => o.f === f && o.axis === 'x' && o.at === wallAt && o.h0 < lv + POSTER_H[1] && o.h1 > lv + POSTER_H[0])
+        .map((o) => [o.a0, o.a1]);
+      const stubs = side === 's' ? [11, 21, 29] : (f ? [15, 27] : [15, 19, 27, 31]);
+      for (const x of stubs) blocked.push([x - 0.15, x + 0.15]);
+      for (const [ff, ss, a0, a1] of HALL_FITTINGS) {
+        if (ff === f && ss === side) blocked.push([a0, a1]);
+      }
+      blocked.sort((a, b) => a[0] - b[0]);
+      let from = 3.2;
+      const stretches = [];
+      for (const [a0, a1] of [...blocked, [LEN - 3.2, LEN]]) {
+        if (a0 - 0.12 > from) stretches.push([from, a0 - 0.12]);
+        from = Math.max(from, a1 + 0.12);
+      }
+      for (const [a, b] of stretches) {
+        const n = Math.min(2, Math.floor((b - a - 0.1) / 0.75));
+        for (let k = 0; k < n; k += 1) {
+          const c = a + ((k + 0.5) * (b - a)) / n;
+          const key = POSTERS[next % POSTERS.length];
+          next += 1;
+          H.picture(key, 'x', side === 's' ? HALL.y0 : HALL.y1, side === 's' ? 1 : -1,
+            c - POSTER_W / 2, c + POSTER_W / 2, lv + POSTER_H[0], lv + POSTER_H[1], 0.012);
+        }
+      }
+    }
+  }
+}
+
 /* The hallways: wainscot, lamps, the pillar stubs at the partitions, the
  * banners, the notice boards, the sinks, a bench, the trophy case and the
  * class plates over the doors. */
@@ -1232,7 +1304,10 @@ function hallways(H) {
       const y0 = s > 0 ? HALL.y0 : HALL.y1 - 0.3;
       const x = o.a0 + 0.02;
       H.box('scWhite', x, y0, lv + 2.2, x + 0.03, y0 + 0.3, lv + 2.38, { name: 'plate', cast: false });
-      H.paint('scWood', x - 0.005, y0 + 0.02, lv + 2.34, x + 0.035, y0 + 0.28, lv + 2.37);
+      /* The room's name on both faces, read from down the hallway. */
+      const room = o.rooms[s > 0 ? 0 : 1];
+      H.picture(`plate-${room}`, 'y', x + 0.03, 1, y0 + 0.015, y0 + 0.285, lv + 2.21, lv + 2.37, 0.004);
+      H.picture(`plate-${room}`, 'y', x, -1, y0 + 0.015, y0 + 0.285, lv + 2.21, lv + 2.37, 0.004);
     }
     /* Notice boards between doors. */
     for (const [a0, a1, at, side] of f
@@ -1246,6 +1321,7 @@ function hallways(H) {
       H.face('scPink', 'x', at, side, a0 + 0.6, a1 - 0.1, lv + 1.3, lv + 1.6, 0.024);
     }
   }
+  posters(H);
   /* Downstairs: the hand basins by the kitchen, a bench, the trophy case. */
   const lv = FLOOR0;
   H.block('scSteel', 17.4, HALL.y1 - 0.4, 18.85, HALL.y1, lv, lv + 0.8, 'basin');
@@ -1317,10 +1393,10 @@ export function schoolLayout() {
   stairs(H, true);
   hallways(H);
   /* 1-A: vent A's mouth in its cubbies, a desk left out in front of it. */
-  classroom(H, 3, 0, { cubbies: [[0, 3.74], [4.31, 6.75], [3.74, 4.31, FLOOR0 + 0.81, FLOOR0 + 1.0]] });
+  classroom(H, 3, 0, { id: '1a', cubbies: [[0, 3.74], [4.31, 6.75], [3.74, 4.31, FLOOR0 + 0.81, FLOOR0 + 1.0]] });
   lab(H);
   /* 1-B: the lab's door in its front wall, so its board stops short. */
-  classroom(H, 21, 0, { platform: [1.0, 5.2], board: [1.0, 5.0], podium: 3.1 });
+  classroom(H, 21, 0, { id: '1b', platform: [1.0, 5.2], board: [1.0, 5.0], podium: 3.1 });
   shoes(H);
   lunch(H);
   kitchen(H);
@@ -1328,16 +1404,18 @@ export function schoolLayout() {
   nurse(H);
   store(H);
   /* 2-A: the library's door in its back wall. */
-  classroom(H, 3, 1, { cubbies: [[0, 1.6], [3.5, 6.75]], notice: [3.3, 6.2] });
+  classroom(H, 3, 1, { id: '2a', cubbies: [[0, 1.6], [3.5, 6.75]], notice: [3.3, 6.2] });
   library(H);
   /* 2-B: vent C's mouth in its cubbies. */
-  classroom(H, 21, 1, { cubbies: [[0, 3.74], [4.31, 6.75], [3.74, 4.31, F1 + 0.81, F1 + 1.0]] });
+  classroom(H, 21, 1, { id: '2b', cubbies: [[0, 3.74], [4.31, 6.75], [3.74, 4.31, F1 + 0.81, F1 + 1.0]] });
   music(H);
   art(H);
   computer(H);
   club(H);
   pads(H);
-  return { parts: H.P.list.slice(), prisms: [], discs: [], cones: [], scaled: [] };
+  return {
+    parts: H.P.list.slice(), prisms: [], discs: [], cones: [], scaled: [], pictures: H.pictures.slice(),
+  };
 }
 
 /* ------------------------------------------------------------------ */

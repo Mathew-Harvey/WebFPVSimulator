@@ -1215,6 +1215,8 @@
          the cut. The palette's: cream for type, amber for the clock, mint
          for points, sakura red for REC. */
       .film-hud { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+      /* Infected's strip is its clock: the airtime over it goes (ui.js osdTag). */
+      .osd.is-tag .osd-clock { visibility: hidden; }
       .film-hud.is-off, .film-card.is-off, .film-focus.is-off { display: none; }
       .film-finder { position: absolute; inset: clamp(10px, 2.2vw, 28px); }
       .film-corner { position: absolute; width: clamp(22px, 3vw, 40px); height: clamp(22px, 3vw, 40px); border: 0 solid rgba(243, 234, 212, 0.85); filter: drop-shadow(0 0 1px rgba(8, 12, 9, 0.9)); }

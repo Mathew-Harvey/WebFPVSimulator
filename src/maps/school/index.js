@@ -6,8 +6,10 @@
  * the place is `map.infectedGame`.
  *
  * LATENCY: nothing on any other map (this loads only when the map is
- * chosen). Here, one chunk of sixteen colours, sixteen draw calls, and the
- * partners' five signs, the same as every built map's.
+ * chosen). Here, one chunk of fifteen colours, fifteen draw calls, the
+ * pictures on the walls as one more (./pictures.js: the blackboards were a
+ * colour of their own until they were drawn there, so the count is what it
+ * was), and the partners' five signs, the same as every built map's.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -25,12 +27,15 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
+import * as THREE from 'three';
 import { buildMap as buildBuilt } from '../built/index.js';
 import { warmPrograms } from '../../render/warm.js';
+import { paintMaterial } from '../../art/stf.js';
 import {
   schoolLayout, signSpots, hallLoop, CARD_LENS, SCHOOL_PLAN,
 } from './school.js';
 import { schoolDocument } from './yard.js';
+import { paintPictures, pictureMesh } from './pictures.js';
 import { INK_COLOR } from '../../render/comic.js';
 
 const CHUNK = 'extra';
@@ -83,6 +88,15 @@ export async function buildMap(shell, onProgress, options) {
   map.cardLens = CARD_LENS;
   /* The game, for the shell (syncDogfight in src/main.js). */
   map.infectedGame = { plan: SCHOOL_PLAN };
+  /* What is drawn on the walls, painted once, one mesh (./pictures.js).
+   * The built map's dispose frees what is in its scene, this with it. */
+  const atlas = paintPictures(L.pictures);
+  if (atlas) {
+    const tex = new THREE.CanvasTexture(atlas.canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 4;
+    map.scene.add(pictureMesh(THREE, L.pictures, atlas, paintMaterial(THREE, tex)));
+  }
   houseInk(map.post);
   await warmPrograms(shell.renderer, map.scene, shell.camera, map.post.rtScene);
   return map;

@@ -310,7 +310,8 @@ export class InfectedRoom extends DogfightRoom {
 
   /* A tag the board believed, { n, by, to, got, chain, last }: true on
    * every page now, the tagger's own included, which drew nothing until
-   * the board said so. */
+   * the board said so. `by` -1 is the infection handed on because the only
+   * infected pilot left: no tagger, no points. */
   heardTag(msg) {
     if (msg.n !== this.state.n) {
       return;
@@ -391,16 +392,20 @@ export class InfectedRoom extends DogfightRoom {
   }
 
   /* Held on the pad: everybody out of a round and through its countdown,
-   * and the infected through the head start. */
+   * and whoever started infected, in the tank, through the head start
+   * (a friend who came in during it starts there too). Not one the board
+   * handed the infection to when the only infected pilot left (infHandOff
+   * in the board's src/rooms.js): that one has a caught time, is already
+   * flying, and holding it would stop it where it is. */
   holds(i) {
     if (this.over || !this.inFight[i]) return !this.inFight[i] && this.isBot[i] === 1;
     if (this.startedMs < 0 || this.clockMs < this.startedMs) return true;
-    return this.inf[i] === 1 && this.clockMs < this.huntAt;
+    return this.inf[i] === 1 && this.caughtMs[i] < 0 && this.clockMs < this.huntAt;
   }
 
   holdsMe() {
     if (!this.inFight[ME] || this.over || this.startedMs < 0) return false;
-    return this.clockMs < this.startedMs || (this.inf[ME] === 1 && this.clockMs < this.huntAt);
+    return this.clockMs < this.startedMs || (this.inf[ME] === 1 && this.caughtMs[ME] < 0 && this.clockMs < this.huntAt);
   }
 
   headLeftMs() {
@@ -439,7 +444,7 @@ export class InfectedRoom extends DogfightRoom {
     }
     if (!this.freeSaid && now >= this.huntAt) {
       this.freeSaid = true;
-      if (this.pz >= 0) {
+      if (this.pz >= 0 && this.inFight[this.pz]) {
         this.event('free', this.pz, this.pz, 0, '', this.x[this.pz], this.y[this.pz], this.z[this.pz]);
       }
     }

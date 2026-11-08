@@ -520,8 +520,8 @@ MAP_MODULE_COUNT.dock = 10;
 MAP_MODULE_COUNT.hayate = 10;
 /* Hanabi Sound (src/maps/concert/): its five. */
 MAP_MODULE_COUNT.concert = 5;
-/* Midori Gakuen (src/maps/school/): its three. */
-MAP_MODULE_COUNT.school = 3;
+/* Midori Gakuen (src/maps/school/): its four. */
+MAP_MODULE_COUNT.school = 4;
 /* Where a map's modules live, so the loading bar can count them. Data, not a
  * ternary: the ternary read "field or else city", so a third map counted its
  * modules under the city's prefix and the bar sat at zero.
@@ -14191,6 +14191,10 @@ export async function boot({ loading, bootStart, mapId }) {
         /* On the pad, before this run's first takeoff and with the throttle
          * still down: the cluster sits on a small ink plate (R2M-11). */
         padWait: !aloft && !flownThisRun && ch.throttle <= PAD_WAIT_THROTTLE,
+        /* No first-flight card over an Infected round: a pilot landing to
+         * hide had the Weight card over the middle of the picture. Put
+         * away, not retired, so it comes back in a free flight. */
+        quiet: Boolean(fightGame && fightGame.infRules),
       });
       /* The chips fade on the same test: see syncChipFade. */
       ui.syncChipFade(aloft, nowWall);
@@ -14425,6 +14429,11 @@ export async function boot({ loading, bootStart, mapId }) {
         /* The goat map: the herd is the game and it has a clock, so the
          * freestyle promise of none is not true of it (goathud.js). */
         second = "\nFly low to herd the goats into Heads' garage. The clock starts at the first goat you move.";
+      } else if (race.freestyle && view.infectedGame) {
+        /* The school flown alone, out of a round: its overlay is down
+         * (syncScoreVisible in src/ui/ui.js, Infected's points are the
+         * game's strip), so it promises no count it will not show. */
+        second = '\nNo clock and no gates. Fly the whole school.';
       } else if (race.freestyle) {
         /* The counter counts the lines in every position (decision 2), so
          * even Lines only has something to promise now. With Manga and

@@ -4815,6 +4815,25 @@ function craftItem(s, midRun) {
 }
 
 /*
+ * THE AIRCRAFT ROW ON A MAP FLOWN ON ONE QUAD ONLY, a readout: Midori
+ * Gakuen is whoops only (the owner's word of 2026-11-08), so the seated
+ * quad is not swapped from here while it is the map. Null anywhere else.
+ */
+function onlyCraftItem(s) {
+  const world = MAPS.find((x) => x.id === s.map);
+  if (!world || !world.craftOnly || s.airframe !== world.craft) {
+    return null;
+  }
+  const af = airframeById(s.airframe);
+  return {
+    label: 'Aircraft',
+    value: af.name,
+    note: `${world.name} is flown on the ${af.name.toLowerCase()} only. Pick another map to fly the other quad.`,
+    action: 'noop',
+  };
+}
+
+/*
  * THE AIRCRAFT ROW IN A ROOM, a readout and not a choice. A room is one
  * aircraft for everybody in it, the host's (craftForRoom in
  * src/net/roomlinks.js), and joining one swaps a pilot onto it. Swapping
@@ -11084,7 +11103,7 @@ export class Ui {
          * decoration, and decoration is what gives way.
          */
         { label: 'The machine', section: true },
-        this.roomInfo ? roomCraftItem(s, this.roomInfo) : craftItem(s, midRun),
+        this.roomInfo ? roomCraftItem(s, this.roomInfo) : (onlyCraftItem(s) || craftItem(s, midRun)),
         ...quadAskRow(s, this.roomInfo),
         tuneItem(s, midRun),
         {
@@ -11980,7 +11999,9 @@ export class Ui {
         { label: 'Elsewhere', section: true },
         { label: 'Settings', action: 'pilot', note: 'Your name, your radio, graphics and sound.' },
         { label: 'Leave the round', action: 'fight-leave', note: 'Fly the school on your own, with no bots.' },
-        { label: 'Quit to title', action: 'title' },
+        /* Where it lands, said: Quit from a mini game is back on the Mini
+         * games page when there is one (fromGame in act). */
+        { label: this.roomsOn ? 'Back to Mini games' : 'Quit to title', action: 'title' },
       ];
     }
     if (this.screen === 'paused' && this.dogfight && this.dogfight.game === 'goats') {
@@ -19366,6 +19387,14 @@ export class Ui {
       this.osdFree = freestyle;
       this.osd.classList.toggle('is-free', freestyle);
     }
+    /* Infected's clock is its own strip's, right under this one, and the
+     * airtime here meant nothing in a game of tag but two clocks one over
+     * the other (the review of 8 November 2026). Written on a change only. */
+    const tag = Boolean((this.dogfight && this.dogfight.game === 'infected') || (this.roomInfo && this.roomInfo.infected));
+    if (this.osdTag !== tag) {
+      this.osdTag = tag;
+      this.osd.classList.toggle('is-tag', tag);
+    }
     /* Before the first gate there is no lap to time, so the clock reads
      * zero and dims rather than showing a row of dashes. */
     const running = lapMs != null && Number.isFinite(lapMs);
@@ -19532,6 +19561,8 @@ export class Ui {
        * (src/ui/filmhud.js): two scores on one screen is one too many. */
       && this.settings.map !== 'drift'
       && this.settings.map !== 'ball'
+      /* Infected's points are its own strip's (src/ui/infectedhud.js). */
+      && this.settings.map !== 'school'
       && this.settings.map !== 'moto'
       && this.settings.map !== 'ekimae'
       && this.settings.map !== 'fmx'
@@ -20986,7 +21017,7 @@ export class Ui {
    * after some air, sitting still with the slider under it and a thumb
    * free, and it retires, remembered, on the next takeoff.
    */
-  setAirSlider(show, ready = true, { airMs = 0, padWait = false } = {}) {
+  setAirSlider(show, ready = true, { airMs = 0, padWait = false, quiet = false } = {}) {
     const air = this.osdAir;
     if (!air) {
       return;
@@ -21003,7 +21034,9 @@ export class Ui {
      * the next one. It now goes, and is remembered as dismissed, when the
      * quad leaves the ground again, on every device.
      */
-    const dialog = Boolean(this.nameDialog && !this.nameDialog.hidden);
+    /* `quiet` (a game round on, src/main.js) is a modal for the cards:
+     * each is put away, not retired, and none is raised under it. */
+    const dialog = Boolean(this.nameDialog && !this.nameDialog.hidden) || quiet;
     if (!air.hint.hidden) {
       const done = ready;
       if (done) {
@@ -22671,7 +22704,12 @@ export class Ui {
     const name = this.settings.map === 'built' && this.sharedMap
       ? this.sharedMap.name
       : (world && world.name) || 'This map';
-    this.askQuad(world, name, key).then((got) => {
+    /* A map flown on one quad only is not asked about, here as from its
+     * card (pickerAction): Midori Gakuen is whoops only (2026-11-08). */
+    const asked = world && world.craftOnly
+      ? Promise.resolve({ craft: world.craft, always: false, tune: false })
+      : this.askQuad(world, name, key);
+    asked.then((got) => {
       if (!got) {
         this.quadAskOnFly = key;
         return;

@@ -94,8 +94,20 @@ async function main() {
   try {
     check('the shell comes up', await until('return !!window.__shellReady', 120000));
     check('the school is ready', await until("const m = window.__map ? window.__map() : null; return Boolean(m && m.ready && m.id === 'school');", 150000));
-    await answerQuadPicker(page, 15000).catch(() => {});
-    await until("return window.__ui.screen === 'flight'", 20000);
+    /* A link to the school flies the whoop, the only quad it is flown on,
+     * with no quad picker: one used to open on a five inch and wait. */
+    await sleep(2500);
+    const picker = "const d = document.querySelector('.name-dialog'); return Boolean(d && !d.hidden && document.querySelector('.qp-page'));";
+    const asked = await ev(picker);
+    check('a school link flies the whoop with no quad picker', !asked && await until("return window.__ui.screen === 'flight'", 20000)
+      && await ev("return window.__ui.settings.airframe === 'whoop65';"));
+    if (asked) {
+      await answerQuadPicker(page, 15000).catch(() => {});
+      await until("return window.__ui.screen === 'flight'", 20000);
+    }
+    /* Flown alone, the school promises no count it will not show. */
+    check('the school alone says no clock and no gates, and promises no count', await until("const b = window.__ui.banner; return Boolean(b) && /Fly the whole school/.test(b.textContent) && !/count/.test(b.textContent);", 10000));
+    check('and has no score overlay', await ev("const h = document.querySelector('.score-hud'); return !h || h.classList.contains('is-off');"));
     const free = await ev('return window.__renderStats().calls;');
     await ev(`window.__ui.dogfight = { game: 'infected', bots: 9, skills: ['easy', 'easy', 'easy', 'medium', 'medium', 'medium', 'hard', 'hard', 'hard'], round: '2m', head: 5, first: 'bot' }; return 1;`);
     check('the round builds', await until(`${G} return Boolean(g && g.infRules);`, 60000));
@@ -110,6 +122,22 @@ async function main() {
     const words = await ev("return document.querySelector('.if-hud').textContent;");
     check('no word of slime anywhere on it', !/slime/i.test(words));
     await shot('1-wait');
+    /* The pause in a round: the waiting room, leaving the round, and Quit
+     * says where it lands; Settings shows the whoop as the school's only
+     * quad, with nothing to swap it for. */
+    await ev("window.__ui.act('pause'); window.__ui.show('paused'); return 1;");
+    await until("return window.__ui.screen === 'paused'", 5000);
+    const labels = await ev("return window.__ui.items().map((i) => i.label);");
+    check('the pause has the waiting room, Leave the round and Back to Mini games', ['Resume', 'Waiting room', 'Leave the round', 'Back to Mini games'].every((l) => labels.includes(l))
+      && !labels.some((l) => /swap|change map/i.test(l)), labels.join(' | '));
+    await ev("window.__ui.act('quad'); return 1;");
+    await sleep(400);
+    const craft = await ev("const a = window.__ui.items().find((i) => i.label === 'Aircraft'); return a ? { value: a.value || '', cards: Boolean(a.cards), note: a.note || '' } : null;");
+    check('Settings shows the whoop as the school\'s one quad, not a swap', craft && /whoop/i.test(craft.value) && !craft.cards && /only/.test(craft.note), JSON.stringify(craft));
+    await ev("window.__ui.act('resume'); return 1;");
+    check('Resume is back in the round, still waiting', await until(`return window.__ui.screen === 'flight' && window.__dogfight() && window.__dogfight().phase === 'wait';`, 5000));
+    check('the score overlay stays down in a round', await ev("const h = document.querySelector('.score-hud'); return !h || h.classList.contains('is-off');"));
+    check('and the airtime clock gives way to the round\'s own', await until("const c = document.querySelector('.osd .osd-clock'); return Boolean(c) && getComputedStyle(c).visibility === 'hidden';", 5000));
     await ev('window.__stick(0, 0, 0, 0.62); return 1;');
     check('taking off starts the head start', await until(`${G} return g.startedMs >= 0;`, 20000));
     check('the first infected is held', await ev(`${G} return g.phase === 'head' && g.holds(g.pz);`));
@@ -206,6 +234,7 @@ async function main() {
     }
     await ev("window.__ui.act('pause'); window.__ui.act('fight-leave'); return 1;");
     check('leaving ends the round', await until('return !window.__dogfight();', 10000));
+    check('and the airtime clock is back', await until("const c = document.querySelector('.osd .osd-clock'); return Boolean(c) && getComputedStyle(c).visibility !== 'hidden';", 5000));
     /* The Mini games page, as Back from a game's own page opens it. */
     await ev("const u = window.__ui; u.mode = null; u.craftGate = true; u.gatePage = 'games'; u.gameReturn = false; u.show('title'); u.renderMenu(); return 1;");
     check('the Mini games page has the Infected card', await until("const e = document.querySelector('.gate-card-mg-infected'); if (!e) return false; const r = e.getBoundingClientRect(); return r.width > 120 && r.height > 30 && r.right <= innerWidth + 2 && r.bottom <= innerHeight + 2;", 15000));

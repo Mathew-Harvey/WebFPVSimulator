@@ -48,7 +48,6 @@ export const MATERIALS = {
   scWhite: { c: 0xf6f2ea, tint: 0xd2cad8, noReceive: true },
   /* furniture */
   scSteel: { c: 0x8a93a0, tint: 0x55587a, noReceive: true },
-  scBoard: { c: 0x2f5243, tint: 0x24344a, noReceive: true },
   scDark: { c: 0x2c2e36, tint: 0x20212e, noReceive: true },
   /* paints */
   scRed: { c: 0xd2483e, tint: 0x6e3454, noReceive: true },

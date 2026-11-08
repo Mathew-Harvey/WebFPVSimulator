@@ -16,6 +16,17 @@
  *               lasts longer than one with easy ones, nobody is stuck for
  *               long, and the cost of a feed is printed
  *   4. same     a round played twice from one seed is the same to the bit
+ *   5. room     a room's round on two pages: seats, holds, the board's word
+ *               making a tag and a shave, a bot's tag from the host's page,
+ *               the last one and the table, and the infection handed on
+ *               when the only infected pilot leaves
+ *   6. rules    the solo round's rules one by one: who starts infected, the
+ *               holds, the chain x1 to x4 and its reset, the last one and
+ *               the cut clock, the closer and last caught bonuses, the
+ *               bell's survivor and outlasted bonuses, a round of two, three
+ *               rounds a match with the first caught starting the next, the
+ *               glass tank stopping a tag, the close shave and its cool
+ *               down, and the sniff's cadence
  *
  * Usage: node scripts/infected-arena.js [--rounds=6] [--verbose]
  *
@@ -49,7 +60,7 @@ import { seatDocument } from '../src/maps/built/place.js';
 import { Colliders } from '../src/game/collide.js';
 import { SchoolMap, schoolWorld, CLASSES, ROOM } from '../src/game/infectbots.js';
 import {
-  InfectedRound, CAP, ME, DOGFIGHT_EVERY, LEGS, TAG_R, SHAVE_R, POINTS,
+  InfectedRound, CAP, ME, DOGFIGHT_EVERY, LEGS, TAG_R, SHAVE_R, POINTS, CHAIN_MS, CHAIN_MAX, LAST_MS, SNIFF_EVERY,
 } from '../src/game/infected.js';
 import { InfectedRoom } from '../src/game/infectedroom.js';
 
@@ -497,8 +508,172 @@ function roomBlock(w) {
   check('the round\'s table is the board\'s, and the last one wins', pal.over && pal.winner === ME && top.slot === ME && top.total === 1800 && host.winner === host.slotOf(2));
   check('with the match not over yet', !pal.matchOver && pal.leg === 1);
   check('nothing on a room page judges the round\'s end', host.judged === false);
+  /* The hand off: the only infected pilot leaves in the head start, and
+   * the board gives it to the friend as a tag by nobody (infHandOff in the
+   * board's src/rooms.js). */
+  const r3 = {
+    ...count, phase: 'live', n: 3, leg: 0, goAt: clock - 1000, huntAt: clock + 4000, endAt: clock + 124_000, pz: 1, gold: -1, winner: null, nextAt: 0, rows: rows({}),
+  };
+  pal.heard(r3, toLocal);
+  events(pal);
+  check('a clean friend is free in the head start', !pal.holdsMe() && pal.phase === 'head');
+  pal.heard({ ...r3, rows: rows({ 1: { left: true }, 2: { inf: true, caughtAt: clock } }) }, toLocal);
+  const before = pal.ptsBase[ME];
+  pal.heardTag({
+    t: 'ifTag', n: 3, by: -1, to: 2, got: 0, chain: 0, last: false, hand: true,
+  });
+  let handEv = null;
+  for (let n = 0; n < pal.eventCount; n += 1) if (pal.events[n].type === 'tag') handEv = pal.events[n];
+  check('handed the infection, the friend is infected, with no tagger and no points', pal.inf[ME] === 1 && handEv && handEv.by < 0 && handEv.to === ME
+    && handEv.pts === 0 && pal.ptsBase[ME] === before, JSON.stringify(handEv && { by: handEv.by, to: handEv.to, pts: handEv.pts }));
+  check('and is not held for the rest of the head start, which would stop them where they are', !pal.holdsMe() && !pal.holds(ME));
+  events(pal);
+  const palSeen = [];
+  for (let t = 0; t < 6000; t += DOGFIGHT_EVERY) {
+    clock += DOGFIGHT_EVERY;
+    pal.step(meOf(pal), false);
+    palSeen.push(...events(pal));
+  }
+  check('nobody who left is let out of the tank', !palSeen.includes('free') && pal.phase === 'hunt', palSeen.join(','));
+  /* A friend who came in during the head start, in the tank, is held. */
+  const r4 = {
+    ...count, phase: 'live', n: 4, leg: 0, goAt: clock - 1000, huntAt: clock + 4000, endAt: clock + 124_000, pz: 1, gold: -1, winner: null, nextAt: 0,
+    rows: rows({ 2: { inf: true, pad: -1 } }),
+  };
+  pal.heard(r4, toLocal);
+  check('a friend in by the tank is held in it through the head start', pal.inf[ME] === 1 && pal.holdsMe());
   const g0 = new InfectedRound(w, { bots: 3 }, 1, { plan: P });
   check('the solo round is untouched by the room', typeof g0.judges === 'function' && g0.judges(0, 1) === true);
+}
+
+function rulesBlock(w) {
+  console.log('\n6. rules');
+  const mk = (rules, seed = 3) => new InfectedRound(w, {
+    bots: 5, round: '2m', head: 5, first: 'me', ...rules,
+  }, seed, { plan: P });
+  const drain = (g) => {
+    const out = [];
+    for (let n = 0; n < g.eventCount; n += 1) out.push({ ...g.events[n] });
+    g.eventCount = 0;
+    return out;
+  };
+  /* Who starts infected. */
+  check('first: me starts the pilot infected, in the tank', mk({}).pz === ME);
+  let bots = 0;
+  let mine = 0;
+  for (let seed = 1; seed <= 24; seed += 1) {
+    if (mk({ first: 'bot' }, seed).pz !== ME) bots += 1;
+    if (mk({ first: 'random' }, seed).pz === ME) mine += 1;
+  }
+  check('first: bot never starts the pilot infected', bots === 24);
+  check('first: random starts anybody, the pilot sometimes', mine > 0 && mine < 24, `${mine} of 24`);
+
+  /* The holds, and the chain. */
+  const g = mk({});
+  check('everybody is held until the round goes', [0, 1, 2, 3, 4, 5].every((i) => g.holds(i)) && g.holdsMe());
+  g.go(g.clockMs);
+  check('then only the first infected, through the head start', g.holdsMe() && !g.holds(1) && g.phase === 'head' && g.huntAt === g.startedMs + 5000);
+  check('the sniff is due twenty seconds into the hunt', g.nextSniff === g.huntAt + SNIFF_EVERY);
+  let t = g.huntAt;
+  g.clockMs = t;
+  check('the hunt frees the first infected', !g.holdsMe() && g.phase === 'hunt');
+  g.tag(ME, 1, t);
+  g.tag(ME, 2, t + 1000);
+  g.tag(ME, 3, t + 2000);
+  check('the chain inside thirty seconds: x1, x2, x3', g.chain[ME] === 3 && g.pts[ME] === 100 + 200 + 300 && g.tags[ME] === 3, `${g.pts[ME]}`);
+  check('the first caught is remembered', g.firstCaught === 1);
+  t += 2000 + CHAIN_MS + 1;
+  g.tag(ME, 4, t);
+  check('a tag after the chain\'s window is x1 again', g.chain[ME] === 1 && g.pts[ME] === 700);
+  check('one clean left among three or more is the last one, and the clock is cut to forty five seconds',
+    g.gold === 5 && g.endAt === t + LAST_MS && g.phase === 'last', `${g.gold}`);
+  drain(g);
+  g.tag(1, 5, t + 3000);
+  const evs = drain(g);
+  check('catching the last one pays them the last caught bonus and the catcher the closer\'s',
+    g.pts[5] === POINTS.lastCaught && g.pts[1] === POINTS.tag + POINTS.closer && g.lastFor[5] === 1, `${g.pts[5]} ${g.pts[1]}`);
+  check('nobody clean ends the round, and the last one caught wins', g.over && g.winner === 5 && evs.some((e) => e.type === 'over'));
+  const tot5 = g.total[5];
+  /* The chain caps at x4. */
+  const c = mk({});
+  c.go(c.clockMs);
+  c.clockMs = c.huntAt;
+  for (let k = 1; k <= 5; k += 1) c.tag(ME, k, c.huntAt + k * 100);
+  /* The fifth was the last one, so the closer's bonus is on top. */
+  check('the chain stops at x4', c.chain[ME] === CHAIN_MAX && c.pts[ME] === 100 + 200 + 300 + 400 + 400 + POINTS.closer, `${c.pts[ME]}`);
+
+  /* Three rounds a match, the first caught starting the next. */
+  g.reset(g.round + 1);
+  check('the next round starts the first one caught last round infected', g.leg === 1 && g.pz === 1 && g.inf[1] === 1 && g.inf[ME] === 0);
+  check('and the match totals carry over', g.total[5] === tot5 && g.pts[5] === 0);
+  g.go(g.clockMs);
+  g.clockMs = g.endAt;
+  g.end(g.endAt, true);
+  check('the bell with several clean pays each the survivor bonus', g.over && [ME, 2, 3, 4, 5].every((i) => g.pts[i] === POINTS.survivor) && g.lastFor[ME] === 0);
+  check('and with nobody last the most points win', g.winner === g.standings()[0].slot && !g.matchOver);
+  g.reset(g.round + 1);
+  check('the third round', g.leg === 2);
+  g.go(g.clockMs);
+  g.end(g.endAt, true);
+  check('which ends the match', g.matchOver);
+  g.reset(g.round + 1);
+  check('and the next is a new match from none', g.leg === 0 && g.total.every((v) => v === 0));
+
+  /* A round of two: a duel, no last one, and the bell pays the clean one
+   * as the last one. */
+  const d = mk({ bots: 1 });
+  d.go(d.clockMs);
+  d.clockMs = d.huntAt + 60_000;
+  check('a duel has no last one', d.gold === -1 && d.phase === 'hunt');
+  d.end(d.endAt, true);
+  check('the bell pays a duel\'s clean pilot for outlasting it, and they win', d.pts[1] === POINTS.lastOut && d.lastFor[1] === 1 && d.winner === 1);
+
+  /* The glass tank: a clean pilot pressed to the glass is not tagged by
+   * the first infected inside it; inside the tank they are. */
+  const q = mk({ bots: 1 });
+  q.go(q.clockMs);
+  q.clockMs = q.huntAt;
+  q.eventCount = 0;
+  const T = P.TANK;
+  const put = (i, px, py, h) => {
+    const [x, y, z] = P.worldAt(px, py, h);
+    q.x[i] = x; q.y[i] = y; q.z[i] = z;
+  };
+  put(ME, T.x0 + 0.25, (T.y0 + T.y1) / 2, 0.9);
+  put(1, T.x0 - 0.25, (T.y0 + T.y1) / 2, 0.9);
+  q.judge(q.huntAt);
+  check('the tank\'s glass stops a tag through it', q.inf[1] === 0 && !drain(q).some((e) => e.type === 'tag'));
+  put(1, T.x0 + 0.7, (T.y0 + T.y1) / 2, 0.9);
+  q.judge(q.huntAt + 20);
+  check('inside the tank, the same distance is a tag', q.inf[1] === 1 && q.over);
+
+  /* A close shave: within SHAVE_R and away again, paid once in its cool
+   * down. */
+  const sh = mk({ bots: 1 });
+  sh.go(sh.clockMs);
+  let st = sh.huntAt;
+  sh.clockMs = st;
+  const pass = (at) => {
+    const [hx, hy, hz] = P.worldAt(20, 8.7, 1.2);
+    sh.x[1] = hx; sh.y[1] = hy; sh.z[1] = hz;
+    const [nx] = P.worldAt(20 + (TAG_R + SHAVE_R) / 2, 8.7, 1.2);
+    sh.x[ME] = nx; sh.y[ME] = hy; sh.z[ME] = hz;
+    sh.judge(at);
+    const [fx] = P.worldAt(23, 8.7, 1.2);
+    sh.x[ME] = fx;
+    sh.judge(at + 20);
+  };
+  pass(st);
+  check('an infected pilot close and away again is a close shave', sh.shaves[1] === 1 && sh.pts[1] === POINTS.shave && sh.inf[1] === 0);
+  pass(st + 1000);
+  check('and not again inside its four second cool down', sh.shaves[1] === 1);
+  st += 4100;
+  pass(st);
+  check('after it, again', sh.shaves[1] === 2);
+
+  /* The sniff: every clean pilot shown, nobody infected. */
+  sh.sniff(st);
+  check('the sniff shows the clean, not the infected', sh.sniffOn[1] === 1 && sh.sniffOn[ME] === 0);
 }
 
 function main() {
@@ -512,6 +687,7 @@ function main() {
   roundsBlock(w);
   sameBlock(w);
   roomBlock(w);
+  rulesBlock(w);
   console.log(failures ? `\n${failures} failed` : '\nall passed');
   process.exitCode = failures ? 1 : 0;
 }

@@ -781,12 +781,38 @@ export async function boot({ loading, bootStart, mapId }) {
    * null checks when idle.
    */
   const gpuGate = createGpuGate(shell.renderer.getContext());
+  /* Context losses and restores this session, and when the one now open
+   * began (null while the context is there). See the listeners below. */
+  const glLoss = { lost: 0, restored: 0, lostAtMs: null };
+  const GL_LOSS_SAY_MS = 3000;
   /* A lost context takes its fences with it and a restored one has none, so
    * both drop the ring untimed rather than leave a fence the guard would
    * wait on for ever. three.js handles the loss itself (it prevents the
    * default, so the browser restores); these only keep the gate honest. */
-  shell.canvas.addEventListener('webglcontextlost', () => gpuGate.reset());
-  shell.canvas.addEventListener('webglcontextrestored', () => gpuGate.reset());
+  /*
+   * AND A LOSS THAT IS NEVER RESTORED IS SAID, to the pilot and in a report.
+   * Three tickets in two days (bug-44d3b178, bug-dda2725a, bug-97c1f894, all
+   * an Intel HD Graphics 620 on Bardwell's yard at Low) said the world went
+   * black while the HUD, the sticks and the music carried on. A context lost
+   * and never given back does exactly that: forced in headless Chromium with
+   * WEBGL_lose_context, the frames stop drawing, the plant and the OSD run
+   * on, and nothing said so, on screen or in the report. Chrome refuses the
+   * restore for a page it blames for a GPU reset, so a reload is the only
+   * way back, and the pilot has to be told. `glLoss` counts both events
+   * for the report's perf block; the banner is set in the frame loop once a
+   * loss has gone GL_LOSS_SAY_MS without a restore, so a loss the browser
+   * restores at once (a driver update, a tab woken) says nothing.
+   */
+  shell.canvas.addEventListener('webglcontextlost', () => {
+    gpuGate.reset();
+    glLoss.lost += 1;
+    glLoss.lostAtMs = performance.now();
+  });
+  shell.canvas.addEventListener('webglcontextrestored', () => {
+    gpuGate.reset();
+    glLoss.restored += 1;
+    glLoss.lostAtMs = null;
+  });
   /*
    * Auto graphics' resolution factor and the controller that moves it: see
    * autoscale.js and renderScaleOf. Declared here, before the first thing
@@ -14191,6 +14217,12 @@ export async function boot({ loading, bootStart, mapId }) {
     if (queuedPick) {
       openPadPick(queuedPick);
     }
+    /* The picture has gone and the browser has not given it back: see glLoss.
+     * Renewed every frame while it lasts, so no other notice can hide it, and
+     * it lapses a second after a restore. */
+    if (glLoss.lostAtMs !== null && nowWall - glLoss.lostAtMs >= GL_LOSS_SAY_MS) {
+      notice = { text: 'The graphics card stopped drawing.\nReload the page to get the picture back.', untilMs: nowWall + 1000 };
+    }
     /* A notice while a menu is up is the menu's, not the banner's: see
      * setMenuNotice. The banner below only ever says it in flight. */
     ui.setMenuNotice(notice && nowWall < notice.untilMs && ui.isModal() ? notice.text : '');
@@ -16110,6 +16142,15 @@ export async function boot({ loading, bootStart, mapId }) {
      * back for it: see gpugate.js. */
     gpuMs: gpuGate.state.samples ? Math.round(gpuGate.state.gpuMs * 10) / 10 : null,
     held: gpuGate.state.skipped,
+    /* Graphics context losses and restores this session, whether one is
+     * open now and for how long: a "black screen, HUD still there" ticket
+     * could not say until bug-97c1f894. */
+    gl: {
+      lost: glLoss.lost,
+      restored: glLoss.restored,
+      lostNow: glLoss.lostAtMs !== null,
+      lostForS: glLoss.lostAtMs !== null ? Math.round((performance.now() - glLoss.lostAtMs) / 1000) : null,
+    },
     /* Key to screen as this browser reports it, and the refresh rate: see
      * latency.js. And whether the flight was fullscreen. */
     keyToScreen: latency.report(),

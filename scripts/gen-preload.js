@@ -52,9 +52,13 @@
  *
  * MODULES is every .js file git tracks under src/ and configs/, not a walk,
  * because it has to cover what a boot imports dynamically as well, which a
- * walk does not follow. A module left out of it loads at its bare address,
- * the old behaviour for that one file; one that is never imported is an
- * entry in an import map and nothing else.
+ * walk does not follow; and then every tracked module those import from
+ * outside the two folders, which is tests/lib/simmod.js today (see
+ * servedModules). A module left out of it loads at its bare address, the
+ * old behaviour for that one file, and a browser keeps that address four
+ * hours: a page whose other modules are a deploy newer than it calls what
+ * is not there (bug-bc53a912). One that is never imported is an entry in an
+ * import map and nothing else.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -151,13 +155,51 @@ function importMap(fresh) {
   return JSON.parse(m[1]);
 }
 
-/* Every module this site serves: what git tracks under src/ and configs/,
- * less fresh.js itself, which is a classic script the pages load by hand. */
+/* The relative specifiers a module imports with a literal import(), which
+ * staticImports does not read. Only for MODULES: the preload lists follow
+ * static imports alone, as the comment at the top says. */
+function dynamicImports(src) {
+  return [...src.matchAll(/\bimport\(\s*['"](\.\.?\/[^'"]+)['"]\s*\)/g)].map((m) => m[1]);
+}
+
+/*
+ * Every module this site serves: what git tracks under src/ and configs/,
+ * less fresh.js itself, which is a classic script the pages load by hand,
+ * AND every tracked module one of those imports from anywhere else.
+ *
+ * The second half is bug-bc53a912. The shell's whole plant wrapper is
+ * tests/lib/simmod.js, imported by src/main.js and the builder's view3d.js,
+ * and it was outside the two folders, so the import map never gave it the
+ * deploy's address. On 2026-11-07 e6f9541 added Sim.readClock there and the
+ * call to it in main.js in one commit. A pilot who had flown before that
+ * reached main came back inside the four hours the domain lets a browser
+ * keep a script: main.js came at the new deploy's address, simmod.js at its
+ * bare one, out of the cache, without readClock, and the first flying frame
+ * threw "sim.readClock is not a function". Following the imports out of the
+ * two folders covers that file and any like it later. A file git does not
+ * track is not served, so it is not listed.
+ */
 function servedModules() {
-  const out = execFileSync('git', ['ls-files', '-z', '--', 'src', 'configs'], { cwd: ROOT, encoding: 'utf8' });
-  return out.split('\0')
-    .filter((f) => f.endsWith('.js') && f !== 'src/fresh.js')
-    .sort();
+  const git = (...paths) => execFileSync('git', ['ls-files', '-z', '--', ...paths], { cwd: ROOT, encoding: 'utf8' })
+    .split('\0').filter((f) => f.endsWith('.js'));
+  const tracked = new Set(git());
+  const out = new Set(git('src', 'configs').filter((f) => f !== 'src/fresh.js'));
+  const queue = [...out];
+  while (queue.length > 0) {
+    const from = queue.pop();
+    const src = readFileSync(join(ROOT, from), 'utf8');
+    for (const spec of [...staticImports(src), ...dynamicImports(src)]) {
+      if (!spec.startsWith('./') && !spec.startsWith('../')) {
+        continue;
+      }
+      const id = posix.normalize(posix.join(posix.dirname(from), spec));
+      if (!out.has(id) && tracked.has(id) && id !== 'src/fresh.js') {
+        out.add(id);
+        queue.push(id);
+      }
+    }
+  }
+  return [...out].sort();
 }
 
 /* The specifiers a module imports statically. */

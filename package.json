@@ -27,7 +27,7 @@
     "lint:memory": "node scripts/memory-check.js",
     "lint:fc": "node scripts/fc-trace.js",
     "lint:frame": "node scripts/frame-check.js",
-    "lint:preload": "node scripts/gen-preload.js --check",
+    "lint:preload": "node scripts/gen-preload.js --check && node scripts/fresh-check.js --static",
     "gen:preload": "node scripts/gen-preload.js",
     "check:drift": "node scripts/drift-check.js",
     "check:ball": "node scripts/ball-selftest.js && node scripts/ball-check.js",

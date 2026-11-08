@@ -58,8 +58,13 @@
  *
  * MODULES and PRELOAD are written by scripts/gen-preload.js, and
  * `npm run lint:preload` fails when they are stale. A module missing from
- * MODULES is imported at its bare address, which is the old behaviour for
- * that one file rather than a failure.
+ * MODULES is imported at its bare address, the old behaviour for that one
+ * file, and that can be a failure: tests/lib/simmod.js was missing until
+ * 2026-11-08, so a returning browser ran a new main.js over the old
+ * simmod.js it had cached and the first flying frame threw "sim.readClock
+ * is not a function" (bug-bc53a912). MODULES now follows the imports out
+ * of src/ and configs/, and `node scripts/fresh-check.js --static` fails
+ * on any module a listed one imports that is not listed itself.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -725,6 +730,7 @@
     'src/ui/ui.js',
     'src/ui/yardhud.js',
     'src/units.js',
+    'tests/lib/simmod.js',
   ];
   const PRELOAD = {
     boot: [

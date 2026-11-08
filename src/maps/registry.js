@@ -239,6 +239,26 @@ export const MAPS = [
     load: () => import('./ball/index.js'),
   },
   /*
+   * MIDORI GAKUEN, on the owner's ask of 8 November 2026: the map of the
+   * Infected mini game ("small map for sure, low ceilings with tight
+   * corridors ... lots of chances for paths to cross"), an original two
+   * floor school in the manga look, at the houses' scale and flown, by the
+   * owner's word, on whoops only (src/maps/school/, src/game/infected.js).
+   * Built by the built map's pipeline; off the board like the houses, and
+   * out of Freestyle like the other mini games' maps.
+   */
+  {
+    id: 'school',
+    name: 'Midori Gakuen',
+    mode: 'freestyle',
+    note: 'A school after hours, flown on a whoop: the hallway, the classrooms, the science lab and its glass tank, the library, the vents and the book lift. Where Infected is played.',
+    buildMs: MAP_BUILD_MS.school,
+    /* 3.5 times life size, as Nick's house: see there. */
+    craft: 'whoop65',
+    mapScale: 3.5,
+    load: () => import('./school/index.js'),
+  },
+  /*
    * RIDGELINE MX, on the owner's ask of 29 October 2026 ("motor cross cam
    * chase, the bikes should rip, rail, whip and just look like IRL, all
    * single and multi player"): a motocross track on a ridge, with a pack of
@@ -741,3 +761,5 @@ export const PARK_DOC_ID = 'trk-b0e7a1c5';
 export const YUME_DOC_ID = 'trk-7e3e0b51';
 /* Hanabi Sound's (src/maps/concert/yard.js), the same way. */
 export const CONCERT_DOC_ID = 'trk-c0dce7a1';
+/* Midori Gakuen's (src/maps/school/yard.js), the same way. */
+export const SCHOOL_DOC_ID = 'trk-5c400100';

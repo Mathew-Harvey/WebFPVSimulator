@@ -121,6 +121,7 @@ const MAP_ROOTS = {
   haikyo: 'src/maps/haikyo/index.js',
   hayate: 'src/maps/hayate/index.js',
   concert: 'src/maps/concert/index.js',
+  school: 'src/maps/school/index.js',
 };
 
 /* three@0.160.0's add-ons, and what each imports besides 'three'. Read off

@@ -53,6 +53,7 @@ import { ARCTIC_DOC_ID } from '../maps/registry.js';
 import { HAYATE_DOC_ID } from '../maps/registry.js';
 import { PARK_DOC_ID, YUME_DOC_ID } from '../maps/registry.js';
 import { CONCERT_DOC_ID } from '../maps/registry.js';
+import { SCHOOL_DOC_ID } from '../maps/registry.js';
 
 export const STAMPS_KEY = 'webfpv.stf.stamps.v1';
 
@@ -260,6 +261,9 @@ export function stampKeyForMap(mapId) {
   }
   if (mapId === 'concert') {
     return `built:${CONCERT_DOC_ID}`;
+  }
+  if (mapId === 'school') {
+    return `built:${SCHOOL_DOC_ID}`;
   }
   if (mapId !== 'built') {
     return null;

@@ -1034,7 +1034,7 @@ function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
     || mapId === 'hotaru' || mapId === 'dunes' || mapId === 'fest' || mapId === 'arctic'
     || mapId === 'haikyo'
     || mapId === 'ekimae'
-    || mapId === 'hayate' || mapId === 'park' || mapId === 'concert' || mapId === 'yume';
+    || mapId === 'hayate' || mapId === 'park' || mapId === 'concert' || mapId === 'yume' || mapId === 'school';
   const where = mapId === 'house' ? "Nick's house"
     : mapId === 'heads' ? "Heads' house"
       : mapId === 'bardwell' ? "Joshua's house"
@@ -1048,7 +1048,7 @@ function scoringNote(mode, mapId, fromBoard = false, drawn = true) {
           : mapId === 'dock' ? 'Kamome Wharf'
           : mapId === 'factory' ? 'Hamakaze Works'
           : mapId === 'shiokaze' ? 'Shiokaze Point'
-            : mapId === 'drift' ? 'Drift Matsuri' : mapId === 'ball' ? 'Quad Ball' : mapId === 'moto' ? 'Ridgeline MX' : mapId === 'ekimae' ? 'Ekimae Drift' : mapId === 'dome' ? 'Bakuon Dome' : mapId === 'dunes' ? 'Kazesuna Dunes' : mapId === 'cedar' ? 'Kodama Onsen' : mapId === 'airfield' ? 'Kazami Airfield' : mapId === 'towers' ? 'Kumoi Towers' : mapId === 'alps' ? 'Raicho Ridge' : mapId === 'kaza' ? 'Kazahana Plain' : mapId === 'sana' ? 'Kirigaoka Sanatorium' : mapId === 'rally' ? 'Tanada RX' : mapId === 'fmx' ? 'Shiroyama FMX' : mapId === 'hotaru' ? 'Hotaru Valley' : mapId === 'fest' ? 'Tonbo Fest' : mapId === 'touge' ? 'Momiji Pass' : mapId === 'haikyo' ? 'Tsukimi Danchi' : mapId === 'hayate' ? 'Hayate Circuit' : mapId === 'concert' ? 'Hanabi Sound' : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
+            : mapId === 'drift' ? 'Drift Matsuri' : mapId === 'ball' ? 'Quad Ball' : mapId === 'moto' ? 'Ridgeline MX' : mapId === 'ekimae' ? 'Ekimae Drift' : mapId === 'dome' ? 'Bakuon Dome' : mapId === 'dunes' ? 'Kazesuna Dunes' : mapId === 'cedar' ? 'Kodama Onsen' : mapId === 'airfield' ? 'Kazami Airfield' : mapId === 'towers' ? 'Kumoi Towers' : mapId === 'alps' ? 'Raicho Ridge' : mapId === 'kaza' ? 'Kazahana Plain' : mapId === 'sana' ? 'Kirigaoka Sanatorium' : mapId === 'rally' ? 'Tanada RX' : mapId === 'fmx' ? 'Shiroyama FMX' : mapId === 'hotaru' ? 'Hotaru Valley' : mapId === 'fest' ? 'Tonbo Fest' : mapId === 'touge' ? 'Momiji Pass' : mapId === 'haikyo' ? 'Tsukimi Danchi' : mapId === 'hayate' ? 'Hayate Circuit' : mapId === 'concert' ? 'Hanabi Sound' : mapId === 'school' ? 'Midori Gakuen' : (built ? (fromBoard ? 'this map' : 'Your map') : 'the town');
   if (mode === 'off') {
     return `${drawn ? '' : `${SCORING_UNDRAWN} `}${scoringOff(where)} ${built ? scoringMoreBuilt(where) : SCORING_MORE}`;
   }
@@ -1137,6 +1137,9 @@ const ARCTIC_OFF_BOARD = 'The board keeps no runs for Hyoura Island, so a run fl
 /* Drift Matsuri, the same way. */
 /* Quad Ball, the same way. */
 const BALL_OFF_BOARD = 'The board keeps no runs for Quad Ball, so a run flown there stays here.'
+  + ' Fly the town for a run that can go up.';
+
+const SCHOOL_OFF_BOARD = 'The board keeps no runs for Midori Gakuen, so a run flown there stays here.'
   + ' Fly the town for a run that can go up.';
 
 const MOTO_OFF_BOARD = 'The board keeps no runs for Ridgeline MX, so a run flown there stays here.';
@@ -12116,7 +12119,8 @@ export class Ui {
           || this.settings.map === 'arctic'
           || this.settings.map === 'haikyo'
           || this.settings.map === 'ekimae'
-          || this.settings.map === 'hayate' || this.settings.map === 'park' || this.settings.map === 'concert' || this.settings.map === 'yume';
+          || this.settings.map === 'hayate' || this.settings.map === 'park' || this.settings.map === 'concert' || this.settings.map === 'yume'
+          || this.settings.map === 'school';
         return [
           { label: 'Fly again', action: 'restart', primary: true },
           this.runPosted
@@ -12156,6 +12160,7 @@ export class Ui {
                         : this.settings.map === 'arctic' ? ARCTIC_OFF_BOARD
                           : this.settings.map === 'drift' ? DRIFT_OFF_BOARD
                             : this.settings.map === 'ball' ? BALL_OFF_BOARD
+                            : this.settings.map === 'school' ? SCHOOL_OFF_BOARD
                           : this.settings.map === 'moto' ? MOTO_OFF_BOARD
                           : this.settings.map === 'ekimae' ? EKIMAE_OFF_BOARD
                           : this.settings.map === 'dunes' ? DUNES_OFF_BOARD

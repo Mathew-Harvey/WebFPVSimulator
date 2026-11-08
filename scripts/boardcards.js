@@ -412,6 +412,10 @@ const WORLDS = [
   /* Hanabi Sound, added 2 November 2026: the crowd, the stage and the
    * fireworks over it, from behind the desk. */
   { id: 'concert', file: 'concert.jpg', name: 'Hanabi Sound', shot: { tp: 0.22, tr: 0.6, ta: 3.14 } },
+  /* Midori Gakuen, added 8 November 2026: the Infected mini game's school,
+   * a closed building, so its picture is the map's own lens, down the
+   * hallway in the evening light (CARD_LENS in src/maps/school/school.js). */
+  { id: 'school', file: 'school.jpg', name: 'Midori Gakuen' },
   /* Drift Matsuri, added here 6 November 2026 (ART-5): its picture had
    * been a screenshot of the shell, with the music dock and the key hint
    * bar in it, because it was never on this list. From its default orbit,

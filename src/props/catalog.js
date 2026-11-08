@@ -58,6 +58,7 @@ import * as AIRFIELD from './airfield.js';
 import * as HOTARU from './hotaru.js';
 import * as FEST from './fest.js';
 import * as CONCERT from './concert.js';
+import * as SCHOOL from './school.js';
 import * as HAIKYO from './haikyo.js';
 import * as YUME from './yume.js';
 import { buildingLayout, buildingDraw, bandoLayout, bandoDraw } from './buildings.js';
@@ -171,6 +172,7 @@ const FAMILIES = {
   yume: YUME,
   park: PARK,
   concert: CONCERT,
+  school: SCHOOL,
 };
 export const FAMILY_MATERIALS = {};
 export const FAMILY_PAINTERS = {};

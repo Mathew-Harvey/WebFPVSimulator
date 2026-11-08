@@ -37,6 +37,7 @@
     "check:arctic": "node scripts/arctic-check.js",
     "check:fest": "node scripts/fest-check.js",
     "check:concert": "node scripts/concert-check.js",
+    "check:school": "node scripts/school-check.js",
     "check:alps": "node scripts/alps-check.js",
     "check:rally": "node scripts/rally-check.js",
     "check:dome": "node scripts/dome-check.js",

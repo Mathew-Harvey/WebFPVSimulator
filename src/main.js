@@ -520,6 +520,8 @@ MAP_MODULE_COUNT.dock = 10;
 MAP_MODULE_COUNT.hayate = 10;
 /* Hanabi Sound (src/maps/concert/): its five. */
 MAP_MODULE_COUNT.concert = 5;
+/* Midori Gakuen (src/maps/school/): its three. */
+MAP_MODULE_COUNT.school = 3;
 /* Where a map's modules live, so the loading bar can count them. Data, not a
  * ternary: the ternary read "field or else city", so a third map counted its
  * modules under the city's prefix and the bar sat at zero.
@@ -558,6 +560,7 @@ const MAP_MODULE_PREFIX = {
   arctic: '/src/maps/arctic/',
   haikyo: '/src/maps/haikyo/',
   concert: '/src/maps/concert/',
+  school: '/src/maps/school/',
 };
 
 /*
@@ -9854,6 +9857,14 @@ export async function boot({ loading, bootStart, mapId }) {
     if (view.id === 'ekimae') {
       notice = {
         text: 'The board keeps no runs for Ekimae Drift, so its runs stay here.',
+        untilMs: performance.now() + 4200,
+      };
+      return;
+    }
+    /* Nor for Midori Gakuen: SCHOOL_OFF_BOARD in src/ui/ui.js. */
+    if (view.id === 'school') {
+      notice = {
+        text: 'The board keeps no runs for Midori Gakuen, so its runs stay here.',
         untilMs: performance.now() + 4200,
       };
       return;

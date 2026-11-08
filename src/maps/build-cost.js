@@ -167,4 +167,8 @@ export const MAP_BUILD_MS = {
   /* Hanabi Sound (src/maps/concert/): the stage, the desk, the towers, the
    * wheel and a crowd of instances. An estimate until it is measured. */
   concert: 2400,
+  /* Midori Gakuen (src/maps/school/): a closed two floor school of boxes in
+   * one chunk, a few thousand parts. An estimate from Thomas More's Shop,
+   * which has about as many, until it is measured. */
+  school: 1600,
 };

@@ -127,6 +127,7 @@ const WORLDS = {
   haikyo: { name: 'Tsukimi Danchi', thumb: 'haikyo' },
   hayate: { name: 'Hayate Circuit', thumb: 'hayate' },
   concert: { name: 'Hanabi Sound', thumb: 'concert' },
+  school: { name: 'Midori Gakuen', thumb: 'school' },
   built: { name: 'Hibari Yard', thumb: 'yard' },
 };
 

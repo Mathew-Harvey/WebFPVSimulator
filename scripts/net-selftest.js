@@ -955,8 +955,10 @@ async function talkScene(url) {
     check('with typed chat off, whatever the host asked for', a.s.room.typedChat === false);
     const seenA = b.s.link.pilots.get(a.s.you);
     const seenB = a.s.link.pilots.get(b.s.you);
-    check(`and made up handles, never the typed ones (${seenA.handle}, ${seenB.handle})`, seenA.handle !== 'Talker A' && seenB.handle !== 'Talker B'
-      && !/Talker/.test(JSON.stringify([...a.s.link.pilots.values(), ...b.s.link.pilots.values()])));
+    /* Typed names in every room but a school safe one, the owner's word
+     * of 2026-11-08, and the board says each is typed. */
+    check(`and the typed names, marked as typed (${seenA.handle}, ${seenB.handle})`, seenA.handle === 'Talker A' && seenB.handle === 'Talker B'
+      && seenA.own === true && seenB.own === true);
 
     a.s.say('hi');
     check('a quick line reaches the other pilot, by id', await until(() => b.said.some((m) => m.t === 'say' && m.line === 'hi' && m.id === a.s.you)));
@@ -1029,8 +1031,8 @@ async function namesScene(url, deploy) {
     check('which the board keeps as a channel, in lower case, and offers Twitch names alone',
       a.room.stream && a.room.stream.via === 'twitch' && a.room.stream.id === 'andagainfpv' && a.room.streamNames.join() === 'twitch');
     b.join(a.room.code);
-    check('a viewer joins under a made up name', await until(() => b.inRoom && a.link.pilots.size === 2)
-      && a.link.pilots.get(b.you).handle !== 'Viewer' && !a.link.pilots.get(b.you).via);
+    check('a viewer joins under the name they typed', await until(() => b.inRoom && a.link.pilots.size === 2)
+      && a.link.pilots.get(b.you).handle === 'Viewer' && !a.link.pilots.get(b.you).via);
     check('and nobody reads the chat while nobody is waiting', irc.joined.size === 0);
     b.claim();
     check('asking gives a five character code, and where to type it', await until(() => lastClaim(heard.b).state === 'waiting')

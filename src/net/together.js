@@ -1722,6 +1722,14 @@ export function createTogether(shell) {
         refresh('claim');
         refresh('room');
         break;
+      case 'madeUp':
+        /* The host gave this pilot's typed name a made up one. */
+        if (topName()) {
+          toast('The host gave you a made up name for this room.');
+        } else {
+          banner(store.avatar, 'calm', 'You have a made up name', 'The host chose it for this room.');
+        }
+        break;
       case 'named':
         /* A stream name proved, or a made up one put back: everywhere a
          * name is drawn. The name tags over the craft follow by
@@ -2475,7 +2483,7 @@ export function createTogether(shell) {
       id: 'tg-handle', value: draft.name, maxLength: 24, autocomplete: 'off', 'data-k': 'handle', 'data-osk': 'name', placeholder: 'Your pilot name',
     });
     const okNow = () => !input.value.trim() || Boolean(normaliseName(input.value));
-    const help = h('span.help', { text: `The name your lap times use. ${nameRules()} In listed and school safe rooms you get a made up one instead.` });
+    const help = h('span.help', { text: `The name your lap times use, and other pilots see it in rooms. ${nameRules()} School safe rooms use a made up one instead, and so does any room for a name with a rude word in it.` });
     const mark = () => {
       input.classList.toggle('bad', !okNow());
       help.classList.toggle('bad', !okNow());
@@ -2911,7 +2919,7 @@ export function createTogether(shell) {
         };
         panel = [
           section('Your name in public rooms',
-            h('p.help.ink', { text: 'Listed rooms, school safe rooms and streamer rooms never show a typed name. You are shown by this one there, so pick it.' }),
+            h('p.help.ink', { text: 'School safe rooms never show a typed name, and no room shows one with a rude word in it. You are shown by this one there, so pick it.' }),
             h('div.cr-tagline', null,
               h('strong.cr-tag', { text: pickWords(p), 'aria-live': 'polite' }),
               h('button.cr-num', { type: 'button', 'data-k': 'pn-down', 'aria-label': 'Number down', text: '\u2212', on: { click: () => step(-1) } }),
@@ -3340,14 +3348,17 @@ export function createTogether(shell) {
     const bad = (was && was.bad) || new Set();
     open('host', () => {
       const strict = f.listed || f.schoolSafe || f.streamer;
+      /* Only a school safe room gives everybody a made up name (the owner's
+       * word of 2026-11-08); the others show typed names, filtered. */
+      const madeUpRoom = f.schoolSafe;
       const most = f.streamer ? STREAM_MAX : ROOM_MAX;
       /* A room that gives everybody a made up name must not show the
        * host's own through its title: the suggestion made from it goes, and
        * comes back if the room is made ordinary again with nothing typed. */
-      if (strict && suggested && f.name === suggested) {
+      if (madeUpRoom && suggested && f.name === suggested) {
         f.name = '';
         f.dropped = true;
-      } else if (!strict && f.dropped) {
+      } else if (!madeUpRoom && f.dropped) {
         f.name = f.name || suggested;
         f.dropped = false;
       }
@@ -3390,7 +3401,7 @@ export function createTogether(shell) {
             h('div.mapcard', null, h('div.pic', { style: { backgroundImage: entry.thumb ? `url("${entry.thumb}")` : '' } }),
               h('div', { style: { flex: '1' } }, h('small', { text: 'Map' }), h('b', { text: entry.name }), h('small', { text: WAY_NAMES[entry.way] || '' }))),
             h('div.field', null, h('label', { for: 'tg-rname', text: 'Room name' }), nameIn,
-              bad.has('name') ? h('span.help.bad', { text: SETTINGS_FIELDS.name }) : h('span.help.spare', { text: strict ? 'Leave it empty and the room takes your made up name.' : 'Leave it empty and the room is named after you.' })),
+              bad.has('name') ? h('span.help.bad', { text: SETTINGS_FIELDS.name }) : h('span.help.spare', { text: madeUpRoom ? 'Leave it empty and the room takes your made up name.' : 'Leave it empty and the room is named after you.' })),
             /* Who can find it decides the size too: a streamer room is for a
              * stream's viewers, who may be eight, so it is never on the
              * shelf and is as safe as a listed room. The board holds it to
@@ -3834,7 +3845,7 @@ export function createTogether(shell) {
       }, { 'data-k': `mute-${p.id}` }),
       btn(reported.has(p.id) ? 'Reported' : 'Report', 'small ghost', () => sheetReport(p), { 'data-k': `report-${p.id}`, disabled: reported.has(p.id) }),
       isHost() ? [
-        p.via ? btn('Made up name', 'small ghost', () => sheetConfirm('unname', p), { 'data-k': `un-${p.id}` }) : null,
+        p.via || p.own ? btn('Made up name', 'small ghost', () => sheetConfirm('unname', p), { 'data-k': `un-${p.id}` }) : null,
         btn('Make host', 'small amber', () => sheetConfirm('makeHost', p), { 'data-k': `mh-${p.id}` }),
         btn('Kick', 'small danger', () => sheetConfirm('kick', p), { 'data-k': `kick-${p.id}` }),
         btn('Ban', 'small danger', () => sheetConfirm('ban', p), { 'data-k': `ban-${p.id}` }),
@@ -3924,7 +3935,7 @@ export function createTogether(shell) {
       kick: [`KICK ${p ? p.handle.toUpperCase() : ''}?`, 'They leave the room now and can come back in five minutes.', 'Kick', 'danger'],
       ban: [`BAN ${p ? p.handle.toUpperCase() : ''}?`, 'They leave now, and this browser cannot join again until the room closes.', 'Ban', 'danger'],
       makeHost: [`MAKE ${p ? p.handle.toUpperCase() : ''} HOST?`, 'They get the host tools and you become a pilot. They can hand it back.', 'Make host', 'amber'],
-      unname: [`GIVE ${p ? p.handle.toUpperCase() : ''} A MADE UP NAME?`, 'Their quad shows the room\'s made up name instead, and that account cannot use its name in this room again.', 'Made up name', 'danger'],
+      unname: [`GIVE ${p ? p.handle.toUpperCase() : ''} A MADE UP NAME?`, p && !p.via ? 'Their quad shows a made up name instead, for the rest of this room, whatever they type.' : 'Their quad shows the room\'s made up name instead, and that account cannot use its name in this room again.', 'Made up name', 'danger'],
       leave: ['LEAVE THE ROOM?', 'You carry on flying solo where you are. The room carries on without you.', 'Leave', 'danger'],
     }[what];
     aboutId = p ? p.id : 0;

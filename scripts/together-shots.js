@@ -1845,7 +1845,9 @@ async function sceneStream() {
     check('Streamer room makes the room 64, off the shelf, preset lines only',
       f1.max === '64' && f1.listed === 'false' && f1.chat === 'false' && f1.chatLocked === 'true', JSON.stringify(f1));
     const nameNow = () => page.evaluate("document.querySelector('#tg-rname').value");
-    check('and takes the pilot\'s own name out of the room\'s, where everybody has a made up one', await nameNow() === '', await nameNow());
+    /* Own names in every room but a school safe one (the owner's word of
+     * 2026-11-08), so the room keeps the name made from the pilot's. */
+    check('and keeps the room named after the pilot, whose own name it shows', await nameNow() === "Stream Host's room", await nameNow());
     await pressKey(page, 'more');
     check('and no bigger', (await form()).max === '64');
     if (opts.w >= 1280 && opts.h >= 720) {
@@ -1858,11 +1860,11 @@ async function sceneStream() {
     check('Listed under Rooms turns it back into an ordinary room of at most 30', f2.max === '30' && f2.listed === 'true', JSON.stringify(f2));
     const one = await page.evaluate("[...document.querySelectorAll('#tg [role=radiogroup] [aria-checked=true]')].length");
     check('one of the three at a time', one === 1, String(one));
-    check('as a listed room does', await nameNow() === '', await nameNow());
+    check('as a listed room does', await nameNow() === "Stream Host's room", await nameNow());
     await pressKey(page, 'private');
     check('which comes back in an ordinary room', await nameNow() === "Stream Host's room", await nameNow());
     await pressKey(page, 'streamer');
-    check('and Streamer room back again', (await form()).max === '64' && await nameNow() === '');
+    check('and Streamer room back again', (await form()).max === '64' && await nameNow() === "Stream Host's room");
     await pressKey(page, 'open');
     await sheetIs(page, 'share');
     const st = await state(page);
@@ -1878,9 +1880,9 @@ async function sceneStream() {
     await until(() => crowd.every((b) => b.s.inRoom), 30000, 100);
     check(`${N} viewers join by the code`, crowd.every((b) => b.s.inRoom), String(crowd.filter((b) => b.s.inRoom).length));
     const room = crowd[0].s.room;
-    check('a streamer room of 64, off the shelf, with made up names and preset lines',
-      room.streamer === true && room.max === 64 && !room.listed && !room.ownNames && !room.typedChat && room.hide, JSON.stringify(room));
-    check('named after the host\'s made up name, not their own', !room.name.includes('Stream Host'), room.name);
+    check('a streamer room of 64, off the shelf, with own names and preset lines',
+      room.streamer === true && room.max === 64 && !room.listed && room.ownNames && !room.typedChat && room.hide, JSON.stringify(room));
+    check('named after the host', room.name === "Stream Host's room", room.name);
     await page.until(`${T} && window.__together().pilots === ${N + 1}`, 15000).catch(() => {});
     check(`the page sees all ${N + 1} pilots`, (await state(page)).pilots === N + 1, JSON.stringify(await state(page)));
 

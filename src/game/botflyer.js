@@ -121,11 +121,31 @@ export class BotFlyer {
     this.scrapes = new Int32Array(n);
     this.stucks = new Int32Array(n);
     this.floorScrapes = new Int32Array(n);
+    /* What a game indoors changes, in the aircraft's metres: how far apart
+     * the bots keep, how far a wall is looked for each side, how far ahead
+     * the whiskers reach past a quarter of a second, how close to the floor
+     * a move may end and how far a bot has to have gone in a second not to
+     * be stuck, squared. The numbers here are the open maps' (Infected's are in
+     * ./infectbots.js). */
+    this.apartR = 3;
+    this.whiskR = 1.2;
+    this.whiskT = 1;
+    this.floorGap = 0.3;
+    this.stuckR2 = 2.25;
+    /* Under this over the floor a way round that dives is marked down;
+     * boxed in, a bot backs off by this and climbs by this; unsticking,
+     * it climbs by this. */
+    this.diveAlt = 5;
+    this.boxedBack = 0.3;
+    this.boxedUp = 0.95;
+    this.unstickUp = 0.6;
   }
 
   /* A fresh round: the open air read for ways round, once a world. */
   reset() {
-    if (!this.nav.length) {
+    /* A world that brings its own way round (Infected's school) has none
+     * read for it. */
+    if (!this.nav.length && !this.g.world.noNav) {
       this.findNav();
     }
   }
@@ -178,6 +198,37 @@ export class BotFlyer {
    * and before minding the walls. Nothing here. */
   push() {}
 
+  /* Whether bot i keeps apart from pilot j: from everybody, here. */
+  apart() {
+    return true;
+  }
+
+  /* How far over the floor bot i is held, for a skill's altitude `alt`. */
+  minAlt(alt, k) {
+    return Math.max(1.0 * k, Math.min(alt * 0.5 * k, 2.5 * k));
+  }
+
+  /* Whether bot i going nowhere for a second counts as stuck: always,
+   * here. */
+  mayStick() {
+    return true;
+  }
+
+  /* Which way a way round should lean, 1 up, -1 down or 0 neither: up
+   * when low over the floor, down when high in the arena. */
+  updown(x, y, z, floor, k) {
+    const w = this.g.world;
+    const low = y - floor < 3 * k;
+    const high = y > w.cy + w.top * 0.85;
+    return low ? 1 : (high ? -1 : 0);
+  }
+
+  /* The farthest bot i looks ahead for something in the way: as far as
+   * it takes to stop, here. */
+  lookCap() {
+    return Infinity;
+  }
+
   /*
    * FLYING IT: from the velocity it wants to its motors, its body and its
    * nose, never through anything.
@@ -210,14 +261,14 @@ export class BotFlyer {
     want.vz += this.wz[i] * wl * want.wander;
     /* Keep apart from everybody else. */
     for (let j = 0; j < n; j += 1) {
-      if (j === i || !g.live(j)) {
+      if (j === i || !g.live(j) || !this.apart(i, j)) {
         continue;
       }
       const dx = x - g.x[j];
       const dy = y - g.y[j];
       const dz = z - g.z[j];
       const d2 = dx * dx + dy * dy + dz * dz;
-      const r = 3 * k;
+      const r = this.apartR * k;
       if (d2 < r * r && d2 > 1e-12) {
         const d = Math.sqrt(d2);
         const push = ((r - d) / r) * vmax * 0.7;
@@ -236,7 +287,7 @@ export class BotFlyer {
     const pz = z + vz * ahead;
     const floorHere = w.floorAt(x, y, z);
     const floorAhead = w.floorAt(px, y, pz);
-    const minAlt = Math.max(1.0 * k, Math.min(alt * 0.5 * k, 2.5 * k));
+    const minAlt = this.minAlt(alt, k);
     const low = Math.max(floorHere, floorAhead) + minAlt;
     if (py < low) {
       want.vy += (low - py) * 3;
@@ -264,12 +315,12 @@ export class BotFlyer {
       const my = y - this.stuckY[i];
       const mz = z - this.stuckZ[i];
       const want2 = want.vx * want.vx + want.vy * want.vy + want.vz * want.vz;
-      if (mx * mx + my * my + mz * mz < 2.25 * k * k && want2 > vmax * vmax * 0.09) {
+      if (mx * mx + my * my + mz * mz < this.stuckR2 * k * k && want2 > vmax * vmax * 0.09 && this.mayStick(i)) {
         this.unstickUntil[i] = now + 700;
         this.stucks[i] += 1;
         this.goalAt[i] = 0;
         this.avoidX[i] = -this.bx[i] * 0.5 + (g.rand() * 2 - 1) * 0.6;
-        this.avoidY[i] = 0.6;
+        this.avoidY[i] = this.unstickUp;
         this.avoidZ[i] = -this.bz[i] * 0.5 + (g.rand() * 2 - 1) * 0.6;
       }
       this.stuckX[i] = x; this.stuckY[i] = y; this.stuckZ[i] = z;
@@ -670,8 +721,8 @@ export class BotFlyer {
       g.z[i] = oz + vz * DT;
     }
     const floor = Math.max(floorHere, w.floorAt(g.x[i], g.y[i], g.z[i]));
-    if (g.y[i] < floor + 0.3 * k) {
-      g.y[i] = floor + 0.3 * k;
+    if (g.y[i] < floor + this.floorGap * k) {
+      g.y[i] = floor + this.floorGap * k;
       if (vy < 0) vy = 0;
     }
     const roof = w.cy + w.top + 3 * k;
@@ -739,7 +790,7 @@ export class BotFlyer {
     /* As far as it takes to stop, plus how far it goes before it has
      * answered the stick, plus a little. */
     const brake = (speed * speed) / (2 * sk.thrust * G * k) + speed * (1 / sk.agility + 1.6 / sk.rate) + 3 * k;
-    const reach = Math.max(4 * k, brake);
+    const reach = Math.min(Math.max(4 * k, brake), this.lookCap(i));
     const x = g.x[i];
     const y = g.y[i];
     const z = g.z[i];
@@ -773,10 +824,8 @@ export class BotFlyer {
     const uy = sz * dx - sx * dz;
     const uz = sx * dy - 0 * dx;
     const floor = w.floorAt(x, y, z);
-    const low = y - floor < 3 * k;
-    const high = y > w.cy + w.top * 0.85;
     const start = Math.floor(g.rand() * 8);
-    const updown = low ? 1 : (high ? -1 : 0);
+    const updown = this.updown(x, y, z, floor, k);
     for (let r = 0; r < RINGS.length; r += 1) {
       const cr = RINGS[r][0];
       const sr = RINGS[r][1];
@@ -792,7 +841,7 @@ export class BotFlyer {
         const cy = dy * cr + (0 * ca + uy * sa) * sr;
         const cz = dz * cr + (sz * ca + uz * sa) * sr;
         let score = -Math.abs(sa) * 0.3 + updown * cy;
-        if (cy < -0.5 && y - floor < 5 * k) score -= 2;
+        if (cy < -0.5 && y - floor < this.diveAlt * k) score -= 2;
         if (score <= foundScore) continue;
         if (w.blocked(x, y, z, x + cx * reach, y + cy * reach, z + cz * reach) < 0) {
           found = m;
@@ -822,9 +871,9 @@ export class BotFlyer {
       }
     }
     /* Boxed in: stop, and up. */
-    this.avoidX[i] = -dx * 0.3;
-    this.avoidY[i] = 0.95;
-    this.avoidZ[i] = -dz * 0.3;
+    this.avoidX[i] = -dx * this.boxedBack;
+    this.avoidY[i] = this.boxedUp;
+    this.avoidZ[i] = -dz * this.boxedBack;
     this.avoidUntil[i] = now + 300;
     this.avoidSlow[i] = 0.3;
     want.vx = this.avoidX[i] * vmax * 0.3;
@@ -853,7 +902,7 @@ export class BotFlyer {
     const vx = g.vx[i] / speed;
     const vy = g.vy[i] / speed;
     const vz = g.vz[i] / speed;
-    const t = speed * 0.25 + 1 * k;
+    const t = speed * 0.25 + this.whiskT * k;
     const cx = g.x[i] + vx * t;
     const cy = g.y[i] + vy * t;
     const cz = g.z[i] + vz * t;
@@ -865,7 +914,7 @@ export class BotFlyer {
     } else {
       sx /= sm; sz /= sm;
     }
-    const r = 1.2 * k;
+    const r = this.whiskR * k;
     return w.inside(cx, cy, cz) || w.inside(cx + sx * r, cy, cz + sz * r) || w.inside(cx - sx * r, cy, cz - sz * r)
       || w.inside(cx, cy + r, cz) || w.inside(cx, cy - r * 0.6, cz);
   }

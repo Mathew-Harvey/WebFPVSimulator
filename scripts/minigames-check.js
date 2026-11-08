@@ -314,14 +314,14 @@ async function sceneMenu() {
     await ev("window.__ui.act('gate-games'); return 1;");
     check('Mini games turns to its page', await until("return window.__ui.gatePageNow() === 'games'", 5000));
     const cards = await ev("return window.__ui.items().map((i) => i.card).join(',')");
-    check('with six games and no switch', cards === 'mg-dogfight,mg-ribbon,mg-goats,mg-drift,mg-ball,mg-moto', cards);
+    check('with seven games and no switch', cards === 'mg-dogfight,mg-ribbon,mg-goats,mg-infected,mg-drift,mg-ball,mg-moto', cards);
     /* The list above is the page's model, which the grid can hide a card
      * from: Quad Ball and Ridgeline MX were in it for a day with no grid
      * area, and sat in an implicit row nobody could see (2026-10-30). So
      * the cards are read where they are drawn: every one has a real size
      * and lies inside the window, at the two sizes a pilot has. */
     const drawn = `const out = []; for (const e of document.querySelectorAll('.gate-card')) { const m = [...e.classList].map((c) => /^gate-card-(mg-[a-z]+)$/.exec(c)).find(Boolean); if (!m) continue; const r = e.getBoundingClientRect(); out.push(m[1] + ':' + (r.width >= 120 && r.height >= 30 && r.left >= -1 && r.top >= -1 && r.right <= innerWidth + 2 && r.bottom <= innerHeight + 2 ? 'ok' : 'hidden ' + [r.left, r.top, r.right, r.bottom].map(Math.round).join('/'))); } return out.join(' ');`;
-    const wanted = 'mg-dogfight,mg-ribbon,mg-goats,mg-drift,mg-ball,mg-moto'.split(',');
+    const wanted = 'mg-dogfight,mg-ribbon,mg-goats,mg-infected,mg-drift,mg-ball,mg-moto'.split(',');
     for (const [w, h] of [[1280, 720], [1024, 600]]) {
       await page.cdp.send('Emulation.setDeviceMetricsOverride', {
         width: w, height: h, deviceScaleFactor: 1, mobile: false,
@@ -334,7 +334,7 @@ async function sceneMenu() {
         await sleep(500);
         got = await ev(drawn);
       }
-      check(`all six cards are drawn inside the window at ${w}x${h}`, wanted.every((id) => got.includes(`${id}:ok`)), got);
+      check(`all seven cards are drawn inside the window at ${w}x${h}`, wanted.every((id) => got.includes(`${id}:ok`)), got);
     }
     await page.cdp.send('Emulation.clearDeviceMetricsOverride', {}, page.sessionId);
     await sleep(300);
@@ -365,6 +365,8 @@ async function sceneMenu() {
        * owner, 2026-10-30: "i'm dumped in to the maps menu, which is
        * confusing"). It was two, through the cards. */
       ['mg-goats', false, "Boolean(document.querySelector('.qp-page'))", 1],
+      /* Infected is whoops only, so no quad is asked: its waiting room. */
+      ['mg-infected', false, "Boolean(document.querySelector('.if-wait'))", 1],
       ['mg-drift', false, "Boolean(document.querySelector('.qp-page'))", 1],
       ['mg-ball', false, "Boolean(document.querySelector('.qp-page'))", 1],
       ['mg-moto', false, "Boolean(document.querySelector('.qp-page'))", 1],

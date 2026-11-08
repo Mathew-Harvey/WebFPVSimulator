@@ -442,7 +442,9 @@ export function buildRoomCraft({ capacity = 30, whoop = false, scale = 1 } = {})
       if (row == null) return;
       rowOf.set(id, row);
     }
-    const livery = liveryColour(pilot.avatar, id);
+    /* hex: a game's colour for the pilot over their livery (Infected's
+     * clean white and infected green, ../game/infected.js). */
+    const livery = pilot.hex != null ? pilot.hex : liveryColour(pilot.avatar, id);
     if (rowHandle[row] !== pilot.handle || rowLivery[row] !== livery || rowPlace[row] !== place || rowPicked[row] !== picked) {
       rowHandle[row] = pilot.handle;
       rowLivery[row] = livery;
@@ -463,8 +465,10 @@ export function buildRoomCraft({ capacity = 30, whoop = false, scale = 1 } = {})
     }
     m4.makeTranslation(pose.px, pose.py, pose.pz);
     tags.setMatrixAt(n, m4);
-    tagAttr.setXY(n, row, pilot.away || dim ? 0.45 : 1);
-    dist[n] = d2;
+    /* noTag: a pilot the game hides the name of, for now (Infected's,
+     * behind a wall: a name over the scenery would give a hider away). */
+    tagAttr.setXY(n, row, pilot.noTag ? 0 : (pilot.away || dim ? 0.45 : 1));
+    dist[n] = pilot.noTag ? Infinity : d2;
     pinned[n] = pin ? 1 : 0;
     n += 1;
   }

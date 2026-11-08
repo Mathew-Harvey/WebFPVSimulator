@@ -147,6 +147,16 @@ export const GATE_GAMES = [
     room: 'gate-goats-room',
   },
   {
+    id: 'mg-infected',
+    label: 'Infected',
+    kicker: 'New!',
+    art: 'assets/gate/infected.jpg',
+    caption: 'One pilot starts infected. Every quad they tag joins them. Be the last one left.',
+    chips: ['Bots', 'Friends', 'Midori Gakuen'],
+    action: 'gate-infected',
+    room: 'gate-infected-room',
+  },
+  {
     id: 'mg-drift',
     label: 'Drift Matsuri',
     kicker: 'Be the camera',

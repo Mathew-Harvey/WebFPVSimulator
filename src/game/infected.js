@@ -60,30 +60,24 @@
  */
 
 import {
-  Dogfight, DOGFIGHT_EVERY, ME, BOT_NAMES,
+  Dogfight, DOGFIGHT_EVERY, ME,
 } from './dogfight.js';
 import {
   InfectBrain, SchoolMap, BOT_SKILLS, schoolWorld,
 } from './infectbots.js';
 import { sincos } from '../props/trig.js';
+import {
+  CAP, MAX_BOTS, ROUNDS, HEADS, FIRSTS, INFECT_NAMES, normaliseInfectedRules,
+} from './infectrules.js';
 
-export { schoolWorld, BOT_SKILLS };
+export {
+  schoolWorld, BOT_SKILLS, CAP, MAX_BOTS, ROUNDS, HEADS, FIRSTS, INFECT_NAMES, normaliseInfectedRules,
+};
 
-/* Sixteen pilots: the pilot and fifteen bots, or a room's sixteen. */
-export const CAP = 16;
-export const MAX_BOTS = CAP - 1;
 /* Three rounds a match. */
 export const LEGS = 3;
 /* How long the table stays up between rounds. */
 export const RESULT_MS = 9000;
-
-export const ROUNDS = {
-  '2m': 120000,
-  '3m': 180000,
-  '5m': 300000,
-};
-export const HEADS = [5, 10, 15];
-export const FIRSTS = ['random', 'me', 'bot'];
 
 /* Real metres, centre to centre: a tag, a close shave, and how far apart
  * again a shave is paid at. */
@@ -109,32 +103,7 @@ export const POINTS = {
   closer: 200,
 };
 
-/* Fifteen made up names: the dogfight's seven and eight more, in the
- * menus' capitals. */
-export const INFECT_NAMES = [...BOT_NAMES, 'DANGO', 'KIWI', 'SORA', 'BEANS', 'YUZU', 'TAKO', 'NOODLE', 'PEBBLE'];
-
 const DT = DOGFIGHT_EVERY / 1000;
-
-/* The rules, every field checked. skills: one per bot seat, the owner's
- * easy, medium or hard. */
-export function normaliseInfectedRules(raw) {
-  const r = raw && typeof raw === 'object' ? raw : {};
-  const has = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
-  const one = BOT_SKILLS.includes(r.skill) ? r.skill : 'medium';
-  const skills = [];
-  for (let s = 0; s < MAX_BOTS; s += 1) {
-    const v = Array.isArray(r.skills) ? r.skills[s] : null;
-    skills.push(BOT_SKILLS.includes(v) ? v : one);
-  }
-  return {
-    game: 'infected',
-    bots: Number.isInteger(r.bots) ? Math.max(1, Math.min(MAX_BOTS, r.bots)) : 7,
-    skills,
-    round: has(ROUNDS, r.round) ? r.round : '3m',
-    head: HEADS.includes(r.head) ? r.head : 10,
-    first: FIRSTS.includes(r.first) ? r.first : 'random',
-  };
-}
 
 /* The rules as the dogfight underneath wants them: its bots are seated
  * again by this round, so only its count matters, and none of its guns. */
@@ -639,8 +608,15 @@ export class InfectedRound extends Dogfight {
     this.over = true;
     this.overAtMs = now;
     this.addTotals();
+    /* The owner's rule: the winner is the last clean pilot, caught at
+     * the end or outlasting the clock. With nobody last (the clock ran out
+     * on several, or a round of two), the most points. */
     const rows = this.standings();
-    this.winner = this.gold >= 0 ? this.gold : (rows[0] ? rows[0].slot : -1);
+    let last = -1;
+    for (let q = 0; q < this.inCount; q += 1) {
+      if (this.lastFor[this.inList[q]]) last = this.inList[q];
+    }
+    this.winner = last >= 0 ? last : (rows[0] ? rows[0].slot : -1);
     this.event('over', this.winner, -1, timeUp ? 1 : 0, '', 0, 0, 0);
   }
 

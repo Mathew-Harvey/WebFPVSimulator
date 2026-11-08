@@ -152,6 +152,9 @@ function mapBlock(w) {
   return m;
 }
 
+/* Every feed's time, for the slow tail as well as the mean. */
+const FEED_MS = [];
+
 /* One round: every seat a bot, the pilot's flown by the brain too. */
 function playRound(w, seed, skills, opts = {}) {
   const rules = {
@@ -199,6 +202,7 @@ function playRound(w, seed, skills, opts = {}) {
     const b = performance.now() - a;
     stats.ms += b;
     stats.worstMs = Math.max(stats.worstMs, b);
+    FEED_MS.push(b);
     stats.feeds += 1;
     for (let n = 0; n < g.eventCount; n += 1) {
       const e = g.events[n];
@@ -299,6 +303,13 @@ function roundsBlock(w) {
   check('easy rounds last longer than hard ones, both sides at the skill', out.easy.end > out.hard.end, `${r1(out.easy.end / 1000)} s against ${r1(out.hard.end / 1000)} s`);
   const perFeed = ms / feeds;
   check('a feed of sixteen bots is cheap', perFeed < 0.5, `${r3(perFeed)} ms a feed on average, ${r1(worst)} ms at worst`);
+  /* The slow tail, which is what a pilot feels as a hitch: the first
+   * rounds include the engine compiling the brains, so the tail is read
+   * after the first thousand feeds. */
+  const warm = FEED_MS.slice(1000).sort((x, y) => x - y);
+  const at = (q) => warm[Math.min(warm.length - 1, Math.floor(q * warm.length))];
+  const over = warm.filter((x) => x > 4).length;
+  console.log(`    the tail, warm: ${r3(at(0.99))} ms at the 99th, ${r3(at(0.999))} at the 99.9th, ${over} of ${warm.length} feeds over 4 ms, ${r1(warm[warm.length - 1])} ms the worst`);
 }
 
 function sameBlock(w) {

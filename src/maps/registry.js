@@ -253,8 +253,10 @@ export const MAPS = [
     mode: 'freestyle',
     note: 'A school after hours, flown on a whoop: the hallway, the classrooms, the science lab and its glass tank, the library, the vents and the book lift. Where Infected is played.',
     buildMs: MAP_BUILD_MS.school,
-    /* 3.5 times life size, as Nick's house: see there. */
+    /* 3.5 times life size, as Nick's house: see there. Whoops only, the
+     * owner's word, so the quad picker is not asked (ui.js pickerAction). */
     craft: 'whoop65',
+    craftOnly: true,
     mapScale: 3.5,
     load: () => import('./school/index.js'),
   },

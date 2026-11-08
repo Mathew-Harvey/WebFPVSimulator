@@ -37,12 +37,16 @@ import { normaliseRibbonRules } from '../game/ribbons.js';
 import { normaliseGoatRules } from '../game/goatround.js';
 import { normaliseDriftRules } from '../game/driftround.js';
 import { normaliseBallRules } from '../game/quadball.js';
+import {
+  normaliseInfectedRules, INFECT_NAMES, MAX_BOTS as INFECT_MAX_BOTS, SKILLS as INFECT_SKILLS,
+} from '../game/infectrules.js';
 
 const RULES_KEY = 'webfpv.dogfight.rules.v1';
 const RIBBON_KEY = 'webfpv.ribbons.rules.v1';
 const GOATS_KEY = 'webfpv.goats.rules.v1';
 const DRIFT_KEY = 'webfpv.drift.rules.v1';
 const BALL_KEY = 'webfpv.ball.rules.v1';
+const INFECTED_KEY = 'webfpv.infected.rules.v1';
 const ARMED_KEY = 'webfpv.dogfight.armed.v1';
 /* The overlay's quiet start, as askConfirm's: input already queued when
  * the page opened is not an answer. */
@@ -113,7 +117,31 @@ const CSS = `
   .df-doorcard .df-chip { padding: 6px 8px; font-size: 12px; }
   .df-code { padding: 5px 8px; font-size: 16px; }
 }
+.if-wait { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 16px; padding: 12px 18px; min-height: 0; overflow: auto; }
+.if-seats { display: grid; gap: 6px; align-content: start; }
+.if-seats-head { font: 900 12px/1.2 var(--ui-font); letter-spacing: .12em; text-transform: uppercase; }
+.if-seat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.if-seat { display: flex; align-items: center; gap: 6px; min-height: 34px; padding: 3px 6px; background: #fff; border: 3px solid var(--ink-line); font: 900 13px/1 var(--ui-font); letter-spacing: .04em; cursor: default; }
+.if-seat.is-me { background: #fff6cf; }
+.if-seat.is-bot { background: #e9eef2; }
+.if-seat.is-at { box-shadow: 0 0 0 3px var(--amber); }
+.if-seat.is-empty { justify-content: center; color: var(--qp-quiet); background: transparent; border-style: dashed; cursor: pointer; font-weight: 800; }
+.if-seat small { font: 800 9px/1 var(--ui-font); letter-spacing: .12em; color: var(--qp-quiet); }
+.if-seat [hidden] { display: none !important; }
+.if-seat .if-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.if-sk { display: flex; gap: 2px; flex: none; }
+.if-sk button { appearance: none; cursor: pointer; width: 22px; height: 22px; padding: 0; font: 900 11px/1 var(--ui-font); color: var(--ink-line); background: var(--qp-paper); border: 2px solid var(--ink-line); border-radius: 0; }
+.if-sk button.is-on.is-easy { background: #8fe0ff; }
+.if-sk button.is-on.is-medium { background: var(--amber); }
+.if-sk button.is-on.is-hard { background: var(--bail, #ff7d96); }
+.if-wait .df-rows { gap: 8px; }
+.if-wait .df-row { grid-template-columns: 120px minmax(0, 1fr); padding: 8px 10px; }
+.if-step { display: inline-grid; grid-template-columns: 34px 46px 34px; align-items: stretch; border: 3px solid var(--ink-line); background: #fff; }
+.if-step button { appearance: none; cursor: pointer; padding: 0; font: 900 18px/1 var(--ui-font); color: var(--ink-line); background: var(--qp-paper); border: 0; border-radius: 0; }
+.if-step span { display: grid; place-items: center; font: 900 18px/1 var(--ui-font); border-left: 3px solid var(--ink-line); border-right: 3px solid var(--ink-line); }
+.if-wait .df-says { font-size: 14px; }
 @media (max-width: 860px) {
+  .if-wait { grid-template-columns: 1fr; }
   .df-page .df-body { grid-template-columns: 1fr; }
   .df-side { display: none; }
   .df-row { grid-template-columns: 1fr; }
@@ -672,6 +700,274 @@ export function askDrift(ui, kit, mapName, action = '') {
       : 'Film the drift battles for one minute. Close, smooth, the car in the middle of the picture, both cars of a battle, and the clipping zones all score. The best reel wins.',
     go: 'Roll!',
     buttons: false,
+  });
+}
+
+/*
+ * INFECTED'S WAITING ROOM, drawn in the owner's mock-up of 2026-11-08
+ * (/mnt/project-files/infection/mockup, "WAITING ROOM"): the seats on the
+ * left, the pilot and the bots, each bot with its own Easy, Medium or Hard,
+ * and the round's settings on the right. The owner's words: "when you fill
+ * a lobby, you can add bots for any player ... any ratio of bots to humans,
+ * the bots should play well, easy, med or hard", and "each mini game
+ * should have their own waiting room". Solo it is the pilot and up to
+ * fifteen bots. Remembered in this browser. Resolves { rules } or null.
+ */
+const INFECTED_ROWS = [
+  { id: 'bots', name: 'Bots', small: 'Any number, up to fifteen' },
+  {
+    id: 'all',
+    name: 'Bot skill',
+    small: 'Or tap E, M or H on a seat',
+    options: [{ v: 'easy', label: 'All easy' }, { v: 'medium', label: 'All medium' }, { v: 'hard', label: 'All hard' }, { v: 'mixed', label: 'Each their own' }],
+  },
+  {
+    id: 'round',
+    name: 'Round',
+    small: 'Three rounds a match',
+    options: [{ v: '2m', label: '2 min' }, { v: '3m', label: '3 min' }, { v: '5m', label: '5 min' }],
+  },
+  {
+    id: 'head',
+    name: 'Head start',
+    small: 'Before the first infected gets out',
+    options: [{ v: 5, label: '5 s' }, { v: 10, label: '10 s' }, { v: 15, label: '15 s' }],
+  },
+  {
+    id: 'first',
+    name: 'First infected',
+    small: 'Who starts in the glass tank',
+    options: [{ v: 'random', label: 'Random' }, { v: 'me', label: 'Me' }, { v: 'bot', label: 'A bot' }],
+  },
+];
+const SKILL_WORD = { easy: 'easy', medium: 'medium', hard: 'hard' };
+
+function saysForInfected(r) {
+  const n = r.bots;
+  const count = { easy: 0, medium: 0, hard: 0 };
+  for (let s = 0; s < n; s += 1) count[r.skills[s]] += 1;
+  const mix = INFECT_SKILLS.filter((k) => count[k]).map((k) => `${count[k]} ${SKILL_WORD[k]}`);
+  const bots = `${n === 1 ? 'one bot' : `${n} bots`}${mix.length > 1 ? `: ${mix.join(', ')}` : `, all ${mix[0].split(' ')[1]}`}`;
+  const len = { '2m': 'two', '3m': 'three', '5m': 'five' }[r.round];
+  const first = { random: 'A random pilot starts infected', me: 'You start infected', bot: 'A bot starts infected' }[r.first];
+  return `You and ${bots}. Three rounds of ${len} minutes. ${first}, and everybody else gets ${r.head} s to hide.`;
+}
+
+export function askInfected(ui, kit, mapName) {
+  /* The round being flown, when there is one, else this browser's last. */
+  const now = ui && ui.dogfight && ui.dogfight.game === 'infected' ? ui.dogfight : null;
+  const rules = now ? normaliseInfectedRules(now) : loadRules(INFECTED_KEY, normaliseInfectedRules);
+  return new Promise((resolve) => {
+    const p = page(ui, `Infected · ${mapName}`, 'Waiting', 'room', `Infected waiting room on ${mapName}`);
+    const body = el('div', 'if-wait');
+    const seats = el('div', 'if-seats');
+    const seatsHead = el('div', 'if-seats-head', '');
+    const grid = el('div', 'if-seat-grid');
+    seats.append(seatsHead, grid);
+    const how = el('div', 'df-card');
+    how.append(el('b', null, 'How it works'), document.createTextNode(
+      'One pilot starts infected in the glass tank in the science lab. Fly into a white quad to tag it: it turns green and hunts with you. Stay white to the bell, or be the last one left, for the big points.',
+    ));
+    seats.append(how);
+    const right = el('div', 'df-rows');
+    const says = el('div', 'df-says');
+    let at = 0;
+    const rowEls = INFECTED_ROWS.map((row, ri) => {
+      const r = el('div', 'df-row');
+      const name = el('div', 'df-row-name', row.name);
+      name.append(el('small', null, row.small));
+      const chips = el('div', 'df-chips');
+      let chipEls = [];
+      if (row.id === 'bots') {
+        const stepper = el('div', 'if-step');
+        const less = btn('', '−');
+        const n = el('span', null, '');
+        const more = btn('', '+');
+        less.setAttribute('aria-label', 'One bot fewer');
+        more.setAttribute('aria-label', 'One bot more');
+        less.addEventListener('click', () => { setBots(rules.bots - 1); });
+        more.addEventListener('click', () => { setBots(rules.bots + 1); });
+        stepper.append(less, n, more);
+        const fill = btn('df-chip', 'Fill every seat');
+        fill.addEventListener('click', () => { setBots(INFECT_MAX_BOTS); });
+        chips.append(stepper, fill);
+        chipEls = [n, fill];
+      } else {
+        chips.setAttribute('role', 'radiogroup');
+        chips.setAttribute('aria-label', row.name);
+        chipEls = row.options.map((o) => {
+          const c = btn('df-chip', o.label);
+          c.setAttribute('role', 'radio');
+          c.addEventListener('click', () => {
+            at = ri;
+            pick(row, o.v);
+          });
+          chips.append(c);
+          return c;
+        });
+      }
+      r.addEventListener('click', () => {
+        at = ri;
+        paint();
+      });
+      r.append(name, chips);
+      right.append(r);
+      return { r, chipEls };
+    });
+    right.append(says);
+    body.append(seats, right);
+    const allOf = () => {
+      const first = rules.skills[0];
+      for (let s = 1; s < rules.bots; s += 1) {
+        if (rules.skills[s] !== first) return 'mixed';
+      }
+      return first;
+    };
+    const setBots = (n) => {
+      rules.bots = Math.max(1, Math.min(INFECT_MAX_BOTS, n));
+      at = Math.min(at, INFECTED_ROWS.length + rules.bots - 1);
+      paint();
+    };
+    const pick = (row, v) => {
+      if (row.id === 'all') {
+        if (v !== 'mixed') {
+          for (let s = 0; s < INFECT_MAX_BOTS; s += 1) rules.skills[s] = v;
+        }
+      } else {
+        rules[row.id] = v;
+      }
+      paint();
+    };
+    /* The seats: the pilot, the bots with their skill, the empty ones. */
+    const seatEls = [];
+    const me = el('div', 'if-seat is-me');
+    me.append(el('span', 'if-name', 'YOU'), el('small', null, 'PILOT'));
+    grid.append(me);
+    for (let s = 0; s < INFECT_MAX_BOTS; s += 1) {
+      const seat = el('div', 'if-seat');
+      const name = el('span', 'if-name', INFECT_NAMES[s]);
+      const tag = el('small', null, 'BOT');
+      const sk = el('div', 'if-sk');
+      const skEls = INFECT_SKILLS.map((k) => {
+        const b = btn(`is-${k}`, k[0].toUpperCase());
+        b.setAttribute('aria-label', `${INFECT_NAMES[s]}: ${k}`);
+        b.addEventListener('click', (e) => {
+          e.stopPropagation();
+          rules.skills[s] = k;
+          at = INFECTED_ROWS.length + s;
+          paint();
+        });
+        sk.append(b);
+        return b;
+      });
+      const empty = el('span', null, '+ add a bot');
+      seat.append(name, tag, sk, empty);
+      seat.addEventListener('click', () => {
+        if (s >= rules.bots) {
+          setBots(s + 1);
+        } else {
+          at = INFECTED_ROWS.length + s;
+          paint();
+        }
+      });
+      grid.append(seat);
+      seatEls.push({
+        seat, name, tag, sk, skEls, empty,
+      });
+    }
+    const paint = () => {
+      INFECTED_ROWS.forEach((row, ri) => {
+        const { r, chipEls } = rowEls[ri];
+        r.classList.toggle('is-at', ri === at);
+        if (row.id === 'bots') {
+          chipEls[0].textContent = String(rules.bots);
+          chipEls[1].classList.toggle('is-on', rules.bots === INFECT_MAX_BOTS);
+          return;
+        }
+        const now = row.id === 'all' ? allOf() : rules[row.id];
+        row.options.forEach((o, oi) => {
+          const on = now === o.v;
+          chipEls[oi].classList.toggle('is-on', on);
+          chipEls[oi].setAttribute('aria-checked', on ? 'true' : 'false');
+        });
+      });
+      seatEls.forEach((x, s) => {
+        const filled = s < rules.bots;
+        x.seat.className = `if-seat${filled ? ' is-bot' : ' is-empty'}${at === INFECTED_ROWS.length + s ? ' is-at' : ''}`;
+        x.name.hidden = !filled;
+        x.tag.hidden = !filled;
+        x.sk.hidden = !filled;
+        x.empty.hidden = filled;
+        x.skEls.forEach((b, i) => b.classList.toggle('is-on', rules.skills[s] === INFECT_SKILLS[i]));
+      });
+      const open = INFECT_MAX_BOTS - rules.bots;
+      seatsHead.textContent = `Pilots · you and ${rules.bots} ${rules.bots === 1 ? 'bot' : 'bots'}${open ? ` · ${open} ${open === 1 ? 'seat' : 'seats'} open` : ' · full'}`;
+      says.textContent = saysForInfected(rules);
+    };
+    const go = btn('qp-btn qp-fly', 'Play!');
+    const back = btn('qp-btn', 'Back');
+    const keys = el('span', 'qp-keys');
+    keys.innerHTML = '<kbd>↑</kbd> <kbd>↓</kbd> row · <kbd>←</kbd> <kbd>→</kbd> change · <kbd>Enter</kbd> play · <kbd>Esc</kbd> back';
+    p.caption.append(go, back, keys);
+    const rowsN = () => INFECTED_ROWS.length + rules.bots;
+    const step = (d) => {
+      if (at >= INFECTED_ROWS.length) {
+        const s = at - INFECTED_ROWS.length;
+        const i = INFECT_SKILLS.indexOf(rules.skills[s]);
+        rules.skills[s] = INFECT_SKILLS[(i + d + INFECT_SKILLS.length) % INFECT_SKILLS.length];
+        paint();
+        return;
+      }
+      const row = INFECTED_ROWS[at];
+      if (row.id === 'bots') {
+        setBots(rules.bots + d);
+        return;
+      }
+      const now = row.id === 'all' ? allOf() : rules[row.id];
+      /* Each their own is what the seats say, not a pick: stepping skips it. */
+      const opts = row.id === 'all' ? row.options.filter((o) => o.v !== 'mixed') : row.options;
+      let i = opts.findIndex((o) => o.v === now);
+      if (i < 0) {
+        i = d > 0 ? -1 : 0;
+      }
+      const n = opts.length;
+      pick(row, opts[(((i + d) % n) + n) % n].v);
+    };
+    let close = null;
+    const answer = () => {
+      const r = normaliseInfectedRules(rules);
+      saveRules(r, INFECTED_KEY);
+      close({ rules: r, buttons: false });
+    };
+    close = show(ui, kit, p, body, (e) => {
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        at = (at + (e.key === 'ArrowDown' ? 1 : rowsN() - 1)) % rowsN();
+        paint();
+        const target = at < INFECTED_ROWS.length ? rowEls[at].r : seatEls[at - INFECTED_ROWS.length].seat;
+        target.scrollIntoView({ block: 'nearest' });
+        return true;
+      }
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        step(e.key === 'ArrowRight' ? 1 : -1);
+        return true;
+      }
+      if (e.key === 'Enter') {
+        if (e.target === back || (e.target && e.target.closest && e.target.closest('.if-wait'))) {
+          return false;
+        }
+        answer();
+        return true;
+      }
+      if (e.key === 'Escape') {
+        close(null);
+        return true;
+      }
+      return false;
+    }, resolve);
+    go.addEventListener('click', () => answer());
+    back.addEventListener('click', () => close(null));
+    paint();
+    go.focus();
   });
 }
 

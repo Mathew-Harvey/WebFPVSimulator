@@ -2853,7 +2853,7 @@
       .gate-card-mp-find { grid-area: find; }
       .gate-card-mp-code { grid-area: code; }
       .gate-card-mp-pilot { grid-area: pilot; }
-      /* The mini games page: the six games in two rows of three. Every
+      /* The mini games page: the seven games, four over three. Every
          card needs a name here: one without lands in an implicit row, and
          Quad Ball and Ridgeline MX were there for a day, squashed to a line
          nobody could see (2026-10-30, scripts/minigames-check.js reads the
@@ -2863,7 +2863,7 @@
         grid-template-columns: repeat(12, minmax(0, 1fr));
         grid-template-rows: repeat(2, minmax(0, 1fr));
         grid-template-areas:
-          "dog dog dog dog rib rib rib rib goat goat goat goat"
+          "dog dog dog rib rib rib goat goat goat inf inf inf"
           "drift drift drift drift ball ball ball ball moto moto moto moto";
       }
       .gate-card-mg-dogfight { grid-area: dog; }
@@ -2872,6 +2872,7 @@
       .gate-card-mg-drift { grid-area: drift; }
       .gate-card-mg-ball { grid-area: ball; }
       .gate-card-mg-moto { grid-area: moto; }
+      .gate-card-mg-infected { grid-area: inf; }
       .gate-card-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
       .gate-chip {
         padding: 3px 6px;

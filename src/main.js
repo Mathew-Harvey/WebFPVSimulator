@@ -2425,7 +2425,7 @@ export async function boot({ loading, bootStart, mapId }) {
    * dogfight with ribbons for guns and runs through everything below. */
   let fightMods = null;
   const fightLib = {
-    dogfight: null, ribbon: null, goats: null, drift: null, ball: null,
+    dogfight: null, ribbon: null, goats: null, drift: null, ball: null, infected: null,
   };
   let fightKind = 'dogfight';
   /* The room game being played, 'ribbon' (RibbonRoom) or 'dogfight'
@@ -2449,7 +2449,7 @@ export async function boot({ loading, bootStart, mapId }) {
     fightBots.pose(id, x, y, z, fx, fy, fz, ux, uy, uz);
   };
   const fightHuds = {
-    dogfight: null, ribbon: null, goats: null, drift: null, ball: null,
+    dogfight: null, ribbon: null, goats: null, drift: null, ball: null, infected: null,
   };
   let fightLoading = false;
   let fightGame = null;
@@ -2481,7 +2481,7 @@ export async function boot({ loading, bootStart, mapId }) {
   };
 
   function fightBestKey() {
-    if (fightKind === 'goats' || fightKind === 'drift' || fightKind === 'ball') {
+    if (fightKind === 'goats' || fightKind === 'drift' || fightKind === 'ball' || fightKind === 'infected') {
       return `webfpv.${fightKind}.best.${fightKey}`;
     }
     return fightKind === 'ribbon' ? `webfpv.ribbons.best.${fightKey}` : `webfpv.dogfight.best.${fightKey}`;
@@ -2725,14 +2725,16 @@ export async function boot({ loading, bootStart, mapId }) {
     const filmable = !rules || rules.game !== 'drift' || Boolean(view && view.filmGame);
     /* Quad Ball's match is the arena map's, and nowhere else. */
     const playable = !rules || rules.game !== 'ball' || Boolean(view && view.ballGame);
-    const want = Boolean(view) && Boolean(rules) && herdable && filmable && playable && mapReady && !replayMode && (Boolean(roomGame) || !ui.roomInfo);
+    /* Infected's round is the school's (src/maps/school/), and nowhere else. */
+    const infectable = !rules || rules.game !== 'infected' || Boolean(view && view.infectedGame);
+    const want = Boolean(view) && Boolean(rules) && herdable && filmable && playable && infectable && mapReady && !replayMode && (Boolean(roomGame) || !ui.roomInfo);
     if (!want) {
       if (fightGame) {
         fightOff();
       }
       return;
     }
-    const kind = rules.game === 'ribbon' || rules.game === 'goats' || rules.game === 'drift' || rules.game === 'ball' ? rules.game : 'dogfight';
+    const kind = rules.game === 'ribbon' || rules.game === 'goats' || rules.game === 'drift' || rules.game === 'ball' || rules.game === 'infected' ? rules.game : 'dogfight';
     /* The rules as text only when the object is a new one: a string a
      * frame for as long as a fight lasts is garbage, and a collection is a
      * hitch. */
@@ -2774,6 +2776,11 @@ export async function boot({ loading, bootStart, mapId }) {
           ? Promise.all([import('./game/quadball.js'), import('./ui/ballhud.js'), import('./game/dogfight.js'), import('./render/quadball.js'), import('./render/dogfight.js'), import('./game/ballroom.js')])
             .then(([game, hud, base, render, baseRender, room]) => ({
               ...base, ...game, Game: game.BallRound, View: render.BallView, feedFraction: baseRender.feedFraction, Hud: hud.BallHud, kicker: 'Quad Ball', BallRoom: room.BallRoom,
+            }))
+          : kind === 'infected'
+          ? Promise.all([import('./game/infected.js'), import('./ui/infectedhud.js'), import('./game/dogfight.js'), import('./render/infected.js'), import('./render/dogfight.js')])
+            .then(([game, hud, base, render, baseRender]) => ({
+              ...base, ...game, Game: game.InfectedRound, View: render.InfectedView, feedFraction: baseRender.feedFraction, Hud: hud.InfectedHud, kicker: 'Infected',
             }))
           : kind === 'goats'
           ? Promise.all([import('./game/goatround.js'), import('./ui/herdhud.js'), import('./game/dogfight.js'), import('./render/dogfight.js'), import('./game/goatroom.js')])
@@ -2818,7 +2825,9 @@ export async function boot({ loading, bootStart, mapId }) {
     fightInRoom = roomGame;
     fightSeats = null;
     const builtAt = performance.now();
-    const world = fightWorld();
+    /* Infected reads the school's own fine grid, which its bots fly by
+     * (src/game/infectbots.js schoolWorld), and not the coarse one. */
+    const world = kind === 'infected' ? fightMods.schoolWorld(view.colliders, view.infectedGame.plan, scaleK) : fightWorld();
     const seed = hashKey(fightKey) ^ (capturing ? window.__capture.seed : Date.now() >>> 0);
     if (roomRibbon) {
       fightGame = new fightMods.RibbonRoom(world);
@@ -2832,6 +2841,9 @@ export async function boot({ loading, bootStart, mapId }) {
       fightGame = new fightMods.BallRoom(world, { seed, pen: view.ballGame });
     } else if (kind === 'goats') {
       fightGame = new Game(world, rules, seed, view.goatGame);
+    } else if (kind === 'infected') {
+      fightGame = new Game(world, rules, seed, view.infectedGame);
+      infectedSerial = -1;
     } else if (kind === 'drift') {
       fightGame = new Game(world, rules, seed, { film: view.filmGame.film, poses: () => (view.filmGame.posed ? view.filmGame.posed(carCurr) : carCurr) });
     } else if (kind === 'ball') {
@@ -3186,6 +3198,34 @@ export async function boot({ loading, bootStart, mapId }) {
     fightTeleported = true;
   }
 
+  /*
+   * INFECTED SEATS EVERY PILOT ON A PAD, the first infected in the glass
+   * tank (src/game/infected.js seatAll), each round. The pilot's craft goes
+   * to theirs when the game seats it again, facing the way the pad does:
+   * the plan's yaw is counter-clockwise from east, and the craft's from
+   * north, so a quarter turn less.
+   */
+  let infectedSerial = -1;
+  function infectedSeat(g, ME) {
+    if (g.seatSerial === infectedSerial || !view || !view.infectedGame || !g.inFight[ME]) {
+      return;
+    }
+    infectedSerial = g.seatSerial;
+    const k = simLenToWorld(1);
+    const x = g.seatX[ME];
+    const z = g.seatZ[ME];
+    const surface = view.height(x, z, g.seatY[ME] + 0.3 * k);
+    resetCraft({ x, z, yaw: g.seatYaw[ME] - Math.PI / 2, surface });
+    fightTeleported = true;
+  }
+
+  /* Whether Infected holds the pilot on the tank's pad: the first infected
+   * through the head start, disarmed. Their throttle starts the round and
+   * flies nothing. */
+  function infectedHeld() {
+    return Boolean(fightGame) && fightKind === 'infected' && fightGame.holdsMe();
+  }
+
   /* One step loop feed with the craft at state `st`. */
   function fightStep(clock, st, flying) {
     poseFromState(st, fightPos);
@@ -3263,9 +3303,13 @@ export async function boot({ loading, bootStart, mapId }) {
     if (fightKind === 'ball' && g.room && mode === 'flight') {
       ballSeat(g, ME);
     }
+    if (fightKind === 'infected' && mode === 'flight') {
+      infectedSeat(g, ME);
+    }
     if (g.over && !fightSaved && !g.room) {
       fightSaved = true;
-      const mine = g.pops[ME];
+      /* Infected's best is points; every other game's is its count. */
+      const mine = fightKind === 'infected' ? g.pts[ME] : g.pops[ME];
       if (mine > fightBest) {
         fightNewBest = fightBest > 0 || mine > 0;
         fightBest = mine;
@@ -8530,7 +8574,7 @@ export async function boot({ loading, bootStart, mapId }) {
 
   function beginLaunchStaging() {
     /* A replay's craft stays parked: see the takeoff in frameBody. */
-    if (!(mode === 'flight' && landed) || replayMode) {
+    if (!(mode === 'flight' && landed) || replayMode || infectedHeld()) {
       return;
     }
     if (stateCurr && plantUpZ(stateCurr) < 0) {
@@ -12066,6 +12110,11 @@ export async function boot({ loading, bootStart, mapId }) {
         if (turtleRecover) {
           /* Recover owns the stick. Throttle is not takeoff until they
            * centre, or the leftover punch flies them out of turtle. */
+        } else if (infectedHeld()) {
+          /* Infected's first pilot waits on the tank's pad: the throttle
+           * starts the round, and the motors wake when the head start is
+           * over. */
+          fightGame.wantGo = fightGame.startedMs < 0;
         } else if (stateCurr && plantUpZ(stateCurr) < 0) {
           /* Props down: throttle is not takeoff. Unfreeze into turtle
            * if they are seated, otherwise let them fall. */
@@ -14141,6 +14190,8 @@ export async function boot({ loading, bootStart, mapId }) {
        * stays armed for the next free flight. Only the ball: other worlds
        * keep a game object up (the town's), and the guide is theirs. */
       && !(fightGame && fightGame.ballRules)
+      /* Infected too: RUN! and HOLD are where the guide's lines were. */
+      && !(fightGame && fightGame.infRules)
       && !crashflipOn
       && !turtleRecover
       && lastUpz >= 0

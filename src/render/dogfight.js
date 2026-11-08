@@ -83,13 +83,15 @@ function missileGeometry() {
 }
 
 export class DogfightView {
-  constructor({ whoop = false } = {}) {
+  /* capacity and scale: the craft's, which Infected (./infected.js) sets
+   * for its sixteen pilots and its own tag reach. */
+  constructor({ whoop = false, capacity = MAX_PILOTS, scale = 2 } = {}) {
     this.group = new THREE.Group();
     this.group.name = 'dogfight';
     /* Twice life size, which is the size a pellet counts as a hit at
      * (HIT_R in src/game/dogfight.js): a five inch quad at fifty metres is
      * a few pixels, and a target nobody can see is no fun at eight. */
-    this.craft = buildRoomCraft({ capacity: MAX_PILOTS, whoop, scale: 2 });
+    this.craft = buildRoomCraft({ capacity, whoop, scale });
     this.group.add(this.craft.group);
 
     this.boxMat = new THREE.MeshBasicMaterial({ color: 0xffffff, fog: true });
@@ -329,7 +331,8 @@ export class DogfightView {
       const dx = pose.px - camPos.x;
       const dy = pose.py - camPos.y;
       const dz = pose.pz - camPos.z;
-      this.craft.add(i, pose, this.pilotOf(g, i), dx * dx + dy * dy + dz * dz, false);
+      const pilot = this.pilotOf(g, i);
+      this.craft.add(i, pose, pilot, dx * dx + dy * dy + dz * dz, pilot.pin === true);
     }
     this.craft.end();
 

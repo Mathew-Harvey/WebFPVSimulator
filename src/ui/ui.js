@@ -2915,6 +2915,7 @@ const GAME_BEST_WORDS = {
   'mg-dogfight': (n) => `${n} ${n === 1 ? 'pop' : 'pops'}`,
   'mg-ribbon': (n) => `${n} ${n === 1 ? 'ribbon' : 'ribbons'}`,
   'mg-goats': (n) => `${n} ${n === 1 ? 'goat' : 'goats'}`,
+  'mg-infected': (n) => `${formatScore(n)} points`,
   'mg-ball': (n) => `${n} ${n === 1 ? 'goal' : 'goals'}`,
   'mg-drift': (n) => `reel ${formatScore(n)}`,
   'mg-moto': (n) => `reel ${formatScore(n)}`,
@@ -2932,6 +2933,9 @@ function gameBestOf(key) {
   }
   if (key.startsWith('webfpv.ball.best.')) {
     return 'mg-ball';
+  }
+  if (key.startsWith('webfpv.infected.best.')) {
+    return 'mg-infected';
   }
   if (key === 'webfpv.drift.best.v1' || key.startsWith('webfpv.drift.best.drift:')) {
     return 'mg-drift';
@@ -10844,7 +10848,7 @@ export class Ui {
        * and Ridgeline MX stay: flown here they are only maps, with no
        * filming score (main.js filmFrame). */
       const miniOnly = !this.mapGamePick && !this.fightPick && !this.hostPick;
-      const worlds = MAPS.filter((x) => x.mode === 'freestyle' && !(miniOnly && (x.id === 'goats' || x.id === 'ball')));
+      const worlds = MAPS.filter((x) => x.mode === 'freestyle' && !(miniOnly && (x.id === 'goats' || x.id === 'ball' || x.id === 'school')));
       const cards = worlds.length > 1 || !seatedFreestyleMap(s) ? worlds.map((x) => ({
         label: x.name,
         note: x.note,
@@ -11891,6 +11895,27 @@ export class Ui {
         { label: 'Elsewhere', section: true },
         { label: 'Settings', action: 'pilot', note: 'Your name, your radio, graphics and sound.' },
         { label: 'Leave the round', action: 'fight-leave', note: 'Film on here alone, with no bots.' },
+        { label: 'Quit to title', action: 'title' },
+      ];
+    }
+    if (this.screen === 'paused' && this.dogfight && this.dogfight.game === 'infected') {
+      /* An Infected round's pause: the goats', with the waiting room. */
+      return [
+        { label: 'Resume', action: 'resume', primary: true },
+        { label: 'Restart the match', action: 'restart' },
+        { label: 'Waiting room', action: 'fight-change', note: 'The bots, how good each one is, the round and the head start.' },
+        { label: 'Does it feel wrong?', section: true },
+        tuneItem(s, true),
+        flightModeItem(s, this.flightModeKey()),
+        {
+          label: 'Rates',
+          value: ratesShort(s.rates),
+          action: 'rates',
+          note: 'How far the sticks go, and the throttle limit. Changing them here leaves the quad where it is and the clock running.',
+        },
+        { label: 'Elsewhere', section: true },
+        { label: 'Settings', action: 'pilot', note: 'Your name, your radio, graphics and sound.' },
+        { label: 'Leave the round', action: 'fight-leave', note: 'Fly the school on your own, with no bots.' },
         { label: 'Quit to title', action: 'title' },
       ];
     }
@@ -14478,8 +14503,8 @@ export class Ui {
 
   playMapGameOn(id, room) {
     /* Ridgeline MX is Drift Matsuri's game on another map: the same round,
-     * the same room, the board's 'drift'. */
-    const game = id === 'moto' ? 'drift' : id;
+     * the same room, the board's 'drift'. Midori Gakuen is Infected's. */
+    const game = id === 'moto' ? 'drift' : (id === 'school' ? 'infected' : id);
     const entry = this.pickerEntries().find((e) => e.item && e.item.action === `map:${id}`);
     if (!entry) {
       return;
@@ -14507,7 +14532,7 @@ export class Ui {
           const how = this.ballHow || '';
           this.ballHow = '';
           this.ballDoor('fly', entry, null, false, 1, how);
-        } else if (game === 'goats' || game === 'drift') {
+        } else if (game === 'goats' || game === 'drift' || game === 'infected') {
           this.armRoomGame(world, entry, game, false);
         } else {
           this.onFlyTogether(world);
@@ -14517,7 +14542,7 @@ export class Ui {
     }
     /* Goat herding alone is a round with bots (src/game/goatround.js):
      * Set the herd first, as a dogfight's arena has Set the fight. */
-    if (game === 'goats' || game === 'drift' || game === 'ball') {
+    if (game === 'goats' || game === 'drift' || game === 'ball' || game === 'infected') {
       this.fightPick = { from: 'gate', game, map: id };
       this.fightArmed = false;
     }
@@ -16069,7 +16094,12 @@ export class Ui {
           ? quadKeyFor('built', action.slice('boardmap:'.length))
           : (world ? world.id : 'built');
         const always = quadAlways(this.settings)[key];
-        const asked = always
+        /* A map flown on one quad only is not asked about: Midori Gakuen
+         * is whoops only, by the owner's word (2026-11-08). */
+        const only = world && world.craftOnly ? world.craft : '';
+        const asked = only
+          ? Promise.resolve({ craft: only, always: false, tune: false })
+          : always
           ? Promise.resolve({ craft: always, always: true, tune: false })
           : this.askQuad(world, entry.name || entry.label || (world && world.name) || 'This map', key);
         asked.then((got) => {
@@ -16258,9 +16288,9 @@ export class Ui {
     const kit = { letterHeading };
     const name = entry.name || entry.label || (entry.item && entry.item.map && entry.item.map.name) || 'This map';
     const game = this.fightPick.game;
-    const quiet = game === 'ribbon' || game === 'goats' || game === 'drift' || game === 'ball';
+    const quiet = game === 'ribbon' || game === 'goats' || game === 'drift' || game === 'ball' || game === 'infected';
     const ask = {
-      ribbon: pages.askRibbon, goats: pages.askGoats, drift: pages.askDrift, ball: pages.askBall,
+      ribbon: pages.askRibbon, goats: pages.askGoats, drift: pages.askDrift, ball: pages.askBall, infected: pages.askInfected,
     }[game] || pages.askFight;
     const got = await ask(this, kit, name, entry && entry.item ? entry.item.action : '');
     if (!got) {
@@ -16367,7 +16397,7 @@ export class Ui {
       const kit = { letterHeading };
       const name = world.name || entry.name || 'This map';
       const ask = {
-        ribbon: pages.askRibbon, goats: pages.askGoats, drift: pages.askDrift, ball: pages.askBall,
+        ribbon: pages.askRibbon, goats: pages.askGoats, drift: pages.askDrift, ball: pages.askBall, infected: pages.askInfected,
       }[game] || pages.askFight;
       const got = await ask(this, kit, name, entry && entry.item ? entry.item.action : '');
       if (!got) {
@@ -16413,7 +16443,7 @@ export class Ui {
     if (action === 'fight-change') {
       const game = this.dogfight ? this.dogfight.game : '';
       const ask = {
-        ribbon: pages.askRibbon, goats: pages.askGoats, drift: pages.askDrift, ball: pages.askBall,
+        ribbon: pages.askRibbon, goats: pages.askGoats, drift: pages.askDrift, ball: pages.askBall, infected: pages.askInfected,
       }[game] || pages.askFight;
       const got = await ask(this, kit, this.fightArenaName || 'This map');
       if (got && this.dogfight) {
@@ -16482,8 +16512,11 @@ export class Ui {
       const goats = Boolean(this.fightPick && this.fightPick.game === 'goats');
       const drift = Boolean(this.fightPick && this.fightPick.game === 'drift');
       const ball = Boolean(this.fightPick && this.fightPick.game === 'ball');
+      const infected = Boolean(this.fightPick && this.fightPick.game === 'infected');
       const [kick, title, line, tab] = !this.hostPick
-        ? (ball
+        ? (infected
+          ? ['Infected', 'After school', 'Seat the bots, then fly.', 'Infected']
+          : ball
           ? ['Quad Ball', 'The ball is out', 'Set the match, then fly.', 'Quad Ball']
           : goats
           ? ['Goat herding', 'The goats are out', 'Set the herd, then fly.', 'Goat herding']
@@ -23114,6 +23147,10 @@ export class Ui {
     }
     if (action === 'gate-moto' || action === 'gate-moto-room') {
       this.playMapGame('moto', action.endsWith('-room'));
+      return;
+    }
+    if (action === 'gate-infected' || action === 'gate-infected-room') {
+      this.playMapGame('school', action.endsWith('-room'));
       return;
     }
     if (action === 'gate-dogfight') {

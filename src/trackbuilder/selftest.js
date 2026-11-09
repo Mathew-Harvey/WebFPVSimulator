@@ -80,7 +80,7 @@ import {
   wallOf, wallFlagsOf, setWallFlags, wallIsWoven, setWallWeave, reverseWall, flyOver,
   partGhosts, setWallSize, wallSizeOf,
   canBecomeLetter, canBeInvisible, placeInvisibleGate, setInvisible, turnIntoGate, turnIntoLetter,
-  WALL_MIN, WALL_DEFAULT, WALL_MAX, HURDLE, SPIRAL, ROUND_NAME, roundFlagOf, removeSpiral,
+  WALL_MIN, WALL_DEFAULT, WALL_MAX, HURDLE, SPIRAL, ROUND_NAME, roundFlagOf, removeSpiral, removeSpiralUp,
   BAR_HURDLE, HURDLE_LINES, HURDLE_SIZES, hurdleAngleOf, hurdleLineOf, hurdleSizeOf, hurdleTop, placeBarHurdle, setHurdleAngle,
   setHurdleLine, setHurdleSize, canBeFloating, canBeDecor, setFloating, setDecor,
 } from './parts.js';
@@ -12479,6 +12479,76 @@ function suiteFiveInchParts() {
     check('a side with no flag, a pass that is not there and a waypoint\'s pass are not gone round',
       addSpiral(north.doc, north.pass.id, 'right') === null && addSpiral(doc, 'sq-nope', 'right') === null
       && addSpiral(doc, doc.sequence[0].id, 'right') === null);
+  }
+
+  /* ---- spiral up round a gate's flag: through, then a whole turn up and over (a club pilot, 2026-11-09) ---- */
+  {
+    const make = () => {
+      const doc = createTrack('spiral up');
+      place(doc, 'waypoint', 22, 23, { z: 2 });
+      const g = place(doc, 'flaggedGate', 25, 30, { yaw: 0 });
+      g.yawOverridden = true;
+      setFlags(doc, g.id, 'both');
+      const next = place(doc, 'gate', 28, 38, { yaw: Math.PI / 2 });
+      next.yawOverridden = true;
+      for (const e of doc.elements) {
+        addToSequence(doc, e.id, 0);
+      }
+      doc.sequence[1].entry = 1;
+      doc.sequence[1].overridden = true;
+      return { doc, g, pass: doc.sequence[1] };
+    };
+    const { doc, g, pass } = make();
+    const made = addSpiral(doc, pass.id, 'right', { up: true });
+    const at = doc.sequence.indexOf(pass);
+    const ws = made.waypoints.map((id) => elementById(doc, id));
+    check('a spiral up is waypoints straight AFTER the pass, and the gate is still flown once',
+      made.waypoints.length >= 4 && doc.sequence.slice(at + 1, at + 1 + made.waypoints.length).map((q) => q.elementId).join() === made.waypoints.join()
+      && doc.sequence.filter((q) => q.elementId === g.id).length === 1 && at === 1,
+      doc.sequence.map((q) => elementById(doc, q.elementId).name || elementById(doc, q.elementId).type).join());
+    const header = GATE_SCALE * (g.dims.sillH + g.dims.clearH + 2 * FRAME_TUBE_OD) + GATE_BANNER_H + 0.03;
+    check('it climbs all the way, never back down, and ends over the header',
+      ws.every((w, i) => i === 0 || w.position.z >= ws[i - 1].position.z - 1e-9)
+      && ws[0].position.z > apertureCenter(g, 0).z && ws[ws.length - 1].position.z > header + SPIRAL.over - 1e-3,
+      ws.map((w) => w.position.z).join());
+    check('round the flag the same way a spiral down on that side goes, so the line leaves the opening the way it came through',
+      ws.every((w) => Math.abs(Math.hypot(w.position.x - made.mast.x, w.position.y - made.mast.y) - made.radius) < 2e-3)
+      && made.sweep >= 2 * Math.PI - 1e-9 && made.sweep < 4 * Math.PI);
+    const line = buildPath(doc);
+    const f = apertureFrame(g.yaw, 0);
+    const centre = apertureCenter(g, 0);
+    const crossings = [];
+    let prevD = null;
+    for (const smp of line.samples) {
+      const d = (smp.pos.x - centre.x) * f.normal.x + (smp.pos.y - centre.y) * f.normal.y;
+      const u = (smp.pos.x - centre.x) * f.widthAxis.x + (smp.pos.y - centre.y) * f.widthAxis.y;
+      if (prevD != null && (prevD > 0) !== (d > 0) && Math.abs(u) < 1.6) {
+        crossings.push({ z: smp.pos.z, forward: d > 0 });
+      }
+      prevD = d;
+    }
+    check('the line goes through the opening once and then over the top of the gate, both the way it is flown',
+      crossings.length === 2 && crossings[0].z < g.dims.clearH && crossings[1].z > header + 0.3 && crossings.every((c) => c.forward),
+      JSON.stringify(crossings));
+    const warn = collectWarnings(doc, line);
+    check('it raises no reversal and no two knots in one place', !warn.some((w) => w.code === 'coincident' || w.code === 'reversal'), warn.map((w) => w.code).join());
+    check('it reads back as a spiral up on the right, so the card lights Spiral up',
+      JSON.stringify(roundFlagOf(doc, pass.id)) === JSON.stringify({ side: 'right', spiral: true, up: true }));
+    check('and the next gate does not take it for a figure flown into it',
+      roundFlagOf(doc, doc.sequence[at + 1 + made.waypoints.length].id) === null);
+    const down = addSpiral(doc, pass.id, 'left');
+    check('a spiral down in its place takes the spiral up out: one figure round a pass\'s flag, nothing left over',
+      !ws.some((w) => doc.elements.includes(w)) && doc.elements.filter((e) => e.type === 'waypoint').length === 1 + down.waypoints.length
+      && JSON.stringify(roundFlagOf(doc, pass.id)) === JSON.stringify({ side: 'left', spiral: true }));
+    addSpiral(doc, pass.id, 'left', { up: true });
+    check('removeSpiralUp takes only a spiral up, and None takes either',
+      removeSpiralUp(doc, pass.id) && roundFlagOf(doc, pass.id) === null && !removeSpiralUp(doc, pass.id)
+      && (addSpiral(doc, pass.id, 'right', { up: true }) && removeSpiral(doc, pass.id) && roundFlagOf(doc, pass.id) === null)
+      && doc.elements.filter((e) => e.type === 'waypoint').length === 1);
+    const last = make();
+    const tail = addSpiral(last.doc, last.doc.sequence[2].id, 'right', { up: true });
+    check('a gate with no flag is not spiralled up round, and nor is a pass that is not there',
+      tail === null && addSpiral(doc, 'sq-nope', 'right', { up: true }) === null);
   }
 
   /* ---- editing a wall once it is laid ---- */

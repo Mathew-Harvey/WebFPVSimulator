@@ -35,11 +35,11 @@ import {
   GATE_PRESETS, MICRO_GATE_PRESETS, gatePresetsFor,
   applyGatePreset, matchingGatePreset, presetHeight, levelPitchFor, apertureLevels, apertureShapeOf, openingSizesOf,
   elementHeight, TRACK_CLASS_DEFAULT, trackClassOf, docModeOf, paletteGroupOf, clampByLimits, lowestBase,
-  isLetterPiece, isUnbuilt, letterExtent, pieceLabel,
+  isLetterPiece, isUnbuilt, letterExtent, pieceLabel, gateFlagHeight,
 } from './elements.js';
 import { LETTERS, openingCount, openingName } from '../props/letters.js';
 import {
-  aperturesOf, elementById, kindOf, isSequenceable, logosOf, logoForDecal, setOpeningSize,
+  aperturesOf, elementById, entryAnchor, kindOf, isSequenceable, logosOf, logoForDecal, setOpeningSize,
   SCENE_TIMES, SCENE_GROUNDS, sceneOf, isNightRace,
 } from './model.js';
 import { gateNumbers, gateNumberOf, sequenceLabel, faceLabel, unsequencedElements } from './sequence.js';
@@ -302,6 +302,11 @@ function figureIcon(figId, levels) {
   }
   return svg;
 }
+
+/* The tallest a flag or a pennant's mast is offered on the card, in metres: a 6 m telescopic pole is the tallest
+ * thing a club carries to a field, and twice that is room to spare without a slip of the keyboard planting a mast
+ * a hundred metres tall. */
+const FLAG_TALLEST = 12;
 
 const FLAG_SIDE_LABEL = {
   left: 'Left', right: 'Right', both: 'Both', top: 'On top',
@@ -2928,6 +2933,10 @@ export class Panels {
       grid.append(fig);
     }
     card.append(grid);
+    const spacing = at ? this.cardSpacing(doc, at, numbers, metric) : null;
+    if (spacing) {
+      card.append(spacing);
+    }
     const swap = this.replaceField(ids);
     if (swap) {
       card.append(swap);
@@ -3063,6 +3072,50 @@ export class Panels {
   }
 
   /*
+   * HOW FAR TO THE PASSES EITHER SIDE OF THIS ONE, as a line under the card's fields: straight across the ground,
+   * middle to middle, to the gate or flag flown before and the one flown after, skipping the waypoints between (the
+   * pilot sees gates, not waypoints). A club pilot's note on building a real course in the builder: "Getting
+   * scale/distance between gates is always hard in a sim" (2026-11-09). The ruler measures any two points, but it is
+   * a tool to go and fetch; this is the two numbers that matter, already there when a gate is picked up and dragged,
+   * so the spacing can be set against the tape measure on the club's own field. Arithmetic on the document only,
+   * when the card is drawn: nothing per frame.
+   */
+  cardSpacing(doc, at, numbers, metric) {
+    const seq = doc.sequence;
+    const i = seq.indexOf(at);
+    if (i < 0 || seq.length < 2) {
+      return null;
+    }
+    /* Another opening of the same stack is not the next gate: it is this one again, a level up. */
+    const isPass = (q) => q.elementId !== at.elementId && elementById(doc, q.elementId)?.type !== 'waypoint';
+    const find = (dir) => {
+      for (let k = 1; k < seq.length; k += 1) {
+        const q = seq[(i + dir * k + seq.length * k) % seq.length];
+        if (q !== at && isPass(q)) {
+          return q;
+        }
+      }
+      return null;
+    };
+    const here = entryAnchor(doc, at);
+    const say = (q, word) => {
+      const p = q ? entryAnchor(doc, q) : null;
+      if (!p || !here) {
+        return null;
+      }
+      const d = Math.hypot(p.x - here.x, p.y - here.y);
+      const n = numbers.get(q.id);
+      const far = metric ? `${d < 10 ? d.toFixed(1) : Math.round(d)} m` : `${Math.round(d / IN)} in`;
+      return `${far} ${word} ${n != null ? `number ${n}` : (word === 'from' ? 'the one before' : 'the next')}`;
+    };
+    const parts = [say(find(-1), 'from'), say(find(1), 'to')].filter(Boolean);
+    if (!parts.length) {
+      return null;
+    }
+    return el('p', 'tb-help tb-card-spacing', `Straight across the ground: ${parts.join(', ')}.`);
+  }
+
+  /*
    * X, Y, the height and the turn of a piece, in the units the canvas speaks: inches with the millimetres beside
    * them, from the middle of a hall; metres, from the corner of a field. A barrier has a width and a board height
    * of its own that a field's designer sets, and a tilted gate its tilt.
@@ -3112,6 +3165,22 @@ export class Panels {
           this.host.edit('height', (d) => { elementById(d, id).position.z = round6(Math.max(0, val)); });
         }, { step: 0.25, places: 2, min: 0 }));
       }
+      /*
+       * HOW TALL A FLAG STANDS, ON THE CARD. It was a field in the details only, and a club pilot looked for it on
+       * the card and decided it could not be done: "I can't seem to make a flag taller (as in put it higher off the
+       * ground on an extension)" (2026-11-09). A turn flag's pole and a pennant's mast over a gate's header are the
+       * two places a flag is made taller, so each piece offers the one it has. The scoring square beside a turn flag
+       * is at least as tall as the flag (virtualApertureDims), so a taller flag is a taller window as well.
+       */
+      if (element.type === 'flag') {
+        grid.append(this.field(`card-fh-${id}`, 'Flag height (m)', element.dims.height, (val) => {
+          this.host.edit('flag height', (d) => { elementById(d, id).dims.height = round6(Math.min(FLAG_TALLEST, Math.max(0.5, val))); });
+        }, { step: 0.25, places: 2, min: 0.5, max: FLAG_TALLEST }));
+      } else if (flagSideOf(element) && !isUnbuilt(element)) {
+        grid.append(this.field(`card-mast-${id}`, 'Flag mast (m)', gateFlagHeight(element.dims), (val) => {
+          this.host.edit('flag height', (d) => { elementById(d, id).dims.flagH = round6(Math.min(FLAG_TALLEST, Math.max(0.2, val))); });
+        }, { step: 0.25, places: 2, min: 0.2, max: FLAG_TALLEST }));
+      }
     } else {
       const mid = { x: doc.field.width / 2, y: doc.field.depth / 2 };
       const mm = (m) => `${Math.round(m * 1000)} mm`;
@@ -3136,6 +3205,11 @@ export class Panels {
         grid.append(this.field(`card-h-${id}`, 'Height off floor (in)', element.position.z / IN, (val) => {
           this.host.edit('height', (d) => { elementById(d, id).position.z = round6(Math.max(0, val * IN)); });
         }, { step: 1, places: 1, min: 0, suffix: mm(element.position.z) }));
+      }
+      if (element.type === 'flag') {
+        grid.append(this.field(`card-fh-${id}`, 'Flag height (in)', element.dims.height / IN, (val) => {
+          this.host.edit('flag height', (d) => { elementById(d, id).dims.height = round6(Math.min(FLAG_TALLEST, Math.max(4 * IN, val * IN))); });
+        }, { step: 1, places: 1, min: 4, suffix: mm(element.dims.height) }));
       }
     }
     if (def.kind === KIND.APERTURE || def.kind === KIND.START || def.kind === KIND.OBSTACLE) {
@@ -3399,46 +3473,58 @@ export class Panels {
   }
 
   /*
-   * ROUND THE FLAG, BEFORE THE PASS THE CARD IS ABOUT: the line goes round the pennant on one of the gate's uprights
-   * and through the gate once, spiralling down a whole turn from over the header when Spiral down is on, and round
-   * and straight in when it is off (parts.js addSpiral). Waypoints, one undo step each way. The row shows the figure
-   * that is in front of this pass, as Flags shows the flags: None, or the side it goes round, and Spiral down lit when
-   * it spirals; with none there, Spiral down is what the next press makes. Left and right are as flown, so the side
-   * is the way the pilot turns: clockwise round a flag on the right. A side with no flag on it is offered and
-   * refused, with the reason, because Flags is the row above. `label` lets a wall's card say which bay it is about.
+   * ROUND THE FLAG, AT THE PASS THE CARD IS ABOUT: the line goes round the pennant on one of the gate's uprights, a
+   * whole turn down from over the header and then through (Spiral down), through and then a whole turn up and over
+   * the gate (Spiral up), or round and straight in (Flat) (parts.js addSpiral). Waypoints, one undo step each way. The
+   * first row says which flag, as Flags shows the flags: None, or the side it goes round. The second says how, lit
+   * for the figure that is there, or for what the next press makes when there is none. Left and right are as flown,
+   * so the side is the way the pilot turns: clockwise round a flag on the right. A side with no flag on it is offered
+   * and refused, with the reason, because Flags is the row above. `label` lets a wall's card say which bay it is
+   * about, and `into` keeps it to the figures flown into the pass, because a wall's next bay is the line out of it.
+   *
+   * Spiral up was missing until a club pilot asked for it (2026-11-09): "when a flag is put on a gate the only option
+   * is spiral down, no option for spiral up". The plan they drew uses both.
    */
-  cardRound(card, element, at, label = 'Round the flag') {
+  cardRound(card, element, at, label = 'Round the flag', into = false) {
     /* A letter has no pennant to go round, and nor has a gate with no frame. */
     if (this.host.isWhoopRace() || !at || kindOf(element) !== KIND.APERTURE || isLetterPiece(element) || isUnbuilt(element)) {
       return;
     }
     const has = flagsAsFlown(this.host.doc, at.id);
     const now = roundFlagOf(this.host.doc, at.id);
-    const spiral = now ? now.spiral : this.host.spiralDown;
-    const how = spiral ? 'spiral down a whole turn round' : 'go round';
+    const nowMode = now ? (now.up ? 'up' : (now.spiral ? 'down' : 'flat')) : null;
+    let mode = nowMode ?? this.host.spiralMode;
+    if (into && mode === 'up') {
+      mode = 'down';
+    }
+    const how = { down: 'spiral down a whole turn round', up: 'go through, then spiral up a whole turn round', flat: 'go round' }[mode];
     const side = (key, word, way) => ({
       label: word,
       on: now?.side === key,
       disabled: !has[key] && now?.side !== key,
-      run: () => this.host.roundFlag(at.id, key),
+      run: () => this.host.roundFlag(at.id, key, mode),
       title: has[key]
-        ? `Before this pass: ${how} the flag on the ${key} hand upright, ${way}, and through the gate`
+        ? `${how} the flag on the ${key} hand upright, ${way}${mode === 'up' ? ', and over the top of the gate' : ', and through the gate'}`
         : `There is no flag on the ${key} hand upright as this pass flies it. Flags puts one there.`,
     });
     card.append(this.cardChoice(label, [
-      { label: 'None', on: !now, run: () => this.host.clearRoundFlag(at.id), title: 'Straight into the gate: no figure in front of this pass' },
+      { label: 'None', on: !now, run: () => this.host.clearRoundFlag(at.id), title: 'Straight through the gate: no figure round its flag' },
       side('left', 'Left', 'anticlockwise'),
       side('right', 'Right', 'clockwise'),
-      {
-        label: 'Spiral down',
-        toggle: true,
-        on: spiral,
-        /* On a pass with the figure in front of it, this makes it again the other way round the same flag. Without
-         * one it is a way of working that stays for the next press, as the Square on the bar does. */
-        run: () => this.host.setSpiralDown(!spiral, now ? at.id : null),
-        title: 'On: a whole turn round the flag, coming down from over the header, then the pass. Off: round the flag and straight in.',
-      },
     ]));
+    const modes = [
+      ['down', 'Spiral down', 'A whole turn round the flag, coming down from over the header, then the pass'],
+      ['up', 'Spiral up', 'The pass, then a whole turn round the flag climbing, and out over the top of the gate'],
+      ['flat', 'Flat', 'Round the flag at the height of the opening and straight in'],
+    ].filter(([key]) => !into || key !== 'up');
+    card.append(this.cardChoice('How', modes.map(([key, word, title]) => ({
+      label: word,
+      on: mode === key,
+      /* On a pass with a figure there, this makes it again the new way round the same flag. Without one it is a way
+       * of working that stays for the next press, as the Square on the bar does. */
+      run: () => this.host.setSpiralMode(key, now ? at.id : null),
+      title,
+    })), 'How the line goes round the flag'));
   }
 
   /* A wall's card: one piece of N bays, how it is flown, how wide a bay is, and which ends carry a pennant. */
@@ -3469,7 +3555,7 @@ export class Panels {
     /* Into the first bay round the flag on its end, which is how a wall with a flag on it is often entered. */
     const into = doc.sequence.find((q) => wall.ids.includes(q.elementId));
     if (into) {
-      this.cardRound(card, elementById(doc, into.elementId), into, 'Into it round the flag');
+      this.cardRound(card, elementById(doc, into.elementId), into, 'Into it round the flag', true);
     }
     actions.insertBefore(button('Reverse', 'tb-btn', () => this.host.reverseWallOf(id), 'Fly the wall the other way. Every pass turns round'), copyBtn);
     card.append(actions);

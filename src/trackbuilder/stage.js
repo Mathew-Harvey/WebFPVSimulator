@@ -68,7 +68,7 @@ import {
 } from './elements.js';
 import { PIPE_OD as RACEGOW_PIPE_OD } from './racegow.js';
 import * as modelLib from './model.js';
-import { aperturesOf, elementById, apertureCenter, logoForDecal, dressOrder } from './model.js';
+import { aperturesOf, elementById, apertureCenter, logoForDecal, dressOrder, startPadsOf } from './model.js';
 import { apertureFrame, apertureCorners, clamp } from './geometry.js';
 import { isRoomType, roomWorldBoxes } from '../props/room.js';
 /* The whoop room the animation is shot in, in place of the black stage. */
@@ -151,6 +151,10 @@ const ELEVATION = 40 * (Math.PI / 180);
  * picture is the track on the mat, which is still the room.
  */
 const ROOM_ELEVATION = 28 * (Math.PI / 180);
+/* The plan's view is higher than the three quarter one, because it is a plan seen in perspective and the gates
+ * have to stand apart on it as they do on the page; behind the start is lower, a pilot's eye up a step. */
+const PLAN_ELEVATION = 55 * (Math.PI / 180);
+const START_ELEVATION = 30 * (Math.PI / 180);
 const ROOM_WALL_SHRINK = 1.2;
 const ROOM_FIT_MARGIN = 1.1;
 const ROOM_WALL_SHOWN = 2.7;
@@ -263,6 +267,7 @@ const COL_RIBBON_CORE = 0xff6b5b;
 const COL_RIBBON_SHELL = 0xff3b2a;
 const COL_TEXT = 0xf2e3cb;
 const COL_START_PAD = 0x2a2a2e;
+const COL_SAIL = 0xe0a63a;
 /* What lies past the mown grass of the race field: dark, and green enough to be bush and not a void. */
 const COL_SURROUND = 0x0e1a10;
 const COL_FIELD_LINE = '#e6efe2';
@@ -1120,6 +1125,16 @@ export function buildStage(THREE, doc, path, {
    */
   room = false,
   roomArt = null,
+  /*
+   * WHERE THE CAMERA STANDS. 'auto' is the viewpoint the animation always had: a three quarter view 55 degrees off
+   * the track's longest direction, which frames the most track but stands wherever that sum puts it, and a club
+   * pilot's export of their own course came out "on a strange angle" (2026-11-09), because nothing about it is
+   * where they drew the course from. 'plan' stands at the bottom edge of the builder's plan looking up it, higher,
+   * so the GIF has the track the way round the author built it: what is on the left of the plan is on the left of
+   * the picture. 'start' stands behind the start, looking down the first leg, the way the pilots on the line see
+   * it. The board's cards and the bundle ask for nothing and get 'auto', so no picture already made changes.
+   */
+  view = 'auto',
 } = {}) {
   const sizes = detail || detailOf(width, height);
   const trash = [];
@@ -1212,6 +1227,11 @@ export function buildStage(THREE, doc, path, {
       }
     }
   }
+  /* The sail of a flag on the black stage: one flat colour, the amber the palette keeps for an instrument, which is
+   * neither the pipe's grey nor the line's red, so a flag is not mistaken for either. */
+  const plainSail = keep(new THREE.MeshStandardMaterial({
+    color: COL_SAIL, roughness: 0.8, metalness: 0,
+  }));
   /* A mast and its sail, stood up at a point and turned to a heading: the mast joins the pipe, the sail is its own mesh. */
   const flagAt = (x, y, z, turn, radius, h, sailMat) => {
     const place = (mesh) => {
@@ -1414,7 +1434,11 @@ export function buildStage(THREE, doc, path, {
    * real pipe would sit inside the drawn one.
    */
   const dressGate = (el, sides) => {
-    if (!dress || isLetter(el) || Math.abs(el.pitch) >= Math.PI / 6) {
+    if (isLetter(el) || Math.abs(el.pitch) >= Math.PI / 6) {
+      return;
+    }
+    if (!dress) {
+      plainPennants(el);
       return;
     }
     const levels = aperturesOf(el);
@@ -1481,13 +1505,48 @@ export function buildStage(THREE, doc, path, {
     }
   };
 
+  /*
+   * THE PENNANTS ON A FLAGGED GATE ON THE BLACK STAGE. They were drawn only in the race field's dress, so the stage,
+   * which is what the export has always defaulted to, showed a flagged gate as a bare frame: a club pilot's export of
+   * a course built round its gate flags "positions the camera on a strange angle, and the flags on the gates aren't
+   * shown" (2026-11-09). The same bent mast and sail the field uses, stood on the top rail at the uprights (or over
+   * the middle for one on top), the mast in the pipe's grey and the sail in plainSail, so a gate flag on the stage
+   * reads as the same flag a turn flag is.
+   */
+  const plainPennants = (el) => {
+    const signs = flagSideSigns(flagSideOf(el));
+    if (!signs.length) {
+      return;
+    }
+    const levels = aperturesOf(el);
+    if (!levels.length) {
+      return;
+    }
+    const top = levels[levels.length - 1];
+    const f = apertureFrame(el.yaw, el.pitch);
+    const half = top.clearW / 2 + tubeOD / 2;
+    const railTop = top.sillH + top.clearH + tubeOD / 2 + tubeR;
+    const h = gateFlagHeight(el.dims);
+    const radius = Math.max(GATE_FLAG_POLE_R, tubeR * 0.75);
+    const base = el.position;
+    for (const sx of signs) {
+      const lean = flagLeanSign(sx);
+      const turn = -Math.atan2(f.widthAxis.y * lean, f.widthAxis.x * lean);
+      flagAt(
+        base.x + f.widthAxis.x * sx * half, base.y + f.widthAxis.y * sx * half,
+        base.z + railTop, turn, radius, h, plainSail,
+      );
+    }
+  };
+
   const buildMarker = (el) => {
     const h = el.dims.height ?? 1.5;
     const r = Math.max(el.dims.poleRadius ?? el.dims.baseRadius ?? tubeR, minDrawR);
     const p = el.position;
-    /* A turn flag on a race field is the bent mast and its printed sail, in place of the plain post. */
-    if (dress && el.type === 'flag') {
-      flagAt(p.x, p.y, p.z, -el.yaw, r, h, dress.forFlag(flagNumber.get(el.id) ?? 0));
+    /* A turn flag is the bent mast and its sail, in place of the plain post: printed on a race field, plain on the
+     * stage, so it reads as the same thing as a pennant on a gate. */
+    if (el.type === 'flag' && !micro) {
+      flagAt(p.x, p.y, p.z, -el.yaw, r, h, dress ? dress.forFlag(flagNumber.get(el.id) ?? 0) : plainSail);
       addFoot({ x: p.x, y: p.y, z: p.z });
       return;
     }
@@ -1653,7 +1712,27 @@ export function buildStage(THREE, doc, path, {
     }
     theta = 0.5 * Math.atan2(2 * vxy, vxx - vyy);
   }
-  const azimuth = theta + AZIMUTH_OFF_AXIS;
+  let azimuth = theta + AZIMUTH_OFF_AXIS;
+  let elevation = inRoom ? ROOM_ELEVATION : ELEVATION;
+  if (view === 'plan') {
+    /* The plan has the document's y up the screen, so its bottom edge is towards minus y: azimuth minus a quarter. */
+    azimuth = -Math.PI / 2;
+    elevation = PLAN_ELEVATION;
+  } else if (view === 'start' && path.knots.length) {
+    /* Facing down the first leg: from the start pads to the first pass, or along the first pass when there are none. */
+    const first = path.knots[0];
+    const pads = startPadsOf(doc);
+    let dx = first.tangent?.x ?? 1;
+    let dy = first.tangent?.y ?? 0;
+    if (pads && Math.hypot(first.pos.x - pads.position.x, first.pos.y - pads.position.y) > 1e-3) {
+      dx = first.pos.x - pads.position.x;
+      dy = first.pos.y - pads.position.y;
+    }
+    if (Math.hypot(dx, dy) > 1e-6) {
+      azimuth = Math.atan2(-dy, -dx);
+      elevation = START_ELEVATION;
+    }
+  }
 
   const floorZ = box.min.y - 0.001;
   let roomCeiling = null;
@@ -1806,7 +1885,7 @@ export function buildStage(THREE, doc, path, {
         centre.x + awayX * reach, floorZ + ROOM_WALL_SHOWN, centre.z + awayZ * reach,
       );
       const eye = new THREE.Vector3(
-        Math.cos(azimuth) * Math.cos(ROOM_ELEVATION), Math.sin(ROOM_ELEVATION), -Math.sin(azimuth) * Math.cos(ROOM_ELEVATION),
+        Math.cos(azimuth) * Math.cos(elevation), Math.sin(elevation), -Math.sin(azimuth) * Math.cos(elevation),
       );
       /* The distance a set of points needs, aimed the way the animation aims. */
       const needed = (pts) => {
@@ -1859,7 +1938,7 @@ export function buildStage(THREE, doc, path, {
       roomCeiling.visible = camera.position.y - floorZ < roomHeight;
     }
   };
-  placeCamera(azimuth, inRoom ? ROOM_ELEVATION : ELEVATION);
+  placeCamera(azimuth, elevation);
   /*
    * A CAMERA THE CALLER SUPPLIES, in document coordinates, overrides the
    * framing above. It exists so an export can be shot from exactly the

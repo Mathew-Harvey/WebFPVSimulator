@@ -56,7 +56,7 @@ import {
 } from './snap.js';
 import {
   addSpiral, canBecomeLetter, canBeInvisible, canBeFloating, canBeDecor, setFloating, setDecor, flyOver, placeBarHurdle, placeHurdle, placeInvisibleGate, placeUpGate, placeWall,
-  removeSpiral, reverseWall, roundFlagOf, setFlags, setInvisible, setWallFlags, setHurdleAngle, setHurdleLine, setHurdleSize,
+  legOf as legOfSide, removeSpiral, removeSpiralUp, reverseWall, roundFlagOf, setFlags, setInvisible, setWallFlags, setHurdleAngle, setHurdleLine, setHurdleSize,
   setWallSize, setWallWeave, turnIntoGate, turnIntoLetter, wallOf,
 } from './parts.js';
 import { cloneElements, anyCloneable } from './clone.js';
@@ -664,6 +664,17 @@ const ANIMATION_SETTINGS = [
   },
 ];
 
+/*
+ * WHERE THE ANIMATION'S CAMERA STANDS (stage.js buildStage `view`). The plan's way round is first and the default
+ * because it is the one an author can predict: a club pilot's export came out "on a strange angle" (2026-11-09),
+ * and the strange angle was the three quarter view, which is still here for the picture it has always made.
+ */
+const ANIMATION_VIEWS = [
+  { id: 'plan', label: 'Like the plan', note: 'From the bottom edge of the plan, looking up it, so the track is the way round you built it.' },
+  { id: 'start', label: 'Behind the start', note: 'From behind the start, looking down the first leg, the way the pilots on the line see it.' },
+  { id: 'auto', label: 'Three quarter', note: 'From the side of the track\'s longest direction, which fits the most track in the picture.' },
+];
+
 export class App {
   constructor(nodes) {
     /* The builder is the simulator's tab, not a tab of its own: the shell
@@ -696,8 +707,9 @@ export class App {
     this.pathVisible = false;
     /* FIVE INCH TRACK ONLY. New gates square to the field: see SQUARE_KEY. */
     this.square = readSquare();
-    /* FIVE INCH TRACK ONLY. Whether the card's Round the flag spirals down a whole turn first or just goes round. */
-    this.spiralDown = true;
+    /* FIVE INCH TRACK ONLY. How the card's Round the flag goes round: 'down', a whole turn down from over the header
+     * and then the pass; 'up', the pass and then a whole turn up and over the gate; 'flat', round and straight in. */
+    this.spiralMode = 'down';
     /* FIVE INCH TRACK ONLY. Which letter the Letter tool lays: see LETTER_KEY. */
     this.letterTool = readLetter();
     /* WHOOP CANVAS ONLY. Whether a drag that starts on the racing line bends
@@ -2856,38 +2868,48 @@ export class App {
   }
 
   /*
-   * Whether Round the flag spirals down a whole turn before the pass or just goes round. A way of working that stays
-   * for the next press, and, on a pass that already has the figure in front of it, that figure made again the other
-   * way round the same flag, because the chip on the card shows what is there.
+   * How Round the flag goes round: 'down', 'up' or 'flat' (see spiralMode). A way of working that stays for the next
+   * press, and, on a pass that already has a figure round its flag, that figure made again the new way round the same
+   * flag, because the chip on the card shows what is there.
    */
-  setSpiralDown(on, seqId = null) {
-    this.spiralDown = Boolean(on);
+  setSpiralMode(mode, seqId = null) {
+    this.spiralMode = mode === 'up' || mode === 'flat' ? mode : 'down';
     const now = seqId ? roundFlagOf(this.doc, seqId) : null;
     if (now) {
-      this.edit(on ? 'spiral down' : 'round the flag', (d) => { addSpiral(d, seqId, now.side, { turns: on ? 1 : 0 }); });
+      this.edit(`spiral ${this.spiralMode}`, (d) => { this.layRound(d, seqId, now.side, this.spiralMode); });
     }
     this.panels.renderCard();
   }
 
-  /* No figure in front of the pass: its waypoints go, in one undo step. */
+  /* The figure `mode` makes, laid into `d`. A spiral up is the line out of the gate, so the
+   * "Then" flight path it replaces goes with it. */
+  layRound(d, seqId, side, mode) {
+    const up = mode === 'up';
+    if (up && legOfSide(d, seqId, side)) {
+      clearThen(d, seqId);
+    }
+    return addSpiral(d, seqId, side, { turns: mode === 'flat' ? 0 : 1, up });
+  }
+
+  /* No figure round the flag: its waypoints go, in one undo step. */
   clearRoundFlag(seqId) {
     this.edit('no flag figure', (d) => { removeSpiral(d, seqId); });
   }
 
   /*
-   * ROUND THE FLAG ON ONE SIDE OF A GATE, AND THROUGH IT, before the pass the card is about: waypoints round the
-   * pennant, spiralling down a whole turn first when Spiral down is on (parts.js addSpiral). One undo step. The gate
+   * ROUND THE FLAG ON ONE SIDE OF A GATE: waypoints round the pennant, spiralling down a whole turn into the pass,
+   * up a whole turn out of it, or just round and in, as spiralMode says (parts.js addSpiral). One undo step. The gate
    * stays selected, so the other side, or the other way of working, is one more press, and makes it again.
    */
-  roundFlag(seqId, side) {
+  roundFlag(seqId, side, mode = this.spiralMode) {
     let made = null;
-    this.edit(`round the flag ${side}`, (d) => { made = addSpiral(d, seqId, side, { turns: this.spiralDown ? 1 : 0 }); });
+    this.edit(`round the flag ${side}`, (d) => { made = this.layRound(d, seqId, side, mode); });
     if (!made) {
       this.toast('Round the flag needs a pennant on that upright, as flown. Flags puts one there.');
       return null;
     }
     if (!made.waypoints.length) {
-      this.toast('The line already comes into the gate past that flag, so there is nothing to go round. Spiral down goes round it once.');
+      this.toast('The line already comes into the gate past that flag, so there is nothing to go round. Spiral down or Spiral up goes round it once.');
     }
     return made;
   }
@@ -2905,6 +2927,8 @@ export class App {
       } else if (slot === 'around') {
         made = applyAround(d, seqId, spec);
       } else {
+        /* A "Then" is the line out of the gate, and so is a spiral up round its flag: one or the other. */
+        removeSpiralUp(d, seqId);
         made = applyThen(d, seqId, spec);
       }
     });
@@ -2931,6 +2955,7 @@ export class App {
   setPieceFlight(seqId, kind, a, b) {
     let made = null;
     this.edit('flight path', (d) => {
+      removeSpiralUp(d, seqId);
       if (kind === 'leg') {
         made = applyLeg(d, seqId, a, b);
       } else if (kind === 'turnaround') {
@@ -4421,6 +4446,33 @@ export class App {
       body.append(settingField, settingNote);
     }
 
+    /* THE VIEW: where the camera stands. See ANIMATION_VIEWS. */
+    const viewField = document.createElement('div');
+    viewField.className = 'tb-field';
+    const viewLabel = document.createElement('label');
+    viewLabel.className = 'tb-field-label';
+    viewLabel.textContent = 'View';
+    const viewPick = document.createElement('select');
+    viewPick.id = 'tb-animation-view';
+    viewLabel.htmlFor = viewPick.id;
+    for (const v of ANIMATION_VIEWS) {
+      const o = document.createElement('option');
+      o.value = v.id;
+      o.textContent = v.label;
+      viewPick.append(o);
+    }
+    const viewNote = document.createElement('p');
+    viewNote.className = 'tb-help';
+    viewNote.id = 'tb-animation-view-note';
+    viewPick.setAttribute('aria-describedby', viewNote.id);
+    const sayView = () => {
+      viewNote.textContent = (ANIMATION_VIEWS.find((v) => v.id === viewPick.value) || ANIMATION_VIEWS[0]).note;
+    };
+    viewPick.addEventListener('change', sayView);
+    sayView();
+    viewField.append(viewLabel, viewPick);
+    body.append(viewField, viewNote);
+
     /* No live region on this one, as before: it changes on every frame, and a
      * screen reader reading out each of six hundred is not help. */
     const status = document.createElement('p');
@@ -4441,12 +4493,14 @@ export class App {
       /* Not changeable mid render: the file is the size it was asked for. */
       sizePick.disabled = true;
       settingPick.disabled = true;
+      viewPick.disabled = true;
       status.textContent = 'Loading the renderer.';
       try {
         const { exportTrackGif } = await import('./animate.js');
         const bytes = await exportTrackGif(this.doc, {
           size: edge,
           field,
+          view: viewPick.value,
           signal: stop.signal,
           onProgress: (done, total) => {
             status.textContent = `Frame ${done} of ${total}.`;
@@ -4468,6 +4522,7 @@ export class App {
         go.disabled = false;
         sizePick.disabled = false;
         settingPick.disabled = false;
+        viewPick.disabled = false;
       }
     });
     body.append(go);

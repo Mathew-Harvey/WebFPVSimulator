@@ -72,6 +72,11 @@ function usage() {
   console.log('                     shoot from a fixed eye at a fixed aim, document metres,');
   console.log('                     vertical field of view in degrees, instead of framing');
   console.log('                     the track. For laying an export over a reference picture.');
+  console.log('  --view <v>         where the camera stands when --camera is not given: plan (from');
+  console.log('                     the bottom edge of the plan), start (behind the start) or');
+  console.log('                     auto (three quarter, the default here). The builder\'s dialog');
+  console.log('                     defaults to plan.');
+  console.log('  --field            on the race field rather than the black stage.');
   console.log('');
   console.log('  --frames 24 is the smoke setting. Chromium here runs on a software');
   console.log('  rasteriser, so a few hundred frames takes minutes, not seconds.');
@@ -94,7 +99,7 @@ function parseArgs(argv) {
   /* frames stays null unless the caller names one: null means the lap
    * decides, at the steady pace stage.js holds. */
   const opts = {
-    size: 512, width: 0, height: 0, frames: null, delay: 4, out: null, input: null, camera: null,
+    size: 512, width: 0, height: 0, frames: null, delay: 4, out: null, input: null, camera: null, view: 'auto', field: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
@@ -116,6 +121,8 @@ function parseArgs(argv) {
     if (a === '--frames') { opts.frames = Number(argv[i + 1]); i += 1; continue; }
     if (a === '--delay') { opts.delay = Number(argv[i + 1]); i += 1; continue; }
     if (a === '--camera') { opts.camera = parseCamera(argv[i + 1]); i += 1; continue; }
+    if (a === '--view') { opts.view = argv[i + 1]; i += 1; continue; }
+    if (a === '--field') { opts.field = true; continue; }
     if (a.startsWith('--')) {
       throw new Error(`unknown option ${a}`);
     }
@@ -220,6 +227,8 @@ async function main() {
         frames,
         delayCs: opts.delay,
         camera: opts.camera,
+        view: opts.view,
+        field: opts.field,
       })})`,
     );
 

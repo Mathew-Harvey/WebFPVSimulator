@@ -214,7 +214,7 @@ async function loadRoomArt() {
 export async function exportTrackGif(doc, {
   size = 512, width = size, height = size,
   frames = null, delayCs = 4, onProgress = null, camera = null, nameplate = true,
-  signal = null, field = false, room = true,
+  signal = null, field = false, room = true, view = 'auto',
 } = {}) {
   if (!Number.isInteger(width) || !Number.isInteger(height)
     || Math.min(width, height) < MIN_EDGE || Math.max(width, height) > MAX_EDGE) {
@@ -319,7 +319,7 @@ export async function exportTrackGif(doc, {
        * camera then frames the track alone, so it is bigger in the picture. */
       nameplate: nameplate && !field,
       detail: detailOf(width, height, renderer.capabilities.maxTextureSize),
-      field, logos, room: inRoom, roomArt,
+      field, logos, room: inRoom, roomArt, view,
     });
 
     const raw = new Uint8Array(width * height * 4);

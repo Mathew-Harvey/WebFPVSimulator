@@ -1136,8 +1136,15 @@ const SLEEVE_W = 0.42;
 
 /* What the figure names its waypoints, which is how it finds them again and how warnings.js knows a tight circle
  * was asked for. */
-export const ROUND_NAMES = { left: 'Spiral left', right: 'Spiral right', round: 'Round the flag' };
-export const ROUND_NAME = /^(Spiral (left|right)|Round the flag)$/;
+export const ROUND_NAMES = {
+  left: 'Spiral left', right: 'Spiral right', round: 'Round the flag', upLeft: 'Spiral up left', upRight: 'Spiral up right',
+};
+export const ROUND_NAME = /^(Spiral (up )?(left|right)|Round the flag)$/;
+/* The two halves of that: a figure flown into a pass (spiral down, round the flag) and one flown out of it (spiral
+ * up). Kept apart because the waypoints a spiral up leaves after one gate can be the very run in front of the next
+ * gate's pass, and that run is not the next gate's figure. */
+const ROUND_BEFORE = /^(Spiral (left|right)|Round the flag)$/;
+const ROUND_AFTER = /^Spiral up (left|right)$/;
 
 /* An arc this short is the line already coming in past the flag: a point a few degrees round is not a figure. */
 const MIN_ARC = Math.PI / 12;
@@ -1166,10 +1173,23 @@ function figureBefore(doc, seq) {
   const out = [];
   for (let k = doc.sequence.indexOf(seq) - 1; k >= 0; k -= 1) {
     const w = elementById(doc, doc.sequence[k].elementId);
-    if (!w || w.type !== 'waypoint' || !ROUND_NAME.test(w.name ?? '')) {
+    if (!w || w.type !== 'waypoint' || !ROUND_BEFORE.test(w.name ?? '')) {
       break;
     }
     out.unshift(doc.sequence[k]);
+  }
+  return out;
+}
+
+/* The waypoints of a spiral up out of a pass, nearest the pass first: the run of them straight after it. */
+function figureAfter(doc, seq) {
+  const out = [];
+  for (let k = doc.sequence.indexOf(seq) + 1; k < doc.sequence.length; k += 1) {
+    const w = elementById(doc, doc.sequence[k].elementId);
+    if (!w || w.type !== 'waypoint' || !ROUND_AFTER.test(w.name ?? '')) {
+      break;
+    }
+    out.push(doc.sequence[k]);
   }
   return out;
 }
@@ -1194,7 +1214,9 @@ export function roundFlagOf(doc, seqId) {
   if (!el || kindOf(el) !== KIND.APERTURE) {
     return null;
   }
-  const run = figureBefore(doc, seq);
+  const before = figureBefore(doc, seq);
+  const after = before.length ? [] : figureAfter(doc, seq);
+  const run = before.length ? before : after;
   if (!run.length) {
     return null;
   }
@@ -1202,7 +1224,9 @@ export function roundFlagOf(doc, seqId) {
   const { right } = travelOf(el, seq);
   const ws = run.map((q) => elementById(doc, q.elementId));
   const across = ws.reduce((t, w) => t + (w.position.x - centre.x) * right.x + (w.position.y - centre.y) * right.y, 0);
-  return { side: across >= 0 ? 'right' : 'left', spiral: ws.some((w) => w.name !== ROUND_NAMES.round) };
+  const side = across >= 0 ? 'right' : 'left';
+  /* `up` only when it is one, so a figure into the pass reads back exactly as it always has. */
+  return after.length ? { side, spiral: true, up: true } : { side, spiral: ws.some((w) => w.name !== ROUND_NAMES.round) };
 }
 
 /* Take the figure in front of a pass out: its waypoints leave the flying order, and the document when nothing else
@@ -1212,7 +1236,23 @@ export function removeSpiral(doc, seqId) {
   if (!seq) {
     return false;
   }
-  const run = figureBefore(doc, seq);
+  const run = [...figureBefore(doc, seq), ...figureAfter(doc, seq)];
+  for (const q of run) {
+    doc.sequence.splice(doc.sequence.indexOf(q), 1);
+    if (!doc.sequence.some((s) => s.elementId === q.elementId)) {
+      doc.elements.splice(doc.elements.findIndex((e) => e.id === q.elementId), 1);
+    }
+  }
+  if (run.length) {
+    applyAutoFaces(doc);
+  }
+  return run.length > 0;
+}
+
+/* Take only a spiral up out of a pass, for a "Then" flight path laid in its place. Returns true when there was one. */
+export function removeSpiralUp(doc, seqId) {
+  const seq = doc.sequence.find((s) => s.id === seqId);
+  const run = seq ? figureAfter(doc, seq) : [];
   for (const q of run) {
     doc.sequence.splice(doc.sequence.indexOf(q), 1);
     if (!doc.sequence.some((s) => s.elementId === q.elementId)) {
@@ -1266,6 +1306,9 @@ export function addSpiral(doc, seqId, side, opts = {}) {
   const leg = legOf(doc, seqId, side);
   if (!leg) {
     return null;
+  }
+  if (opts.up) {
+    return addSpiralUp(doc, leg, side, opts);
   }
   const { seq, el, top, centre, travel, scale, mast } = leg;
   const r = leg.radius;
@@ -1330,6 +1373,84 @@ export function addSpiral(doc, seqId, side, opts = {}) {
       addToSequence(doc, wp.id, 0, at + k);
       ids.push(wp.id);
     }
+  }
+  applyAutoFaces(doc);
+  return { waypoints: ids, mast, radius: r, sweep };
+}
+
+/*
+ * SPIRAL UP: THROUGH THE GATE FIRST, THEN A WHOLE TURN ROUND THE FLAG, CLIMBING, and over the top of the gate it
+ * has just come through. The pilot's report was that a flag on a gate offered spiral down and no spiral up, and a
+ * club plan draws both. It is spiral down flown backwards in time: the same circle round the same pennant, turning
+ * the same way (so the line leaves the opening on the tangent it came through on), rising from the middle of the
+ * opening to SPIRAL.over clear of the header by the time it is back over the gate, and then round on to the tangent
+ * that leaves for the next knot. Its waypoints go straight AFTER the pass, which is the one difference in kind, so
+ * they are named for it (ROUND_NAMES.upLeft and upRight) and found by figureAfter. The caller takes away whatever
+ * "Then" flight path the pass had (app.js roundFlag), because the two are both the line out of that gate.
+ */
+function addSpiralUp(doc, leg, side, opts) {
+  const { seq, el, top, centre, travel, scale, mast } = leg;
+  const r = leg.radius;
+  removeSpiral(doc, seq.id);
+  const at = doc.sequence.indexOf(seq);
+  const turn = side === 'right' ? -1 : 1;
+  const start = Math.atan2(centre.y - mast.y, centre.x - mast.x);
+  /* Where the line goes next: the knot after, round the end of the lap for the last pass, or straight on. */
+  const n0 = doc.sequence.length;
+  const after = n0 > 1 ? entryAnchor(doc, doc.sequence[(at + 1) % n0]) : null;
+  const to = after ?? { x: centre.x + travel.x * 6, y: centre.y + travel.y * 6 };
+  let leave = start;
+  const d = Math.hypot(to.x - mast.x, to.y - mast.y);
+  if (d > r * 1.05) {
+    const a = Math.atan2(to.y - mast.y, to.x - mast.x);
+    const b = Math.acos(r / d);
+    for (const th of [a + b, a - b]) {
+      const v = { x: -Math.sin(th) * turn, y: Math.cos(th) * turn };
+      const tx = to.x - (mast.x + Math.cos(th) * r);
+      const ty = to.y - (mast.y + Math.sin(th) * r);
+      if (tx * v.x + ty * v.y > 0) {
+        leave = th;
+        break;
+      }
+    }
+  }
+  const TAU = 2 * Math.PI;
+  let arc = (((leave - start) * turn) % TAU + TAU) % TAU;
+  if (arc < MIN_ARC || arc > TAU - MIN_ARC) {
+    arc = 0;
+  }
+  const turns = Math.max(1, Math.round(opts.turns ?? SPIRAL.turns));
+  const sweep = turns * TAU + arc;
+  const low = centre.z;
+  const header = scale * (top.sillH + top.clearH + 2 * FRAME_TUBE_OD) + GATE_BANNER_H + 0.03;
+  const high = el.position.z + header + SPIRAL.over;
+  /* The height `gone` round from the pass: up to over the header in the last whole turn, a climb before it. */
+  const height = (gone) => {
+    const lift = turns * TAU;
+    if (gone >= lift) {
+      return high;
+    }
+    const firstTurns = (turns - 1) * TAU;
+    if (gone <= firstTurns) {
+      return low + (gone / TAU) * SPIRAL.climb;
+    }
+    const from = low + (turns - 1) * SPIRAL.climb;
+    return from + (high - from) * ((gone - firstTurns) / TAU);
+  };
+  const n = Math.max(1, Math.ceil(sweep / (Math.PI / 2) - 1e-9));
+  const step = sweep / n;
+  const ids = [];
+  for (let k = 1; k <= n; k += 1) {
+    const th = start + turn * step * k;
+    const wp = createElement(doc, 'waypoint', {
+      x: mm(mast.x + Math.cos(th) * r),
+      y: mm(mast.y + Math.sin(th) * r),
+      z: mm(height(step * k)),
+    }, 0);
+    wp.name = side === 'right' ? ROUND_NAMES.upRight : ROUND_NAMES.upLeft;
+    doc.elements.push(wp);
+    addToSequence(doc, wp.id, 0, at + k);
+    ids.push(wp.id);
   }
   applyAutoFaces(doc);
   return { waypoints: ids, mast, radius: r, sweep };

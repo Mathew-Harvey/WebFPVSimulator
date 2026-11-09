@@ -3571,8 +3571,16 @@ export async function boot({ loading, bootStart, mapId }) {
   const reduceMotionQuery = typeof window !== 'undefined' && window.matchMedia
     ? window.matchMedia('(prefers-reduced-motion: reduce)')
     : null;
+  /* Read when it changes, not when it is asked: four callers ask every
+   * frame, and each read of `matches` went to the browser's media engine
+   * (matchMedia stood in a flying frame's profile, review of 2026-11-09).
+   * The query's own change event keeps the answer as live as it was. */
+  let reduceMotionNow = Boolean(reduceMotionQuery && reduceMotionQuery.matches);
+  if (reduceMotionQuery && reduceMotionQuery.addEventListener) {
+    reduceMotionQuery.addEventListener('change', (e) => { reduceMotionNow = Boolean(e.matches); });
+  }
   function reducedMotion() {
-    return Boolean(reduceMotionQuery && reduceMotionQuery.matches);
+    return reduceMotionNow;
   }
   /* The impact frame answers to three switches: the manga layer (a
    * freestyle map without Clean FPV), its own row in Settings, and the

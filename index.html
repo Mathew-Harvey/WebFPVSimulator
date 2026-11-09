@@ -7363,22 +7363,32 @@
          not rename a class the shell writes from script unless the browser
          cache TTL on that host has been fixed first.
       */
+      /*
+         PAPER AND INK, LIKE THE MENUS (the review of 2026-11-09). These three
+         were the last grey rounded web buttons on a screen whose every other
+         panel is a magazine's: a paper stamp with an inked edge and the hard
+         offset shadow the cards and the masthead stamps carry. The box is
+         the box it was, to the pixel: a 2 px edge and 7 by 11 of padding
+         where there was 1 px and 8 by 12, so Pause still stands at 52 px
+         and nothing that measures a chip moves. The shadow is one flat
+         offset in place of an 18 px blur, which is less for the compositor
+         to paint, not more.
+      */
       .bug-chip {
         position: absolute; top: 16px; right: 16px; z-index: 7;
         pointer-events: auto;
-        appearance: none; border: 1px solid rgba(232, 168, 184, 0.45);
-        background: rgba(16, 22, 17, 0.82); color: var(--cream);
-        font: 600 12px/1 var(--ui-font); letter-spacing: 0.06em;
-        padding: 8px 12px; border-radius: 4px; cursor: pointer;
-        box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
+        appearance: none; border: 2px solid var(--ink-line);
+        background: #f7f0dc; color: var(--ink-line);
+        font: 700 12px/1 var(--ui-font); letter-spacing: 0.06em;
+        padding: 7px 11px; border-radius: 0; cursor: pointer;
+        box-shadow: 3px 3px 0 var(--ink-line);
       }
       /* Live flight: same corner, a shade quieter so the FPV frame still
          reads, still a real button. */
       .bug-chip.on-flight {
-        background: rgba(16, 22, 17, 0.55);
-        text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
+        background: rgba(247, 240, 220, 0.86);
       }
-      .bug-chip:hover { border-color: var(--sakura); color: var(--sakura); }
+      .bug-chip:hover { background: var(--sakura); }
       .bug-chip[hidden] { display: none; }
 
       /* Music skip. Tiny, out of the FPV instruments. Menus park it at the
@@ -7394,10 +7404,11 @@
         position: absolute; right: 16px; top: 16px; z-index: 6;
         display: flex; align-items: center; gap: 4px;
         pointer-events: auto;
-        padding: 3px 6px 3px 3px; border-radius: 4px;
-        background: rgba(16, 22, 17, 0.50);
-        box-shadow: inset 0 0 0 1px rgba(244, 236, 214, 0.16);
-        text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
+        /* The same paper stamp as the chips beside it. The edge is drawn
+           inside the box, so the dock is the size it was. */
+        padding: 3px 6px 3px 3px; border-radius: 0;
+        background: #f7f0dc;
+        box-shadow: inset 0 0 0 2px var(--ink-line), 3px 3px 0 var(--ink-line);
       }
 
       /*
@@ -7446,7 +7457,7 @@
 
       .music-dock.on-flight {
         right: auto; left: 16px; top: 16px;
-        background: rgba(16, 22, 17, 0.38);
+        background: rgba(247, 240, 220, 0.86);
       }
       /* Paused keeps the flight corner, with the status bar shown: the
          dock sits under the bar, as every chip does, and above the score,
@@ -7477,25 +7488,25 @@
       }
       .music-dock[hidden] { display: none; }
       .music-skip {
-        appearance: none; border: 0; border-radius: 3px;
+        appearance: none; border: 0; border-radius: 0;
         width: 26px; height: 24px; padding: 0;
-        background: rgba(232, 168, 184, 0.14); color: var(--cream);
+        background: var(--ink-line); color: #f7f0dc;
         font: 700 16px/1 var(--ui-font); cursor: pointer;
       }
-      .music-skip:hover { background: rgba(232, 168, 184, 0.32); color: var(--sakura); }
+      .music-skip:hover { background: var(--sakura); color: var(--ink-line); }
       /* The name is the mute, so it is a button and has to stop looking
          like one: no border, no fill, the dock's own ground. The padding
          is what makes it a hit box rather than a line of text, and it is
          the only thing here that is not what a div would have given. */
       .music-title {
-        appearance: none; border: 0; background: none; border-radius: 3px;
+        appearance: none; border: 0; background: none; border-radius: 0;
         /* 14em: the longest track name, "Hypnotic Acid Loop", is 18
            characters and was cut at 11. */
         max-width: 14em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         padding: 4px 6px; cursor: pointer;
-        font: 11px/1.2 var(--ui-font); letter-spacing: 0.04em; color: var(--cream);
+        font: 600 11px/1.2 var(--ui-font); letter-spacing: 0.04em; color: var(--ink-line);
       }
-      .music-title:hover { background: rgba(232, 168, 184, 0.14); color: var(--sakura); }
+      .music-title:hover { background: var(--sakura); }
       /* Muted. The dock is already at half opacity, so the line through the
          name is what says this is a state and not a dim screen: a reader
          who cannot see the difference between 0.5 and 1.0 can see a rule

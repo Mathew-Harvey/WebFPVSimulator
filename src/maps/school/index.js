@@ -10,9 +10,10 @@
  * pictures on the walls as one more (./pictures.js: the blackboards were a
  * colour of their own until they were drawn there, so the count is what it
  * was), and the partners' five signs, the same as every built map's. On
- * High only, screentone in the shade (../../render/hatch.js, where its
- * cost is said): no draw call, two programs, arithmetic on the school's
- * shaded pixels; Low and Medium compile what they did before it.
+ * High only, gradient tone at the foot and head of the walls
+ * (../../render/hatch.js, where its cost is said): no draw call, the
+ * walls' two colours' programs, arithmetic on the walls' pixels; Low and
+ * Medium compile what they did before it.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -35,12 +36,13 @@ import { buildMap as buildBuilt } from '../built/index.js';
 import { warmPrograms } from '../../render/warm.js';
 import { paintMaterial } from '../../art/stf.js';
 import {
-  schoolLayout, signSpots, hallLoop, CARD_LENS, SCHOOL_PLAN,
+  schoolLayout, signSpots, hallLoop, CARD_LENS, SCHOOL_PLAN, S, FLOOR0, CEIL0, F1, CEIL1,
 } from './school.js';
 import { schoolDocument } from './yard.js';
 import { paintPictures, pictureMesh } from './pictures.js';
-import { INK_COLOR } from '../../render/comic.js';
+import { INK_COLOR, comicGL2 } from '../../render/comic.js';
 import { hatchMeshes } from '../../render/hatch.js';
+import { propMaterial } from '../../props/kit.js';
 
 const CHUNK = 'extra';
 
@@ -69,17 +71,20 @@ function houseInk(post) {
 
 export async function buildMap(shell, onProgress, options) {
   const L = schoolLayout();
-  /* On High, the shade on the school's own parts is laid with screentone
-   * (src/render/hatch.js): the same meshes, a toned copy of each colour,
-   * swapped in before the built map links its programs. Low and Medium
-   * build the school exactly as before. */
+  /* On High, the walls carry gradient tone at their foot and head
+   * (src/render/hatch.js): the same meshes, a toned copy of the walls' two
+   * colours (the plaster and the hallway's wainscot), swapped in before
+   * the built map links its programs. The furniture, floors and ceilings
+   * are left as they are. Low and Medium build the school exactly as
+   * before, and so does WebGL 1 (the tone needs a derivative). */
   let hatched = 0;
   const extra = {
     el: { id: 'school', type: 'school' },
     parts: L.parts,
     dress: (props, graphics) => {
-      const own = graphics === 'high' ? props.getObjectByName(`props:${CHUNK}`) : null;
-      hatched = own ? hatchMeshes(own) : 0;
+      const own = graphics === 'high' && comicGL2(shell.renderer) ? props.getObjectByName(`props:${CHUNK}`) : null;
+      const walls = new Set([propMaterial('scWall'), propMaterial('scWainscot')]);
+      hatched = own ? hatchMeshes(own, walls, { storeys: [FLOOR0 * S, CEIL0 * S, F1 * S, CEIL1 * S] }) : 0;
     },
   };
   /* The partners' signs hung by hand, the chooser's spots off: it sees the

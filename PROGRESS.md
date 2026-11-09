@@ -75394,3 +75394,7 @@ A WCMRC club member's notes, passed on by the owner 2026-11-09 13:02Z ("Address 
   - The track world's height function runs two fractal noises and a walk over the course samples per query, and makes a quarter of a flying frame's garbage, to return exactly zero everywhere inside the paddock. An early return there is free, but the function feeds ground contact, so it waits for a word.
   - A first visit parses about 8 MB of source, much of it comments. Stripping comments at deploy would cut the download and the parse, and is a build step, which this project has none of by decision.
 - What went wrong: a search for an existing screen wake lock was cut short by `head` and came back empty, so the review at first listed "the screen sleeps on a radio" as a web bug. It is not: main.js has held a wake lock since bug-011db6b9. The Steam shell did need its own.
+
+## 2026-11-09 | release | The review's two changes to main on the owner's word
+
+- The owner, 2026-11-09 22:49Z, thread "Review web and Steam for bugs, art, perf": "Push changes to main also push the controller and other outstanding cha ges to steam main". PR 253 (the paper stamp chips and the reduced motion read) fast forwards main from 655b7fc. The latency line (none added) and the checks were put to him at 22:37Z. Not flown. The three found and not changed items still wait for his word.

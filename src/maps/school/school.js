@@ -377,6 +377,27 @@ class School {
     return this.box(m, px0, py0, h0, px1, py1, h1, { solid: false, cast: false, name: 'paint' });
   }
 
+  /*
+   * A launch pad: a mat on the floor, an outer colour round an inner one,
+   * solid and a centimetre thick. It was two squares of paint, drawn 4 to
+   * 7 cm over the floor (floorPaint's layers, at the school's scale) and
+   * solid to nothing, so a whoop seated on its pad rested on the floor
+   * under them and sat half inside the paint. The owner, 2026-11-09: "when
+   * i started as non infected my whoop what half underground". Now the
+   * craft sits on what is drawn. The ring and the middle meet edge to edge
+   * and never lie one over the other, so no two faces fight for a pixel.
+   */
+  padMat(outer, inner, px, py, lv, ro, ri) {
+    const ring = lv + PAD_TOP - 0.001;
+    const mid = lv + PAD_TOP;
+    const o = { cast: false, name: 'pad' };
+    this.box(outer, px - ro, py - ro, lv, px + ro, py - ri, ring, o);
+    this.box(outer, px - ro, py + ri, lv, px + ro, py + ro, ring, o);
+    this.box(outer, px - ro, py - ri, lv, px - ri, py + ri, ring, o);
+    this.box(outer, px + ri, py - ri, lv, px + ro, py + ri, ring, o);
+    this.box(inner, px - ri, py - ri, lv, px + ri, py + ri, mid, o);
+  }
+
   /* A solid that is not drawn: a pane of glass. */
   hidden(px0, py0, h0, px1, py1, h1, name = 'glass') {
     return this.box('scWhite', px0, py0, h0, px1, py1, h1, { draw: false, name });
@@ -669,8 +690,7 @@ function tank(H) {
   const T = TANK;
   const f = FLOOR0;
   H.block('scGreen', T.x0, T.y0, T.x1, T.y1, f, T.base, 'tank base');
-  H.floorPaint('scWhite', T.pad[0] - 0.22, T.pad[1] - 0.22, T.pad[0] + 0.22, T.pad[1] + 0.22, T.base);
-  H.floorPaint('scGreen', T.pad[0] - 0.16, T.pad[1] - 0.16, T.pad[0] + 0.16, T.pad[1] + 0.16, T.base, 1);
+  H.padMat('scWhite', 'scGreen', T.pad[0], T.pad[1], T.base, 0.22, 0.16);
   const g = 0.04;
   const p = 0.06;
   H.hidden(T.x0, T.y0 + p, T.base, T.x0 + g, T.y1 - p, T.top);
@@ -1113,8 +1133,13 @@ function store(H) {
   }
   H.block('scBlue', 35.0, 15.2, 36.94, 17.0, lv, lv + 0.4, 'mats');
   H.block('scBlue', 35.1, 15.3, 36.94, 17.0, lv + 0.4, lv + 0.6, 'mats');
+  /* The balls sit on the floor. The owner, 2026-11-09: "i crash into a
+   * ball and got stuck inside the ball and could not fly away". They were
+   * drawn 2 cm off it, a slot under each one lower than a whoop is tall,
+   * into which a low crash could wedge it, the ball pressing it into the
+   * floor however it was flown. On the floor there is no slot. */
   for (const [x, y, m] of [[31.8, 16.4, 'scRed'], [32.3, 16.6, 'scWhite'], [31.7, 15.6, 'scYellow']]) {
-    H.cap(m, [x, y, lv + 0.15], [x, y, lv + 0.16], 0.13, { name: 'ball', look: 'capsule', seg: 8 });
+    H.cap(m, [x, y, lv + 0.13], [x, y, lv + 0.14], 0.13, { name: 'ball', look: 'capsule', seg: 8 });
   }
   lamps(H, 0, [34.0], [11.2, 13.2, 15.4]);
   outerWindows(H, 0, 31, 37, true);
@@ -1367,14 +1392,18 @@ export const PADS = [
   { px: 38.5, py: 8.7, f: 0, yaw: Math.PI },
 ];
 
-/* The first infected's pad, in the tank, facing north to the hallway. */
-export const TANK_PAD = { px: TANK.pad[0], py: TANK.pad[1], f: 0, yaw: Math.PI / 2, h: TANK.base };
+/* How far a pad's mat stands over its floor, plan metres: 1 cm of world. */
+export const PAD_TOP = 0.003;
+
+/* The first infected's pad, in the tank, facing north to the hallway. h is
+ * over the floor, and the tank's base is a height in the plan: a bot held
+ * there sat a floor's thickness over its pad. */
+export const TANK_PAD = { px: TANK.pad[0], py: TANK.pad[1], f: 0, yaw: Math.PI / 2, h: TANK.base - FLOOR0 };
 
 function pads(H) {
   for (const p of PADS) {
     const lv = floorOf(p.f);
-    H.floorPaint('scWhite', p.px - 0.17, p.py - 0.17, p.px + 0.17, p.py + 0.17, lv, 2);
-    H.floorPaint('scDark', p.px - 0.12, p.py - 0.12, p.px + 0.12, p.py + 0.12, lv, 3);
+    H.padMat('scWhite', 'scDark', p.px, p.py, lv, 0.17, 0.12);
   }
 }
 

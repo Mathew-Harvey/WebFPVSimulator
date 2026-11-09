@@ -58,7 +58,9 @@ import { placeSolids, addSolids } from '../src/props/solids.js';
 import { normalize } from '../src/trackbuilder/model.js';
 import { seatDocument } from '../src/maps/built/place.js';
 import { Colliders } from '../src/game/collide.js';
-import { SchoolMap, schoolWorld, CLASSES, ROOM } from '../src/game/infectbots.js';
+import {
+  SchoolMap, schoolWorld, CLASSES, ROOM, FLEE, JUKE,
+} from '../src/game/infectbots.js';
 import {
   InfectedRound, CAP, ME, DOGFIGHT_EVERY, LEGS, TAG_R, SHAVE_R, POINTS, CHAIN_MS, CHAIN_MAX, LAST_MS, SNIFF_EVERY,
 } from '../src/game/infected.js';
@@ -189,12 +191,14 @@ function playRound(w, seed, skills, opts = {}) {
   };
   const hash = createHash('sha256');
   const stats = {
-    inside: 0, outside: 0, firstTagMs: -1, tags: 0, feeds: 0, ms: 0, worstMs: 0, lastMs: -1, endMs: 0, stucks: 0, scrapes: 0, shaves: 0,
+    inside: 0, outside: 0, firstTagMs: -1, tags: 0, feeds: 0, ms: 0, worstMs: 0, lastMs: -1, endMs: 0, stucks: 0, scrapes: 0, shaves: 0, escape: {},
   };
   const t0 = g.clockMs;
   const lo = P.worldAt(-0.3, P.DEP + 0.3, -0.1);
   const hi = P.worldAt(P.LEN + 0.3, -0.3, P.high + 0.1);
   const buf = new Float64Array(CAP * 3);
+  /* When each bot began running from somebody, -1 while it is not. */
+  const runAt = new Float64Array(CAP).fill(-1);
   for (let f = 0; f < 60 * 100 * 6 && !g.over; f += 1) {
     const a = performance.now();
     /* The seat: flown by the brain, fed back as a pilot is. */
@@ -221,6 +225,13 @@ function playRound(w, seed, skills, opts = {}) {
       if (e.type === 'tag') {
         stats.tags += 1;
         if (stats.firstTagMs < 0) stats.firstTagMs = g.clockMs - g.huntAt;
+        /* Caught running: how long the run lasted, by the runner's skill. */
+        if (e.to !== ME && runAt[e.to] >= 0) {
+          const sk = g.botSkill(e.to);
+          const b = stats.escape[sk] || (stats.escape[sk] = { ms: 0, n: 0 });
+          b.ms += g.clockMs - runAt[e.to];
+          b.n += 1;
+        }
       } else if (e.type === 'last') {
         stats.lastMs = g.clockMs - g.huntAt;
       } else if (e.type === 'shave') {
@@ -228,6 +239,12 @@ function playRound(w, seed, skills, opts = {}) {
       }
     }
     g.eventCount = 0;
+    for (let i = 0; i < CAP; i += 1) {
+      const md = g.bots.mode[i];
+      const running = !g.inf[i] && (md === FLEE || md === JUKE);
+      if (!running) runAt[i] = -1;
+      else if (runAt[i] < 0) runAt[i] = g.clockMs;
+    }
     for (let i = 0; i < CAP; i += 1) {
       if (!g.inFight[i]) continue;
       /* A bot sat on its pad is inside the floor's top cell, which is the
@@ -312,6 +329,22 @@ function roundsBlock(w) {
   const mean = (k) => sk[k].ms / Math.max(1, sk[k].n) / 1000;
   check('in one round, hard clean bots stay clean longer than medium, and medium than easy', mean('hard') > mean('medium') && mean('medium') > mean('easy'),
     `hard ${r1(mean('hard'))} s, medium ${r1(mean('medium'))} s, easy ${r1(mean('easy'))} s`);
+  /* And the thing a pilot chasing them feels: once one is running, how
+   * long it lasts. The owner, 2026-11-09: "its way too easy to catch the
+   * bots". Stayed clean, above, is mostly how long a bot goes unfound,
+   * and an easy bot that sits still in its hiding place goes unfound
+   * about as long as a medium one that moves (see PROGRESS.md of that
+   * day); this is the skill at getting away. */
+  const esc = { easy: { ms: 0, n: 0 }, medium: { ms: 0, n: 0 }, hard: { ms: 0, n: 0 } };
+  for (const st of mixedRows) {
+    for (const [k, v] of Object.entries(st.escape)) {
+      esc[k].ms += v.ms;
+      esc[k].n += v.n;
+    }
+  }
+  const run = (k) => esc[k].ms / Math.max(1, esc[k].n) / 1000;
+  check('once one is running, a hard clean bot gets away longer than a medium, and a medium than an easy', run('hard') > run('medium') && run('medium') > run('easy'),
+    `caught ${r1(run('hard'))} s into a run, ${r1(run('medium'))} s and ${r1(run('easy'))} s`);
   check('easy rounds last longer than hard ones, both sides at the skill', out.easy.end > out.hard.end, `${r1(out.easy.end / 1000)} s against ${r1(out.hard.end / 1000)} s`);
   const perFeed = ms / feeds;
   check('a feed of sixteen bots is cheap', perFeed < 0.5, `${r3(perFeed)} ms a feed on average, ${r1(worst)} ms at worst`);

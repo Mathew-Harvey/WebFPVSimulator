@@ -182,6 +182,19 @@ async function main() {
     check('the first infected left the tank', await ev(`${G} const i = g.pz; return Math.hypot(g.x[i] - g.seatX[i], g.z[i] - g.seatZ[i]) > g.k;`));
     const inside = await ev(`${G} let bad = 0; for (let i = 1; i < 10; i += 1) { if (g.bots.mode[i] !== 0 && g.world.inside(g.x[i], g.y[i], g.z[i])) bad += 1; } return bad;`);
     check('no bot is inside a solid', inside === 0, `${inside}`);
+    /* R in the hunt, as a pilot stuck somewhere presses it: put back on
+     * their own pad, and the round goes on with the same first infected.
+     * The owner, 2026-11-09: "when i get stuck and reset in a all bot
+     * match the game restarts and the infected bot is changed". */
+    const was = await ev(`${G} return { pz: g.pz, round: g.round, huntAt: g.huntAt, clock: g.clockMs };`);
+    await ev(`${G} window.__placeCraft(g.seatX[0] + 2 * g.k, g.seatY[0] + 1.2 * g.k, g.seatZ[0]); return 1;`);
+    await sleep(600);
+    await ev("window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyR', key: 'r' })); window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyR', key: 'r' })); return 1;");
+    await sleep(1500);
+    const now = await ev(`${G} return { pz: g.pz, round: g.round, huntAt: g.huntAt, clock: g.clockMs, hunting: g.hunting, d: Math.hypot(g.x[0] - g.seatX[0], g.z[0] - g.seatZ[0]) / g.k, y: (g.y[0] - g.seatY[0]) / g.k };`);
+    check('R in the hunt keeps the round and its first infected', now.pz === was.pz && now.round === was.round && now.huntAt === was.huntAt && now.hunting && now.clock > was.clock,
+      JSON.stringify({ was, now }));
+    check('and puts the pilot back on their own pad', now.d < 0.3 && Math.abs(now.y) < 0.3, `${now.d.toFixed(3)} m off it, ${now.y.toFixed(3)} m up`);
     /* The hunt, from behind the first infected. */
     await ev(behind('g.pz'));
     await sleep(1200);

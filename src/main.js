@@ -2700,6 +2700,13 @@ export async function boot({ loading, bootStart, mapId }) {
     }
   }
 
+  /* Whether a mini game's round is being played, so a reset that only
+   * puts the pilot back leaves it alone: running, waiting to start, or on
+   * its table. */
+  function fightRoundOn() {
+    return Boolean(fightGame) && !fightGame.dismissed;
+  }
+
   function fightNewRound() {
     fightRound += 1;
     fightGame.reset(fightRound);
@@ -6927,7 +6934,7 @@ export async function boot({ loading, bootStart, mapId }) {
        * it cannot be put back, so fall through to the old behaviour and
        * give them the line. */
       noted.line = true;
-      reset();
+      reset({ keepRound: true });
       holdUntilCentred(why);
       return;
     }
@@ -7956,7 +7963,20 @@ export async function boot({ loading, bootStart, mapId }) {
     });
   }
 
-  function reset() {
+  /*
+   * keepRound: the pilot put back, not a new game. The owner, 2026-11-09:
+   * "when i get stuck and reset in a all bot match the game restarts and
+   * the infected bot is changed / reset , this should not happen if i
+   * reset cause i'm stuck". R, the radio's restart switch, Auto reset
+   * and an X or a stuck craft with nowhere near to set down are how a
+   * stuck pilot gets out, and in a mini game they started the round again,
+   * its first infected picked afresh and its points gone. They keep the
+   * round now and put the pilot back where the game seats them (Infected:
+   * their own pad; the rest: the map's spawn, as a pop does). The pause's
+   * Restart the round is the way to a new one, and stays it, as Fly and
+   * the title do.
+   */
+  function reset({ keepRound = false } = {}) {
     /* A reset is the pilot taking the offer the fault banner made, so the
      * next fault is a new one and deserves to be reported in its turn. See
      * the frame boundary. */
@@ -8005,12 +8025,17 @@ export async function boot({ loading, bootStart, mapId }) {
      */
     simTimeMs = 0;
     airtimeMs = 0;
-    /* A fresh run is a fresh balloon round, and a fresh fight. */
+    /* A fresh run is a fresh balloon round, and a fresh fight, unless the
+     * pilot is only being put back (keepRound above). */
     if (balloonGame) {
       balloonNewRound();
     }
-    if (fightGame) {
+    if (fightGame && !(keepRound && fightRoundOn())) {
       fightNewRound();
+    } else if (fightGame) {
+      fightTeleported = true;
+      /* Infected seats them on their own pad again (infectedSeat). */
+      infectedSerial = -1;
     }
     /* Anything that holds a stamp ON that clock has to go back with it, or a
      * fresh run compares a zeroed clock against last run's stamp and stays
@@ -11168,9 +11193,10 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     /* Flight only keys. */
     if (code === 'KeyR') {
-      /* Reset to Last gate, when the pilot picked it: see retryFromGate. */
+      /* Reset to Last gate, when the pilot picked it: see retryFromGate.
+       * A mini game's round goes on (keepRound, at reset). */
       if (!retryFromGate()) {
-        reset();
+        reset({ keepRound: true });
       }
       return;
     }
@@ -12059,13 +12085,13 @@ export async function boot({ loading, bootStart, mapId }) {
      */
     if (input.takeRestart() && ui.screen === 'flight' && mode === 'flight') {
       if (!retryFromGate()) {
-        reset();
+        reset({ keepRound: true });
       }
     }
     if (autoResetDue && ui.screen === 'flight' && mode === 'flight') {
       const retried = retryFromGate();
       if (!retried) {
-        reset();
+        reset({ keepRound: true });
       }
       notice = { text: retried ? 'Auto reset to the last gate.' : 'Auto reset.', untilMs: performance.now() + 1600 };
     }

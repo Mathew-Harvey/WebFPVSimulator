@@ -690,28 +690,57 @@ export class SchoolMap {
  * how near a known infected pilot has to be before a clean bot runs.
  * lead: how far ahead of a pilot it aims, s. sniff: how often an infected
  * bot uses the sniff. juke: how often a clean bot jinks at the last
- * moment. flyAs: the dogfight's skill it flies with (./dogfight.js). */
+ * moment. run and chase: how far over its speed it flies running from
+ * an infected pilot it knows of, and chasing a clean one it can see
+ * (see TOP below). flyAs: the dogfight's skill it flies with
+ * (./dogfight.js). */
 export const INFECT_BOTS = {
   easy: {
-    speed: 3.0, think: 420, see: 8, cone: 0.17, hear: 1.5, memory: 2500, fear: 4.5, lead: 0, sniff: 0, juke: 0, cls: 0, flyAs: 'rookie',
+    speed: 4.5, think: 420, see: 8, cone: 0.17, hear: 1.5, memory: 2500, fear: 4.5, lead: 0, sniff: 0, juke: 0, cls: 0, run: 1, chase: 1, flyAs: 'rookie',
   },
   medium: {
-    speed: 3.9, think: 260, see: 13, cone: -0.3, hear: 2.5, memory: 4500, fear: 8, lead: 0.2, sniff: 0.5, juke: 0.25, cls: 1, flyAs: 'pilot',
+    speed: 6.0, think: 260, see: 13, cone: -0.3, hear: 2.5, memory: 4500, fear: 12, lead: 0.2, sniff: 0.5, juke: 0.25, cls: 1, run: 1.3, chase: 1.1, flyAs: 'pilot',
   },
   hard: {
-    speed: 4.8, think: 160, see: 18, cone: -1.1, hear: 3.5, memory: 7000, fear: 11, lead: 0.4, sniff: 1, juke: 0.6, cls: 2, flyAs: 'ace',
+    speed: 7.5, think: 160, see: 18, cone: -1.1, hear: 3.5, memory: 7000, fear: 16, lead: 0.4, sniff: 1, juke: 0.6, cls: 2, run: 1.55, chase: 1.2, flyAs: 'ace',
   },
 };
+
+/*
+ * HOW FAST A WHOOP COULD GO, against how fast the bot is flying it. The
+ * owner, 2026-11-09: "the infected bots and other bots fly very slowly
+ * compared to their pitch angle, its way too easy to catch the bots, they
+ * don't fly like a human at all". The dogfight's flyer sets its drag so
+ * the speed it is asked for is its top speed, so a bot asked for 3 m/s
+ * flew it flat out, leaning 70 degrees and crawling. A pilot's whoop at
+ * that lean is doing three times it. So a bot's whoop tops out at TOP
+ * times the speed its skill flies at (topOf below): at its cruise it
+ * leans as a pilot's does at that speed, a quarter to a third of the way
+ * over, it has the thrust left to punch out of a corner, and the speeds
+ * are a pilot's (above: 4.5, 6 and 7.5 m/s, from 3, 3.9 and 4.8).
+ *
+ * Running for it, a good pilot floors it and a new one does not know
+ * how: `run` above, nothing over an easy bot's speed, half again over a
+ * hard one's. Chasing, a little over (`chase`). And a medium or a hard
+ * bot runs from further (`fear`, 8 and 11 before): what it has to see in
+ * time is a chaser coming half again as fast, so the same warning is
+ * half again as far. Measured on the arena's mixed rounds, sixteen of
+ * them, as how long a clean bot lasts once it is running from somebody
+ * (check:infected): with one rush for every skill and the old fear, a
+ * hard bot was caught 5 s into a run, against 10 s on main; with these,
+ * 8 s, a medium bot 3 s and an easy one under 1 s.
+ */
+const TOP = 2.2;
 export const BOT_SKILLS = Object.keys(INFECT_BOTS);
 
 /* What a bot is doing. */
 const SIT = 0;
 const HIDE = 1;
-const FLEE = 2;
+export const FLEE = 2;
 const CHASE = 3;
 const HUNT = 4;
 const PATROL = 5;
-const JUKE = 6;
+export const JUKE = 6;
 
 /* What a point is picked for (InfectBrain.score). */
 const PATROL_AT = 1;
@@ -740,6 +769,8 @@ export class InfectFlyer extends BotFlyer {
     this.boxedUp = 0.2;
     this.unstickUp = 0.1;
     const n = this.n;
+    /* The top speed of each bot's whoop, world m/s: see TOP. */
+    this.top = new Float64Array(n);
     this.cls = new Uint8Array(n);
     this.wayTo = new Int16Array(n).fill(-1);
     this.wayAt = new Float64Array(n);
@@ -771,6 +802,10 @@ export class InfectFlyer extends BotFlyer {
 
   minAlt(alt, k) {
     return 0.22 * k;
+  }
+
+  topOf(i, vmax) {
+    return Math.max(vmax, this.top[i]);
   }
 
   updown(x, y, z, floor, k) {
@@ -1092,6 +1127,7 @@ export class InfectBrain {
     let gy = this.goalY[i];
     let gz = this.goalZ[i];
     let speed = b.speed * k;
+    fl.top[i] = speed * TOP;
     fl.ram[i] = 0;
     if (this.mode[i] === CHASE) {
       const t = this.target[i];
@@ -1106,10 +1142,12 @@ export class InfectBrain {
           gz = g.z[t];
         }
         fl.ram[i] = 1;
+        speed *= b.chase;
       }
     } else if (this.mode[i] === JUKE || this.mode[i] === FLEE) {
       /* Running is flown flat out, not eased into the point it runs to. */
       fl.ram[i] = 1;
+      speed *= b.run;
     } else if (this.mode[i] === HIDE && !g.hunting) {
       /* Off to its hiding place in the head start: as fast as it goes. */
     } else if (this.mode[i] === HIDE || this.mode[i] === PATROL) {

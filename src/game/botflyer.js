@@ -198,6 +198,12 @@ export class BotFlyer {
    * and before minding the walls. Nothing here. */
   push() {}
 
+  /* The speed full thrust, level, tops out at: here, the most it is asked
+   * for, so a dogfight's bot at its cruise is flat out, as it was. */
+  topOf(i, vmax) {
+    return vmax;
+  }
+
   /* Whether bot i keeps apart from pilot j: from everybody, here. */
   apart() {
     return true;
@@ -241,8 +247,11 @@ export class BotFlyer {
     const n = this.n;
     const Tmax = sk.thrust * G * k;
     const gk = G * k;
-    /* Drag that makes full thrust, level, top out at vmax. */
-    const cd = Math.sqrt(Tmax * Tmax - gk * gk) / (vmax * vmax);
+    /* Drag that makes full thrust, level, top out at vmax, or at the top
+     * speed a game gives bot i (topOf), which can be more than it asks of
+     * the bot now. */
+    const vtop = this.topOf(i, vmax);
+    const cd = Math.sqrt(Tmax * Tmax - gk * gk) / (vtop * vtop);
     const x = g.x[i];
     const y = g.y[i];
     const z = g.z[i];

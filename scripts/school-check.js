@@ -56,7 +56,7 @@ import { fileURLToPath } from 'node:url';
 
 import { loadSim, SIM_OK, simErrorName } from '../tests/lib/simmod.js';
 import {
-  schoolLayout, S, FLOOR0, F1, worldAt, FRAME, OPENINGS, PATHS, PADS, TANK_PAD, ROOMS, LEN, DEP, HIGH, floorOf,
+  schoolLayout, S, FLOOR0, F1, worldAt, FRAME, OPENINGS, PATHS, PADS, TANK_PAD, PAD_TOP, ROOMS, LEN, DEP, HIGH, floorOf,
 } from '../src/maps/school/school.js';
 import { schoolDocument } from '../src/maps/school/yard.js';
 import { paintsKey } from '../src/maps/school/pictures.js';
@@ -352,8 +352,17 @@ async function placedBlock(L) {
   const sp = placed.spawn;
   sp.y = topUnder(placed.tops, sp.x, sp.z, sp.base);
   check('the start is the pads', sp.from === 'pads', sp.from);
-  check('the start is seated on the floor', Math.abs(sp.y - S * FLOOR0) < 1e-6, `${r3(sp.y)} m, the floor is ${r3(S * FLOOR0)}`);
+  /* On its pad's mat, which is solid now and a centimetre over the floor
+   * (padMat in school.js): the craft sits on what is drawn. */
+  check('the start is seated on its pad, on the floor', Math.abs(sp.y - S * (FLOOR0 + PAD_TOP)) < 1e-6, `${r3(sp.y)} m, the pad is ${r3(S * (FLOOR0 + PAD_TOP))}`);
   check('nothing inflated', (placed.stats.inflated || 0) === 0, `${placed.stats.inflated || 0}`);
+  /* The sports store's balls rest on the floor: one held off it leaves a
+   * slot lower than a whoop under it, which a low crash wedges into (the
+   * owner's report of 2026-11-09, "stuck inside the ball"). */
+  const balls = own.filter((q) => q.name === 'ball' && q.cap);
+  const off = balls.map((q) => Math.min(q.cap[1], q.cap[4]) - q.cap[6] - S * FLOOR0);
+  check('every ball rests on the floor, with no slot under it', balls.length === 3 && off.every((d) => Math.abs(d) < 1e-6),
+    `${balls.length} balls, ${off.map((d) => `${r3(d * 100)} cm`).join(', ')} off the floor`);
   const near = gridOf(placed.solids);
   const over = [sp.x, sp.y + 0.6, sp.z];
   const hit = hitAt(near(over), over, 0.5);

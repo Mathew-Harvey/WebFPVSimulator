@@ -770,6 +770,7 @@
       'src/render/gpugate.js',
       'src/render/autoscale.js',
       'src/render/latency.js',
+      'src/render/timeryield.js',
       'src/render/predict.js',
       'src/render/fisheye.js',
       'src/render/audio.js',

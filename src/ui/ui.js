@@ -4095,8 +4095,15 @@ function choice(label, note, choices, current, format, set) {
  * battery, and Auto graphics holding still while it runs. Worded per state
  * so the row always says what THIS machine is doing.
  */
-function pacingNote(s) {
+function pacingNote(s, handedBack = null) {
   const on = pacingTimerOn(s);
+  /* The timer judged itself in flight and gave the frames to the display:
+   * this screen refreshes about as fast as the timer can draw, or faster,
+   * so it was showing frames twice (src/render/timeryield.js). Only under
+   * Auto, which is the one mode it hands back under. */
+  if (handedBack && s.pacing !== 'timer' && s.pacing !== 'display' && on) {
+    return 'On Low the timer would draw the frames while you fly, but this screen refreshes as fast as the timer can draw or faster, so it was showing frames twice: the display is pacing them instead until the page is reloaded. Timer, always keeps the timer anyway.';
+  }
   if (s.pacing === 'timer') {
     return 'The timer draws the frames on every preset while you fly: the picture answers the sticks sooner, for more GPU work, heat and battery, and Auto graphics holds still while it runs. Replays and films keep the display\'s beat.';
   }
@@ -11762,7 +11769,7 @@ export class Ui {
         ),
         choice(
           'Frame pacing',
-          pacingNote(s),
+          pacingNote(s, this.timerYield),
           PACING_MODES,
           s.pacing,
           (id) => ({ auto: 'Timer with Low', timer: 'Timer, always', display: 'Display, always' }[id]),
@@ -21612,6 +21619,12 @@ export class Ui {
    * see setPerfProbe's caller in main.js. */
   setPerfProbe(fn) {
     this.perfProbe = typeof fn === 'function' ? fn : null;
+  }
+
+  /* Why the timer handed the frames to the display this page, or null: the
+   * Frame pacing row's note says so. See src/render/timeryield.js. */
+  setTimerYield(info) {
+    this.timerYield = info || null;
   }
 
   /* The craft's state for a report: see bugSnapshot, and main.js where it is read. */

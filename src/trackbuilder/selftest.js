@@ -80,7 +80,7 @@ import {
   wallOf, wallFlagsOf, setWallFlags, wallIsWoven, setWallWeave, reverseWall, flyOver,
   partGhosts, setWallSize, wallSizeOf,
   canBecomeLetter, canBeInvisible, placeInvisibleGate, setInvisible, turnIntoGate, turnIntoLetter,
-  WALL_MIN, WALL_DEFAULT, WALL_MAX, HURDLE, SPIRAL, ROUND_NAME, roundFlagOf, removeSpiral, removeSpiralUp,
+  WALL_MIN, WALL_DEFAULT, WALL_MAX, HURDLE, SPIRAL, ROUND_NAME, roundFlagOf, removeSpiral, removeSpiralUp, flagForRound,
   BAR_HURDLE, HURDLE_LINES, HURDLE_SIZES, hurdleAngleOf, hurdleLineOf, hurdleSizeOf, hurdleTop, placeBarHurdle, setHurdleAngle,
   setHurdleLine, setHurdleSize, canBeFloating, canBeDecor, setFloating, setDecor,
 } from './parts.js';
@@ -12547,6 +12547,36 @@ function suiteFiveInchParts() {
       && doc.elements.filter((e) => e.type === 'waypoint').length === 1);
     const last = make();
     const tail = addSpiral(last.doc, last.doc.sequence[2].id, 'right', { up: true });
+    /* Left or Right pressed on a gate with no flag there puts one on that upright, as flown. */
+    const bare = createTrack('bare');
+    const bg = place(bare, 'gate', 10, 10, { yaw: 0 });
+    bg.yawOverridden = true;
+    addToSequence(bare, bg.id, 0);
+    bare.sequence[0].entry = 1;
+    bare.sequence[0].overridden = true;
+    const q0 = bare.sequence[0].id;
+    check('a plain gate gets a flag on the upright a figure goes round, on the pilot\'s hand, and then the figure can be laid',
+      flagForRound(bare, q0, 'right') && flagsAsFlown(bare, q0).right && !flagsAsFlown(bare, q0).left
+      && elementById(bare, bg.id).type === 'flaggedGate' && addSpiral(bare, q0, 'right', { up: true }) !== null);
+    check('the other hand then makes both, and a hand that already has one changes nothing',
+      flagForRound(bare, q0, 'left') && flagsOf(elementById(bare, bg.id)) === 'both' && !flagForRound(bare, q0, 'left'));
+    const loose = createTrack('loose');
+    place(loose, 'waypoint', 4, 12, { z: 2 });
+    const lg = place(loose, 'flaggedGate', 10, 10, { yaw: 0 });
+    place(loose, 'gate', 18, 16, { yaw: Math.PI / 2 });
+    for (const e of loose.elements) {
+      addToSequence(loose, e.id, 0);
+    }
+    applyAutoFaces(loose);
+    const yaw0 = lg.yaw;
+    const lm = addSpiral(loose, loose.sequence[1].id, flagsAsFlown(loose, loose.sequence[1].id).left ? 'left' : 'right', { up: true });
+    check('a gate left to face the line keeps the way it faced when a spiral is laid round its flag, so the flag stays on the circle',
+      lm !== null && near(lg.yaw, yaw0) && lg.yawOverridden === true, `${yaw0} ${lg.yaw}`);
+    const tilted = createTrack('tilt');
+    const tg = place(tilted, 'gate', 10, 10, { yaw: 0 });
+    tg.pitch = Math.PI / 3;
+    addToSequence(tilted, tg.id, 0);
+    check('a gate tilted past thirty degrees gets no flag', !flagForRound(tilted, tilted.sequence[0].id, 'left'));
     check('a gate with no flag is not spiralled up round, and nor is a pass that is not there',
       tail === null && addSpiral(doc, 'sq-nope', 'right', { up: true }) === null);
   }

@@ -56,7 +56,7 @@ import {
 } from './snap.js';
 import {
   addSpiral, canBecomeLetter, canBeInvisible, canBeFloating, canBeDecor, setFloating, setDecor, flyOver, placeBarHurdle, placeHurdle, placeInvisibleGate, placeUpGate, placeWall,
-  legOf as legOfSide, removeSpiral, removeSpiralUp, reverseWall, roundFlagOf, setFlags, setInvisible, setWallFlags, setHurdleAngle, setHurdleLine, setHurdleSize,
+  flagForRound, legOf as legOfSide, removeSpiral, removeSpiralUp, reverseWall, roundFlagOf, setFlags, setInvisible, setWallFlags, setHurdleAngle, setHurdleLine, setHurdleSize,
   setWallSize, setWallWeave, turnIntoGate, turnIntoLetter, wallOf,
 } from './parts.js';
 import { cloneElements, anyCloneable } from './clone.js';
@@ -710,6 +710,8 @@ export class App {
     /* FIVE INCH TRACK ONLY. How the card's Round the flag goes round: 'down', a whole turn down from over the header
      * and then the pass; 'up', the pass and then a whole turn up and over the gate; 'flat', round and straight in. */
     this.spiralMode = 'down';
+    /* What a turn round a flag, a cone or a pole on its card makes next: how far and how (ui.js cardAround). */
+    this.aroundPick = { id: 'turn', deg: 180 };
     /* FIVE INCH TRACK ONLY. Which letter the Letter tool lays: see LETTER_KEY. */
     this.letterTool = readLetter();
     /* WHOOP CANVAS ONLY. Whether a drag that starts on the racing line bends
@@ -2903,10 +2905,18 @@ export class App {
    */
   roundFlag(seqId, side, mode = this.spiralMode) {
     let made = null;
-    this.edit(`round the flag ${side}`, (d) => { made = this.layRound(d, seqId, side, mode); });
+    let flagged = false;
+    /* A gate with no flag on that upright gets one, in the same undo step: going round a flag is one press. */
+    this.edit(`round the flag ${side}`, (d) => {
+      flagged = flagForRound(d, seqId, side);
+      made = this.layRound(d, seqId, side, mode);
+    });
     if (!made) {
-      this.toast('Round the flag needs a pennant on that upright, as flown. Flags puts one there.');
+      this.toast('That gate cannot carry a flag to go round. Fly round a Flag beside it instead.');
       return null;
+    }
+    if (flagged) {
+      this.sayOnce('flag for round', 'A flag went on that upright, so there is something to go round. Flags moves or removes it.');
     }
     if (!made.waypoints.length) {
       this.toast('The line already comes into the gate past that flag, so there is nothing to go round. Spiral down or Spiral up goes round it once.');

@@ -38,7 +38,7 @@ import {
   apertureCenter, aperturesOf, createElement, elementById, elementNormal, entryAnchor, initLetter, kindOf, newGroupId,
   setSideBuilt,
 } from './model.js';
-import { addToSequence, removeFromSequence } from './sequence.js';
+import { addToSequence, pinFacesAt, removeFromSequence } from './sequence.js';
 import { applyAutoFaces, defaultYawFor, lastAnchorOf } from './faces.js';
 import { apertureFrame, wrapAngle } from './geometry.js';
 import { runGhosts } from './runs.js';
@@ -1249,6 +1249,29 @@ export function removeSpiral(doc, seqId) {
   return run.length > 0;
 }
 
+/*
+ * A FLAG ON THE UPRIGHT A FIGURE GOES ROUND, put there when it is not, so pressing Left or Right on a plain gate's
+ * card is one press and not two (the owner, 2026-11-09: every way round a flag or gate "catered for in a intuitive
+ * and not annoying manner"). `side` is as flown, so it is turned into the side seen facing the gate the way
+ * flagsAsFlown turns it back; a flag already on the other upright stays, and makes both; one on top moves down to
+ * the upright. A gate that is part of a wall, tilted, a letter or has no frame is left alone. Returns true when the
+ * document changed.
+ */
+export function flagForRound(doc, seqId, side) {
+  const seq = doc.sequence.find((s) => s.id === seqId);
+  const el = seq ? elementById(doc, seq.elementId) : null;
+  if (!el || (side !== 'left' && side !== 'right') || kindOf(el) !== KIND.APERTURE || !canFlag(el) || isUnbuilt(el)
+    || Math.abs(el.pitch ?? 0) >= Math.PI / 6 || wallOf(doc, el.id) || flagsAsFlown(doc, seqId)[side]) {
+    return false;
+  }
+  const e = seq.entry === -1 ? -1 : 1;
+  const sign = side === 'left' ? e : -e;
+  const want = sign > 0 ? 'right' : 'left';
+  const now = flagsOf(el);
+  const choice = (now === 'left' || now === 'right') && now !== want ? 'both' : want;
+  return setFlags(doc, el.id, choice);
+}
+
 /* Take only a spiral up out of a pass, for a "Then" flight path laid in its place. Returns true when there was one. */
 export function removeSpiralUp(doc, seqId) {
   const seq = doc.sequence.find((s) => s.id === seqId);
@@ -1307,6 +1330,10 @@ export function addSpiral(doc, seqId, side, opts = {}) {
   if (!leg) {
     return null;
   }
+  /* The gate keeps the way it faces now: the circle is laid round the flag where it stands, and a gate left to face
+   * the line on its own would turn to the figure's own waypoints afterwards and take its flag off the circle. As a
+   * turn round a flag pins the faces beside it (flightpaths.js applyAround). */
+  pinFacesAt(doc, [doc.sequence.indexOf(leg.seq)]);
   if (opts.up) {
     return addSpiralUp(doc, leg, side, opts);
   }

@@ -1922,7 +1922,7 @@ export class Panels {
   }
 
   /*
-   * THE CARD'S WAY IN: what is after the piece, into it and, for a flag, round it, in a word each, and a press opens
+   * THE CARD'S WAY IN: what is after the piece and into it (round a flag has its own rows, cardAround), in a word each, and a press opens
    * the details at the flight path, where the choices are. The card is the room's and this is a row of it; the
    * figures themselves are a screen of pictures, which a floating card is not the place for.
    */
@@ -1948,13 +1948,52 @@ export class Panels {
     });
     const thenFound = around ? null : thenOf(doc, at.id);
     const intoFound = around ? null : intoOf(doc, at.id);
-    if (kind === KIND.MARKER) {
-      card.append(this.cardChoice('Round it', [button1('around', '', around, 'A turn round the flag, flown round and never over.')], 'A turn round the flag'));
-    }
+
     card.append(this.cardChoice('Flight path', [
       button1('then', 'Then', thenFound, 'What the line does after this pass: a turn, a loop, a hop and the rest.'),
       button1('into', 'Into', intoFound, 'What the line does before this pass.'),
     ], 'What the line does after this pass and before it'));
+  }
+
+  /*
+   * ROUND A FLAG, A CONE OR A POLE, ON ITS CARD: the same words a gate's flag is gone round with, so a pilot learns
+   * them once. Which way (the way the pilot turns, so Left keeps the flag on their left), how far (a quarter, a half
+   * or a whole turn) and how (Spiral down, Spiral up, Flat). It was one button that opened the details, which is
+   * where a club pilot did not look; the owner asked for every way round a flag or gate to be there "in a intuitive
+   * and not annoying manner" (2026-11-09). A press lays the figure (flightpaths.js applyAround) as one undo step. With
+   * a figure there, How far and How make it again that way; with none, they say what Left or Right will make, and
+   * stay for the next flag, as a gate's How does. Every figure applyAround makes is on these three rows.
+   */
+  cardAround(card, at, around) {
+    const host = this.host;
+    const spec = around?.spec ?? null;
+    const pick = host.aroundPick;
+    const deg = spec ? spec.deg : pick.deg;
+    const id = spec ? spec.id : pick.id;
+    const lay = (patch) => {
+      Object.assign(host.aroundPick, patch);
+      if (spec || patch.hand) {
+        host.setFlightPath(at.id, 'around', {
+          id: patch.id ?? id, deg: patch.deg ?? deg, hand: patch.hand ?? spec.hand,
+        });
+      } else {
+        this.renderCard();
+      }
+    };
+    card.append(this.cardChoice('Round it', [
+      { label: 'None', on: !spec, run: () => host.clearFlightPath(at.id, 'around'), title: 'Past it on its pass side, no turn round it' },
+      { label: 'Left', on: spec?.hand === 'left', run: () => lay({ hand: 'left' }), title: 'Turn left round it, anticlockwise: it stays on your left' },
+      { label: 'Right', on: spec?.hand === 'right', run: () => lay({ hand: 'right' }), title: 'Turn right round it, clockwise: it stays on your right' },
+    ]));
+    card.append(this.cardChoice('How far', [90, 180, 360].map((d) => ({
+      label: `${d}\u00b0`, on: deg === d, run: () => lay({ deg: d }),
+      title: { 90: 'A quarter turn round it', 180: 'Half way round it and back the way you came', 360: 'All the way round it' }[d],
+    })), 'How far round it the line goes'));
+    card.append(this.cardChoice('How', [
+      ['descend', 'Spiral down', 'Coming down as it goes round'],
+      ['climb', 'Spiral up', 'Climbing as it goes round'],
+      ['turn', 'Flat', 'At one height all the way round'],
+    ].map(([key, word, title]) => ({ label: word, on: id === key, run: () => lay({ id: key }), title })), 'How the line goes round it'));
   }
 
   /*
@@ -2890,6 +2929,10 @@ export class Panels {
     this.cardFlags(card, element);
     this.cardHurdle(card, element, touched);
     this.cardRound(card, element, at);
+    /* A flag, a cone or a pole: round it, on a touched screen as well, because it is the one choice a flag has. */
+    if (at && kindOf(element) === KIND.MARKER && element.type !== 'waypoint') {
+      this.cardAround(card, at, aroundOf(doc, at.id));
+    }
     this.cardFlight(card, element, at, touched);
 
     if (touched) {
@@ -3492,6 +3535,13 @@ export class Panels {
     }
     const has = flagsAsFlown(this.host.doc, at.id);
     const now = roundFlagOf(this.host.doc, at.id);
+    /* A side with no flag on it is still pressed, and puts one there (app.js roundFlag), on any gate that can carry
+     * one standing up. A gate that cannot (tilted past thirty degrees, part of a wall) and has none is not offered a
+     * row it could only refuse. */
+    const canAdd = canFlag(element) && Math.abs(element.pitch ?? 0) < Math.PI / 6 && !wallOf(this.host.doc, element.id);
+    if (!has.left && !has.right && !now && !canAdd) {
+      return;
+    }
     const nowMode = now ? (now.up ? 'up' : (now.spiral ? 'down' : 'flat')) : null;
     let mode = nowMode ?? this.host.spiralMode;
     if (into && mode === 'up') {
@@ -3501,10 +3551,10 @@ export class Panels {
     const side = (key, word, way) => ({
       label: word,
       on: now?.side === key,
-      disabled: !has[key] && now?.side !== key,
+      disabled: !has[key] && !canAdd && now?.side !== key,
       run: () => this.host.roundFlag(at.id, key, mode),
-      title: has[key]
-        ? `${how} the flag on the ${key} hand upright, ${way}${mode === 'up' ? ', and over the top of the gate' : ', and through the gate'}`
+      title: has[key] || canAdd
+        ? `${how} the flag on the ${key} hand upright, ${way}${mode === 'up' ? ', and over the top of the gate' : ', and through the gate'}${has[key] ? '' : '. A flag goes on that upright'}`
         : `There is no flag on the ${key} hand upright as this pass flies it. Flags puts one there.`,
     });
     card.append(this.cardChoice(label, [

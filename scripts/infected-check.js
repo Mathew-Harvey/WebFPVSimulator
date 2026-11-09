@@ -35,7 +35,6 @@ import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { answerQuadPicker, openPage } from '../tests/lib/page.js';
-import { MATERIALS } from '../src/props/school.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const shotsArg = process.argv.find((a) => a.startsWith('--shots='));
@@ -279,24 +278,6 @@ async function main() {
     await ev("window.__ui.act('pause'); window.__ui.act('fight-leave'); return 1;");
     check('leaving ends the round', await until('return !window.__dogfight();', 10000));
     check('and the airtime clock is back', await until("const c = document.querySelector('.osd .osd-clock'); return Boolean(c) && getComputedStyle(c).visibility !== 'hidden';", 5000));
-    /* The gradient tone (src/render/hatch.js): on High the walls' two
-     * colours (plaster and wainscot) of the school's own parts are toned
-     * copies, both one program, and nothing else is; on any other preset
-     * there is none and the school is as it was. Whatever preset this page
-     * booted on is read, then the other side of High is flown and read
-     * too. */
-    const HATCH = `const s = window.__mapScene(); const own = s && s.getObjectByName('props:extra'); let toon = 0; let hatched = 0; const keys = new Set(); const cols = new Set();
-      if (own) { own.traverse((o) => { if (o.isMesh && o.material && o.material.isMeshToonMaterial) { toon += 1; if (o.material.userData.hatch) { hatched += 1; keys.add(o.material.customProgramCacheKey()); cols.add(o.material.color.getHexString()); } } }); }
-      const m = window.__map(); return { graphics: m.graphics, id: m.id, toon, hatched, keys: keys.size, cols: [...cols].sort().join(' ') };`;
-    const WALLS = [MATERIALS.scWall.c, MATERIALS.scWainscot.c].map((c) => c.toString(16).padStart(6, '0')).sort().join(' ');
-    const hatchRight = (h) => h.id === 'school' && h.toon > 2 && (h.graphics === 'high' ? h.hatched === 2 && h.keys === 1 && h.cols === WALLS : h.hatched === 0);
-    const h0 = await ev(HATCH);
-    check(`on ${h0.graphics}, the school ${h0.graphics === 'high' ? 'tones its walls and nothing else, one program' : 'is not toned'}`, hatchRight(h0), JSON.stringify(h0));
-    const other = h0.graphics === 'high' ? 'medium' : 'high';
-    await ev(`const ui = window.__ui; ui.settings.map = 'school'; ui.settings.graphics = '${other}'; ui.settings.graphicsAuto = false; ui.onAction('fly', ui.settings); return 1;`);
-    await until(`const m = window.__map(); return Boolean(m && m.id === 'school' && m.ready && m.graphics === '${other}');`, 120000);
-    const h1 = await ev(HATCH);
-    check(`on ${other}, the school ${other === 'high' ? 'tones its walls and nothing else, one program' : 'is not toned'}`, hatchRight(h1), JSON.stringify(h1));
     /* The Mini games page, as Back from a game's own page opens it. */
     await ev("const u = window.__ui; u.mode = null; u.craftGate = true; u.gatePage = 'games'; u.gameReturn = false; u.show('title'); u.renderMenu(); return 1;");
     check('the Mini games page has the Infected card', await until("const e = document.querySelector('.gate-card-mg-infected'); if (!e) return false; const r = e.getBoundingClientRect(); return r.width > 120 && r.height > 30 && r.right <= innerWidth + 2 && r.bottom <= innerHeight + 2;", 15000));

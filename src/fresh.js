@@ -605,7 +605,6 @@
     'src/render/ghostcraft.js',
     'src/render/gpugate.js',
     'src/render/gpuinfo.js',
-    'src/render/hatch.js',
     'src/render/herocraft.js',
     'src/render/infected.js',
     'src/render/latency.js',

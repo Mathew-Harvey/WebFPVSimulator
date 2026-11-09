@@ -327,7 +327,11 @@ function roundsBlock(w) {
     }
   }
   const mean = (k) => sk[k].ms / Math.max(1, sk[k].n) / 1000;
-  check('in one round, hard clean bots stay clean longer than medium, and medium than easy', mean('hard') > mean('medium') && mean('medium') > mean('easy'),
+  /* Hard against medium only. Medium against easy was a coin flip on main
+   * as well (medium outlasted easy in 3 of 6 rounds, paired), so it is not
+   * asserted: the owner's pick of 2026-11-09, "Swap it for the getaway
+   * check" (the line below). It is still printed. */
+  check('in one round, hard clean bots stay clean longer than medium', mean('hard') > mean('medium'),
     `hard ${r1(mean('hard'))} s, medium ${r1(mean('medium'))} s, easy ${r1(mean('easy'))} s`);
   /* And the thing a pilot chasing them feels: once one is running, how
    * long it lasts. The owner, 2026-11-09: "its way too easy to catch the

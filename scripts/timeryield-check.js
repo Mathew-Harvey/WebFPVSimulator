@@ -268,7 +268,9 @@ async function browserHalf() {
       }
       handed = await page.evaluate(STATE);
       handMs = Date.now() - t0;
-      console.log(`        handed back after ${(handMs / 1000).toFixed(1)} s of flying under the timer`);
+      console.log(handed.yielded
+        ? `        handed back after ${(handMs / 1000).toFixed(1)} s of flying under the timer`
+        : `        no hand back in ${(handMs / 1000).toFixed(1)} s of flying under the timer`);
       check('in flight it hands the frames to the display', handed.loop === 'raf' && handed.yielded !== null, JSON.stringify(handed));
       const y = handed.yielded || {};
       check('  and says why, with what it measured', (y.why === 'drawn' || y.why === 'period')

@@ -1268,6 +1268,30 @@ function makeHeightField(samples, pitch, pad, indoor = false) {
   return (x, z) => {
     const base = (fbm(x * 0.0022, z * 0.0022) - 0.5) * 34;
     const detail = (fbm(x * 0.011, z * 0.011) - 0.5) * 4.5;
+    /*
+     * INSIDE THE FENCE THE ANSWER IS ZERO, SO IT IS GIVEN AT ONCE (the
+     * owner's word, 2026-11-09: "2 ok").
+     *
+     * Everything below multiplies the height by one minus a cover, and the
+     * paddock's cover is exactly 1 at every point inside the boundary. So a
+     * pilot over the paddock, which is where every lap is flown, paid for a
+     * walk over every sample of the racing line, a square root and three
+     * more covers, several times a frame, to have the result multiplied by
+     * zero. Measured in a profiled flight round the pad: this function's
+     * own time falls by a third (0.021 to 0.014 ms a frame in the
+     * container), and its garbage hardly moves, because that is the two
+     * noises and the boundary test, which stay.
+     *
+     * The zero returned is the SAME zero, sign and all. The old arithmetic
+     * ends in a product with 0 and every later factor is zero or positive,
+     * so it gives minus zero where the fractal ground is below the datum
+     * and plus zero elsewhere, and this function feeds ground contact, where
+     * the trace must stay bit identical. Hence the two noises above are
+     * still read, and only what follows them is skipped.
+     */
+    if (siteEdge(x, z) <= 0) {
+      return base + detail < 0 ? -0 : 0;
+    }
     let d = 1e9;
     for (const s of samples) {
       const dx = x - s.x;
@@ -6774,6 +6798,28 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
     return { px, pz, nx, nz };
   }
 
+  /*
+   * ON LOW ONLY THE FRONT ROW IS INKED (the owner, 2026-11-09: "ensure the
+   * low graphics still looks ok").
+   *
+   * An inked hull doubles a tree, and the treeline's hulls were 102,620 of
+   * the 431,541 triangles Low drew on the default track, a quarter of the
+   * world, on the preset whose whole job is to be light. More than half of
+   * those trees stand behind the first row, ten metres and more past the
+   * fence, where the row in front covers their outline and a line that
+   * thin is under a pixel from the paddock anyway. So Low inks a tree whose
+   * place is within TREE_HULL_LOW_M of the fence line and leaves the rest
+   * as the far scatter always was. Shot from the start pad with all of them
+   * inked, the front row only, and none: the first two cannot be told
+   * apart, and none loses the line on the near trees, so the front row
+   * keeps it. 67,512 fewer triangles a frame on Low (419,721 to 352,209 from
+   * the pad). Medium and High are as they were. It reads `out`, which the
+   * loop has already drawn, so the rng stream, every tree's place and every
+   * collider are untouched; a graphics change rebuilds the world.
+   */
+  const TREE_HULL_LOW_M = 10;
+  const treeHull = (out) => q.id !== 'low' || out < TREE_HULL_LOW_M;
+
   /* The treeline. A living room has no bush around it, so on a micro track
    * the loop simply does not run: no trees, no rocks, no occluders. */
   for (let i = 0; indoor ? false : i < 420; i += 1) {
@@ -6805,7 +6851,7 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
       || onCarPark(x, z)
       || onTheCourse(x, z);
     const obj = isTree
-      ? tree(rng, height, x, z, cut ? null : colliders, 2.05)
+      ? tree(rng, height, x, z, cut ? null : colliders, 2.05, treeHull(out))
       : rock(rng, height, x, z, cut ? null : colliders);
     if (cut) {
       continue;

@@ -68,6 +68,7 @@
     "check:ghosttop": "node scripts/ghosttop-check.js",
     "check:week": "node scripts/week-check.js",
     "check:freeze": "node scripts/freeze-check.js",
+    "check:stylestrip": "node scripts/stylestrip-check.js",
     "check:tuneload": "node scripts/tuneload-check.js",
     "check:crash-pacing": "node scripts/crash-pacing.js",
     "check:bounce": "node scripts/bounce-check.js",

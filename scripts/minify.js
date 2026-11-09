@@ -17,7 +17,13 @@
  * own files stay readable; only the host's copy is ever rewritten.
  *
  * Not touched: anything outside src, configs and tests/lib/simmod.js (the
- * page reaches nowhere else), self tests, and everything that is not .js.
+ * page reaches nowhere else), self tests, and everything that is not .js,
+ * but for one thing: the pages' inline stylesheets lose their comments
+ * (scripts/lib/stylestrip.js, the owner's word of 2026-11-09). index.html
+ * is the file every visit waits on first, and more than half of it is the
+ * reasons behind its rules: 97.4 KB gzipped as written, 40.3 KB without.
+ * Rules, selectors and values are untouched, and so is everything outside
+ * the style element, the licence notice with it.
  * A file esbuild cannot parse fails the build, which is the point: a deploy
  * that would have served a broken module never goes out.
  *
@@ -44,6 +50,7 @@ import { readdir, readFile, writeFile, mkdir, cp } from 'node:fs/promises';
 import { join, dirname, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { transform } from 'esbuild';
+import { stripPageStyles } from './lib/stylestrip.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -108,4 +115,19 @@ for await (const file of walk(base)) {
   after += Buffer.byteLength(code);
   count++;
 }
+/* The pages: index.html at the root and every page under src. */
+let pages = 0;
+let pagesBefore = 0;
+let pagesAfter = 0;
+for await (const file of walk(base)) {
+  const rel = relative(base, file).split(sep).join('/');
+  if (!rel.endsWith('.html') || !(rel === 'index.html' || rel.startsWith('src/'))) continue;
+  const src = await readFile(file, 'utf8');
+  const page = stripPageStyles(src);
+  await writeFile(file, page);
+  pagesBefore += Buffer.byteLength(src);
+  pagesAfter += Buffer.byteLength(page);
+  pages++;
+}
+console.log(`minify: ${pages} pages' stylesheets, ${pagesBefore} -> ${pagesAfter} bytes`);
 console.log(`minify: ${count} files, ${before} -> ${after} bytes (${(100 * after / before).toFixed(0)}%)${out ? ` in ${out}` : ''}`);

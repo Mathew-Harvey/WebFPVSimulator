@@ -75577,3 +75577,15 @@ A WCMRC club member's notes, passed on by the owner 2026-11-09 13:02Z ("Address 
 - The owner, 2026-11-10 11:10Z, thread "Improve graphics on the High preset", after the report for PR 256: "push to main on both web and steam". Web: this push. Steam: the repack is another repository and another thread's; that thread was handed main's commit with the owner's message attached, to subtree pull and push to the repack's main.
 - Before the push: `git fetch origin main`; main was still 8d724eb, the branch's base, so main fast forwards.
 - Latency as stated in the entry above: none on Low or Medium, less on High. Not flown.
+
+## 2026-11-10 | graphics | The pen thins with distance, and High's contact tone is a near thing (branch, draft PR)
+
+- Ask, the owner, 2026-11-10 11:42Z, after flying fda6c03: "the outline is still terrible and too thick when further way from sonething then when i get closer it sharpens up fix it".
+- Cause, seen in a close crop of Kumoi Towers' far ginkgos on Medium and on High: the ink is drawn in screen space at one width, about four pixels across at the built map's pen, so a tree a few dozen pixels tall carried a rim a third of its width, and the rim thinned against the tree as the camera closed. Present on Medium and High alike, and since before today. On High the contact tone added to it: its disc is never under three texels of a half size target, wider than a far tree, and the blur made that a dark halo.
+- Fix:
+  - `taperPen` in `src/render/comic.js`, called from `comicPipeline`, so the town and every built map: the reach of the ink's four depth fetches shrinks from the full pen at 6 m to 0.45 of it by 40 m, never under one texel.
+  - `SHADE_FAR` 30 in `src/render/shade.js` (was the estimate's own 90): no contact tone past 30 m.
+- Latency. Low: no change, it has no ink pass. Medium and High: the same fetches, and one smoothstep, a multiply and a max more arithmetic a pixel in the ink pass. That is a rise, a very small one, and it is on Medium, so it is stated here for the owner's word and not waved through. High's contact tone does less (it leaves at 30 m).
+- Pictures: /mnt/project-files/high-graphics/taper-medium.jpg, taper-high.jpg, and taper-far-closeup.png (Medium before and after, then High before and after).
+- Checks run: `lint:quality`. Not run: verify, shots.js, the town's own pictures, a real GPU. Not flown.
+- What went wrong: the last change answered "heavier outline from a recent push" by undoing two recent things, and the line the owner was looking at was neither. A crop of a far object would have shown it then; it was only cropped after he flew it.

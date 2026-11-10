@@ -1315,7 +1315,48 @@ if (!P[INSTALLED]) {
  * manga.js edits them. Nothing under vendored/ changes. The pipelines'
  * setSize multiplies its own line width by pipeline.inkWeight.
  */
+/*
+ * THE PEN TAPERS WITH DISTANCE (owner, 2026-11-10: "the outline is still
+ * terrible and too thick when further way from sonething then when i get
+ * closer it sharpens up fix it").
+ *
+ * The ink is drawn in screen space, so its line was the same number of
+ * pixels wide on a tree at five metres and on a tree at eighty. On the near
+ * one that is a pen line. On the far one, a few dozen pixels tall, it was a
+ * third of the tree: a thick dark rim that thinned as the pilot flew up to
+ * it. A mangaka draws the background with a finer pen. So the reach of the
+ * four depth fetches now shrinks from the full pen at PEN_NEAR metres to
+ * PEN_FAR_WIDTH of it by PEN_FAR, never under one texel, where the depth
+ * texture has nothing finer to give. A narrower reach also reads every
+ * crease weaker (the note on the thresholds below), so the far field loses
+ * its small inner lines first and keeps its silhouettes, which is the
+ * order a hand would drop them in.
+ *
+ * Cost: the same five fetches. One smoothstep, a multiply and a max more
+ * arithmetic a pixel in the ink pass, on the presets that have one (Medium
+ * and High). If a vendored update changes the two lines, nothing is
+ * replaced and the pen is the constant one, and `penTaper` says which.
+ */
+export const PEN_NEAR = 6;
+export const PEN_FAR = 40;
+export const PEN_FAR_WIDTH = 0.45;
+const INK_PEN_AT = `      vec2 t = uTexel * uThickness;
+      float dc = linearDepth( vUv );`;
+const INK_PEN_TAPER = `      float dc = linearDepth( vUv );
+      vec2 t = uTexel * max( 1.0, uThickness * ( 1.0 - ${(1 - PEN_FAR_WIDTH).toFixed(2)} * smoothstep( ${PEN_NEAR.toFixed(1)}, ${PEN_FAR.toFixed(1)}, dc ) ) );`;
+
+function taperPen(pipeline) {
+  const mat = pipeline.ink && pipeline.ink.mat;
+  if (!mat || !mat.fragmentShader.includes(INK_PEN_AT)) {
+    return false;
+  }
+  mat.fragmentShader = mat.fragmentShader.replace(INK_PEN_AT, INK_PEN_TAPER);
+  mat.needsUpdate = true;
+  return true;
+}
+
 export function comicPipeline(pipeline, { blobs = false } = {}) {
+  pipeline.penTaper = taperPen(pipeline);
   /* The pen and the grade below are uniforms and draw on WebGL 1 as they
    * do on 2. The three shader edits are WebGL 2 GLSL, so see comicGL2. */
   const gl2 = comicGL2(pipeline.renderer);

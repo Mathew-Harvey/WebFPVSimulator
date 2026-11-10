@@ -61,6 +61,8 @@ import { DOWN, UP, quad } from './glow.js';
  * shadow. Picked by eye on the town's eaves and Kumoi Towers' steps. */
 export const SHADE_STRENGTH = 2.0;
 export const SHADE_AMOUNT = 0.7;
+/* Metres. The tone fades out over the last two fifths of this. */
+export const SHADE_FAR = 30;
 
 const ESTIMATE = /* glsl */ `
   #include <packing>
@@ -113,6 +115,12 @@ export function shadePipeline(pipeline) {
   const ink = mat.uniforms;
   const ao = aoUniforms();
   ao.uAoStrength.value = SHADE_STRENGTH;
+  /* Near things only. The estimate's disc is never under three texels of
+   * this half size target, so on a far tree it was wider than the tree and
+   * the blur made it a dark rim round it, which read as a thick outline
+   * that sharpened as the pilot flew closer (owner, 2026-11-10). A contact
+   * tone is a near thing in any case. */
+  ao.uAoFar.value = SHADE_FAR;
   const estimate = quad(ESTIMATE, {
     tDepth: { value: pipeline.rtScene.depthTexture },
     uNear: ink.uNear,

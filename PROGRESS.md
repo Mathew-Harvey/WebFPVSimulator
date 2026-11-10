@@ -75612,3 +75612,9 @@ Latency: none on any preset. Low has no ink pass. On Medium and High these are n
 Checked this turn: `npm run lint:quality` (71 of 71 clean), `npm run check:house` (all passed), `npm run check:warehouse` (all passed). Pictures of Nick at his patio table on Medium, main beside the branch, from a scratch rig: `/mnt/project-files/high-graphics/nickpen-medium-n0.jpg` and `n4`, and the front of the house on Medium and High, `housepen-*.jpg`. `npm run verify` was not run: no physics, plant, ABI or build change. Heads' house, the office, the school and the shop were not shot, they take the same constant by the same code.
 
 What went wrong: this is the third outline change of the day. I offered to lower the house pen after PR 257 and left it as a question instead of shooting Nick's house up close, which the owner had asked me to check. And my first camera for these pictures aimed at the model's bounding box, which holds unused vertices at the origin, and photographed a blank wall; the rig now aims at the median of the drawn vertices.
+
+## 2026-11-10 | release | The lighter house pen to main on the owner's word
+
+- The owner, 2026-11-10 12:20Z, thread "Improve graphics on the High preset", after the report for PR 258 stated no latency change on any preset: "push to main". Web main only; Steam was not named in this message, so the Steam thread is told the commit and asked to wait for his word.
+- Before the push: `git fetch origin main`; a fast forward if main had not moved, a merge of main first if it had.
+- Not flown.

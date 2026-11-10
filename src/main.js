@@ -57,6 +57,7 @@ import { estimateSceneBytes } from './render/vram.js';
 import { createGpuGate } from './render/gpugate.js';
 import { AUTO_FLOOR, autoPresetMove, createAutoScale } from './render/autoscale.js';
 import { createLatencyMeter } from './render/latency.js';
+import { createTimerYield } from './render/timeryield.js';
 import { moveRigid, predictDelta, PREDICT_MAX_MS } from './render/predict.js';
 import { simPosToThree, simQuatToThree, simLenToWorld, threePosToSim, threeDirToSim, WORLD_SCALE, setWorldScale } from './render/frame.js';
 import { setFisheye, fisheyeNdc } from './render/fisheye.js';
@@ -9103,6 +9104,20 @@ export async function boot({ loading, bootStart, mapId }) {
   const loopParam = new URLSearchParams(window.location.search).get('loop');
   const loopForce = loopParam === 'timer' ? true : (loopParam === 'display' || loopParam === 'raf' ? false : null);
   let timerLoop = false;
+  /*
+   * WHETHER THE TIMER HAS HANDED THE FRAMES BACK (src/render/timeryield.js,
+   * bug-5dfce5a7): it judges itself while it paces live flight, and on a
+   * display it cannot outdraw it gives the frames to the display loop for
+   * the page's life. `timerJudging` is whether the last frame was one it
+   * judges (the timer pacing, flying, the world drawn, no replay or film),
+   * read by the kept rAF and the next tick, which run between frames.
+   * `timerFellBack` is whether the last timerDelay took its fallback, and
+   * `timerDraws` counts the world's draws for window.__timerYield.
+   */
+  const timerYield = createTimerYield();
+  let timerJudging = false;
+  let timerFellBack = false;
+  let timerDraws = 0;
   /* The pending timeout, 0 when none, and whether boot started the loop at
    * all, so a visibility flicker before boot cannot start it early. */
   let timerId = 0;
@@ -9115,7 +9130,10 @@ export async function boot({ loading, bootStart, mapId }) {
 
   function applyLoopMode() {
     /* Capture steps the display loop, one rAF callback a step: never the timer. */
-    timerLoop = capturing ? false : (loopForce !== null ? loopForce : pacingTimerOn(ui.settings));
+    /* The hand back applies to Auto only: Timer, always and ?loop=timer
+     * are a pilot's explicit choice and keep the timer. */
+    const handedBack = Boolean(timerYield.yielded()) && ui.settings.pacing !== 'timer';
+    timerLoop = capturing ? false : (loopForce !== null ? loopForce : pacingTimerOn(ui.settings) && !handedBack);
   }
 
   /* Whether the timer paces THIS tick: only live flying. The timer exists
@@ -11915,6 +11933,7 @@ export async function boot({ loading, bootStart, mapId }) {
     const period = latency.displayPeriodMs();
     const gpu = gpuGate.state.samples >= 10 ? gpuGate.state.gpuMs : 0;
     const d = period - gpu;
+    timerFellBack = false;
     if (d >= 4) {
       return d;
     }
@@ -11924,7 +11943,8 @@ export async function boot({ loading, bootStart, mapId }) {
      * the physics and the OSD flat out for frames that cannot exist, which
      * on a software rasteriser starved the whole page. Tick at the period
      * instead, exactly the cadence a display loop would have had. */
-    return gpu >= period ? period : 4;
+    timerFellBack = gpu >= period;
+    return timerFellBack ? period : 4;
   }
 
   /*
@@ -11941,8 +11961,13 @@ export async function boot({ loading, bootStart, mapId }) {
    * so the display loop never inherits a stray one. Hoisted, P8.
    */
   let rafKeep = false;
-  const rafKeepAlive = () => {
+  const rafKeepAlive = (ts) => {
     rafKeep = false;
+    /* The display's own beat, for the timer's verdict on itself: see
+     * src/render/timeryield.js. */
+    if (timerJudging) {
+      timerYield.noteRaf(ts);
+    }
   };
 
   function frameTimer() {
@@ -11951,6 +11976,9 @@ export async function boot({ loading, bootStart, mapId }) {
      * mode says so. */
     if (timerPacesNow()) {
       timerId = setTimeout(frameTimer, timerDelay());
+      if (timerJudging) {
+        timerYield.noteTick(timerFellBack);
+      }
       if (!rafKeep) {
         rafKeep = true;
         requestAnimationFrame(rafKeepAlive);
@@ -13906,6 +13934,18 @@ export async function boot({ loading, bootStart, mapId }) {
     if (fpvNearAt && !predictApplied && !camOverride) {
       setCameraNear(fpvNear(fpvNearAt));
     }
+    /* Whether the timer judges this frame (src/render/timeryield.js): live
+     * flight only, which is what the timer is for, and only under Auto,
+     * the one pacing it may hand back under, so Timer, always and
+     * ?loop=timer never carry a verdict nothing acted on. Any other frame
+     * ends the stretch it measures, so a gap across a menu or a replay is
+     * not read as a cadence. */
+    const judging = timerPacesNow() && loopForce === null && ui.settings.pacing !== 'timer'
+      && worldLive && mode === 'flight' && ui.screen === 'flight' && !replayMode && !film && !capturing;
+    if (timerJudging && !judging) {
+      timerYield.pause();
+    }
+    timerJudging = judging;
     if (worldLive && drawThis) {
       placePropView();
       /* The pilot's fisheye, on their own lens only (live, held on the
@@ -13916,6 +13956,21 @@ export async function boot({ loading, bootStart, mapId }) {
         shell.camera.fov, shell.camera.aspect);
       view.post.render();
       gpuGate.submitted(performance.now());
+      timerDraws += 1;
+      if (timerJudging) {
+        timerYield.noteDraw(renderStart);
+      }
+    }
+    /* The verdict, once a frame while judging. A hand back takes effect at
+     * the timer's next tick, which finds timerPacesNow false and passes the
+     * loop to requestAnimationFrame (THE LOOP SWAPS LIVE). */
+    if (timerJudging && timerYield.check()) {
+      timerJudging = false;
+      timerYield.pause();
+      applyLoopMode();
+      if (ui.setTimerYield) {
+        ui.setTimerYield(timerYield.yielded());
+      }
     }
     /* In the same task as the draw: the canvas keeps no drawing buffer, so
      * this is the one moment it still holds the frame. */
@@ -16341,6 +16396,9 @@ export async function boot({ loading, bootStart, mapId }) {
      * because the loop changes the meaning of fps, hz and keyToScreen. */
     loop: timerLoop ? 'timer' : 'raf',
     pacing: ui.settings.pacing,
+    /* Null, or why the timer handed the frames to the display this page
+     * and what it measured: see src/render/timeryield.js. */
+    timerYield: timerYield.yielded(),
     /* The predicted view's setting and the horizon it last looked ahead in
      * flight: see predictView before the draw. */
     predict: ui.settings.predictView !== false ? Math.round(predictLastMs * 10) / 10 : 0,
@@ -17997,6 +18055,9 @@ export async function boot({ loading, bootStart, mapId }) {
   /* Which loop paces the frames now, for the probes that check the Frame
    * pacing setting and the URL force against the loop actually running. */
   window.__loopNow = () => (timerLoop ? 'timer' : 'raf');
+  /* The timer's verdict on itself and the world's draws so far, for
+   * scripts/timeryield-check.js. Reads only. */
+  window.__timerYield = () => ({ loop: timerLoop ? 'timer' : 'raf', yielded: timerYield.yielded(), draws: timerDraws });
   if (capturing) {
     window.__capture.attach({
       subject: captureSubject,

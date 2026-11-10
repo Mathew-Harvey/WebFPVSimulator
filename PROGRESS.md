@@ -75590,3 +75590,9 @@ A WCMRC club member's notes, passed on by the owner 2026-11-09 13:02Z ("Address 
 - Checks run: `lint:quality`. Not run: verify, shots.js, the town's own pictures, a real GPU. Not flown.
 - What went wrong: the last change answered "heavier outline from a recent push" by undoing two recent things, and the line the owner was looking at was neither. A crop of a far object would have shown it then; it was only cropped after he flew it.
 - The owner, 11:47Z: "check on nick burns house also". Shot on Medium and High, main beside the branch, five views from the spawn: the house is 3.5 times life size, so the taper's 6 to 40 m covers its yard and street, and the neighbour's house, the far trees and the garage's far edges draw with the finer pen while the porch beside the camera keeps the house's own heavy one (HOUSE_PEN 1.6, not changed). Pictures: /mnt/project-files/high-graphics/taper-nick-medium.jpg and taper-nick-high.jpg. No code change from the check.
+
+## 2026-11-10 | release | The pen that thins with distance to main on the owner's word
+
+- The owner, 2026-11-10 11:54Z, thread "Improve graphics on the High preset", after the report for PR 257 stated the very small rise in the ink pass's arithmetic on Medium and High: "push to main". Web main only; Steam was not named this time, so the Steam thread is told the commit and nothing is asked of it in the owner's name.
+- Before the push: `git fetch origin main`; a fast forward if main had not moved, a merge of main first if it had.
+- Not flown.

@@ -37,7 +37,7 @@ const CHUNK = 'extra';
 
 /* The houses' pen and grade (../heads/index.js houseInk says why), so the
  * hall reads like the rooms of the houses. */
-const HOUSE_PEN = 1.6;
+const HOUSE_PEN = 1;
 const HOUSE_KEEN = 0.9;
 const HOUSE_CORNER_KEEN = 0.5;
 const HOUSE_SATURATION = 0.96;

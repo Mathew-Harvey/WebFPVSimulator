@@ -466,7 +466,7 @@ function logoMesh(items, material, name) {
 
 /* The house's pen and grade, Nick Burns' house's (../house/index.js
  * houseInk says why), so the two houses read alike inside. */
-const HOUSE_PEN = 1.6;
+const HOUSE_PEN = 1;
 const HOUSE_KEEN = 0.9;
 const HOUSE_CORNER_KEEN = 0.5;
 const HOUSE_SATURATION = 0.96;

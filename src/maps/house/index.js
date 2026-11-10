@@ -278,8 +278,16 @@ function openGround(scene, name, rect) {
  * the rooms were barely changed. The pilot's Manga switch still takes the
  * ink off (setInkLines in src/render/quality.js): this only changes how it
  * draws.
+ *
+ * 2026-11-10: the pen is back to 1, the weight every other map draws at.
+ * It was 1.6, which on top of the comic pen made a line five or six pixels
+ * wide round Nick, the pergola posts and the chairs, and the owner said of
+ * it "look at the outline around nick, this is no good right". The two
+ * keen factors stay, so the wall and floor corner line is still found.
+ * The four maps that copied this pen (heads, office, school, warehouse)
+ * came down with it.
  */
-const HOUSE_PEN = 1.6;
+const HOUSE_PEN = 1;
 const HOUSE_KEEN = 0.9;
 const HOUSE_CORNER_KEEN = 0.5;
 const HOUSE_SATURATION = 0.96;

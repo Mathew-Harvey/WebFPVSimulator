@@ -75596,3 +75596,19 @@ A WCMRC club member's notes, passed on by the owner 2026-11-09 13:02Z ("Address 
 - The owner, 2026-11-10 11:54Z, thread "Improve graphics on the High preset", after the report for PR 257 stated the very small rise in the ink pass's arithmetic on Medium and High: "push to main". Web main only; Steam was not named this time, so the Steam thread is told the commit and nothing is asked of it in the owner's name.
 - Before the push: `git fetch origin main`; a fast forward if main had not moved, a merge of main first if it had.
 - Not flown.
+
+## 2026-11-10: the house pen comes down to the normal weight
+
+The owner, 2026-11-10 12:05Z, with a screenshot of the Steam build at Nick Burns' house: "in the most recent steam build, look at the outline around nick, this is no good right". He is right. The line round Nick, the pergola posts, the umbrella and the chairs was five or six pixels wide.
+
+Cause: the five house maps (`house`, `heads`, `office`, `school`, `warehouse`) each multiply the ink by their own `HOUSE_PEN`, 1.6, on top of the comic pen's 1.25. That predates today's work, but the two outline fixes of this morning (PR 256, PR 257) never touched it, and PR 257's taper started at 6 m, further than a whoop usually is from the furniture, so it took nothing off the near lines either.
+
+What changed:
+- `HOUSE_PEN` 1.6 to 1 in all five maps. `HOUSE_KEEN` and `HOUSE_CORNER_KEEN` are unchanged, so the wall and floor corner line is still drawn.
+- `PEN_NEAR` 6 to 2 and `PEN_FAR` 40 to 25 in `src/render/comic.js`, for every map on Medium and High: the pen now starts thinning at 2 m and is at its finest by 25 m.
+
+Latency: none on any preset. Low has no ink pass. On Medium and High these are numbers in uniforms and in two literals of the ink shader: the same passes, the same five depth fetches, the same arithmetic.
+
+Checked this turn: `npm run lint:quality` (71 of 71 clean), `npm run check:house` (all passed), `npm run check:warehouse` (all passed). Pictures of Nick at his patio table on Medium, main beside the branch, from a scratch rig: `/mnt/project-files/high-graphics/nickpen-medium-n0.jpg` and `n4`, and the front of the house on Medium and High, `housepen-*.jpg`. `npm run verify` was not run: no physics, plant, ABI or build change. Heads' house, the office, the school and the shop were not shot, they take the same constant by the same code.
+
+What went wrong: this is the third outline change of the day. I offered to lower the house pen after PR 257 and left it as a question instead of shooting Nick's house up close, which the owner had asked me to check. And my first camera for these pictures aimed at the model's bounding box, which holds unused vertices at the origin, and photographed a blank wall; the rig now aims at the median of the drawn vertices.

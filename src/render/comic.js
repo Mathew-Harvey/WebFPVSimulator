@@ -1336,9 +1336,13 @@ if (!P[INSTALLED]) {
  * arithmetic a pixel in the ink pass, on the presets that have one (Medium
  * and High). If a vendored update changes the two lines, nothing is
  * replaced and the pen is the constant one, and `penTaper` says which.
+ *
+ * The taper ran from 6 m to 40 m at first. It now starts at 2 m and ends
+ * at 25 m: the house maps are flown by a whoop an arm's length from the
+ * furniture, and a chair four metres off still had the full pen.
  */
-export const PEN_NEAR = 6;
-export const PEN_FAR = 40;
+export const PEN_NEAR = 2;
+export const PEN_FAR = 25;
 export const PEN_FAR_WIDTH = 0.45;
 const INK_PEN_AT = `      vec2 t = uTexel * uThickness;
       float dc = linearDepth( vUv );`;

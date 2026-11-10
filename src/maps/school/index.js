@@ -42,7 +42,7 @@ const CHUNK = 'extra';
 
 /* The houses' pen and grade (../heads/index.js houseInk says why), so the
  * school is inked the way the houses and the shop are. */
-const HOUSE_PEN = 1.6;
+const HOUSE_PEN = 1;
 const HOUSE_KEEN = 0.9;
 const HOUSE_CORNER_KEEN = 0.5;
 const HOUSE_SATURATION = 0.96;

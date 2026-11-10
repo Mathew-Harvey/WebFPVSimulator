@@ -338,7 +338,15 @@ export const FACET_SENS = 1.8;
  * are drawn, bolder, the way the town's near streets read. The taps move
  * further apart and there are no more of them: no cost.
  */
-export const DRAWN_PEN = 1.3;
+export const DRAWN_PEN = 1;
+/*
+ * Was 1.3 from 2026-11-01. The owner, 2026-11-10: "we need to reduce the
+ * heavier outline that was introduced in a recent push for both medium and
+ * high graphics settings for both steam and web". On Medium this factor is
+ * the only thing that ever made a line heavier than the town's, so it is
+ * back to one: the town's pen on every map. FACET_SENS stays, which draws
+ * fewer lines, not heavier ones. A uniform either way: no cost.
+ */
 
 const INK_FADE = '      edge *= 1.0 - smoothstep( uFadeStart, uFadeEnd, dc );';
 export const FAR_INK = 0.55;

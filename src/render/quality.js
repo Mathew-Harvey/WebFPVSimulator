@@ -288,9 +288,12 @@ const PRESETS = {
       /* A soft tone where two things meet, three small passes and one fetch
        * in the ink pass: src/render/shade.js. */
       shade: true,
-      /* A bolder line round a silhouette, four more depth fetches in the
-       * ink pass: addPipelineSil in src/render/comic.js. */
-      outerLine: true,
+      /* The bolder line round a silhouette (addPipelineSil in
+       * src/render/comic.js) was on here for one afternoon, 2026-11-10, and
+       * the owner asked for it back off the same day: "we need to reduce
+       * the heavier outline". Off, the ink pass makes the six fetches it
+       * made before. */
+      outerLine: false,
       /* The authored look. Falling blossom down the street corridor, three
        * instanced draws, driven from the fixed step count. */
       petals: true,

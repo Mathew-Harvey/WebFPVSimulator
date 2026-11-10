@@ -75558,3 +75558,16 @@ A WCMRC club member's notes, passed on by the owner 2026-11-09 13:02Z ("Address 
 - The owner, 2026-11-10 09:35Z, thread "Improve graphics on the High preset", after the PR's report stated the rise in GPU time on High and none on Low or Medium: "push to main". PR 255.
 - Before the push: `git fetch origin main`; main was still 5c967d3, the branch's own base (merge base found), so main fast forwards.
 - Not flown, and no check beyond the entry above was run for the push. The verification question was asked in the report and not answered; the owner flies main.
+
+## 2026-11-10 | graphics | The heavier outline taken back down on Medium and High (branch, draft PR)
+
+- Ask, the owner, 2026-11-10 11:03Z, written in the Steam thread and passed here: "we need to reduce the heavier outline that was introduced in a recent push for both medium and high graphics settings for both steam and web".
+- What had made a line heavier, read from the code and the history, since the ask does not name the push:
+  - High only, since this morning (8d724eb): the outer pen line, `outerLine` in `src/render/quality.js`. Now false. The light wrap, the lamp glow and the contact shade stay.
+  - Medium and High, on the maps built with `inkFacets: false` (the 22 of 2026-10-31 and after), since 2026-11-01: `DRAWN_PEN` 1.3 in `src/maps/built/index.js`, the line 1.3 times as wide. Now 1, the town's pen. Medium was the same frame as main this morning (the proof in the entry above), so this factor is the only thing that had thickened Medium's line.
+  - Not changed: `INK_WEIGHT` 1.25 in `src/render/comic.js`, on every inked map since 2026-10-09, which is not recent. One number if the owner wants the line lighter still.
+- Latency: Low, no change (it has no ink pass). Medium, no change (a uniform). High, four fewer depth fetches a pixel in the ink pass, 11 to 7.
+- Pictures, Kumoi Towers, main beside the branch: /mnt/project-files/high-graphics/outline-medium-up.jpg, outline-medium-d0.jpg, outline-high-up.jpg, outline-high-d0.jpg.
+- Checks run: `lint:quality`. Not run: verify (no physics, plant, ABI or build change), shots.js, a real GPU. Not flown.
+- What went wrong: the outer line went to main this morning on pictures the owner had beside him and was the first thing asked back. A bolder contour is a change of the drawing's character, and it should have been its own card, not one of four in a list.
+- Steam: nothing to do there by hand; the repack takes this at its next subtree pull.

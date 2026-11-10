@@ -33,9 +33,12 @@ const D = 160;
 const LEVEL = { fwd: v3(0, 0, -1), up: v3(0, 1, 0) };
 
 /* A frame at a document point, heading north, level. */
-function frame(t, doc, { landed = false, height, vel = v3(), prev, fwd, up, gate = null, lap = null, score = 0 } = {}) {
+function frame(t, doc, { landed = false, grounded, height, vel = v3(), prev, fwd, up, gate = null, lap = null, score = 0 } = {}) {
   const pos = docToWorld(W, D, doc[0], doc[1], doc[2] ?? 0);
   return {
+    /* Only when a case says so: the Node rig's frames carry no such field,
+     * and every case written before it must read exactly as it did. */
+    ...(grounded === undefined ? {} : { grounded }),
     simMs: t,
     prev: prev ? docToWorld(W, D, prev[0], prev[1], prev[2] ?? 0) : pos,
     pos,
@@ -116,6 +119,85 @@ test('land: a hard touch does not count, a gentle one on the pad does', () => {
   t = hover(run, t, 400, [80, 40, 2], { height: 2 });
   t = hover(run, t, 50, [80, 40, 0.3], { height: 0.3, vel: v3(0, -0.7, 0) });
   hover(run, t, 1000, [80, 40, 0], { landed: true, height: 0 });
+  assert.equal(run.status().phase, 'complete');
+});
+
+/*
+ * bug-ab2ede66, "the mission is not completing after i do the objective". The
+ * shell parks a craft (`landed`) only once the throttle is back under its
+ * takeoff latch, so a pilot who touched down a little under hover and held
+ * the stick there sat on the pad unparked, and the Land objective waited for
+ * a landing it would never see. The shell now says `grounded` for a craft at
+ * rest on the ground with the motors turning, and the land judge counts it.
+ */
+test('land: resting on the ground with the throttle up is a landing (bug-ab2ede66)', () => {
+  const toLand = () => {
+    const run = createRun(lessonById('1-1'), { W, D });
+    let t = hover(run, 0, 300, [80, 25, 0], { landed: true, height: 0 });
+    t = hover(run, t, 200, [80, 25, 0.8], { height: 0.8 });
+    t = hover(run, t, 5300, [80, 25, 2], { height: 2 });
+    assert.equal(run.status().current.kind, 'land', 'at the Land objective');
+    t = hover(run, t, 300, [80, 25, 0.5], { height: 0.5, vel: v3(0, -0.6, 0) });
+    return { run, t };
+  };
+  /* What the shell fed before: on the pad, never parked, nothing else said. */
+  const before = toLand();
+  hover(before.run, before.t, 3000, [80, 25, 0], { height: 0 });
+  assert.equal(before.run.status().phase, 'flying', 'unparked and unsaid, the old feed waits for ever');
+  /* What it feeds now. */
+  const now = toLand();
+  let t = hover(now.run, now.t, 400, [80, 25, 0], { height: 0, grounded: true });
+  assert.equal(now.run.status().phase, 'flying', 'not before the settle');
+  assert.equal(now.run.status().current.state.good, true, 'the touch was judged gentle');
+  t = hover(now.run, t, 400, [80, 25, 0], { height: 0, grounded: true });
+  const st = now.run.status();
+  assert.equal(st.phase, 'complete', 'sat still on the ground for the settle');
+  assert.equal(st.medal, 'gold');
+  /* And parked afterwards changes nothing: the run is over. */
+  hover(now.run, t, 400, [80, 25, 0], { landed: true, height: 0 });
+  assert.equal(now.run.status().phase, 'complete');
+});
+
+test('land: grounded is judged as a perch is, hard, off the pad, and on it', () => {
+  const lesson = {
+    id: 't-ground',
+    objectives: [{ kind: 'land', text: 'Land', pad: { at: [80, 40], r: 2 }, maxDescent: 1.5 }],
+  };
+  const run = createRun(lesson, { W, D });
+  let t = hover(run, 0, 200, [80, 40, 3], { height: 3 });
+  t = hover(run, t, 50, [80, 40, 0.3], { height: 0.3, vel: v3(0, -4, 0) });
+  t = hover(run, t, 1000, [80, 40, 0], { height: 0, grounded: true });
+  assert.equal(run.status().phase, 'flying', 'a 4 m/s touch is a crash landing, throttle or not');
+  assert.equal(run.status().current.detail, 'hard');
+  t = hover(run, t, 400, [80, 40, 2], { height: 2 });
+  t = hover(run, t, 50, [86, 40, 0.3], { height: 0.3, vel: v3(0, -0.7, 0) });
+  t = hover(run, t, 1000, [86, 40, 0], { height: 0, grounded: true });
+  assert.equal(run.status().current.detail, 'offpad');
+  t = hover(run, t, 400, [80, 40, 2], { height: 2 });
+  t = hover(run, t, 50, [80, 40, 0.3], { height: 0.3, vel: v3(0, -0.7, 0) });
+  /* Touched down with the motors turning, then the throttle comes down and
+   * the shell parks it: one landing, not two, and it counts. */
+  t = hover(run, t, 300, [80, 40, 0], { height: 0, grounded: true });
+  hover(run, t, 700, [80, 40, 0], { landed: true, height: 0 });
+  assert.equal(run.status().phase, 'complete');
+});
+
+test('land: sitting on the start pad with the throttle up is not a landing until it has flown', () => {
+  /* 1-5 Touchdown opens on its Land objective, on the start pad. A pilot
+   * raising the throttle past the latch and not yet off the ground is
+   * grounded from the first frame, and must not land on anything. */
+  const lesson = {
+    id: 't-start',
+    objectives: [{ kind: 'land', text: 'Land', pad: { at: [80, 25], r: 3 }, maxDescent: 2 }],
+  };
+  const run = createRun(lesson, { W, D });
+  let t = hover(run, 0, 300, [80, 25, 0], { landed: true, height: 0 });
+  t = hover(run, t, 1500, [80, 25, 0], { height: 0, grounded: true });
+  assert.equal(run.status().current.state.index, 0, 'never left the pad, so never landed on it');
+  assert.notEqual(run.status().phase, 'complete');
+  t = hover(run, t, 400, [80, 25, 1.5], { height: 1.5 });
+  t = hover(run, t, 50, [80, 25, 0.3], { height: 0.3, vel: v3(0, -0.5, 0) });
+  hover(run, t, 800, [80, 25, 0], { height: 0, grounded: true });
   assert.equal(run.status().phase, 'complete');
 });
 

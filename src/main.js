@@ -16340,6 +16340,35 @@ export async function boot({ loading, bootStart, mapId }) {
       sticks: [r2(ch.roll || 0), r2(ch.pitch || 0), r2(ch.yaw || 0), r2(ch.throttle || 0)],
     };
   });
+  /*
+   * THE LESSON AT THE MOMENT OF A REPORT, when one is up. bug-ab2ede66 said
+   * "the mission is not completing after i do the objective" and the report
+   * could not say which lesson, which objective, or what its judge was
+   * waiting for, so the lesson had to be guessed from the flight mode and
+   * where the craft sat. Null outside the career, so an ordinary report does
+   * not grow a key; one short key inside it (the board caps a context at 32
+   * keys and 8000 characters, and a feel report spends 26 and about 2800).
+   */
+  ui.setCareerProbe(() => {
+    if (!(career && career.active())) {
+      return null;
+    }
+    const lesson = career && career.lesson();
+    const st = career && career.status();
+    const cur = st && st.current;
+    const r2 = (v) => Math.round(v * 100) / 100;
+    return {
+      lesson: lesson ? lesson.id : '',
+      state: (career && career.state()) || '',
+      phase: st ? st.phase : '',
+      objective: st ? `${Math.min(st.index + 1, st.count)} of ${st.count}` : '',
+      kind: cur ? cur.kind : '',
+      detail: cur ? cur.detail : '',
+      progress: cur ? r2(cur.progress) : (st && st.phase === 'complete' ? 1 : 0),
+      failed: st && st.failReason ? st.failReason : '',
+      grounded: careerRec.grounded,
+    };
+  });
   ui.setLatencyProbe(() => ({
     supported: latency.supported,
     key: latency.report(),
@@ -17678,6 +17707,7 @@ export async function boot({ loading, bootStart, mapId }) {
     speed: 0,
     height: 0,
     landed: true,
+    grounded: false,
     gate: null,
     lap: null,
     score: 0,
@@ -17711,6 +17741,23 @@ export async function boot({ loading, bootStart, mapId }) {
     r.up.y = careerVec.y;
     r.up.z = careerVec.z;
     r.landed = landed;
+    /*
+     * ON THE GROUND WITH THE MOTORS TURNING, which `landed` is not: the perch
+     * parks a craft only once the throttle is back under the takeoff latch,
+     * so a pilot who touches down a little under hover and leaves the stick
+     * there sits on the pad unparked for as long as they hold it.
+     * bug-ab2ede66 was a lesson's Land waiting for ever on exactly that
+     * (src/career/objectives.js, the land judge, is the only reader). The
+     * perch's own test, on this frame's plant contacts and pose, minus the
+     * throttle; a turtle, a pose lock or the launch stand is never it.
+     */
+    r.grounded = !landed && lastGroundHits > 0 && !launchStaging && !poseLock
+      && !turtleWait && !turtleFlip.active && stateCurr != null
+      && canPerch(
+        (Math.acos(Math.max(-1, Math.min(1, plantUpZ(stateCurr)))) * 180) / Math.PI,
+        plantSpeed(stateCurr),
+        plantRateMag(stateCurr),
+      );
     r.speed = landed ? 0 : speedNow;
     r.height = landed ? 0 : Math.max(0, pCurr.y - view.height(pCurr.x, pCurr.z, pCurr.y - SURFACE_BIAS, pCurr.y));
     r.gate = careerGateNow;

@@ -21,6 +21,10 @@
  *   speed     |vel|
  *   height    clearance above whatever is under it, m
  *   landed    sitting on the ground (the shell's perch)
+ *   grounded  optional: resting on the ground with the motors still
+ *             running, upright, slow and quiet, which the shell does not
+ *             call landed while the throttle is above its takeoff latch.
+ *             Only the land judge reads it (see there).
  *   gate      a race gate passed this frame (scene index), or null
  *   lap       a lap completed this frame: { ms } or null
  *   score     the freestyle counter's total so far, or 0
@@ -223,13 +227,28 @@ const JUDGES = {
    * touch down gently (vertical speed at the touch under maxDescent), on the
    * pad when there is one, and sit still for `settle` seconds. With `pads`
    * every pad is landed on once, in order.
+   *
+   * DOWN IS ON THE GROUND, NOT ONLY PARKED. bug-ab2ede66, "the mission is
+   * not completing after i do the objective": the shell parks a craft
+   * (`landed`) only once the throttle is under its takeoff latch, 0.25 of
+   * stick, because a throttle above it is a pilot taking off. A five inch
+   * hovers near 0.37, so a pilot who eases the throttle down until it
+   * touches, as the hint says, and leaves the stick there sits on the pad
+   * with the motors turning and is never parked. Measured in the shell on
+   * Lift Off: touched down on 0.30 the quad sat on the pad for good, the
+   * objective said Land and the coach said nothing; on 0.22 it finished.
+   * A craft at rest on the ground is landed, whatever the stick holds, so
+   * `grounded` counts here as the perch does. Every other judge still reads
+   * `landed` alone, so a lesson's clock and its airborne objectives are as
+   * they were.
    */
   land: {
     start: () => ({ wasLanded: true, airborne: false, vy: 0, sat: 0, index: 0, hard: false }),
     frame(s, o, f, ctx) {
       const pads = o.pads || (o.pad ? [o.pad] : null);
       const target = pads ? pads[s.index] : null;
-      if (!f.landed) {
+      const down = f.landed || f.grounded === true;
+      if (!down) {
         s.airborne = true;
         s.vy = f.vel.y;
         s.sat = 0;
@@ -243,7 +262,7 @@ const JUDGES = {
         s.good = gentle && onPad;
         s.detail = !gentle ? 'hard' : (!onPad ? 'offpad' : '');
       }
-      if (f.landed && s.good) {
+      if (down && s.good) {
         s.sat += ctx.dtMs;
         if (s.sat >= (o.settle ?? 0.6) * 1000) {
           s.index += 1;
@@ -255,7 +274,7 @@ const JUDGES = {
           }
         }
       }
-      s.wasLanded = f.landed;
+      s.wasLanded = down;
       const total = pads ? pads.length : 1;
       s.progress = Math.min(1, (s.index + (s.good ? 0.5 : 0)) / total);
       s.target = target;

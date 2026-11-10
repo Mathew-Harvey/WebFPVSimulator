@@ -6556,6 +6556,8 @@ export class Ui {
     this.stickProbe = null;
     /* Set by main.js; see setCraftProbe. */
     this.craftProbe = null;
+    /* Set by main.js; see setCareerProbe. */
+    this.careerProbe = null;
     /* The machine and the browser, as far as Stick help's advice and the
      * stick rows care. Read once: neither changes under a running page.
      * See src/ui/stickhelp.js. */
@@ -9263,6 +9265,21 @@ export class Ui {
        * bug-ad038907 each said "stuck" and nothing else, and neither could be made to happen from the words. One key.
        */
       craft: this.craftProbe ? this.craftProbe() : null,
+      /*
+       * THE LESSON, only while the career is up: which one, which objective
+       * of how many, and what its judge says (bug-ab2ede66, "the mission is
+       * not completing", arrived with none of it). Absent otherwise, like
+       * fault, so an ordinary report does not grow a key.
+       */
+      ...(() => {
+        let lesson = null;
+        try {
+          lesson = this.careerProbe ? this.careerProbe() : null;
+        } catch (e) {
+          lesson = null;
+        }
+        return lesson ? { career: lesson } : {};
+      })(),
       graphics: s.graphics || '',
       cameraAngle: s.cameraAngle,
       cameraFov: s.cameraFov,
@@ -21617,6 +21634,11 @@ export class Ui {
   /* The craft's state for a report: see bugSnapshot, and main.js where it is read. */
   setCraftProbe(fn) {
     this.craftProbe = typeof fn === 'function' ? fn : null;
+  }
+
+  /* The lesson flying, for a report: see bugSnapshot, and main.js where it is read. */
+  setCareerProbe(fn) {
+    this.careerProbe = typeof fn === 'function' ? fn : null;
   }
 
   /* The flight the end of flight question is about, as a function, because it

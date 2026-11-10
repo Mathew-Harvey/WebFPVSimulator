@@ -75571,3 +75571,9 @@ A WCMRC club member's notes, passed on by the owner 2026-11-09 13:02Z ("Address 
 - Checks run: `lint:quality`. Not run: verify (no physics, plant, ABI or build change), shots.js, a real GPU. Not flown.
 - What went wrong: the outer line went to main this morning on pictures the owner had beside him and was the first thing asked back. A bolder contour is a change of the drawing's character, and it should have been its own card, not one of four in a list.
 - Steam: nothing to do there by hand; the repack takes this at its next subtree pull.
+
+## 2026-11-10 | release | The lighter outline to main on the owner's word
+
+- The owner, 2026-11-10 11:10Z, thread "Improve graphics on the High preset", after the report for PR 256: "push to main on both web and steam". Web: this push. Steam: the repack is another repository and another thread's; that thread was handed main's commit with the owner's message attached, to subtree pull and push to the repack's main.
+- Before the push: `git fetch origin main`; main was still 8d724eb, the branch's base, so main fast forwards.
+- Latency as stated in the entry above: none on Low or Medium, less on High. Not flown.

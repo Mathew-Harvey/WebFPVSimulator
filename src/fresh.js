@@ -634,6 +634,7 @@
     'src/render/shadowrate.js',
     'src/render/shell.js',
     'src/render/showcase.js',
+    'src/render/timeryield.js',
     'src/render/tracks.js',
     'src/render/trails.js',
     'src/render/voice.js',

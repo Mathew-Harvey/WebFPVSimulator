@@ -48,6 +48,8 @@ import { PAL } from './vendored/core/palette.js';
 import { Pipeline } from './vendored/core/post.js';
 import { mangaPipeline } from '../../render/manga.js';
 import { fisheyePipeline } from '../../render/fisheye.js';
+import { glowPipeline, GLOW_DAY } from '../../render/glow.js';
+import { shadePipeline } from '../../render/shade.js';
 import { comicPipeline, setComicQuality } from '../../render/comic.js';
 import { comicSky } from '../../render/comicsky.js';
 import { clumpBlob } from '../../render/clump.js';
@@ -2734,6 +2736,15 @@ export async function buildMap(shell, onProgress, options) {
    * only narrow: see setInkLines in src/render/quality.js. */
   pipeline.inkPreset = q.city.ink;
   pipeline.enabled.fxaa = q.city.fxaa;
+  /* High's contact shade: see src/render/shade.js. The same rule. */
+  if (q.city.shade === true) {
+    shadePipeline(pipeline);
+  }
+  /* High's light wrap: see src/render/glow.js. Never built on Low or
+   * Medium, whose pipeline is then exactly what it was. */
+  if (q.city.glow === true) {
+    glowPipeline(pipeline, GLOW_DAY);
+  }
   const d = shell.resize();
   pipeline.setSize(d.w, d.h);
 

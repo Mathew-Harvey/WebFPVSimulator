@@ -167,6 +167,10 @@ const PRESETS = {
       preferScale: 0.85,
       ink: false,
       fxaa: false,
+      /* No light wrap and no lamp glow: High alone. See src/render/glow.js. */
+      glow: false,
+      shade: false,
+      outerLine: false,
       /* No live blossom on a handheld. The field is 980 instanced cards
        * whose matrices are rewritten and re-uploaded every frame, and
        * memory bandwidth is what a 4 to 15 W APU is short of. The fallen
@@ -210,6 +214,10 @@ const PRESETS = {
       preferScale: null,
       ink: true,
       fxaa: false,
+      /* High alone: five passes Medium's integrated GPU is not asked for. */
+      glow: false,
+      shade: false,
+      outerLine: false,
       petals: true,
     },
   },
@@ -271,6 +279,18 @@ const PRESETS = {
       preferScale: null,
       ink: true,
       fxaa: true,
+      /* The sky's light over the edge of whatever stands against it, and
+       * the glow of lamps and lit windows at dusk: five small passes and
+       * one fetch in the grade, here and on no other preset (the owner,
+       * 2026-11-10: "can increase system demand at high"). See
+       * src/render/glow.js for what it draws and what it costs. */
+      glow: true,
+      /* A soft tone where two things meet, three small passes and one fetch
+       * in the ink pass: src/render/shade.js. */
+      shade: true,
+      /* A bolder line round a silhouette, four more depth fetches in the
+       * ink pass: addPipelineSil in src/render/comic.js. */
+      outerLine: true,
       /* The authored look. Falling blossom down the street corridor, three
        * instanced draws, driven from the fixed step count. */
       petals: true,

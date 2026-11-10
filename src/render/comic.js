@@ -253,6 +253,12 @@ export function setComicQuality(q, { groundAuto = false, edges = false, grime = 
   }
   COMIC.detail.value = COMIC.detailMap.value ? lv.detail : 0;
   aoOn = id === 'high';
+  /* The outer line is the one piece of the layer High draws again (owner,
+   * 2026-11-10: "can increase system demand at high"): four depth fetches
+   * in the freestyle ink pass, asked for by the preset's own `outerLine`
+   * (src/render/quality.js) and by nothing else, so Low and Medium, whose
+   * presets say false, still get the ink pass main had. */
+  silOn = id === 'high' || Boolean(q && q.city && q.city.outerLine === true);
   edgesOn = id !== 'low';
 }
 
@@ -1315,7 +1321,7 @@ export function comicPipeline(pipeline, { blobs = false } = {}) {
   const gl2 = comicGL2(pipeline.renderer);
   pipeline.inkWeight = INK_WEIGHT;
   pipeline.comicAo = gl2 && comicAoOn() && addPipelineAo(pipeline);
-  pipeline.comicSil = gl2 && comicAoOn() && addPipelineSil(pipeline);
+  pipeline.comicSil = gl2 && comicSilOn() && addPipelineSil(pipeline);
   /* Not on Low, where the chunk that writes the codes is not compiled in
    * (chunkOn), so the ink would fetch them for nothing. */
   pipeline.comicBlobs = gl2 && blobs && chunkOn && addPipelineBlobs(pipeline);
@@ -1466,6 +1472,10 @@ export function updateAoCamera(u, camera, w, h) {
 let aoOn = true;
 export function comicAoOn() {
   return aoOn;
+}
+let silOn = true;
+export function comicSilOn() {
+  return silOn;
 }
 
 /* The vendored ink pass's lines the occlusion is inserted at, exactly as

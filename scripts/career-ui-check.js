@@ -826,6 +826,13 @@ async function run(size) {
       await page.until("(() => { const b = document.querySelector('#career .cr-brief .cr-btn.primary'); return b && !b.disabled; })()", 90000);
       await page.evaluate('window.__career.fly()');
       await page.until(state('flight'), 60000);
+      /* The pad is read off the DRAWN craft, which moves to the lesson's
+       * spawn on the first frame drawn after the lesson starts. Read at once
+       * it was sometimes still where the last flight left it (42, 7, 39, one
+       * run of five on 2026-11-10), and the restart below was then judged
+       * against the wrong place. So two of the world's draws first. */
+      const draws0 = await page.evaluate('window.__timerYield().draws');
+      await page.until(`window.__timerYield().draws >= ${draws0 + 2} && window.__craftState().landed`, 30000);
       const pad = await page.evaluate('(() => { const c = window.__craftState(); return { x: c.worldX, y: c.worldY, z: c.worldZ }; })()');
       const coachNow = "(() => { const n = document.querySelector('#career .cr-coach'); return n && n.classList.contains('show') ? n.textContent : ''; })()";
       const holdAt = async (up, until, ms) => {
@@ -858,8 +865,17 @@ async function run(size) {
           lastClock = now;
         }
       }
-      await page.sleep(500);
+      /* Waited on, not slept: the drawn craft, which worldY reads, moves to
+       * the pad on the first frame drawn after the restart, and a software
+       * rasteriser frame on a loaded box can take longer than the 500 ms
+       * this once slept (it failed one run of five on 2026-11-10, the
+       * craft parked on the pad and still drawn 60 m up). A restart that
+       * puts it anywhere else still fails, ten seconds on. */
+      await page.until(`window.__craftState().landed && Math.abs(window.__craftState().worldY - ${pad.y}) < 1`, 10000).catch(() => {});
       const after = await page.evaluate(`({ landed: window.__craftState().landed, nearPad: Math.abs(window.__craftState().worldY - ${pad.y}) < 1,
+        y: +window.__craftState().worldY.toFixed(2), padY: ${pad.y.toFixed(2)},
+        x: +window.__craftState().worldX.toFixed(2), z: +window.__craftState().worldZ.toFixed(2), padXZ: [${pad.x.toFixed(2)}, ${pad.z.toFixed(2)}],
+        loop: window.__timerYield ? window.__timerYield() : null,
         ob: document.querySelector('#career .cr-hud .cr-obj-text').textContent, state: window.__career.state() })`);
       check('held far above it, the lesson puts the craft back on its pad and starts again', back && after.landed && after.nearPad && after.state === 'flight' && after.ob === lessonById('1-1').objectives[0].text, JSON.stringify({ back, ...after }));
       await page.evaluate('window.__stick()');

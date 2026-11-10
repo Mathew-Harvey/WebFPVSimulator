@@ -241,6 +241,44 @@ async function visit(name) {
     .catch((e) => ({ error: e.message }));
 }
 
+/*
+ * A VISIT IS OVER WHEN ITS PAGE HAS STOPPED ASKING, not when it is ready.
+ * The builder and the orbit page report ready and then go on importing the
+ * looks of the world they draw, so the requests of one visit used to run on
+ * into the next one's window: the check then read a script carrying the
+ * PREVIOUS deploy's stamp, correctly, for the page that asked, as a stale
+ * one for the page after it (2026-11-10, when the check first ran on a
+ * main that imports more after ready than the branch it was written on,
+ * where it had passed 27 of 27).
+ * So a visit is let run until no script has been asked for in QUIET_MS, and
+ * then the tab is put on about:blank, which ends the page, before the next
+ * deploy is served. Its own late imports are judged against its own deploy,
+ * and none can reach the next window. What is asserted is unchanged.
+ */
+const QUIET_MS = 2000;
+const SETTLE_MAX_MS = 60_000;
+async function settle() {
+  const t0 = Date.now();
+  let n = scriptFetches.length;
+  let quietSince = Date.now();
+  while (Date.now() - t0 < SETTLE_MAX_MS) {
+    await page.sleep(250);
+    if (scriptFetches.length !== n) {
+      n = scriptFetches.length;
+      quietSince = Date.now();
+    } else if (Date.now() - quietSince >= QUIET_MS) {
+      break;
+    }
+  }
+  await page.cdp.send('Page.navigate', { url: 'about:blank' }, page.sessionId);
+  for (let i = 0; i < 40; i += 1) {
+    if (await page.evaluate("location.href === 'about:blank' && document.readyState === 'complete'").catch(() => false)) {
+      break;
+    }
+    await page.sleep(50);
+  }
+}
+
 /* The scripts asked for since `from` that did not carry the deploy's stamp:
  * each is one a browser keeps at its bare address across a deploy. */
 const unstamped = (from) => scriptFetches.slice(from).filter((a) => !a.endsWith(`?d=${stampOf(deployNow.at)}`));
@@ -254,6 +292,7 @@ try {
     deploy(`${name}-1`);
     let from = scriptFetches.length;
     const first = await visit(name);
+    await settle();
     check('the first visit runs the deploy it is served',
       first.probe === `${name}-1` && first.fresh && first.fresh.stamp === stampOf(deployNow.at), first);
     check('and gives every module the deploy’s address', first.fresh && first.fresh.versioned > 150, first.fresh);
@@ -266,6 +305,7 @@ try {
     deploy(`${name}-2`);
     from = scriptFetches.length;
     const second = await visit(name);
+    await settle();
     check('after a deploy, the next visit runs the new deploy, not the cached one',
       second.probe === `${name}-2` && second.fresh && second.fresh.stamp === stampOf(deployNow.at), second);
     const asked = probedFetches.slice(before);
@@ -283,11 +323,13 @@ try {
      * deploy as a browser saw it before fresh.js. */
     deploy(`${name}-edited`, { moveStamp: false });
     const control = await visit(name);
+    await settle();
     check('control: with the stamp left alone, the cached module is still the one running',
       control.probe === `${name}-2`, control);
 
     deploy(`${name}-3`);
     const third = await visit(name);
+    await settle();
     check('and the next deploy is picked up again', third.probe === `${name}-3`, third);
   }
 } finally {

@@ -123,6 +123,11 @@ async function flyLesson(id) {
   await page.until("(() => { const b = document.querySelector('#career .cr-brief .cr-btn.primary'); return b && !b.disabled; })()", 90000);
   await page.evaluate('window.__career.fly()');
   await page.until(state('flight'), 60000);
+  /* The drawn craft, which worldX to Z read, moves to the lesson's spawn on
+   * the first frame drawn after the lesson starts: read at once it can still
+   * be where the page had it before (career-ui-check found that race). */
+  const draws0 = await page.evaluate('window.__timerYield().draws');
+  await page.until(`window.__timerYield().draws >= ${draws0 + 2} && window.__craftState().landed`, 30000);
   return page.evaluate('(() => { const c = window.__craftState(); return { x: c.worldX, y: c.worldY, z: c.worldZ }; })()');
 }
 

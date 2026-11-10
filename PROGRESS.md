@@ -75552,3 +75552,9 @@ A WCMRC club member's notes, passed on by the owner 2026-11-09 13:02Z ("Address 
   - The comic layer's occlusion as it stood (eight fetches a pixel at full size, turned by a noise per pixel) drew a visible fixed grain on walls and steps. That is why shade.js is half size and blurred instead of a flag on the old code.
   - A glow from a luminance threshold by day was designed and dropped before it was built: a sunlit cream pavement and a lamp are the same brightness in the scene target, and a sunlit ginkgo is brighter than either.
 - Not done, for the owner's word if wanted: stronger settings (GLOW_DAY, GLOW_DUSK, SHADE_AMOUNT are one number each); sharper textures at grazing angles on High (the sampler state lives on textures that outlive a world, so it needs a reset on the way back to Low); the same on the race field.
+
+## 2026-11-10 | release | High's light wrap, lamp glow, contact shade and outer pen line to main on the owner's word
+
+- The owner, 2026-11-10 09:35Z, thread "Improve graphics on the High preset", after the PR's report stated the rise in GPU time on High and none on Low or Medium: "push to main". PR 255.
+- Before the push: `git fetch origin main`; main was still 5c967d3, the branch's own base (merge base found), so main fast forwards.
+- Not flown, and no check beyond the entry above was run for the push. The verification question was asked in the report and not answered; the owner flies main.

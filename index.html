@@ -7207,6 +7207,15 @@
       .qp-mini-name .qp-alt { color: #c8423a; }
       .qp-panel.qp-mini.is-chosen .qp-mini-name { background: var(--amber); }
       .row.row-cards { padding-top: 8px; padding-bottom: 8px; }
+      /* The pause's Quad row (quadSwapItem): the quad being flown hovers,
+       * as the picker's caption quad does. CSS only, on a menu, never in
+       * flight; still for a pilot who asks for less motion. */
+      .qp-mini-hover .qp-mini.is-chosen .qp-art { animation: qp-mini-hover 2.6s ease-in-out infinite; }
+      @keyframes qp-mini-hover {
+        0%, 100% { transform: translateY(1px) rotate(-1.5deg); }
+        50% { transform: translateY(-4px) rotate(1.5deg); }
+      }
+      @media (prefers-reduced-motion: reduce) { .qp-mini-hover .qp-mini.is-chosen .qp-art { animation: none; } }
       .qp-pic {
         position: relative; display: flex; align-items: center; justify-content: center;
         min-height: 0; overflow: hidden;

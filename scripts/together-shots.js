@@ -3694,12 +3694,27 @@ async function sceneSwap() {
     const row = await page.evaluate(AIRCRAFT_ROW);
     check('a pilot\'s Quad screen names the room\'s quad, says the host can swap it, and swaps nothing itself',
       row && row.action === 'noop' && row.note.includes('this room flies the five inch') && row.note.includes('The host can swap it for everybody'), JSON.stringify(row));
-    await page.evaluate("(() => { window.__ui.show('paused'); window.__ui.act('resume'); return 1; })()");
+    /* The pause's Quad row (2026-11-11): the room's quad as a picture, a
+     * readout for a pilot who is not the host. */
+    await page.evaluate("(() => { window.__ui.show('paused'); return 1; })()");
+    check('a pilot\'s pause shows the room\'s quad as a picture, and swaps nothing', await page.evaluate(`(() => {
+      const it = window.__ui.items().find((i) => i.label === 'Quad');
+      return Boolean(it) && it.info === true && it.action === 'noop' && (document.querySelector('.qp-mini-hover .qp-mini.is-chosen') || {}).dataset.craft === '5inch';
+    })()`));
+    await page.evaluate("(() => { window.__ui.act('resume'); return 1; })()");
     await page.until("window.__mode === 'flight' && window.__ui.screen === 'flight'", 5000);
 
     /* The page is the host now, and swaps everybody back. */
     kite.s.leave();
     check('the page is the host once the host leaves', await page.until(`${T} && window.__together().host === window.__together().you`, 10000).then(() => true, () => false));
+    await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); return 1; })()");
+    await page.until("window.__ui.screen === 'paused'", 5000).catch(() => {});
+    await page.evaluate(`(() => { const b = document.querySelector('.qp-mini-hover .qp-mini[data-craft="whoop65"]'); if (b) b.click(); return 1; })()`);
+    check('the host\'s press on the other quad on the pause asks the room\'s swap', await sheetIs(page, 'swapQuad').then(() => true, () => false), (await state(page)).sheet);
+    await shot('host-pause-swap');
+    await pressKey(page, 'no');
+    await page.evaluate("(() => { window.__ui.show('paused'); window.__ui.act('resume'); return 1; })()");
+    await page.until("window.__mode === 'flight' && window.__ui.screen === 'flight'", 5000);
     await joinRoom(moss, room.code, '');
     await page.until(`${T} && window.__together().pilots === 2`, 10000);
     /* Flying, so the page has Watch a pilot too: the host's longest list. */
@@ -4578,13 +4593,28 @@ async function sceneMapGameHost(game) {
     await pressKey(page, 'open');
     check('the room opens', await sheetIs(page, 'share').then(() => true, () => false));
     await pressKey(page, 'fly');
-    check('as the game\'s room, on its map', await page.until(`${G} && window.__dogfight().room === true && (${game === 'goats' ? '!!window.__dogfight().herd' : game === 'ball' ? '!!window.__dogfight().ball' : '!!window.__dogfight().film'})`, 120000).then(() => true, () => false));
+    check('as the game\'s room, on its map', await page.until(`${G} && window.__dogfight().room === true && (${game === 'goats' ? '!!window.__dogfight().herd' : game === 'ball' ? '!!window.__dogfight().ball' : game === 'infected' ? '!!window.__dogfight().infRules' : '!!window.__dogfight().film'})`, 120000).then(() => true, () => false));
+    if (game === 'infected') {
+      /* Midori Gakuen is whoops only (2026-11-08); the owner, 2026-11-11,
+       * hosted Infected and flew a five inch. */
+      const seat = await page.evaluate("JSON.stringify({ air: window.__ui.settings.airframe, map: window.__ui.settings.map, run: window.__craft().run })");
+      check('Infected\'s room flies the whoop', JSON.parse(seat).air === 'whoop65' && JSON.parse(seat).run === 'whoop65', seat);
+    }
     const seated = await page.until(`${G} && (() => { const g = window.__dogfight(); let k = 0; for (let i = 1; i < g.cap; i += 1) if (g.isBot[i] && !g.puppet[i]) k += 1; return k >= 1; })()`, 120000).then(() => true, () => false);
     check('the bots picked on the page are seated, flown by the host', seated);
     const begun = await page.until(`${G} && ['count', 'live'].includes(window.__dogfight().state.phase)`, 120000).then(() => true, () => false);
     const why = begun ? '' : await page.evaluate(`JSON.stringify({ phase: ${G} && window.__dogfight().state.phase, last: ${T} && window.__together().${game}Last ? window.__together().${game}Last() : null, screen: window.__ui.screen, seats: window.__roomBots && window.__roomBots() ? window.__roomBots().seats().length : -1 })`);
     check('and the first round starts with them, no other press needed', begun, why);
     await shot('round');
+    if (game === 'infected') {
+      await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); return 1; })()");
+      await page.until("window.__ui.screen === 'paused'", 5000).catch(() => {});
+      check('the room\'s pause shows the whoop as a picture, whoops only', await page.evaluate(`(() => {
+        const it = window.__ui.items().find((i) => i.label === 'Quad');
+        return Boolean(it) && it.info === true && /whoops only/.test(it.note) && (document.querySelector('.qp-mini-hover .qp-mini.is-chosen') || {}).dataset.craft === 'whoop65';
+      })()`));
+      await shot('pause');
+    }
     endChecks(page, /thumbs\/drift\.jpg/);
   } catch (e) {
     failures += 1;
@@ -4750,8 +4780,9 @@ try {
   if (wanted('dogfight')) { await freshBoard(); await sceneDogfight(); }
   if (wanted('goats')) { await freshBoard(); await sceneGoats(); }
   if (wanted('gamehost')) { await freshBoard(); await sceneGameHost('dogfight'); await freshBoard(); await sceneGameHost('ribbon'); }
-  if (wanted('gamehostmaps')) { await freshBoard(); await sceneMapGameHost('goats'); await freshBoard(); await sceneMapGameHost('drift'); }
-  if (wanted('gamehostdrift')) { await freshBoard(); await sceneMapGameHost('drift'); }
+  if (wanted('gamehostmaps')) { await freshBoard(); await sceneMapGameHost('goats'); await freshBoard(); await sceneMapGameHost('drift'); await freshBoard(); await sceneMapGameHost('infected'); }
+  if (wanted('gamehostdrift')) { await freshBoard(); await sceneMapGameHost('drift'); await freshBoard(); await sceneMapGameHost('infected'); }
+  if (wanted('gamehostinfected')) { await freshBoard(); await sceneMapGameHost('infected'); }
   if (wanted('gamehostball')) { await freshBoard(); await sceneMapGameHost('ball'); }
   if (wanted('quickball')) { await freshBoard(); await sceneQuickBall(); }
 } finally {

@@ -305,14 +305,29 @@ async function sceneQuadSwap() {
     const row = await ev("const it = window.__ui.items().find((i) => i.action === 'quad-swap'); return it ? it.label + '=' + it.value : '';");
     const was = await ev('return window.__ui.settings.airframe;');
     check('the town\'s pause has a Quad row naming the quad flown', row === `Quad=${was === 'whoop65' ? 'Whoop' : '5 inch'}`, `${row}, ${was}`);
-    await ev("window.__ui.act('quad-swap'); return 1;");
+    /* Pictures, not text (the owner, 2026-11-11: "the quad picker is still
+     * just text"): the two quads as the Quad screen draws them, the one
+     * flown hovering. */
+    check('the row is the two quads as pictures, the one flown chosen and hovering', await ev(`
+      const pics = [...document.querySelectorAll('.qp-mini-hover .qp-mini')];
+      const lit = document.querySelector('.qp-mini-hover .qp-mini.is-chosen');
+      return pics.length === 2 && Boolean(lit) && lit.dataset.craft === '${was}' && pics.every((p) => p.querySelector('img.qp-art'))
+        && getComputedStyle(lit.querySelector('.qp-art')).animationName === 'qp-mini-hover';`),
+    await ev("return document.querySelectorAll('.qp-mini').length;"));
     const want = was === 'whoop65' ? '5inch' : 'whoop65';
+    /* A click on the other picture swaps, as a pilot would. */
+    await ev(`document.querySelector('.qp-mini-hover .qp-mini[data-craft="${want}"]').click(); return 1;`);
     check('pressing it seats the other quad', await until(`return window.__ui.settings.airframe === '${want}';`, 5000), await ev('return window.__ui.settings.airframe;'));
     check('the row now names it', await until(`const it = window.__ui.items().find((i) => i.action === 'quad-swap'); return Boolean(it) && it.value === '${want === 'whoop65' ? 'Whoop' : '5 inch'}';`, 5000));
     check('the town remembers the pick for its picker', await ev(`return (window.__ui.settings.quadPicks || '').includes('city:${want}');`), await ev('return window.__ui.settings.quadPicks;'));
     await ev("window.__ui.act('resume'); return 1;");
     check('resume flies the new quad', await until("return window.__ui.screen === 'flight'", 10000));
     check('and the plant flying is the new quad', await until(`const c = window.__craft(); return c.run === '${want}' && window.__ui.screen === 'flight';`, 20000), JSON.stringify(await ev('return window.__craft();')));
+    await ev("window.__ui.act('pause'); window.__ui.show('paused'); return 1;");
+    await until("return window.__ui.screen === 'paused'", 5000);
+    await ev(`window.__ui.act('quad-swap'); return 1;`);
+    check('Enter on the row swaps back', await until(`return window.__ui.settings.airframe === '${was}';`, 5000), await ev('return window.__ui.settings.airframe;'));
+    await ev("window.__ui.act('resume'); return 1;");
     const errs = pageErrors(page);
     check('no errors on the page', errs.length === 0, errs.slice(0, 3).join(' | '));
   } finally {
@@ -344,6 +359,23 @@ async function sceneQuadSwap() {
     check('joining goat herding asks Whoop or 5 inch', asked);
   } finally {
     await join.close();
+  }
+  /* Midori Gakuen is whoops only, the owner's pick of 2026-11-11: its
+   * pause shows the whoop and nothing swaps it. */
+  const school = await flying('school');
+  try {
+    check('Midori Gakuen flies the whoop', await school.until("return window.__craft().run === 'whoop65';", 20000), JSON.stringify(await school.ev('return window.__craft();')));
+    await school.ev("window.__ui.act('pause'); window.__ui.show('paused'); return 1;");
+    await school.until("return window.__ui.screen === 'paused'", 5000);
+    check('its pause shows the whoop, a readout that says whoops only', await school.ev(`
+      const it = window.__ui.items().find((i) => i.label === 'Quad');
+      return Boolean(it) && it.info === true && it.action === 'noop' && /whoops only/.test(it.note)
+        && (document.querySelector('.qp-mini-hover .qp-mini.is-chosen') || {}).dataset.craft === 'whoop65';`));
+    await school.ev(`document.querySelector('.qp-mini-hover .qp-mini[data-craft="5inch"]').click(); window.__ui.act('quad-swap'); return 1;`);
+    await sleep(800);
+    check('and neither a click on the five inch nor a swap moves it', await school.ev("return window.__ui.settings.airframe === 'whoop65';"));
+  } finally {
+    await school.page.close();
   }
   const race = await flying('custom');
   try {

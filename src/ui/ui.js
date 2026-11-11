@@ -12069,6 +12069,8 @@ export class Ui {
           note: r.race ? 'The race, the pilots, talking, inviting and the room\'s settings.' : 'The pilots, talking, inviting and the room\'s settings.',
         },
         { label: 'Does it feel wrong?', section: true },
+        /* The room's quad, as pictures. See quadSwapItem. */
+        ...(this.quadSwapItem() ? [this.quadSwapItem()] : []),
         tuneItem(s, true),
         flightModeItem(s, this.flightModeKey()),
         {
@@ -13650,7 +13652,7 @@ export class Ui {
    * adjust and pick, so a radio and a keyboard are unchanged.
    */
   makeCraftCards(it, i) {
-    const wrap = el('div', 'row-control qp-mini-row');
+    const wrap = el('div', `row-control qp-mini-row${it.hover ? ' qp-mini-hover' : ''}`);
     wrap.setAttribute('role', 'radiogroup');
     wrap.setAttribute('aria-label', it.label);
     for (const opt of it.options) {
@@ -16250,6 +16252,15 @@ export class Ui {
     if (action.startsWith('boardmap:')) {
       this.openBoardMap(action.slice('boardmap:'.length), fly);
       return;
+    }
+    /* A map flown on one quad only is flown on it from a room as well. The
+     * quad question above is skipped in a room, so a host who had flown a
+     * five inch last opened Infected's room on a whoop and then flew
+     * Midori Gakuen on the five inch (the owner, 2026-11-11). */
+    const only = action.startsWith('map:') && entry.item.map && entry.item.map.craftOnly ? entry.item.map.craft : '';
+    if (only && only !== this.settings.airframe) {
+      seatAirframe(this.settings, only);
+      saveSettings(this.settings);
     }
     this.act(action);
     fly();
@@ -22782,19 +22793,53 @@ export class Ui {
    * career lesson, or on a map flown on one quad only (Midori Gakuen).
    */
   quadSwapItem() {
-    if (this.screen !== 'paused' || this.roomInfo || this.careerLesson || !this.onSwapQuad) {
+    if (this.screen !== 'paused' || this.careerLesson) {
       return null;
     }
+    const room = this.roomInfo;
     const world = MAPS.find((x) => x.id === this.settings.map) || null;
-    if (!world || world.mode !== 'freestyle' || world.craftOnly) {
+    const freeMap = Boolean(world && world.mode === 'freestyle');
+    if (room ? !room.freestyle : (!freeMap || !this.onSwapQuad)) {
       return null;
     }
-    const whoop = this.settings.airframe === 'whoop65';
+    /* THE TWO QUADS AS PICTURES, the owner, 2026-11-11, on the row that
+     * said only Whoop: "the quad picker is still just text". The Quad
+     * screen's picture cards (makeCraftCards), the one being flown
+     * hovering. A press on the other one swaps to it. In a room the host's
+     * press is the room's swap, with its confirm (together.js
+     * sheetSwapQuad), and anybody else's is a readout; Midori Gakuen is
+     * whoops only, alone or in a room (the owner's pick of 2026-11-11). */
+    const air = this.settings.airframe;
+    const whoop = air === 'whoop65';
+    const only = (world && world.craftOnly) || (room && room.infected);
+    const swap = only ? '' : (room ? (room.host ? 'room-quad' : '') : 'quad-swap');
+    const other = whoop ? '5 inch' : 'whoop';
+    const note = only
+      ? `${room && room.infected ? 'Infected' : world.name} is flown on whoops only.`
+      : room
+        ? (room.host ? `Everybody in the room flies the same quad. Pick the ${other} to swap everybody with you.` : 'Everybody in the room flies the same quad, and the host picks it.')
+        : `Pick the ${other} to swap to it. You start again from the spawn.`;
+    const go = () => {
+      if (swap) {
+        this.act(swap);
+      }
+    };
     return {
       label: 'Quad',
       value: whoop ? 'Whoop' : '5 inch',
-      action: 'quad-swap',
-      note: `Switch to the ${whoop ? '5 inch' : 'whoop'}. You start again from the spawn.`,
+      cards: true,
+      hover: true,
+      info: !swap,
+      current: air,
+      options: [{ value: 'whoop65', label: 'Whoop' }, { value: '5inch', label: '5 inch' }],
+      pick: (v) => {
+        if (v !== air) {
+          go();
+        }
+      },
+      adjust: () => go(),
+      action: swap || 'noop',
+      note,
     };
   }
 
@@ -23382,7 +23427,7 @@ export class Ui {
     /* The mini games page (gatepages.js GATE_GAMES): the switch, and the
      * way back to it from a game's picker is remembered here. */
     if (action === 'quad-swap') {
-      if (this.quadSwapItem()) {
+      if ((this.quadSwapItem() || {}).action === 'quad-swap') {
         const want = this.settings.airframe === 'whoop65' ? '5inch' : 'whoop65';
         if (this.onSwapQuad(want)) {
           rememberQuadPick(this.settings, quadKeyFor(this.settings.map, this.sharedMap && this.sharedMap.id), want);

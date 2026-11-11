@@ -2942,6 +2942,12 @@ async function sceneGate() {
   try {
     await page.until("window.__ui.screen === 'title' && window.__ui.onGate()", 20000);
     await wait(800);
+    /* The first page asks which quad (the owner, 2026-11-11), and the
+     * cover follows it. */
+    check('the front screen asks which quad first', (await page.evaluate(cards)) === 'Whoop,5 inch', await page.evaluate(cards));
+    await page.evaluate("(() => { window.__ui.act('gate-quad:5inch'); return 1; })()");
+    await page.until("window.__ui.gatePageNow() === 'cover'", 8000).catch(() => {});
+    await onPage(3);
     /* Three panels since the Mini games page (2026-10-29). */
     check('with rooms on, the front screen asks solo, multiplayer or mini games first', (await page.evaluate(cards)) === 'Fly solo,Multiplayer,Mini games', await page.evaluate(cards));
     check('and the multiplayer panel wears its NEW sticker', await page.evaluate("Boolean(document.querySelector('.gate-card-together .gp-sticker svg'))"));
@@ -2958,8 +2964,11 @@ async function sceneGate() {
     await onPage(3);
     check('Escape turns back to the cover', true);
     await page.evaluate("(() => { window.__ui.act('gate-solo'); return 1; })()");
-    await onPage(5);
-    check('Fly solo turns to the five ways in', (await page.evaluate(cards)) === 'Career,Five inch racing,Whoop racing,Freestyle,Builder', await page.evaluate(cards));
+    await page.until("window.__ui.gatePageNow() === 'solo'", 8000).catch(() => {});
+    await wait(300);
+    /* With the 5 inch picked first, Fly solo's racing is the five inch's
+     * alone; the track of the week joins when the board names one. */
+    check('Fly solo turns to the ways in, the 5 inch\'s racing only', /^Career,Five inch racing,Freestyle,Builder,([^,]+,)?Mini games$/.test(await page.evaluate(cards)), await page.evaluate(cards));
     await wait(500);
     await shot('solo');
     await page.tap('Escape');

@@ -241,7 +241,7 @@ import {
 } from './mangapage.js';
 import { paintTitle } from './lettering.js';
 import {
-  GATE_GAMES, GATE_HEADS, GATE_MINI, GATE_ROOMS, GATE_SIDES, SOLO_PANELS, paintGatePilot, sceneFor,
+  GATE_GAMES, GATE_HEADS, GATE_MINI, GATE_QUADS, GATE_ROOMS, GATE_SIDES, SOLO_PANELS, paintGatePilot, sceneFor,
 } from './gatepages.js';
 import { formatScore } from '../game/score.js';
 import { PRACTICE_LAPS } from '../game/race.js';
@@ -6297,11 +6297,10 @@ export class Ui {
      * zero is a valid row here, so the first paint has to be told.
      */
     if (this.craftGate || !this.mode) {
-      const at = WAYS.findIndex((w) => w.id === seatedWay(this.settings, this.mode).id);
-      /* Career. The career card is first, so the ways are
-       * one further along, and a pilot who has not started the career opens
-       * on it. */
-      this.cursor = !careerStarted() ? 0 : (at >= 0 ? at + 1 : 0);
+      /* The gate opens on its first page, which quad (GATE_QUADS), so
+       * the seated quad is the card under the cursor. */
+      const at = GATE_QUADS.findIndex((q) => q.craft === this.settings.airframe);
+      this.cursor = at >= 0 ? at : 0;
     }
     /* Which course card the player has chosen, by courseCardKey, and the
      * last one they were on. The first says whose list is showing; the
@@ -6352,6 +6351,11 @@ export class Ui {
     this.gateSide = '';
     /* Which door opened the Mini games page, 'cover' or 'solo': Back goes there. */
     this.gamesFrom = '';
+    /* The quad picked on the gate's first page this visit, 'whoop65' or
+     * '5inch', or '' before it is answered (a link that skips the gate
+     * leaves it unanswered, and everything behaves as it did before the
+     * page). See GATE_QUADS in gatepages.js and wayCraft. */
+    this.quadFirst = '';
     /* The mini games page: the panel last played, and whether the picker
      * open now was opened from it, so Back from the picker turns to it
      * rather than to the cover. ballHow: Quad Ball's door, answered on the
@@ -10406,6 +10410,20 @@ export class Ui {
       if (this.onGate()) {
         const page = this.gatePageNow();
         const tail = trouble ? [trouble] : [];
+        /* The first page, which quad (gatepages.js GATE_QUADS). */
+        if (page === 'quad') {
+          return [
+            ...GATE_QUADS.map((c) => ({
+              label: c.label,
+              card: c.id,
+              art: c.art,
+              kicker: c.kicker,
+              caption: c.caption,
+              action: c.action,
+            })),
+            ...tail,
+          ];
+        }
         /* The cover and the multiplayer page: see gatepages.js. */
         if (page === 'cover' || page === 'together') {
           return [
@@ -10463,7 +10481,10 @@ export class Ui {
             facts: CAREER_CARD.facts,
             action: CAREER_CARD.action,
           },
-          ...WAYS.map((w) => ({
+          /* Racing is the quad's own once the first page is answered: a
+           * track is its class's, so the other class's card would only
+           * fly the other quad. */
+          ...WAYS.filter((w) => !this.quadFirst || w.mode !== 'race' || w.airframe === this.quadFirst).map((w) => ({
             label: w.label,
             card: w.id,
             art: w.art,
@@ -14326,7 +14347,10 @@ export class Ui {
       host.append(this.gateHead(page));
       /* The track of the week takes a strip of its own under the solo
        * page's two rows (index.html, .gate-grid.has-week). */
-      const grid = el('div', `gate-grid${items.some((it) => it.card === 'week') ? ' has-week' : ''}`);
+      /* One racing card once the first page has picked a quad: it takes
+       * the whole top row beside the career (index.html, .one-race). */
+      const races = items.filter((it) => /^race-/.test(it.card)).length;
+      const grid = el('div', `gate-grid${items.some((it) => it.card === 'week') ? ' has-week' : ''}${page === 'solo' && races === 1 ? ' one-race' : ''}`);
       this.titleCards = items.map((it, i) => {
         const card = el('div', `gate-card gate-card-${it.card}`);
         card.setAttribute('role', 'button');
@@ -14633,7 +14657,8 @@ export class Ui {
     const head = el('div', 'gate-head');
     if (page !== this.gateRoot()) {
       const back = btn('gate-back', 'Back');
-      back.setAttribute('aria-label', page === 'games' && this.gamesFrom !== 'cover' ? 'Back to Fly solo' : 'Back to the cover');
+      const to = this.gateParent(page);
+      back.setAttribute('aria-label', to === 'solo' ? 'Back to Fly solo' : to === 'quad' ? 'Back to Which quad' : 'Back to the cover');
       back.addEventListener('click', () => this.back());
       head.append(back);
     }
@@ -14791,11 +14816,37 @@ export class Ui {
   /* The gate's first page: the cover while rooms are on, the solo page
    * while they are not. */
   gateRoot() {
-    return this.roomsOn ? 'cover' : 'solo';
+    return 'quad';
   }
 
   gatePageNow() {
-    return this.roomsOn ? (this.gatePage || 'cover') : 'solo';
+    if (this.roomsOn) {
+      return this.gatePage || 'quad';
+    }
+    return this.gatePage === 'solo' ? 'solo' : 'quad';
+  }
+
+  /* The page after the first one: the cover while rooms are on, the solo
+   * page while they are not. */
+  gateAfterQuad() {
+    return this.roomsOn ? 'cover' : 'solo';
+  }
+
+  /* Where Back on a page of the gate turns to. */
+  gateParent(page) {
+    if (page === 'games') {
+      return this.gamesFrom || 'solo';
+    }
+    if (page === 'solo' || page === 'together') {
+      return this.roomsOn ? 'cover' : 'quad';
+    }
+    return 'quad';
+  }
+
+  /* The quad a way flies: racing is its class's, Freestyle the one picked
+   * on the first page, when it was. */
+  wayCraft(way) {
+    return way.mode === 'freestyle' && this.quadFirst ? this.quadFirst : way.airframe;
   }
 
   /*
@@ -14818,7 +14869,7 @@ export class Ui {
   /* Turn to a page of the gate: the cursor lands where that page starts,
    * and the page swings in from the side it is on. */
   turnGate(page) {
-    const order = { cover: 0, solo: 1, together: 2, games: 3 };
+    const order = { quad: -1, cover: 0, solo: 1, together: 2, games: 3 };
     const was = this.gatePageNow();
     if (page === was) {
       return;
@@ -16174,8 +16225,14 @@ export class Ui {
         /* A map flown on one quad only is not asked about: Midori Gakuen
          * is whoops only, by the owner's word (2026-11-08). */
         const only = world && world.craftOnly ? world.craft : '';
+        /* The quad picked on the gate's first page is the answer for
+         * every map this visit (GATE_QUADS), so the per map picker is not
+         * asked and nothing is remembered for the map. */
+        const first = this.quadFirst;
         const asked = only
           ? Promise.resolve({ craft: only, always: false, tune: false })
+          : first
+          ? Promise.resolve({ craft: first, always: false, tune: false, first: true })
           : always
           ? Promise.resolve({ craft: always, always: true, tune: false })
           : this.askQuad(world, entry.name || entry.label || (world && world.name) || 'This map', key);
@@ -16692,20 +16749,20 @@ export class Ui {
     }
     /* Not in the middle of a run: a different aircraft is a different
      * plant, and the pause menu's rooms change nothing that big. */
-    if (this.returnTo === 'paused' && way.airframe !== this.settings.airframe) {
+    if (this.returnTo === 'paused' && this.wayCraft(way) !== this.settings.airframe) {
       this.picker.setShelf(this.pickerShelf());
       const note = this.screen === 'courses' ? this.boardNote : this.boardMapNote;
       note.textContent = `This run is on the ${airframeById(this.settings.airframe).name.toLowerCase()}. Leave it to change aircraft.`;
       return;
     }
-    if (way.airframe !== this.settings.airframe || way.mode !== this.mode) {
+    if (this.wayCraft(way) !== this.settings.airframe || way.mode !== this.mode) {
       /* The other class's tracks are not this shelf's, even for the moment
        * before the board answers. */
       this.boardCourses = [];
       this.cardSubject = null;
     }
-    if (way.airframe !== this.settings.airframe) {
-      seatAirframe(this.settings, way.airframe);
+    if (this.wayCraft(way) !== this.settings.airframe) {
+      seatAirframe(this.settings, this.wayCraft(way));
       this.settings.airframeAsked = true;
       /* Saves, re-legalises the mode for the new aircraft, and tells the
        * shell, which swaps the plant and the world behind this page. */
@@ -18553,7 +18610,8 @@ export class Ui {
      * time; the multiplayer page on Host a room, its first door. */
     if (this.onGate() && this.gatePageNow() !== 'solo') {
       const page = this.gatePageNow();
-      const want = page === 'cover' ? (this.gateSide || 'solo') : page === 'games' ? (this.gameLast || 'mg-dogfight') : 'mp-host';
+      const want = page === 'quad' ? `q-${this.quadFirst || this.settings.airframe}`
+        : page === 'cover' ? (this.gateSide || 'solo') : page === 'games' ? (this.gameLast || 'mg-dogfight') : 'mp-host';
       const at = items.findIndex((it) => it.card === want);
       return at >= 0 ? at : this.firstStop(items);
     }
@@ -22673,7 +22731,10 @@ export class Ui {
      * or a card for the same map would be followed by the picker again at
      * its Fly. */
     this.quadAskOnFly = null;
-    rememberQuadPick(this.settings, key, got.craft);
+    /* The first page's answer is the visit's, not this map's. */
+    if (!got.first) {
+      rememberQuadPick(this.settings, key, got.craft);
+    }
     if (got.always) {
       rememberQuadAlways(this.settings, key, got.craft);
     }
@@ -22970,9 +23031,10 @@ export class Ui {
       if (this.onGate()) {
         /* An inside page of the gate turns back to the cover first. */
         if (this.gatePageNow() !== this.gateRoot()) {
-          /* Mini games goes back to the door it was opened from, the
-           * cover or Fly solo. */
-          this.turnGate(this.gatePageNow() === 'games' ? (this.gamesFrom || 'solo') : this.gateRoot());
+          /* Each page turns back to the one before it (gateParent):
+           * Mini games to the door it was opened from, the cover to the
+           * first page. */
+          this.turnGate(this.gateParent(this.gatePageNow()));
           return;
         }
         this.confirmLeave();
@@ -23227,6 +23289,25 @@ export class Ui {
      * together.js's (main.js routes them). */
     /* The mini games page (gatepages.js GATE_GAMES): the switch, and the
      * way back to it from a game's picker is remembered here. */
+    /* The first page answered: the quad is seated now, as a way card
+     * seats one, so the cover, a room hosted from it and every page after
+     * fly it. */
+    if (action.startsWith('gate-quad:')) {
+      const want = action.slice('gate-quad:'.length);
+      if (want === '5inch' || want === 'whoop65') {
+        this.quadFirst = want;
+        if (want !== this.settings.airframe) {
+          seatAirframe(this.settings, want);
+        }
+        this.settings.airframeAsked = true;
+        saveSettings(this.settings);
+        if (this.onSettings) {
+          this.onSettings(this.settings);
+        }
+        this.turnGate(this.gateAfterQuad());
+      }
+      return;
+    }
     if (action === 'gate-games') {
       /* The door is on the cover and on Fly solo, and Back goes to the
        * one it was opened from. */
@@ -23631,8 +23712,8 @@ export class Ui {
        * aircraft that is already seated alone. This test stays as the plain
        * statement of what the gate means to do.
        */
-      if (way.airframe !== this.settings.airframe) {
-        seatAirframe(this.settings, way.airframe);
+      if (this.wayCraft(way) !== this.settings.airframe) {
+        seatAirframe(this.settings, this.wayCraft(way));
       }
       this.settings.airframeAsked = true;
       this.craftGate = false;

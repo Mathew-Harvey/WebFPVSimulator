@@ -6350,6 +6350,8 @@ export class Ui {
     this.gatePage = null;
     this.gateTurn = '';
     this.gateSide = '';
+    /* Which door opened the Mini games page, 'cover' or 'solo': Back goes there. */
+    this.gamesFrom = '';
     /* The mini games page: the panel last played, and whether the picker
      * open now was opened from it, so Back from the picker turns to it
      * rather than to the cover. ballHow: Quad Ball's door, answered on the
@@ -14631,7 +14633,7 @@ export class Ui {
     const head = el('div', 'gate-head');
     if (page !== this.gateRoot()) {
       const back = btn('gate-back', 'Back');
-      back.setAttribute('aria-label', page === 'games' ? 'Back to Fly solo' : 'Back to the cover');
+      back.setAttribute('aria-label', page === 'games' && this.gamesFrom !== 'cover' ? 'Back to Fly solo' : 'Back to the cover');
       back.addEventListener('click', () => this.back());
       head.append(back);
     }
@@ -22968,8 +22970,9 @@ export class Ui {
       if (this.onGate()) {
         /* An inside page of the gate turns back to the cover first. */
         if (this.gatePageNow() !== this.gateRoot()) {
-          /* Mini games hangs off Fly solo, so Back goes there first. */
-          this.turnGate(this.gatePageNow() === 'games' ? 'solo' : this.gateRoot());
+          /* Mini games goes back to the door it was opened from, the
+           * cover or Fly solo. */
+          this.turnGate(this.gatePageNow() === 'games' ? (this.gamesFrom || 'solo') : this.gateRoot());
           return;
         }
         this.confirmLeave();
@@ -23225,6 +23228,12 @@ export class Ui {
     /* The mini games page (gatepages.js GATE_GAMES): the switch, and the
      * way back to it from a game's picker is remembered here. */
     if (action === 'gate-games') {
+      /* The door is on the cover and on Fly solo, and Back goes to the
+       * one it was opened from. */
+      this.gamesFrom = this.gatePageNow() === 'cover' ? 'cover' : 'solo';
+      if (this.gamesFrom === 'cover') {
+        this.gateSide = 'games';
+      }
       this.turnGate('games');
       return;
     }

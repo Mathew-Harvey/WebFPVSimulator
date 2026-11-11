@@ -308,7 +308,18 @@ async function sceneMenu() {
   const onPage = (card) => `const u = window.__ui; return u.screen === 'title' && u.onGate() && u.gatePageNow() === 'games' && (u.items()[u.cursor] || {}).card === '${card}';`;
   try {
     check('the title is up', await until("return Boolean(window.__ui && window.__ui.screen === 'title' && window.__ui.onGate())", 120000));
-    check('the cover asks only solo or multiplayer', await ev("return window.__ui.items().every((i) => i.card !== 'games')"));
+    /* Mini games is on the cover as well as under Fly solo (the owner's
+     * pick of 2026-11-11, after the front door's Fly now landed on a cover
+     * with no way to them that a pilot could see). Read where it is drawn,
+     * and Back from its page goes to the cover, on that panel. */
+    const coverCards = await ev("return window.__ui.items().map((i) => i.card).join(',')");
+    check('the cover is Fly solo, Multiplayer and Mini games', coverCards === 'solo,together,games', coverCards);
+    const coverDrawn = await until("const e = document.querySelector('.gate-page-cover .gate-card-games'); if (!e) return false; const r = e.getBoundingClientRect(); return r.width >= 120 && r.height >= 120 && r.left >= -1 && r.top >= -1 && r.right <= innerWidth + 2 && r.bottom <= innerHeight + 2;", 5000);
+    check('and the Mini games panel is drawn inside the window', coverDrawn);
+    await ev("document.querySelector('.gate-page-cover .gate-card-games').click(); return 1;");
+    check('a click on it turns to the Mini games page', await until("return window.__ui.gatePageNow() === 'games'", 5000));
+    await ev("window.__ui.back(); return 1;");
+    check('and Back is the cover, on Mini games', await until("const u = window.__ui; return u.gatePageNow() === 'cover' && (u.items()[u.cursor] || {}).card === 'games';", 5000));
     await ev("window.__ui.act('gate-solo'); return 1;");
     check('Fly solo has the Mini games door', await until("return window.__ui.gatePageNow() === 'solo' && window.__ui.items().some((i) => i.card === 'games')", 5000));
     await ev("window.__ui.act('gate-games'); return 1;");

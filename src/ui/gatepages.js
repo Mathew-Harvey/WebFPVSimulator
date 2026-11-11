@@ -87,15 +87,29 @@ export const GATE_SIDES = [
     sticker: 'NEW!',
     action: 'gate-together',
   },
+  /* Mini games, back on the cover as its third panel by the owner's pick
+   * of 2026-11-11 ("Put Mini games back on the first screen?": "Add a
+   * third Mini games panel"), after a pilot pressing the front door's Fly
+   * now could not find them. The same door as GATE_MINI below, which stays
+   * on the solo page too. */
+  {
+    id: 'games',
+    label: 'Mini games',
+    kicker: 'Play',
+    art: 'assets/gate/dogfight.jpg',
+    caption: 'Dogfights, ribbons, goats, drift, Quad Ball and motocross. Alone or with friends.',
+    action: 'gate-games',
+  },
 ];
 
 /*
  * The Mini games door, a panel at the end of the solo page. It stood on the
  * cover as a third choice until the owner's ask of 2026-11-01: "i should see
- * single player or multiplayer, no mini games". Every mini game still plays
- * alone or with friends (the question is asked when a game is chosen, ui.js
- * gameDoor), so the one door belongs under Fly solo, and the cover asks only
- * the two things a pilot arriving has to answer.
+ * single player or multiplayer, no mini games", and went back on the cover
+ * on 2026-11-11 (GATE_SIDES above), because from the front door they looked
+ * gone. Every mini game still plays alone or with friends (the question is
+ * asked when a game is chosen, ui.js gameDoor), so this door stays under
+ * Fly solo as well.
  */
 export const GATE_MINI = {
   id: 'games',

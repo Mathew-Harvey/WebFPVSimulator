@@ -2817,9 +2817,13 @@
         gap: clamp(10px, 1.4vw, 18px);
       }
       .gate-page-cover .gate-grid {
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) minmax(0, 1fr);
         grid-template-rows: minmax(0, 1fr);
       }
+      /* Mini games on the cover is a plain third column: the solo page's
+         named area means nothing on this grid, and a name the grid does not
+         have puts the card in an implicit track nobody can see. */
+      .gate-page-cover .gate-card-games { grid-area: auto; }
       .gate-page-solo .gate-grid {
         grid-template-columns: repeat(12, minmax(0, 1fr));
         grid-template-rows: repeat(2, minmax(0, 1fr));

@@ -7,7 +7,7 @@
  * a round ending and the next one starting, leaving, a restart, a quad of
  * another size, and the results table's buttons.
  *
- *   node scripts/minigames-check.js [--only=menu,quadswap,load,yard,touch,herd,driftbots,goats,drift,dogfight,ribbon,scale]
+ *   node scripts/minigames-check.js [--only=menu,quadswap,frontdoor,load,yard,touch,herd,driftbots,goats,drift,dogfight,ribbon,scale]
  *
  * Minutes of wall clock on a software rasteriser. Written for the bug hunt
  * of 2026-10-29 ("Across all games before we push to main, please do a bug
@@ -352,6 +352,83 @@ async function sceneQuadSwap() {
     check('a race\'s pause has no Quad row', await race.ev("return !window.__ui.items().some((i) => i.action === 'quad-swap');"));
   } finally {
     await race.page.close();
+  }
+}
+
+/*
+ * THE OWNER'S MENU NOTES OF 2026-11-11, each read where a pilot meets it:
+ * Quit to title from a flight is the picture pages, not the list behind
+ * them; the old world tiles stay hidden under the map picker; Multiplayer
+ * asks what to fly together before Host and Find, and they follow it; and
+ * a freestyle map's caption shows its quad, hovering, with Change.
+ */
+async function sceneFrontDoor() {
+  console.log('frontdoor: quit to title, the picker, multiplayer first');
+  const page = await openPage({ root: ROOT, width: 1280, height: 720, url: '/index.html' });
+  const ev = async (body) => {
+    const r = await page.cdp.send('Runtime.evaluate', {
+      expression: `(async()=>{${body}})()`, awaitPromise: true, returnByValue: true,
+    }, page.sessionId);
+    if (r.exceptionDetails) {
+      throw new Error(JSON.stringify(r.exceptionDetails).slice(0, 900));
+    }
+    return r.result.value;
+  };
+  const until = async (body, ms = 20000) => {
+    const end = Date.now() + ms;
+    while (Date.now() < end) {
+      if (await ev(body)) {
+        return true;
+      }
+      await sleep(200);
+    }
+    return false;
+  };
+  const cards = "return window.__ui.items().filter((i) => i.card).map((i) => i.card).join(',')";
+  try {
+    check('the title is up', await until("return Boolean(window.__ui && window.__ui.screen === 'title' && window.__ui.onGate())", 120000));
+    /* Multiplayer first. */
+    await ev("document.querySelector('.gate-card-together').click(); return 1;");
+    await until("return window.__ui.gatePageNow() === 'mpway'", 5000);
+    check('Multiplayer asks five inch racing, whoop racing, freestyle or mini games', (await ev(cards)) === 'mw-5inch,mw-whoop,mw-freestyle,mw-games', await ev(cards));
+    await ev("document.querySelector('.gate-card-mw-whoop').click(); return 1;");
+    check('whoop racing turns to host, find, a code and your pilot', await until("return window.__ui.gatePageNow() === 'together'", 5000));
+    check('which say whoop', await ev("return document.querySelector('.gate-head-kick').textContent === 'Whoop racing' && /whoop track/i.test(window.__ui.items().find((i) => i.card === 'mp-host').caption);"));
+    await ev('window.__ui.back(); return 1;');
+    check('Back is the question again, on whoop racing', await until("const u = window.__ui; return u.gatePageNow() === 'mpway' && (u.items()[u.cursor] || {}).card === 'mw-whoop';", 5000));
+    await ev("window.__ui.act('mpway:games'); window.__ui.act('mp-host'); return 1;");
+    check('hosting mini games is the Mini games page', await until("return window.__ui.gatePageNow() === 'games'", 5000));
+    await ev('window.__ui.back(); return 1;');
+    check('and Back from it is the rooms page', await until("return window.__ui.gatePageNow() === 'together'", 5000));
+    await ev('window.__ui.back(); window.__ui.back(); return 1;');
+    await until("return window.__ui.gatePageNow() === 'cover'", 5000);
+    /* Freestyle's picker: no old tiles, and the quad on the caption. */
+    await ev("window.__ui.act('gate-solo'); window.__ui.act('way-freestyle-5inch'); return 1;");
+    check('Freestyle opens the map picker', await until("return window.__ui.screen === 'freestyle' && Boolean(document.querySelector('.wp-hero .wp-cap'))", 30000));
+    await until("return Boolean(document.querySelector('.wp-quad'))", 10000);
+    const tiles = await ev("return [...document.querySelectorAll('.map-card')].filter((c) => c.getClientRects().length).length;");
+    check('no old world tile is drawn under it', tiles === 0, `${tiles} drawn`);
+    const was = await ev("return document.querySelector('.wp-quad-name').textContent;");
+    check('the chosen map\'s caption shows its quad, hovering', Boolean(was) && await ev("const s = document.querySelector('.wp-quad-pic svg'); return Boolean(s) && getComputedStyle(s).animationName === 'wp-hover';"), was);
+    await ev("document.querySelector('.wp-quad-change').click(); return 1;");
+    const now = await ev("return document.querySelector('.wp-quad-name').textContent;");
+    check('Change shows the other quad', now && now !== was, `${was} to ${now}`);
+    check('and the map keeps it for its Fly', await ev(`const u = window.__ui; return (u.settings.quadPicks || '').includes('${was === 'Whoop' ? '5inch' : 'whoop65'}');`), await ev('return window.__ui.settings.quadPicks;'));
+    /* Quit to title from a race is the picture pages. */
+    await ev("window.__ui.back(); return 1;");
+    await until("return window.__ui.screen === 'title'", 5000);
+    await ev("const u = window.__ui; u.act('gate-solo'); u.act('way-race-5inch'); return 1;");
+    await until("const u = window.__ui; return u.screen === 'courses' && Boolean(u.pickerLib) && u.pickerEntries().some((e) => e.item && e.item.action === 'map:custom');", 30000);
+    await ev("const u = window.__ui; u.pickerAction('fly', u.pickerEntries().find((e) => e.item && e.item.action === 'map:custom')); return 1;");
+    await until("return window.__ui.screen === 'flight' || window.__ui.screen === 'title'", 30000);
+    await sleep(1500);
+    await ev("window.__ui.act('pause'); window.__ui.show('paused'); window.__ui.act('title'); return 1;");
+    check('Quit to title from a race is the picture pages', await until("const u = window.__ui; return u.screen === 'title' && u.onGate() && u.gatePageNow() === 'cover';", 5000),
+      await ev("const u = window.__ui; return u.screen + ' gate ' + u.onGate() + ' ' + u.items().slice(0, 3).map((i) => i.label).join(',');"));
+    const errs = pageErrors(page);
+    check('no errors on the page', errs.length === 0, errs.slice(0, 3).join(' | '));
+  } finally {
+    await page.close();
   }
 }
 
@@ -716,6 +793,7 @@ async function sceneDriftBots() {
 try {
   if (wanted('menu')) await sceneMenu();
   if (wanted('quadswap')) await sceneQuadSwap();
+  if (wanted('frontdoor')) await sceneFrontDoor();
   if (wanted('load')) await sceneLoadKeys();
   if (wanted('yard')) await sceneYard();
   if (wanted('touch')) await sceneTouch();

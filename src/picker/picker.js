@@ -423,6 +423,14 @@ box-shadow:7px 7px 0 var(--wp-ink);transform:skewX(-5deg)}
 text-transform:uppercase;text-decoration:none;color:var(--wp-ink);background:var(--wp-paper);border:4px solid var(--wp-ink);box-shadow:4px 4px 0 var(--wp-ink);transform:skewX(-8deg);white-space:nowrap}
 .wp-act.is-primary{height:52px;padding:0 30px;font-size:21px;background:var(--wp-amber);box-shadow:5px 5px 0 var(--wp-ink)}
 .wp-act:disabled{opacity:.5;cursor:default}
+.wp-quad{display:inline-flex;align-items:center;gap:8px;padding:2px 10px 2px 4px;border:4px solid var(--wp-ink);background:var(--wp-cream,#f3ead4);box-shadow:4px 4px 0 var(--wp-ink);transform:skewX(-8deg)}
+.wp-quad-pic{width:64px;height:46px;flex:none}
+.wp-quad-pic svg{width:100%;height:100%;display:block;animation:wp-hover 1.4s ease-in-out infinite alternate}
+@keyframes wp-hover{from{transform:translateY(-3px) rotate(-4deg)}to{transform:translateY(3px) rotate(4deg)}}
+.wp-quad-words{display:flex;flex-direction:column;line-height:1}
+.wp-quad-kick{font-size:10px;font-weight:900;letter-spacing:.14em;text-transform:uppercase;color:var(--wp-quiet)}
+.wp-quad-name{font-size:19px;font-weight:900;font-style:italic;text-transform:uppercase;color:var(--wp-ink)}
+.wp-quad .wp-act{height:36px;padding:0 12px;font-size:13px;box-shadow:3px 3px 0 var(--wp-ink);transform:none}
 .wp-empty{color:var(--wp-quiet);font-weight:700;padding:14px 4px;margin:0}
 .wp :focus-visible{outline:3px solid var(--wp-ink);outline-offset:3px}
 .wp-card:focus-visible{outline:none;box-shadow:0 0 0 4px var(--wp-mint),9px 9px 0 4px var(--wp-ink)}
@@ -441,7 +449,7 @@ text-transform:uppercase;text-decoration:none;color:var(--wp-ink);background:var
 .wp-hero{transform:none;margin:4px 0 12px}.wp-cap{transform:none;padding:10px 12px}.wp-cap .wp-pic{display:none}
 .wp-acts{width:100%;flex-wrap:wrap;gap:10px}.wp-act{height:40px;padding:0 10px;font-size:12px;box-shadow:3px 3px 0 var(--wp-ink)}
 .wp-act.is-primary{flex:1 1 100%;height:46px;font-size:18px;padding:0 14px}.wp-name .wp-lt canvas{max-height:30px;width:auto!important}}
-@media (prefers-reduced-motion:reduce){.wp-card,.wp-shelf{transition:none}}
+@media (prefers-reduced-motion:reduce){.wp-card,.wp-shelf{transition:none}.wp-quad-pic svg{animation:none}}
 @media (forced-colors:active){.wp-lt canvas{display:none}.wp-lt .wp-sr{position:static;width:auto;height:auto;clip:auto;white-space:normal}}
 `;
 
@@ -983,6 +991,36 @@ export function createPicker(host, opts = {}) {
     if (primary) {
       box.append(primary);
     }
+    /*
+     * THE QUAD THIS MAP FLIES, first in the row: drawn, hovering, named,
+     * with Change beside it (the owner, 2026-11-11: "in freestyle and mini
+     * game maps, the quad picker should be more obvious, like show the quad
+     * in an animation with the option to change it always"). The host says
+     * which quad and whether it can change (opts.quadOf); the svg is the
+     * host's own drawing. Change is a button of the row, so the keys reach
+     * it like the others.
+     */
+    const q = opts.quadOf ? opts.quadOf(entry) : null;
+    if (q) {
+      const badge = make(doc, 'div', 'wp-quad');
+      const pic = make(doc, 'span', 'wp-quad-pic');
+      pic.innerHTML = q.svg || '';
+      const words = make(doc, 'span', 'wp-quad-words');
+      words.append(make(doc, 'span', 'wp-quad-kick', q.kicker || 'Your quad'), make(doc, 'span', 'wp-quad-name', q.label));
+      badge.append(pic, words);
+      if (q.change) {
+        const change = make(doc, 'button', 'wp-act wp-quad-change', q.change);
+        change.type = 'button';
+        change.dataset.act = 'quad-change';
+        change.addEventListener('click', (ev) => {
+          if (opts.onAction) {
+            opts.onAction('quad-change', entry, ev);
+          }
+        });
+        badge.append(change);
+      }
+      box.prepend(badge);
+    }
     cap.append(box);
     paintPlan(cap.querySelector('canvas.wp-plan'));
     const w = who.offsetWidth || 360;
@@ -1359,6 +1397,9 @@ export function createPicker(host, opts = {}) {
     setZone,
     zone: () => zone,
     refresh: paint,
+    /* The chosen entry's caption again, after something it shows changed
+     * outside the list (the quad it flies). */
+    refreshHero: () => paintHero(current()),
     destroy() {
       if (io) {
         io.disconnect();

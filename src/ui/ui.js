@@ -241,7 +241,7 @@ import {
 } from './mangapage.js';
 import { paintTitle } from './lettering.js';
 import {
-  GATE_GAMES, GATE_HEADS, GATE_MINI, GATE_ROOMS, GATE_SIDES, SOLO_PANELS, paintGatePilot, sceneFor,
+  GATE_GAMES, GATE_HEADS, GATE_MINI, GATE_MP_WAYS, GATE_ROOMS, GATE_SIDES, SOLO_PANELS, paintGatePilot, quadBadgeSvg, sceneFor,
 } from './gatepages.js';
 import { formatScore } from '../game/score.js';
 import { PRACTICE_LAPS } from '../game/race.js';
@@ -6351,8 +6351,12 @@ export class Ui {
     this.gatePage = null;
     this.gateTurn = '';
     this.gateSide = '';
-    /* Which door opened the Mini games page, 'cover' or 'solo': Back goes there. */
+    /* Which door opened the Mini games page, 'cover', 'solo' or
+     * 'together': Back goes there. */
     this.gamesFrom = '';
+    /* What multiplayer was asked for on its first page (GATE_MP_WAYS):
+     * '5inch', 'whoop', 'freestyle' or 'games', '' before it is asked. */
+    this.roomWay = '';
     /* The mini games page: the panel last played, and whether the picker
      * open now was opened from it, so Back from the picker turns to it
      * rather than to the cover. ballHow: Quad Ball's door, answered on the
@@ -10407,8 +10411,36 @@ export class Ui {
       if (this.onGate()) {
         const page = this.gatePageNow();
         const tail = trouble ? [trouble] : [];
+        /* Multiplayer's first page, what to fly together. */
+        if (page === 'mpway') {
+          return [
+            ...GATE_MP_WAYS.map((c) => ({
+              label: c.label,
+              card: c.id,
+              art: c.art,
+              kicker: c.kicker,
+              caption: c.caption,
+              action: c.action,
+            })),
+            ...tail,
+          ];
+        }
         /* The cover and the multiplayer page: see gatepages.js. */
         if (page === 'cover' || page === 'together') {
+          /* The rooms page says what it hosts and finds, the way picked on
+           * the page before it. */
+          const way = page === 'together' ? (this.roomWay || 'freestyle') : '';
+          const hostLine = {
+            '5inch': 'Pick a five inch track, open a room, send your friends the code.',
+            whoop: 'Pick a whoop track, open a room, send your friends the code.',
+            games: 'Pick a mini game, open a room, send your friends the code.',
+          }[way];
+          const findLine = {
+            '5inch': 'Five inch race rooms other pilots have opened to anyone.',
+            whoop: 'Whoop race rooms other pilots have opened to anyone.',
+            freestyle: 'Freestyle rooms other pilots have opened to anyone.',
+            games: 'Freestyle and mini game rooms other pilots have opened to anyone.',
+          }[way];
           return [
             ...(page === 'cover' ? GATE_SIDES : GATE_ROOMS).map((c) => ({
               label: c.label,
@@ -10416,7 +10448,7 @@ export class Ui {
               art: c.art,
               burst: c.burst,
               kicker: c.kicker,
-              caption: c.caption,
+              caption: (c.id === 'mp-host' && hostLine) || (c.id === 'mp-find' && findLine) || c.caption,
               sticker: c.sticker,
               action: c.action,
             })),
@@ -14636,12 +14668,14 @@ export class Ui {
     const head = el('div', 'gate-head');
     if (page !== this.gateRoot()) {
       const back = btn('gate-back', 'Back');
-      back.setAttribute('aria-label', page === 'games' && this.gamesFrom !== 'cover' ? 'Back to Fly solo' : 'Back to the cover');
+      const to = page === 'games' ? (this.gamesFrom || 'solo') : page === 'together' ? 'mpway' : 'cover';
+      back.setAttribute('aria-label', to === 'solo' ? 'Back to Fly solo' : to === 'together' || to === 'mpway' ? 'Back to Multiplayer' : 'Back to the cover');
       back.addEventListener('click', () => this.back());
       head.append(back);
     }
     const ttl = el('div', 'gate-head-ttl');
-    ttl.append(el('span', 'gate-head-kick', info.kicker));
+    const wayName = page === 'together' ? (GATE_MP_WAYS.find((w) => w.way === this.roomWay) || {}).label : '';
+    ttl.append(el('span', 'gate-head-kick', wayName || info.kicker));
     const title = el('div', 'gate-head-title', info.title);
     title.setAttribute('role', 'heading');
     title.setAttribute('aria-level', '2');
@@ -14821,13 +14855,13 @@ export class Ui {
   /* Turn to a page of the gate: the cursor lands where that page starts,
    * and the page swings in from the side it is on. */
   turnGate(page) {
-    const order = { cover: 0, solo: 1, together: 2, games: 3 };
+    const order = { cover: 0, solo: 1, mpway: 2, together: 3, games: 4 };
     const was = this.gatePageNow();
     if (page === was) {
       return;
     }
-    if (page === 'solo' || page === 'together') {
-      this.gateSide = page;
+    if (page === 'solo' || page === 'together' || page === 'mpway') {
+      this.gateSide = page === 'solo' ? 'solo' : 'together';
     }
     this.gateTurn = order[page] > order[was] ? 'fwd' : 'back';
     this.gatePage = page;
@@ -15730,6 +15764,7 @@ export class Ui {
         /* Each shelf's chapter panel wears its way's art from the gate. */
         shelfPictures: { maps: 'assets/gate/freestyle.jpg', five: 'assets/gate/race.jpg', whoop: 'assets/gate/whoop.jpg' },
         actions: (entry) => this.pickerActions(entry),
+        quadOf: (entry) => this.pickerQuadOf(entry),
         onAction: (id, entry, ev) => this.pickerAction(id, entry, ev),
         onShelf: (shelf) => this.pickerShelfChosen(shelf),
         onOrder: (order) => {
@@ -16082,6 +16117,10 @@ export class Ui {
   pickerAction(id, entry, ev) {
     if (this.onUiSound) {
       this.onUiSound('select');
+    }
+    if (id === 'quad-change') {
+      this.pickerQuadChange(entry);
+      return;
     }
     if (id === 'copy-link') {
       this.copyPickerLink(entry, ev && ev.currentTarget);
@@ -18572,7 +18611,8 @@ export class Ui {
      * time; the multiplayer page on Host a room, its first door. */
     if (this.onGate() && this.gatePageNow() !== 'solo') {
       const page = this.gatePageNow();
-      const want = page === 'cover' ? (this.gateSide || 'solo') : page === 'games' ? (this.gameLast || 'mg-dogfight') : 'mp-host';
+      const want = page === 'cover' ? (this.gateSide || 'solo') : page === 'games' ? (this.gameLast || 'mg-dogfight')
+        : page === 'mpway' ? `mw-${this.roomWay || '5inch'}` : 'mp-host';
       const at = items.findIndex((it) => it.card === want);
       return at >= 0 ? at : this.firstStop(items);
     }
@@ -22774,6 +22814,85 @@ export class Ui {
     };
   }
 
+  /*
+   * THE QUAD A MAP'S CARD FLIES, for the picker's caption (picker.js
+   * opts.quadOf): a freestyle map or a mini game's map, from the registry
+   * or the board. The one the quad picker would open on (askQuad): the
+   * pilot's Always for this map, else their last pick here, else the map's
+   * own. Hosting flies the quad seated as it stands, and a map flown on one
+   * quad only (Midori Gakuen) shows it with no Change. Not a track (a
+   * track is its class's), and not inside a room, where the host's card
+   * swaps the room's quad.
+   */
+  pickerQuadKey(entry) {
+    const action = (entry && entry.item && entry.item.action) || '';
+    if (action.startsWith('boardmap:')) {
+      return quadKeyFor('built', action.slice('boardmap:'.length));
+    }
+    if (action.startsWith('map:')) {
+      const world = entry.item.map || null;
+      return world && world.mode === 'freestyle' ? world.id : '';
+    }
+    return '';
+  }
+
+  pickerQuadOf(entry) {
+    const key = this.pickerQuadKey(entry);
+    if (!key || this.roomInfo) {
+      return null;
+    }
+    const world = (entry.item && entry.item.map) || null;
+    const only = world && world.craftOnly ? world.craft : '';
+    const craft = only
+      || (this.hostPick ? this.settings.airframe : '')
+      || quadAlways(this.settings)[key]
+      || quadPicks(this.settings)[key]
+      || (world && world.craft)
+      || '5inch';
+    const whoop = craft === 'whoop65';
+    return {
+      svg: quadBadgeSvg(whoop),
+      kicker: only ? 'Whoops only' : 'Your quad',
+      label: whoop ? 'Whoop' : '5 inch',
+      change: only ? '' : (whoop ? 'Change to 5 inch' : 'Change to whoop'),
+    };
+  }
+
+  /* Change on the caption's quad: the other quad for this map, kept as
+   * the quad picker keeps an answer, and as the Always when there is one,
+   * so the next Fly here flies it. Hosting seats it, since a room flies
+   * the host's quad as it stands. */
+  pickerQuadChange(entry) {
+    const key = this.pickerQuadKey(entry);
+    const q = this.pickerQuadOf(entry);
+    if (!key || !q || !q.change) {
+      return;
+    }
+    const next = q.label === 'Whoop' ? '5inch' : 'whoop65';
+    if (this.hostPick) {
+      if (next !== this.settings.airframe) {
+        seatAirframe(this.settings, next);
+        this.settings.airframeAsked = true;
+        this.writeSettings();
+      }
+    } else {
+      rememberQuadPick(this.settings, key, next);
+      if (quadAlways(this.settings)[key]) {
+        rememberQuadAlways(this.settings, key, next);
+      }
+      saveSettings(this.settings);
+    }
+    if (this.onUiSound) {
+      this.onUiSound('select');
+    }
+    if (this.picker && this.picker.refreshHero) {
+      this.picker.refreshHero();
+      if (this.picker.setZone && this.picker.zone() === 'acts') {
+        this.picker.setZone('acts');
+      }
+    }
+  }
+
   /* The room's quad, when the host swaps quads (swapQuad in main.js). */
   seatRoomQuad(id) {
     if (this.settings.airframe === id) {
@@ -23019,9 +23138,11 @@ export class Ui {
       if (this.onGate()) {
         /* An inside page of the gate turns back to the cover first. */
         if (this.gatePageNow() !== this.gateRoot()) {
-          /* Mini games goes back to the door it was opened from, the
-           * cover or Fly solo. */
-          this.turnGate(this.gatePageNow() === 'games' ? (this.gamesFrom || 'solo') : this.gateRoot());
+          /* Mini games goes back to the door it was opened from (the
+           * cover, Fly solo or a multiplayer game's Host a room), and the
+           * rooms page to the question before it, what to fly together. */
+          const now = this.gatePageNow();
+          this.turnGate(now === 'games' ? (this.gamesFrom || 'solo') : now === 'together' ? 'mpway' : this.gateRoot());
           return;
         }
         this.confirmLeave();
@@ -23338,15 +23459,35 @@ export class Ui {
       return;
     }
     if (action === 'gate-solo' || action === 'gate-together') {
-      this.turnGate(action === 'gate-solo' ? 'solo' : 'together');
+      /* Multiplayer asks what to fly together first (GATE_MP_WAYS). */
+      this.turnGate(action === 'gate-solo' ? 'solo' : 'mpway');
+      return;
+    }
+    if (action.startsWith('mpway:')) {
+      const way = action.slice('mpway:'.length);
+      if (GATE_MP_WAYS.some((w) => w.way === way)) {
+        this.roomWay = way;
+        this.titleCardKey = '';
+        this.turnGate('together');
+      }
       return;
     }
     if (action.startsWith('mp-')) {
       if (this.onUiSound) {
         this.onUiSound('select');
       }
+      const kind = action.slice(3);
+      /* Hosting a mini game is the Mini games page, each game's door then
+       * asking bots or friends; Back from it is this page. */
+      if (kind === 'host' && this.roomWay === 'games') {
+        this.gamesFrom = 'together';
+        this.turnGate('games');
+        return;
+      }
       if (this.onRoomsGate) {
-        this.onRoomsGate(action.slice(3));
+        /* Mini game rooms are freestyle rooms on the board. */
+        const way = this.roomWay === 'games' ? 'freestyle' : (this.roomWay || 'freestyle');
+        this.onRoomsGate(kind, way);
       }
       return;
     }
@@ -24188,6 +24329,19 @@ export class Ui {
       this.mode = null;
       this.craftGate = true;
       this.gatePage = 'games';
+      this.gateTurn = 'back';
+      this.setCursor(this.titleStop());
+      this.renderMenu();
+    } else if (action === 'title' && (from === 'paused' || from === 'flight' || from === 'results') && !this.careerLesson) {
+      /* Quit to title from any other flight is the front screen's root,
+       * the picture pages (the owner, 2026-11-11: "when i quit to title i
+       * get back to this screen, this is the legacy screen, i should get to
+       * the images and root menu"). It landed on the list behind the gate,
+       * the menu of the way the flight was seated, because the gate's two
+       * halves were both answered by flying. */
+      this.mode = null;
+      this.craftGate = true;
+      this.gatePage = null;
       this.gateTurn = 'back';
       this.setCursor(this.titleStop());
       this.renderMenu();

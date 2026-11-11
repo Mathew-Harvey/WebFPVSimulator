@@ -203,6 +203,56 @@ export const GATE_GAMES = [
 ];
 
 /*
+ * MULTIPLAYER ASKS WHAT FIRST. The owner, 2026-11-11: "when i select multi
+ * player i should get a menu that shows 5 inch racing, whoop racing,
+ * freestyle and mini games ... I should get this option after the first
+ * option that sets if i'm racing, gaming or freestyling. then when i set up
+ * a room the rooms given should be context dependent". So Multiplayer turns
+ * to this page first, and its answer (ui.js roomWay) is what Host a room
+ * opens on (that way's maps or tracks, or the Mini games page) and which
+ * rooms Find a room lists. `way` is the rooms' own name for it
+ * (src/net/together.js WAY_NAMES); mini game rooms are freestyle rooms.
+ */
+export const GATE_MP_WAYS = [
+  {
+    id: 'mw-5inch',
+    way: '5inch',
+    label: 'Five inch racing',
+    kicker: 'Race',
+    art: 'assets/gate/race.jpg',
+    caption: 'Race your friends round a gated track.',
+    action: 'mpway:5inch',
+  },
+  {
+    id: 'mw-whoop',
+    way: 'whoop',
+    label: 'Whoop racing',
+    kicker: 'Race indoors',
+    art: 'assets/gate/whoop.jpg',
+    caption: 'Tiny ducted quads, a track in a room.',
+    action: 'mpway:whoop',
+  },
+  {
+    id: 'mw-freestyle',
+    way: 'freestyle',
+    label: 'Freestyle',
+    kicker: 'No clock',
+    art: 'assets/gate/freestyle.jpg',
+    caption: 'A map to fly together, chase and chat.',
+    action: 'mpway:freestyle',
+  },
+  {
+    id: 'mw-games',
+    way: 'games',
+    label: 'Mini games',
+    kicker: 'Play',
+    art: 'assets/gate/dogfight.jpg',
+    caption: 'Dogfights, ribbons, goats, Quad Ball and more.',
+    action: 'mpway:games',
+  },
+];
+
+/*
  * The multiplayer page: how every game that hosts rooms lays it out, host
  * first, then the list of open rooms, then a code from a friend, then the
  * face the others will see. Hosting starts in the map picker, which hosts
@@ -257,6 +307,7 @@ export const SOLO_PANELS = {
 export const GATE_HEADS = {
   cover: { kicker: 'This week', title: 'How do you want to fly?', folio: '01' },
   solo: { kicker: 'Chapter 1', title: 'Fly solo', folio: '02' },
+  mpway: { kicker: 'Chapter 2', title: 'Multiplayer', folio: '03' },
   together: { kicker: 'Chapter 2', title: 'Multiplayer', folio: '03' },
   games: { kicker: 'Chapter 3', title: 'Mini games', folio: '04' },
 };
@@ -561,6 +612,10 @@ const SCENES = {
     { cls: 'gp-career-bub', svg: svg('0 0 170 100', bubble(170, 80, ['START', 'HERE!'], [40, 98])) },
     { cls: 'gp-medal', svg: svg('0 0 80 92', medal()) },
   ],
+  'mw-5inch': () => SCENES['race-5inch'](),
+  'mw-whoop': () => SCENES['race-whoop65'](),
+  'mw-freestyle': () => SCENES['freestyle-5inch'](),
+  'mw-games': () => SCENES.games(),
   'race-5inch': () => [
     { cls: 'gp-watch', svg: svg('0 0 80 96', stopwatch()) },
   ],
@@ -651,6 +706,14 @@ export function batteryIcon() {
 }
 
 /* The drawings for one panel, as elements ready to append. */
+/* A quad on its own, for the map picker's caption (ui.js pickerQuadOf):
+ * the whoop ducted in mint, the five inch in amber, as the gate draws them. */
+export function quadBadgeSvg(whoop) {
+  return svg('0 0 120 90', whoop
+    ? quad(60, 45, 0.95, 0, MINT, { ducted: true })
+    : quad(60, 45, 0.8, 0, AMBER));
+}
+
 export function sceneFor(id, doc = document) {
   const make = SCENES[id];
   if (!make) {

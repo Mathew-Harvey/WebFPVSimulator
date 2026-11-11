@@ -2824,6 +2824,12 @@
          named area means nothing on this grid, and a name the grid does not
          have puts the card in an implicit track nobody can see. */
       .gate-page-cover .gate-card-games { grid-area: auto; }
+      /* Multiplayer's first page: what to fly together, four panels in a
+         row (src/ui/gatepages.js GATE_MP_WAYS). */
+      .gate-page-mpway .gate-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-rows: minmax(0, 1fr);
+      }
       .gate-page-solo .gate-grid {
         grid-template-columns: repeat(12, minmax(0, 1fr));
         grid-template-rows: repeat(2, minmax(0, 1fr));
@@ -2898,7 +2904,7 @@
       /* The Mini games panel wears the NEW! sticker in its top right
          corner, so its POW! sits on the left, under the kicker, and the
          two never overprint (fun.md FUN-22). */
-      .gate-card-games .gp-dog-sfx { top: 15%; left: 4%; }
+      .gate-card-games .gp-dog-sfx, .gate-card-mw-games .gp-dog-sfx { top: 15%; left: 4%; }
       .gate-card {
         position: relative;
         min-width: 0;
@@ -5292,6 +5298,12 @@
         margin: 18px 0 10px; pointer-events: auto;
         width: 100%;
       }
+      /* Hidden means hidden. The old world cards are drawn before the map
+         picker arrives and hidden when it mounts (ui.js mountPicker), and
+         display: flex above beat the hidden attribute, so the dark tiles of
+         the town and the houses sat under the cream picker (the owner's
+         screenshot of 2026-11-11). */
+      .map-cards[hidden], .card-strip[hidden] { display: none; }
       .map-card {
         width: min(340px, 82vw); cursor: pointer; border-radius: 4px;
         overflow: hidden; position: relative;

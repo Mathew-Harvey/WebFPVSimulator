@@ -5137,8 +5137,8 @@ export async function boot({ loading, bootStart, mapId }) {
       loadTogether().then((t) => t && t.openLobby(way));
     };
     /* The front screen's multiplayer page: host, find, code, pilot. */
-    ui.onRoomsGate = (kind) => {
-      loadTogether().then((t) => t && t.fromGate(kind));
+    ui.onRoomsGate = (kind, way) => {
+      loadTogether().then((t) => t && t.fromGate(kind, way));
     };
     ui.onRoom = (action) => {
       if (together) {

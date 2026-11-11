@@ -3248,7 +3248,12 @@ export function createTogether(shell) {
    * button and double click host the map. Your pilot needs nothing online,
    * so it asks nothing first but the meeting itself.
    */
-  function fromGate(kind) {
+  function fromGate(kind, way) {
+    /* The way Multiplayer's first page asked for (ui.js roomWay): what
+     * Host a room opens on and which rooms Find a room lists. */
+    if (WAY_NAMES[way]) {
+      lobbyWay = way;
+    }
     if (kind === 'host') {
       gate(() => {
         if (shell.pickWorld) {

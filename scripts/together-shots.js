@@ -2949,22 +2949,35 @@ async function sceneGate() {
     await page.tap('ArrowRight');
     await wait(150);
     await page.tap('Enter');
+    /* Multiplayer asks what to fly together first (the owner, 2026-11-11),
+     * and the rooms page follows the answer. */
+    await page.until("window.__ui.gatePageNow() === 'mpway'", 8000).catch(() => {});
+    await onPage(4);
+    check('Multiplayer asks five inch racing, whoop racing, freestyle or mini games first', (await page.evaluate(cards)) === 'Five inch racing,Whoop racing,Freestyle,Mini games', await page.evaluate(cards));
+    await page.evaluate("(() => { window.__ui.act('mpway:freestyle'); return 1; })()");
+    await page.until("window.__ui.gatePageNow() === 'together'", 8000).catch(() => {});
     await onPage(4);
     check('Multiplayer turns to host, find, a code and your pilot', (await page.evaluate(cards)) === 'Host a room,Find a room,Join with a code,Your pilot', await page.evaluate(cards));
     check('a pilot with no face yet is asked who they are', await page.evaluate("Boolean(document.querySelector('.gate-card-mp-pilot .gp-stranger'))"));
     await wait(500);
     await shot('multiplayer');
     await page.tap('Escape');
+    await page.until("window.__ui.gatePageNow() === 'mpway'", 8000).catch(() => {});
+    await page.tap('Escape');
     await onPage(3);
-    check('Escape turns back to the cover', true);
+    check('Escape turns back to the cover, through the question', true);
     await page.evaluate("(() => { window.__ui.act('gate-solo'); return 1; })()");
-    await onPage(5);
-    check('Fly solo turns to the five ways in', (await page.evaluate(cards)) === 'Career,Five inch racing,Whoop racing,Freestyle,Builder', await page.evaluate(cards));
+    await page.until("window.__ui.gatePageNow() === 'solo'", 8000).catch(() => {});
+    await wait(300);
+    /* The Mini games door joined the ways on 2026-11-01, and the track of
+     * the week when the board names one; this line still said five. */
+    check('Fly solo turns to the ways in', /^Career,Five inch racing,Whoop racing,Freestyle,Builder,([^,]+,)?Mini games$/.test(await page.evaluate(cards)), await page.evaluate(cards));
     await wait(500);
     await shot('solo');
     await page.tap('Escape');
     await onPage(3);
-    await page.evaluate("(() => { window.__ui.act('gate-together'); return 1; })()");
+    await page.evaluate("(() => { window.__ui.act('gate-together'); window.__ui.act('mpway:freestyle'); return 1; })()");
+    await page.until("window.__ui.gatePageNow() === 'together'", 8000).catch(() => {});
     await onPage(4);
 
     /* Host a room: meet, then the maps hosting, then a double click. */
@@ -2979,13 +2992,14 @@ async function sceneGate() {
     await page.until("document.querySelector('.wp-card')", 10000);
     await page.evaluate("(() => { window.__ui.picker.select('map:bardwell'); return 1; })()");
     await wait(300);
-    check('and the map\'s one button is Host a room here', await page.evaluate("[...document.querySelectorAll('.wp-act')].map((b) => b.textContent).join() === 'Host a room here'"),
-      await page.evaluate("[...document.querySelectorAll('.wp-act')].map((b) => b.textContent).join()"));
+    /* The quad badge's Change button (2026-11-11) is also in the acts row; the map's own buttons are the rest. */
+    check('and the map\'s one button is Host a room here', await page.evaluate("[...document.querySelectorAll('.wp-act:not(.wp-quad-change)')].map((b) => b.textContent).join() === 'Host a room here'"),
+      await page.evaluate("[...document.querySelectorAll('.wp-act:not(.wp-quad-change)')].map((b) => b.textContent).join()"));
     check('the hint says a double click hosts', await page.evaluate(SEES('Host here', '.ui-root, body')));
     check('and the chosen map\'s panel, which never scrolls away, says Hosting a room', await page.evaluate(SEES('Hosting a room', '.wp-hero')));
     await wait(300);
     await shot('hosting');
-    const own = await page.evaluate("(() => { const c = [...document.querySelectorAll('.wp-card')].find((b) => /Your map/.test(b.getAttribute('aria-label') || '')); if (!c) return 'none'; c.click(); return [...document.querySelectorAll('.wp-act')].map((b) => `${b.textContent}:${b.disabled}`).join(); })()");
+    const own = await page.evaluate("(() => { const c = [...document.querySelectorAll('.wp-card')].find((b) => /Your map/.test(b.getAttribute('aria-label') || '')); if (!c) return 'none'; c.click(); return [...document.querySelectorAll('.wp-act:not(.wp-quad-change)')].map((b) => `${b.textContent}:${b.disabled}`).join(); })()");
     check('a map only this computer has cannot be hosted, and says why', own === 'none' || own === 'Only on this computer:true', own);
     await page.evaluate(`(() => {
       const c = [...document.querySelectorAll('.wp-card')].find((b) => /Bardwell/.test(b.getAttribute('aria-label') || ''));
@@ -3586,10 +3600,10 @@ async function sceneVote() {
     await page.until("document.querySelector('.wp-card')", 10000);
     await page.evaluate("(() => { window.__ui.picker.select('map:city'); return 1; })()");
     await wait(300);
-    check('the map\'s one button is Move the room here', await page.evaluate("[...document.querySelectorAll('.wp-act')].map((b) => b.textContent).join() === 'Move the room here'"),
-      await page.evaluate("[...document.querySelectorAll('.wp-act')].map((b) => b.textContent).join()"));
+    check('the map\'s one button is Move the room here', await page.evaluate("[...document.querySelectorAll('.wp-act:not(.wp-quad-change)')].map((b) => b.textContent).join() === 'Move the room here'"),
+      await page.evaluate("[...document.querySelectorAll('.wp-act:not(.wp-quad-change)')].map((b) => b.textContent).join()"));
     await shot('picker');
-    await page.evaluate("(() => { [...document.querySelectorAll('.wp-act')].find((b) => b.textContent === 'Move the room here').click(); return 1; })()");
+    await page.evaluate("(() => { [...document.querySelectorAll('.wp-act:not(.wp-quad-change)')].find((b) => b.textContent === 'Move the room here').click(); return 1; })()");
     check('the vote is asked and the picker gives way to the flight', await page.until(`${T} && window.__together().vote && window.__ui.screen === 'flight'`, 10000).then(() => true, () => false));
     check('the pilot in the room hears it', await until(() => fern.s.link.vote && fern.s.link.vote.mapName === 'The town', 5000));
     check('the host sees the tally', await page.until(SEES('Moving the room to The town', '#tg .tg-banner'), 5000).then(() => true, () => false));

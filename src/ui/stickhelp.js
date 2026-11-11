@@ -64,12 +64,30 @@
  * came that way; only their GPUs, Adreno and Mali, gave them away. A coarse
  * primary pointer is the tell available here: a Linux laptop with a touch
  * screen still points with its touchpad, a phone points with a finger.
+ *
+ * THE HEADSET THAT SAYS IT IS A LINUX DESKTOP, AND POINTS LIKE ONE. A Meta
+ * Quest runs Android, and its browser is Chrome for Android under Meta's
+ * name, so a radio meets Chrome's four axis fallback there exactly as on a
+ * phone: bug-31e24347 (an ExpressLRS radio, throttle lost) and bug-aceaa2c9
+ * (a HelloRadioSky V12, "El yaw no lo detecta") both arrived as four axes and
+ * seventeen buttons with no mapping, the phone tickets' shape. But it sends
+ * "X11; Linux x86_64; Quest 3" always, its Client Hints platform follows the
+ * string (Chromium keeps the two agreeing), and nothing makes its controllers
+ * a coarse pointer. So it read as Linux, and both pilots were sent to jstest-gtk and a
+ * wizard that cannot finish with a stick missing, never to the recipe that
+ * can bring the stick back. The browser names itself OculusBrowser in every
+ * version, and that is the tell. input.js asks the same question of the
+ * same string (androidChromeHost) for its guess of a radio's layout, with a
+ * copy of this pattern rather than an import, so that file keeps its two
+ * imports; scripts/input-selftest.js holds the two to the same answers.
  */
+export const ANDROID_BROWSER = /Android|OculusBrowser\//;
+
 export function stickPlatform(env = {}) {
   const ua = String(env.userAgent || '');
   const p = String(env.uaPlatform || '');
   const touch = Number(env.maxTouchPoints) || 0;
-  if (/android/i.test(p) || /Android/.test(ua)) {
+  if (/android/i.test(p) || ANDROID_BROWSER.test(ua)) {
     return 'android';
   }
   /* iPadOS asks for the desktop site by default and says Macintosh, with
@@ -92,9 +110,14 @@ export function stickPlatform(env = {}) {
   return 'other';
 }
 
-/* Which browser, for the two whose own behaviour the advice names. */
+/* Which browser, for the ones whose own behaviour the advice names. 'quest'
+ * is Meta's browser on the headset: Chrome for Android underneath, with no
+ * Play Store to update it from, so the Android advice is worded for it. */
 export function stickBrowser(userAgent = '') {
   const ua = String(userAgent);
+  if (/OculusBrowser\//.test(ua)) {
+    return 'quest';
+  }
   if (/Firefox\//.test(ua)) {
     return 'firefox';
   }
@@ -322,7 +345,8 @@ export function stickSay(view, platform = 'other', browser = '') {
   const dead = v.dead || [];
   if (dead.length) {
     const where = platform === 'android' && v.fourAxes
-      ? ' This phone is passing on four of your radio\'s axes, so if no bar moves, Chrome is dropping it.'
+      ? ` This ${browser === 'quest' ? 'headset' : 'phone'} is passing on four of your radio's axes,`
+        + ' so if no bar moves, Chrome is dropping it.'
       : '';
     return `${capital(channelList(dead))} did not move once in flight. Move ${dead.length > 1 ? 'those sticks' : 'that stick'}`
       + ` now and watch the bars.${where}`;
@@ -385,21 +409,28 @@ const RADIO_LINE = 'On the radio: choose USB joystick mode as you plug it in, be
 export function platformHelp(platform, browser = 'chromium', facts = {}) {
   const four = facts.fourAxes ? ` Your radio is arriving as ${facts.axisCount || 4} axes.` : '';
   if (platform === 'android') {
+    /* A Quest's browser is Chrome for Android under another name, with the
+     * same four axis fallback and no Play Store: see ANDROID_BROWSER. */
+    const quest = browser === 'quest';
     return {
-      title: 'If no bar moves: Android',
+      title: quest ? 'If no bar moves: Meta Quest' : 'If no bar moves: Android',
       lines: [
-        'Chrome on Android passes on only four of a radio\'s channels and drops the rest: channels'
+        (quest ? 'The Quest\'s browser is Chrome for Android underneath, and it' : 'Chrome on Android')
+          + ' passes on only four of a radio\'s channels and drops the rest: channels'
           + ' 1 and 2, one of channels 3 and 4, and one of channels 5 and 6. Most radios send throttle'
           + ' on 3 and yaw on 4, so one of those two never arrives, most often yaw. Nothing in this'
           + ` page or any other can bring a dropped channel back, calibrating included.${four}`,
-        'Try this first: update Chrome from the Play Store, or install Chrome Beta. Newer Chrome passes'
-          + ' on every channel, and this page reads a radio laid out that way without any setup.',
+        quest
+          ? 'Try this first: update the headset. Newer Chrome passes on every channel, and this page'
+            + ' reads a radio laid out that way without any setup, once the Quest\'s browser has caught up.'
+          : 'Try this first: update Chrome from the Play Store, or install Chrome Beta. Newer Chrome passes'
+            + ' on every channel, and this page reads a radio laid out that way without any setup.',
         'The fix is on the radio. Make a copy of the model you fly the sim with, because the copy'
           + ' gives up its channels 5 and 6, which often carry the arm switch. In the copy, on the'
           + ' Mixes page, clear channels 5 and 6 and give each of them one line whose source is the'
           + ' stick that does not arrive: Rud for yaw, Thr for throttle. Chrome keeps one of those two'
           + ' channels, so the stick comes through on it. Then run Calibrate sticks.',
-        'That should work on any EdgeTX or OpenTX radio, and nobody has confirmed it on a phone yet,'
+        `That should work on any EdgeTX or OpenTX radio, and nobody has confirmed it on a ${quest ? 'headset' : 'phone'} yet,`
           + ' so say whether it did with Report a bug from this screen. A radio whose channels cannot'
           + ' be changed, a DJI controller among them, needs a computer for now, which sees every axis.',
         RADIO_LINE,

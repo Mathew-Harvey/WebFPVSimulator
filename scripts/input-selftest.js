@@ -133,7 +133,7 @@ function makePad(axes, buttons = 0, id = 'Selftest radio') {
 installEnv(null);
 const {
   InputManager, calSteps, SELECT_STEP, KEY_THROTTLE_MODES, normaliseKeyThrottle,
-  PAD_DEADZONES, normalisePadDeadzone, PAD_THROTTLES, normalisePadThrottle,
+  PAD_DEADZONES, normalisePadDeadzone, PAD_THROTTLES, normalisePadThrottle, androidChromeUa,
 } = await import('../src/input/input.js');
 const { hoverStickPercent } = await import('../configs/rates.js');
 const {
@@ -2144,6 +2144,37 @@ section('stick help: which machine, and what the screen says');
   check('a Linux laptop with a touch screen and a touchpad is Linux',
     stickPlatform({ userAgent: desktopLinux, maxTouchPoints: 10, coarse: false }) === 'linux');
   check('Client Hints are believed over the string', stickPlatform({ userAgent: desktopLinux, uaPlatform: 'Android' }) === 'android');
+  /*
+   * bug-aceaa2c9 (a HelloRadioSky V12 on a Quest 3, yaw lost) and bug-31e24347
+   * (an ExpressLRS radio on a Quest 3, throttle lost): Chrome for Android's
+   * four axis shape, from a browser whose string and Client Hints say Linux
+   * and whose controllers point like a mouse. Read as Linux, the pilot was
+   * sent to jstest-gtk. The ticket's own user agent, word for word.
+   */
+  const questUa = 'Mozilla/5.0 (X11; Linux x86_64; Quest 3) AppleWebKit/537.36 (KHTML, like Gecko) OculusBrowser/154.1.0.32.54.1101200317 Chrome/154.0.8037.126 VR Safari/537.36';
+  check('a Quest 3 is Android, with its Client Hints saying Linux and a pointer that is not coarse: bug-aceaa2c9',
+    stickPlatform({ userAgent: questUa, uaPlatform: 'Linux', maxTouchPoints: 0, coarse: false }) === 'android'
+    && stickPlatform({ userAgent: questUa }) === 'android', stickPlatform({ userAgent: questUa, uaPlatform: 'Linux' }));
+  check('and its browser is named, so the advice is not about a phone or the Play Store',
+    stickBrowser(questUa) === 'quest' && stickBrowser(phoneUa) === 'chromium' && stickBrowser(desktopLinux) === 'chromium');
+  check('input.js asks the same question of the same strings: the guess and the advice agree on what is Android',
+    androidChromeUa(questUa, 'Linux') === true && androidChromeUa(phoneUa) === true
+    && androidChromeUa(desktopLinux, 'Android') === true
+    && [questUa, phoneUa, desktopLinux, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36']
+      .every((ua) => androidChromeUa(ua, 'Linux') === (stickPlatform({ userAgent: ua, uaPlatform: 'Linux' }) === 'android'))
+    && androidChromeUa('Mozilla/5.0 (Android 14; Mobile; rv:156.0) Gecko/156.0 Firefox/156.0') === false);
+  {
+    const quest = platformHelp(stickPlatform({ userAgent: questUa, uaPlatform: 'Linux' }), stickBrowser(questUa),
+      { fourAxes: true, axisCount: 4 });
+    const text = quest.lines.join(' ');
+    check('the Quest\'s block: the four channel fallback and the radio recipe, said of the headset, with no Play Store',
+      quest.title === 'If no bar moves: Meta Quest' && /only four of a radio's channels/.test(text)
+      && /arriving as 4 axes/.test(text) && /clear channels 5 and 6/.test(text) && /update the headset/.test(text)
+      && /on a headset yet/.test(text) && !/Play Store|Chrome Beta|jstest|evtest/.test(text), quest.title);
+    check('and its sentence for a dead yaw names the headset, where the phone\'s names the phone',
+      /This headset is passing on four/.test(stickSay({ pad: 'Radio', axisCount: 4, dead: ['yaw'], fourAxes: true }, 'android', 'quest'))
+      && /This phone is passing on four/.test(stickSay({ pad: 'Radio', axisCount: 4, dead: ['yaw'], fourAxes: true }, 'android', 'chromium')));
+  }
   check('an iPad asking for the desktop site says Macintosh with touch points: iPad',
     stickPlatform({ userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Safari/605.1.15', maxTouchPoints: 5 }) === 'ios');
   check('a Mac is a Mac', stickPlatform({ userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Safari/605.1.15' }) === 'mac');

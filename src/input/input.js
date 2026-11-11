@@ -608,15 +608,24 @@ function firefoxRadioGuessMap() {
  * gets every check the AETR guess gets, so a radio wired some other way is
  * still told to calibrate. Worked out from both ends' source, not flown on a
  * phone yet. Firefox on Android is left out: its gamepad code is its own.
+ *
+ * A Meta Quest's browser is this Chrome under another name, and says "X11;
+ * Linux" with a Client Hints platform to match, so it is known by its own
+ * token, OculusBrowser: bug-31e24347 and bug-aceaa2c9 brought radios from a
+ * Quest 3 in the four axis shape above. The same test as stickPlatform's
+ * ANDROID_BROWSER in src/ui/stickhelp.js, copied rather than imported.
  */
+export function androidChromeUa(ua, platform = '') {
+  const s = String(ua || '');
+  return (/Android|OculusBrowser\//.test(s) || /android/i.test(String(platform || ''))) && !/Firefox\//.test(s);
+}
+
 function androidChromeHost() {
   const nav = typeof navigator !== 'undefined' ? navigator : null;
   if (!nav) {
     return false;
   }
-  const ua = String(nav.userAgent || '');
-  const platform = String((nav.userAgentData && nav.userAgentData.platform) || '');
-  return (/Android/.test(ua) || /android/i.test(platform)) && !/Firefox\//.test(ua);
+  return androidChromeUa(nav.userAgent, nav.userAgentData && nav.userAgentData.platform);
 }
 
 function androidExtraAxesPad(gp) {

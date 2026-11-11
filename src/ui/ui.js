@@ -23284,13 +23284,21 @@ export class Ui {
       clearLocationHash();
     }
     /*
-     * The room this one was opened from, if it was opened from one. A
-     * paused run still wins: returnTo is the pause chain and losing it
-     * strands a flight. Cleared as it is used, so a second Back from the
+     * The room this one was opened from, if it was opened from one. In a
+     * paused run only Settings and Quad, the rooms the pause opens, count:
+     * a room left over from before the flight (Maps, say) is not on the
+     * way back to the run. The pause chain itself is kept by returnTo,
+     * which showing the room does not touch. Cleared as it is used, so a
+     * second Back from the
      * room we just returned to goes on to the title rather than bouncing
      * between the two.
      */
-    if (this.returnTo !== 'paused' && this.roomFrom) {
+    /* Inside a paused run as well: Settings opened from the pause, then
+     * Advanced or Stick help, is Settings again on Back, as it is from the
+     * title and as Rates already was (ratesFrom). Showing Settings keeps
+     * returnTo, so the run is still one more Back away. The menu sweep of
+     * 2026-11-11 found these two skipping Settings back to the pause. */
+    if (this.roomFrom && (this.returnTo !== 'paused' || this.roomFrom === 'pilot' || this.roomFrom === 'quad')) {
       const from = this.roomFrom;
       this.roomFrom = null;
       this.show(from);
@@ -24373,6 +24381,22 @@ export class Ui {
       this.gatePage = null;
       this.gateTurn = 'back';
       this.setCursor(this.titleStop());
+      this.renderMenu();
+    } else if (action === 'title' && from !== 'title' && this.mode && !this.careerLesson) {
+      /* BACK FROM A WAY'S ROOMS IS THE PAGE THE WAY WAS PICKED ON, Fly solo,
+       * with the cursor on that way, and never the list behind the gate.
+       * The menu sweep of 2026-11-11 found Escape from the Tracks or Maps
+       * picker (and Before you fly, and every room under them) landing on
+       * that list, the "legacy screen" the owner had already asked to be
+       * rid of on the way out of a flight. Its rows (Track, Quad, Settings,
+       * How to fly, About) are all on the gate's own pages and corner. */
+      const way = seatedWay(this.settings, this.mode).action;
+      this.mode = null;
+      this.craftGate = true;
+      this.gatePage = 'solo';
+      this.gateTurn = 'back';
+      const at = this.items().findIndex((it) => it.action === way);
+      this.setCursor(at >= 0 ? at : this.titleStop());
       this.renderMenu();
     }
     /* Freestyle reaches the air through here rather than through the launch

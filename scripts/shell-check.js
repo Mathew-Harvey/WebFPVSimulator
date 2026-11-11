@@ -966,6 +966,34 @@ const BEHAVIOUR = `(() => {
     ui.back();
     trips.paused = ui.screen;
 
+    /* Settings from the pause, then a room of its own (Advanced, Stick
+     * help): Back is Settings, and Back again the pause. The menu sweep of
+     * 2026-11-11 found both skipping Settings straight to the pause. */
+    for (const door of ['advanced', 'stickhelp']) {
+      ui.show('title');
+      ui.roomFrom = null;
+      ui.returnTo = 'paused';
+      ui.show('paused');
+      ui.act('pilot');
+      ui.act(door);
+      const hops = [ui.screen];
+      ui.back(); hops.push(ui.screen);
+      ui.back(); hops.push(ui.screen);
+      trips['pause-' + door] = hops;
+    }
+
+    /* Back from a way's rooms (the Tracks or Maps picker) is the gate's Fly
+     * solo page, never the list behind the gate (the owner, 2026-11-11, on
+     * that list: "this is the legacy screen"). */
+    ui.returnTo = null;
+    ui.roomFrom = null;
+    ui.show('title');
+    ui.mode = 'race';
+    ui.craftGate = false;
+    ui.act('courses');
+    ui.back();
+    trips.wayBack = [ui.screen, ui.onGate(), ui.gatePageNow()].join(' ');
+
     ui.returnTo = null;
     ui.roomFrom = null;
     ui.show('title');
@@ -2284,6 +2312,15 @@ async function main() {
       const d = rr.deep || [];
       if (d.join(' -> ') !== 'rates -> quad -> freestyle') {
         failures.push(`room return: freestyle to quad to rates and back twice went "${d.join(' -> ')}"`);
+      }
+      for (const door of ['advanced', 'stickhelp']) {
+        const hops = (rr['pause-' + door] || []).join(' -> ');
+        if (hops !== `${door} -> pilot -> paused`) {
+          failures.push(`room return: Settings from the pause, then ${door}, then Back twice went "${hops}"`);
+        }
+      }
+      if (rr.wayBack !== 'title true solo') {
+        failures.push(`room return: Back from Tracks landed on "${rr.wayBack}", not the gate's Fly solo page`);
       }
       if (rr.paused !== 'paused') {
         failures.push(`room return: a paused run lost its pause chain, Back landed on "${rr.paused}"`);

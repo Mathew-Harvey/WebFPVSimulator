@@ -75692,6 +75692,13 @@ What went wrong: this is the third outline change of the day. I offered to lower
 - Overlap: the Steam thread's sim PR 261 touches hosting after whoop racing; whichever lands second merges.
 - The owner, 2026-11-11 09:32Z: "push to main". Main fast forwarded to this branch (PR 262).
 
+## 2026-11-11: drift smoke partly transparent
+
+- The owner, 09:42Z: "add some trasparency in the drift smoke".
+- Change, `src/maps/built/cars.js` only: the smoke material is now `transparent` with `depthWrite: false`, and the fragment writes alpha 0.62 for the fill and shade and 0.85 for the ink rim, in place of 1.0. Shape, count, life and the near clear are untouched.
+- Latency: no change to the flight loop or input path. Still one mesh and one draw call; the fragment shader does the same work (a constant alpha). The cost is blending on the puffs' pixels, a small fill cost: the shader already discarded, so early z was already off for it. Proxies only, no GPU here: draw calls, triangles and shader instructions unchanged. Real check is the sim's Input to screen reading and frame time on a drift map.
+- Checks: `npm run check:drift` 29 passed, 0 failed. Not run: shots, verify. Nothing here checks how the alpha looks.
+- The owner, 2026-11-11 09:47Z: "push to main". Main fast forwarded to this branch (PR 263).
 ## 2026-11-11: the pause's Quad row as pictures, and Infected's room on the whoop
 
 - The owner, 09:39Z, with two screenshots: "the quad picker is still just text.... in the game map infected, on multi player, i don' tget a quad choice at all when starting, it defaults to 5 inch and the menu does't show a change quad option". Asked on a card whether Infected should stay whoops only; the owner picked "Whoops only, fix the bug" (09:42Z).

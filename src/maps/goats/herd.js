@@ -103,6 +103,27 @@ const LOOK = [0.55, 1.1];
 export const GARAGE_IN = { x0: 14.0, x1: 17.75, y0: 0.9, y1: 7.5 };
 const GARAGE_PEN = { x0: 14.5, x1: 17.25, y0: 1.2, y1: 7.2 };
 
+/*
+ * THE ARROW AT THE GARAGE (GoatHud.aim in src/ui/goathud.js). out.deg is
+ * how far right of straight ahead the target lies (negative is left),
+ * from the eye at (ex, ez) looking along (dx, dz), all horizontal in the
+ * render's frame; out.m is the distance, in the world's metres over S.
+ * Looking straight up or down, where the horizontal view is a point, out.deg
+ * is left as it was. Pure, so the check can run it without a browser.
+ */
+export function aimAt(out, ex, ez, dx, dz, tx, tz, S) {
+  const hl = Math.hypot(dx, dz);
+  const vx = tx - ex;
+  const vz = tz - ez;
+  if (hl > 0.1) {
+    const fx = dx / hl;
+    const fz = dz / hl;
+    out.deg = (Math.atan2(vx * -fz + vz * fx, vx * fx + vz * fz) * 180) / Math.PI;
+  }
+  out.m = Math.hypot(vx, vz) / S;
+  return out;
+}
+
 /* No goat starts nearer the garage than this. */
 const START_FAR = 28;
 

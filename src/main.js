@@ -7753,8 +7753,14 @@ export async function boot({ loading, bootStart, mapId }) {
     /* As the take's, above: the herd still runs, its HUD and its HOME!
      * callouts wait for the fight to end. */
     ui.goatHud.setVisible(Boolean(game) && !fightGame && !replayMode && (ui.screen === 'flight' || ui.screen === 'paused'));
+    /* The arrow at the garage is up whenever the map is being flown,
+     * round or no round, but not over a replay. */
+    ui.goatHud.setAim(Boolean(game) && !replayMode && (ui.screen === 'flight' || ui.screen === 'paused'));
     if (!game) {
       return;
+    }
+    if (ui.goatHud.aimOn) {
+      ui.goatHud.aim(game.aim(), game.herd.homeCount() >= game.herd.count);
     }
     const home = game.drain();
     if (fightGame) {

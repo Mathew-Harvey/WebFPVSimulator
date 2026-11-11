@@ -70,7 +70,7 @@ import { PATRONS, MAX_PATRON_GOATS, tidy } from '../src/maps/goats/patrons.js';
 import { hoodLayout, BOUNDS, PARK } from '../src/maps/goats/hood.js';
 import { goatsDocument } from '../src/maps/goats/yard.js';
 import {
-  makeGrid, makeHerd, homeField, GARAGE_IN, HOME,
+  makeGrid, makeHerd, homeField, GARAGE_IN, HOME, aimAt,
 } from '../src/maps/goats/herd.js';
 import { GOAT_BOTS, herdPoint } from '../src/game/goatround.js';
 import { GoatRoom } from '../src/game/goatroom.js';
@@ -952,7 +952,32 @@ function roomBlock(grid, names) {
   check('a feed of the host\'s round and its herd, under the solo step\'s line', stepUs / steps < STEP_US_MAX * 2, `${(stepUs / steps).toFixed(0)} us`);
 }
 
+/* The arrow at the garage (aimAt, GoatHud.aim): right of ahead is positive,
+ * behind is 180, looking straight down keeps the last angle, and the
+ * distance is in the house's real metres. */
+function aimBlock() {
+  console.log('8. aim');
+  const o = { deg: 0, m: 0 };
+  const near = (a, b) => Math.abs(a - b) < 1e-6;
+  /* Looking along -z (north in the render), the target east is right. */
+  aimAt(o, 0, 0, 0, -1, 10 * S, 0, S);
+  check('target to the right is +90', near(o.deg, 90) && near(o.m, 10), `${o.deg} ${o.m}`);
+  aimAt(o, 0, 0, 0, -1, -4 * S, 0, S);
+  check('target to the left is -90', near(o.deg, -90) && near(o.m, 4), `${o.deg}`);
+  aimAt(o, 0, 0, 0, -1, 0, -6 * S, S);
+  check('target dead ahead is 0', near(o.deg, 0) && near(o.m, 6), `${o.deg}`);
+  aimAt(o, 0, 0, 0, -1, 0, 6 * S, S);
+  check('target behind is 180', near(Math.abs(o.deg), 180), `${o.deg}`);
+  /* Turn to face east: the same east target is now dead ahead. */
+  aimAt(o, 0, 0, 1, 0, 10 * S, 0, S);
+  check('turning to face it makes it 0', near(o.deg, 0), `${o.deg}`);
+  o.deg = 33;
+  aimAt(o, 0, 0, 0, 0, 5 * S, 0, S);
+  check('looking straight down keeps the last angle', o.deg === 33 && near(o.m, 5), `${o.deg}`);
+}
+
 async function main() {
+  aimBlock();
   const house = houseBlock();
   const { hood, solids } = await streetBlock(house);
   const { grid, names } = goatsBlock(house, hood);

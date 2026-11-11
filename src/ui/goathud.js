@@ -49,15 +49,29 @@ function clockText(s) {
 export class GoatHud {
   constructor(root) {
     this.root = el('div', 'goat-hud is-off');
-    this.box = el('div', 'goat-box score-cut');
+    this.box = el('div', 'goat-box score-cut is-off');
     const head = el('div', 'goat-head', 'Goats home');
     this.count = el('div', 'goat-count', '0');
     this.of = el('div', 'goat-of', '');
     this.clock = el('div', 'goat-clock', '');
     this.run = el('div', 'goat-run', '');
     this.box.append(head, this.count, this.of, this.clock, this.run);
-    this.root.append(this.box);
+    /* THE TARGET, always up while the map is played: an arrow that points
+     * at Heads' garage whichever way the camera looks, and what it is for.
+     * A new pilot's first question is where the goats go. */
+    this.aimBox = el('div', 'goat-aim is-off');
+    this.arrow = el('div', 'goat-arrow');
+    this.arrow.setAttribute('aria-hidden', 'true');
+    this.arrow.textContent = '\u25B2';
+    const words = el('div', 'goat-aim-words');
+    this.aimTitle = el('div', 'goat-aim-title', "Herd the goats into Heads' garage");
+    this.aimDist = el('div', 'goat-aim-dist', '');
+    words.append(this.aimTitle, this.aimDist);
+    this.aimBox.append(this.arrow, words);
+    this.root.append(this.box, this.aimBox);
     root.append(this.root);
+    this.aimOn = false;
+    this.aimLast = { deg: null, m: null, shown: null };
     this.visible = false;
     this.last = { home: -1, total: -1, sec: -1, herding: null, started: null, all: null };
   }
@@ -67,7 +81,43 @@ export class GoatHud {
       return;
     }
     this.visible = on;
-    this.root.classList.toggle('is-off', !on);
+    this.box.classList.toggle('is-off', !on);
+    this.syncRoot();
+  }
+
+  /* The target is shown on its own (a round has its own score box, and
+   * still needs to be told where the goats go). */
+  setAim(on) {
+    if (on === this.aimOn) {
+      return;
+    }
+    this.aimOn = on;
+    this.aimBox.classList.toggle('is-off', !on);
+    this.syncRoot();
+  }
+
+  syncRoot() {
+    this.root.classList.toggle('is-off', !this.visible && !this.aimOn);
+  }
+
+  /* a: { deg, m } from map.goatGame.aim(), or null. Writes the DOM only
+   * when the arrow has turned two degrees or the distance five metres. */
+  aim(a, allHome) {
+    if (!this.aimOn || !a) {
+      return;
+    }
+    const L = this.aimLast;
+    const deg = Math.round(a.deg / 2) * 2;
+    const m = Math.round(a.m / 5) * 5;
+    if (deg !== L.deg) {
+      L.deg = deg;
+      this.arrow.style.transform = `rotate(${deg}deg)`;
+    }
+    if (m !== L.m || allHome !== L.shown) {
+      L.m = m;
+      L.shown = allHome;
+      this.aimDist.textContent = allHome ? 'All of them are home' : `${m} m away`;
+    }
   }
 
   /* s: { home, total, clockS, started, herding }. Cheap every frame. */

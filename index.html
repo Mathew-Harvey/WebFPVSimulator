@@ -1197,6 +1197,16 @@
          seen and a goat home are called out. */
       .goat-hud { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
       .goat-hud.is-off { display: none; }
+      .goat-box.is-off, .goat-aim.is-off { display: none; }
+      .goat-aim {
+        position: absolute; left: clamp(18px, 3vw, 40px); top: 47%;
+        display: flex; align-items: center; gap: 10px; padding: 7px 14px 7px 10px;
+        background: rgba(11, 17, 22, 0.55); border: 1px solid rgba(255, 244, 224, 0.35); border-radius: 999px;
+        max-width: 46vw; line-height: 1.15;
+      }
+      .goat-arrow { font-size: 22px; color: var(--amber); width: 26px; text-align: center; will-change: transform; }
+      .goat-aim-title { font-size: 12px; letter-spacing: 0.08em; font-weight: 700; color: var(--cream); }
+      .goat-aim-dist { font-size: 11px; letter-spacing: 0.08em; color: var(--mint); margin-top: 3px; }
       .goat-box {
         position: absolute; left: clamp(18px, 3vw, 40px); top: 24%;
         display: flex; flex-direction: column; align-items: flex-start; line-height: 1; max-width: 40vw;

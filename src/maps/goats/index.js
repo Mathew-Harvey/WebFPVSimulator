@@ -66,7 +66,7 @@ import { WALL_STICKERS } from '../heads/logos.js';
 import { stfKey } from '../built/egg.js';
 import { hoodLayout, BOUNDS, PARK } from './hood.js';
 import { goatsDocument } from './yard.js';
-import { makeGrid, makeHerd, HOME } from './herd.js';
+import { makeGrid, makeHerd, HOME, GARAGE_IN, aimAt } from './herd.js';
 import { makeGoatDraw, logoPose, patronPicture } from './goatdraw.js';
 import { tidy as tidyPatrons } from './patrons.js';
 import { cellShadows } from './shadows.js';
@@ -308,6 +308,24 @@ export async function buildMap(shell, onProgress, options) {
           hud.herding = best >= 0 ? herd.names[best] : '';
           return hud;
         },
+        /*
+         * WHERE THE GARAGE IS, for the arrow that is always on the screen
+         * (GoatHud.aim in src/ui/goathud.js): the angle the garage's
+         * middle is right of straight ahead of the camera, degrees, and
+         * the distance to it, real metres. Nothing is drawn in the world,
+         * so it costs no draw call: a handful of multiplies a frame. A
+         * camera looking straight up or down has no ahead, and keeps the
+         * last angle.
+         */
+        aim() {
+          const cam = shell.camera;
+          if (!cam) {
+            return null;
+          }
+          cam.getWorldDirection(aimDir);
+          aimAt(aimOut, cam.position.x, cam.position.z, aimDir.x, aimDir.z, garageAt[0], garageAt[2], S);
+          return aimOut;
+        },
         /* The goats home since the last ask: [{ name, count, total, atS,
          * sticker }], the sticker its logo's, for its picture. */
         drain() {
@@ -353,6 +371,9 @@ export async function buildMap(shell, onProgress, options) {
       const eye = shell.camera.position;
       const craft = { x: 0, y: 0, h: 0 };
       const game = map.goatGame;
+      const aimDir = new THREE.Vector3();
+      const aimOut = { deg: 0, m: 0 };
+      const garageAt = worldAt((GARAGE_IN.x0 + GARAGE_IN.x1) / 2, (GARAGE_IN.y0 + GARAGE_IN.y1) / 2, 0);
       function update(ms) {
         let dt = last === null ? 0 : (ms - last) / 1000;
         last = ms;

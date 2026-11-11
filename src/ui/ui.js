@@ -16597,10 +16597,11 @@ export class Ui {
     this.mapGamePick = false;
     /* move: the host of a room taking it to another map, from the pause
      * menu, which is where the pilot goes back to. */
-    this.hostPick = {
+    const pick = {
       way, move, game: move ? '' : game, from: this.onGate() ? 'gate' : this.screen,
     };
     if (isCardScreen(this.screen) && this.pickerShelf() === shelf) {
+      this.hostPick = pick;
       this.paintHostPick();
       return;
     }
@@ -16610,7 +16611,22 @@ export class Ui {
       this.craftGate = false;
       this.settings.airframeAsked = true;
     }
+    /*
+     * HOSTING STARTS ONCE THE PICKER IS UP. A pilot whose last aircraft was
+     * the whoop is seated on the five inch by pickerShelfChosen, and that
+     * swap shows the title for a moment (main.js syncWorld) because no
+     * picker is open yet; show() ends hosting on any screen that is not a
+     * card screen, so hosting set before it was gone by the time the maps
+     * appeared. The owner, 2026-11-10: "i clicked host a room and nothing
+     * happened": he got the maps with Fly this on them, and flew solo.
+     * Set after, and the picker drawn again so its one button is Host a
+     * room here.
+     */
     this.pickerShelfChosen(shelf);
+    this.hostPick = pick;
+    if (this.picker) {
+      this.picker.refresh();
+    }
     this.paintHostPick();
   }
 

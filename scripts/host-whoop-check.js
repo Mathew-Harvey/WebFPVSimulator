@@ -80,6 +80,11 @@ async function main() {
     }
     check('the pilot is on the whoop', await ev('return window.__ui.settings.airframe') === 'whoop65', await ev('return window.__ui.settings.airframe'));
     await click('.gate-card-together');
+    /* Multiplayer asks which kind of room first (since 2026-11-11):
+     * Freestyle is the Maps shelf, which flies the five inch. */
+    if (await until("document.querySelector('.gate-card-mw-freestyle')", 8000)) {
+      await click('.gate-card-mw-freestyle');
+    }
     check('Multiplayer opens its page', await until("document.querySelector('.gate-card-mp-host')", 8000), await ev('return window.__ui.gatePage'));
     await click('.gate-card-mp-host');
     /* A pilot nobody has met yet is asked who they are first. */
@@ -94,7 +99,9 @@ async function main() {
     await ev("window.__ui.picker.select('map:bardwell'); return 1;");
     await sleep(400);
     const acts = await ev("return [...document.querySelectorAll('.wp-act')].map((b) => b.textContent).join()");
-    check('and the map\'s one button is Host a room here', acts === 'Host a room here', acts);
+    /* The quad badge's own button (Change to whoop) may sit beside it. */
+    const hostOnly = acts.split(',').filter((a) => !/^Change to /.test(a)).join();
+    check('and the map\'s one button is Host a room here', hostOnly === 'Host a room here', acts);
   } finally {
     await page.close?.();
   }

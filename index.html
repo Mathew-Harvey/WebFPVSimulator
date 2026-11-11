@@ -2820,14 +2820,6 @@
         grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) minmax(0, 1fr);
         grid-template-rows: minmax(0, 1fr);
       }
-      /* The first page, which quad (src/ui/gatepages.js GATE_QUADS): two
-         panels the same size, the whoop first. */
-      .gate-page-quad .gate-grid {
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-        grid-template-rows: minmax(0, 1fr);
-      }
-      .gp-q-quad { left: 26%; top: 12%; width: 60%; max-width: 360px; }
-      .gp-q-sfx { left: 6%; top: 34%; width: 38%; max-width: 220px; }
       /* Mini games on the cover is a plain third column: the solo page's
          named area means nothing on this grid, and a name the grid does not
          have puts the card in an implicit track nobody can see. */
@@ -2863,10 +2855,6 @@
           "career career career career week week week week week week week week";
       }
       .gate-card-week { grid-area: week; }
-      /* One racing card, the first page's quad's: the whole top row beside
-         the career, in place of the two halves. */
-      .gate-page-solo .gate-grid.one-race .gate-card-race-5inch,
-      .gate-page-solo .gate-grid.one-race .gate-card-race-whoop65 { grid-area: 1 / 5 / 2 / 13; }
       .gate-card-mp-host { grid-area: host; }
       .gate-card-mp-find { grid-area: find; }
       .gate-card-mp-code { grid-area: code; }
@@ -5169,8 +5157,6 @@
         }
         .gate-page-cover .gate-grid { grid-template-columns: minmax(0, 1fr); }
         .gate-card { grid-area: auto; box-shadow: 5px 5px 0 var(--gc-ink); }
-        .gate-page-solo .gate-grid.one-race .gate-card-race-5inch,
-        .gate-page-solo .gate-grid.one-race .gate-card-race-whoop65 { grid-area: auto; }
         .gate-card-career { grid-column: 1 / -1; }
         .gate-card-chips { display: none; }
         .gate-card.on { box-shadow: 0 0 0 3px var(--sakura), 7px 7px 0 3px var(--gc-ink); }
@@ -5273,8 +5259,6 @@
           gap: 10px;
         }
         .gate-card, .gate-card-career { grid-area: auto; grid-column: auto; }
-        .gate-page-solo .gate-grid.one-race .gate-card-race-5inch,
-        .gate-page-solo .gate-grid.one-race .gate-card-race-whoop65 { grid-area: auto; }
         .gate-head-title { font-size: 18px; }
         .gate-card-nm { left: calc(var(--gc-bleed) + 6px); right: calc(var(--gc-bleed) + 6px); bottom: 5px; }
         .gate-card-blurb, .gate-page-cover .gate-card-blurb { display: none; }

@@ -312,11 +312,6 @@ async function run(size) {
     /* ---------------- the gate ---------------- */
     let v = await view();
     check('boot: the title gate, the career not loaded', v.ui === 'title' && v.state === null, `${v.ui}, career ${v.state}`);
-    /* The gate's first page asks which quad (2026-11-11): Enter takes the
-     * seated one, and the cover follows. */
-    await page.until("window.__ui.gatePageNow() === 'quad'");
-    await tap('Enter');
-    await page.until("window.__ui.gatePageNow() === 'cover'");
     await tap('Enter');
     await page.until("window.__ui.gatePageNow() === 'solo'");
     const card = await page.evaluate('(() => { const it = window.__ui.items()[window.__ui.cursor]; return it ? it.action + "|" + it.label : null; })()');
@@ -793,10 +788,6 @@ async function run(size) {
     await page.evaluate('window.__beforeReload = true');
     await cdp.send('Page.reload', {}, sessionId);
     await page.until('!window.__beforeReload && !!window.__shellReady', 180000);
-    /* Past the first page, which quad, on the seated one. */
-    await page.until("window.__ui.gatePageNow() === 'quad'");
-    await tap('Enter');
-    await page.until("window.__ui.gatePageNow() === 'cover'");
     /* The cover's cursor is on Fly solo. It was on Multiplayer once a
      * lesson was flown and the seated way was the first one: the gate's
      * first cursor was a solo page index (ui.js, the constructor's

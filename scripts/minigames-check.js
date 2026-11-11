@@ -7,7 +7,7 @@
  * a round ending and the next one starting, leaving, a restart, a quad of
  * another size, and the results table's buttons.
  *
- *   node scripts/minigames-check.js [--only=menu,quadfirst,load,yard,touch,herd,driftbots,goats,drift,dogfight,ribbon,scale]
+ *   node scripts/minigames-check.js [--only=menu,quadswap,load,yard,touch,herd,driftbots,goats,drift,dogfight,ribbon,scale]
  *
  * Minutes of wall clock on a software rasteriser. Written for the bug hunt
  * of 2026-10-29 ("Across all games before we push to main, please do a bug
@@ -206,6 +206,14 @@ async function sceneHerd() {
     await ev("window.__ui.act('pause'); window.__ui.show('paused'); return 1;");
     const rows = await ev("return window.__ui.items().map((i) => i.label).join(',')");
     check('the pause has the round\'s rows', rows.includes('Change the round') && rows.includes('Leave the round'), rows);
+    /* Whoop or 5 inch from the pause (2026-11-11): the swap puts the
+     * pilot back on the spawn and the round goes on. */
+    check('and a Quad row', rows.includes('Quad'), rows);
+    const quadWas = await ev('return window.__ui.settings.airframe;');
+    await ev("window.__ui.act('quad-swap'); return 1;");
+    check('which swaps the quad mid round', await until(`return window.__ui.settings.airframe !== '${quadWas}' && window.__craft().run === window.__ui.settings.airframe;`, 20000), JSON.stringify(await ev('return window.__craft();')));
+    check('and the round is still on', await ev(`${G} return !g.over;`));
+    await ev("window.__ui.act('pause'); window.__ui.show('paused'); return 1;");
     await ev(`${G} window.__pen = g.pen; window.__ui.act('fight-leave'); return 1;`);
     check('leaving ends the round', await until('return window.__dogfight() === null', 5000));
     check('and the herd has no bots left in it', await ev('return window.__pen.nOthers === 0'));
@@ -283,51 +291,67 @@ async function sceneMapGame(map, hud, own = true) {
  * plain title menu. Goat herding's flight, quit to title, is back on the
  * page too.
  */
-/* Whoop picked on the first page: every menu after it flies the whoop. */
-async function sceneQuadFirst() {
-  console.log('quadfirst: whoop picked on the first page');
-  const page = await openPage({ root: ROOT, width: 1280, height: 720, url: '/index.html' });
-  const ev = async (body) => {
-    const r = await page.cdp.send('Runtime.evaluate', {
-      expression: `(async()=>{${body}})()`, awaitPromise: true, returnByValue: true,
-    }, page.sessionId);
+/*
+ * WHOOP OR 5 INCH FROM THE PAUSE (the owner, 2026-11-11): a freestyle map
+ * flown alone has a Quad row on its pause that swaps to the other quad and
+ * starts again from the spawn, flying; a race does not.
+ */
+async function sceneQuadSwap() {
+  console.log('quadswap: the pause swaps whoop and 5 inch');
+  const { page, ev, until } = await flying('city');
+  try {
+    await ev("window.__ui.act('pause'); window.__ui.show('paused'); return 1;");
+    await until("return window.__ui.screen === 'paused'", 5000);
+    const row = await ev("const it = window.__ui.items().find((i) => i.action === 'quad-swap'); return it ? it.label + '=' + it.value : '';");
+    const was = await ev('return window.__ui.settings.airframe;');
+    check('the town\'s pause has a Quad row naming the quad flown', row === `Quad=${was === 'whoop65' ? 'Whoop' : '5 inch'}`, `${row}, ${was}`);
+    await ev("window.__ui.act('quad-swap'); return 1;");
+    const want = was === 'whoop65' ? '5inch' : 'whoop65';
+    check('pressing it seats the other quad', await until(`return window.__ui.settings.airframe === '${want}';`, 5000), await ev('return window.__ui.settings.airframe;'));
+    check('the row now names it', await until(`const it = window.__ui.items().find((i) => i.action === 'quad-swap'); return Boolean(it) && it.value === '${want === 'whoop65' ? 'Whoop' : '5 inch'}';`, 5000));
+    check('the town remembers the pick for its picker', await ev(`return (window.__ui.settings.quadPicks || '').includes('city:${want}');`), await ev('return window.__ui.settings.quadPicks;'));
+    await ev("window.__ui.act('resume'); return 1;");
+    check('resume flies the new quad', await until("return window.__ui.screen === 'flight'", 10000));
+    check('and the plant flying is the new quad', await until(`const c = window.__craft(); return c.run === '${want}' && window.__ui.screen === 'flight';`, 20000), JSON.stringify(await ev('return window.__craft();')));
+    const errs = pageErrors(page);
+    check('no errors on the page', errs.length === 0, errs.slice(0, 3).join(' | '));
+  } finally {
+    await page.close();
+  }
+  /* Joining a mini game asks Whoop or 5 inch first: goat herding from
+   * the Mini games page opens the quad picker. */
+  const join = await openPage({ root: ROOT, width: 1280, height: 720, url: '/index.html' });
+  const jev = async (body) => {
+    const r = await join.cdp.send('Runtime.evaluate', { expression: `(async()=>{${body}})()`, awaitPromise: true, returnByValue: true }, join.sessionId);
     if (r.exceptionDetails) {
       throw new Error(JSON.stringify(r.exceptionDetails).slice(0, 900));
     }
     return r.result.value;
   };
-  const until = async (body, ms = 20000) => {
-    const end = Date.now() + ms;
-    while (Date.now() < end) {
-      if (await ev(body)) {
-        return true;
-      }
-      await sleep(200);
-    }
-    return false;
-  };
   try {
-    check('the title is up', await until("return Boolean(window.__ui && window.__ui.screen === 'title' && window.__ui.onGate())", 120000));
-    await ev("window.__ui.act('gate-quad:whoop65'); return 1;");
-    check('Whoop seats the whoop and turns on', await until("const u = window.__ui; return u.settings.airframe === 'whoop65' && u.gatePageNow() !== 'quad';", 5000));
-    await ev("window.__ui.act('gate-solo'); return 1;");
-    await until("return window.__ui.gatePageNow() === 'solo'", 5000);
-    const solo = await ev("return window.__ui.items().map((i) => i.card).filter((c) => /^race-/.test(c)).join(',')");
-    check('Fly solo races the whoop only', solo === 'race-whoop65', solo);
-    check('and its card takes the whole top row', await ev("const e = document.querySelector('.gate-card-race-whoop65'); const c = document.querySelector('.gate-card-career'); if (!e || !c) return false; const r = e.getBoundingClientRect(); const g = e.parentElement.getBoundingClientRect(); return r.right > g.right - 12 && r.left > c.getBoundingClientRect().right && r.width > g.width * 0.5;"));
-    await ev("window.__ui.act('way-freestyle-5inch'); return 1;");
-    check('Freestyle keeps the whoop', await until("const u = window.__ui; return u.screen === 'freestyle' && u.settings.airframe === 'whoop65';", 30000));
-    /* The town: a map the per map quad picker asks about. */
-    await until("const u = window.__ui; return Boolean(u.pickerLib) && u.pickerEntries().some((e) => e.item && e.item.action === 'map:city');", 30000);
-    await ev("const u = window.__ui; u.pickerAction('fly', u.pickerEntries().find((e) => e.item && e.item.action === 'map:city')); return 1;");
-    await sleep(1500);
-    check('a map flies the whoop with no quad picker', await until("const u = window.__ui; return !document.querySelector('.qp-page') && u.settings.airframe === 'whoop65' && u.settings.map === 'city';", 30000),
-      await ev("const u = window.__ui; return u.screen + ' ' + u.settings.map + ' ' + u.settings.airframe + ' picker ' + Boolean(document.querySelector('.qp-page'));"));
-    check('and the map keeps no pick of its own', await ev("return !/city:/.test(window.__ui.settings.quadPicks || '');"));
-    const errs = pageErrors(page);
-    check('no errors on the page', errs.length === 0, errs.slice(0, 3).join(' | '));
+    const end = Date.now() + 120000;
+    while (Date.now() < end && !(await jev("return Boolean(window.__ui && window.__ui.screen === 'title' && window.__ui.onGate());"))) {
+      await sleep(300);
+    }
+    await jev("window.__ui.act('gate-solo'); window.__ui.act('gate-games'); window.__ui.playMapGame('goats', false); return 1;");
+    let asked = false;
+    for (let t = 0; t < 150 && !asked; t += 1) {
+      asked = await jev("return Boolean(document.querySelector('.qp-page'));");
+      if (!asked) {
+        await sleep(200);
+      }
+    }
+    check('joining goat herding asks Whoop or 5 inch', asked);
   } finally {
-    await page.close();
+    await join.close();
+  }
+  const race = await flying('custom');
+  try {
+    await race.ev("window.__ui.act('pause'); window.__ui.show('paused'); return 1;");
+    await race.until("return window.__ui.screen === 'paused'", 5000);
+    check('a race\'s pause has no Quad row', await race.ev("return !window.__ui.items().some((i) => i.action === 'quad-swap');"));
+  } finally {
+    await race.page.close();
   }
 }
 
@@ -356,16 +380,6 @@ async function sceneMenu() {
   const onPage = (card) => `const u = window.__ui; return u.screen === 'title' && u.onGate() && u.gatePageNow() === 'games' && (u.items()[u.cursor] || {}).card === '${card}';`;
   try {
     check('the title is up', await until("return Boolean(window.__ui && window.__ui.screen === 'title' && window.__ui.onGate())", 120000));
-    /* The first page asks which quad (the owner, 2026-11-11, "First
-     * screen, before anything"), on the quad already seated, and the cover
-     * follows it. Picked whoop, Fly solo's racing is the whoop's alone and
-     * a freestyle map flies the whoop without the per map quad picker
-     * (sceneQuadFirst below). */
-    const quadCards = await ev("return window.__ui.items().map((i) => i.card).join(',')");
-    check('the gate opens on Which quad: whoop or 5 inch', quadCards === 'q-whoop65,q-5inch' && await ev("return window.__ui.gatePageNow() === 'quad'"), quadCards);
-    check('with the cursor on the quad seated', await ev("const u = window.__ui; return (u.items()[u.cursor] || {}).card === 'q-' + u.settings.airframe;"));
-    await ev("document.querySelector('.gate-card-q-5inch').click(); return 1;");
-    check('5 inch turns to the cover', await until("return window.__ui.gatePageNow() === 'cover' && window.__ui.settings.airframe === '5inch'", 5000));
     /* Mini games is on the cover as well as under Fly solo (the owner's
      * pick of 2026-11-11, after the front door's Fly now landed on a cover
      * with no way to them that a pilot could see). Read where it is drawn,
@@ -701,7 +715,7 @@ async function sceneDriftBots() {
 
 try {
   if (wanted('menu')) await sceneMenu();
-  if (wanted('quadfirst')) await sceneQuadFirst();
+  if (wanted('quadswap')) await sceneQuadSwap();
   if (wanted('load')) await sceneLoadKeys();
   if (wanted('yard')) await sceneYard();
   if (wanted('touch')) await sceneTouch();

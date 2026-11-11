@@ -103,37 +103,6 @@ export const GATE_SIDES = [
 ];
 
 /*
- * THE FIRST PAGE: WHICH QUAD. The owner, 2026-11-11: "At any point the
- * first menu item should be quad selection, whoop or 5 inch", and on the
- * card that followed, "First screen, before anything": the gate opens on
- * this page every visit, and every menu after it flies the quad picked
- * here (ui.js quadFirst): Fly solo shows that class's racing, Freestyle
- * and the mini games skip the per map quad picker, and a room is hosted
- * on it. A map flown on one quad only still flies that one (Midori Gakuen
- * is whoops only), and the career's lessons keep their own quads.
- */
-export const GATE_QUADS = [
-  {
-    id: 'q-whoop65',
-    craft: 'whoop65',
-    label: 'Whoop',
-    kicker: 'Tiny and ducted',
-    art: 'assets/gate/whoop.jpg',
-    caption: 'Through houses, shops and tight gaps. Bump a wall and keep flying.',
-    action: 'gate-quad:whoop65',
-  },
-  {
-    id: 'q-5inch',
-    craft: '5inch',
-    label: '5 inch',
-    kicker: 'Big and fast',
-    art: 'assets/gate/race.jpg',
-    caption: 'Fields, towns and big lines at full speed.',
-    action: 'gate-quad:5inch',
-  },
-];
-
-/*
  * The Mini games door, a panel at the end of the solo page. It stood on the
  * cover as a third choice until the owner's ask of 2026-11-01: "i should see
  * single player or multiplayer, no mini games", and went back on the cover
@@ -286,11 +255,10 @@ export const SOLO_PANELS = {
 
 /* The page heads: a kicker, the title, and the folio a magazine prints. */
 export const GATE_HEADS = {
-  quad: { kicker: 'Before anything', title: 'Which quad?', folio: '01' },
-  cover: { kicker: 'This week', title: 'How do you want to fly?', folio: '02' },
-  solo: { kicker: 'Chapter 1', title: 'Fly solo', folio: '03' },
-  together: { kicker: 'Chapter 2', title: 'Multiplayer', folio: '04' },
-  games: { kicker: 'Chapter 3', title: 'Mini games', folio: '05' },
+  cover: { kicker: 'This week', title: 'How do you want to fly?', folio: '01' },
+  solo: { kicker: 'Chapter 1', title: 'Fly solo', folio: '02' },
+  together: { kicker: 'Chapter 2', title: 'Multiplayer', folio: '03' },
+  games: { kicker: 'Chapter 3', title: 'Mini games', folio: '04' },
 };
 
 /* ------------------------------------------------------------------ *
@@ -592,14 +560,6 @@ const SCENES = {
   career: () => [
     { cls: 'gp-career-bub', svg: svg('0 0 170 100', bubble(170, 80, ['START', 'HERE!'], [40, 98])) },
     { cls: 'gp-medal', svg: svg('0 0 80 92', medal()) },
-  ],
-  'q-whoop65': () => [
-    { cls: 'gp-q-quad', svg: svg('0 0 220 150', streaks(130, 70, -24, 110, 8, 22, 31) + quad(130, 70, 1.15, 66, MINT, { ducted: true })) },
-    { cls: 'gp-q-sfx', svg: svg('0 0 200 70', sfx(14, 54, 'ZIP!', 44, -8)) },
-  ],
-  'q-5inch': () => [
-    { cls: 'gp-q-quad', svg: svg('0 0 220 150', streaks(130, 70, -24, 120, 9, 26, 37) + quad(130, 70, 1.25, 62, AMBER)) },
-    { cls: 'gp-q-sfx', svg: svg('0 0 200 70', sfx(14, 54, 'VWOOM!', 44, -9)) },
   ],
   'race-5inch': () => [
     { cls: 'gp-watch', svg: svg('0 0 80 96', stopwatch()) },

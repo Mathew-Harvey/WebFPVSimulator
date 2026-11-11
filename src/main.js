@@ -5100,6 +5100,9 @@ export async function boot({ loading, bootStart, mapId }) {
       ovPlaces = places;
     },
   };
+  /* The pause row Quad (ui.js quadSwapItem): the same swap as a room host's,
+   * for a pilot flying a freestyle map or a mini game alone. */
+  ui.onSwapQuad = (id) => togetherShell.swapQuad(id);
 
   /* together.js, fetched the first time it is wanted and never before. */
   function loadTogether() {

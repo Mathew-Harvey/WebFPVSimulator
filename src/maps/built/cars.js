@@ -156,6 +156,11 @@ const SMOKE_CLEAR = [5, 1.5];
 /* The smoke's paint: the lit side, the shade, as the town's clouds. */
 const SMOKE_FILL = 0xf3efe8;
 const SMOKE_SHADE = 0xb9b1cf;
+/* How much of the road and the car shows through the smoke: its alpha. A
+ * constant in the fragment, so the shader does the same work as when it
+ * wrote 1.0; the ink rim stays firmer so the cel edge still reads. */
+const SMOKE_ALPHA = 0.62;
+const SMOKE_INK_ALPHA = 0.85;
 
 const SMOKE_VERTEX = /* glsl */ `
   #define SMOKE_CLEAR_FAR ${SMOKE_CLEAR[0].toFixed(2)}
@@ -212,8 +217,9 @@ const SMOKE_FRAGMENT = /* glsl */ `
     /* Denser toward the light is the side turned away from it. */
     float toward = texture2D( uMap, vUv + vLight * 0.07 ).r;
     vec3 col = toward > d + 0.03 ? uShade : uFill;
-    if ( d < vCut + vInk ) col = uInk;
-    gl_FragColor = vec4( col, 1.0 );
+    float a = ${SMOKE_ALPHA.toFixed(2)};
+    if ( d < vCut + vInk ) { col = uInk; a = ${SMOKE_INK_ALPHA.toFixed(2)}; }
+    gl_FragColor = vec4( col, a );
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
     #include <fog_fragment>
@@ -401,6 +407,10 @@ export class Smoke {
       vertexShader: SMOKE_VERTEX,
       fragmentShader: SMOKE_FRAGMENT,
       fog: true,
+      /* Depth is tested against the world but never written, so a puff
+       * cannot hide the one behind it; one mesh, so no extra draw call. */
+      transparent: true,
+      depthWrite: false,
     });
     this.material.name = opts.name ?? 'driftSmoke';
     this.mesh = new THREE.Mesh(geo, this.material);

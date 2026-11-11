@@ -75691,3 +75691,10 @@ What went wrong: this is the third outline change of the day. I offered to lower
 - Checks: `node scripts/minigames-check.js` (new scene `frontdoor`: the ways, the room page naming whoop, Back to the ways, Mini games host, no `.map-card` under the Freestyle picker, the hovering badge, Change toggling and remembering, Quit to title from a race landing on the cover, no page errors) all passed. `node scripts/career-ui-check.js` 208 passed, 0 failed. `node scripts/together-shots.js --only=gate` all passed after two stale expectations were brought up to date: Fly solo has had Mini games (and the track of the week when the board names one) since 2026-11-01, and the quad badge's Change is now in the picker's acts row beside Host a room here. `lint:shell` (shell-check): the same 12 failures as main. Not run: `npm run verify` (no physics, plant, ABI or build change). Not flown.
 - Overlap: the Steam thread's sim PR 261 touches hosting after whoop racing; whichever lands second merges.
 - The owner, 2026-11-11 09:32Z: "push to main". Main fast forwarded to this branch (PR 262).
+
+## 2026-11-11: drift smoke partly transparent
+
+- The owner, 09:42Z: "add some trasparency in the drift smoke".
+- Change, `src/maps/built/cars.js` only: the smoke material is now `transparent` with `depthWrite: false`, and the fragment writes alpha 0.62 for the fill and shade and 0.85 for the ink rim, in place of 1.0. Shape, count, life and the near clear are untouched.
+- Latency: no change to the flight loop or input path. Still one mesh and one draw call; the fragment shader does the same work (a constant alpha). The cost is blending on the puffs' pixels, a small fill cost: the shader already discarded, so early z was already off for it. Proxies only, no GPU here: draw calls, triangles and shader instructions unchanged. Real check is the sim's Input to screen reading and frame time on a drift map.
+- Checks: `npm run check:drift` 29 passed, 0 failed. Not run: shots, verify. Nothing here checks how the alpha looks.

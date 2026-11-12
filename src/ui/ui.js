@@ -6211,7 +6211,19 @@ export class Ui {
      * skip straight past this, and it is what the choice screen writes so
      * the seated aircraft is a real answer rather than a default.
      */
-    this.craftGate = !linkedAf;
+    /*
+     * BUT ONLY A LINK THAT FLIES, OR JOINS A ROOM, SKIPS IT. A link that
+     * names a quad and stops at the title (the builder's Back to the
+     * simulator, ?map=custom&craft=whoop65, or one typed by hand) still
+     * seats what it names, and then opens on the gate's Fly solo page, the
+     * cursor where titleStop puts it (see gatePage below), never the list behind
+     * the gate: the "legacy screen" the owner asked on 2026-11-11 never to
+     * land on. Before 2026-11-12 every such link landed there, the one
+     * door to it the menu sweep of 2026-11-11 left open. The board's links
+     * all carry ?fly=1 and keep going straight to the air.
+     */
+    this.craftGate = !linkedAf || !(linkedFly() || roomLink);
+    this.linkedToGate = Boolean(linkedAf) && this.craftGate;
     /* The map a ?fly=1 link asked to be flown once it has loaded, read
      * once and taken out of the address at once. main.js acts on it after
      * the first frame. See linkedFly. */
@@ -6349,6 +6361,11 @@ export class Ui {
      * turns to. Kept only for this visit, like the mode.
      */
     this.gatePage = null;
+    /* A link that seated a quad and stopped at the title opens on the Fly
+     * solo page, where its way is, rather than the cover. See craftGate. */
+    if (this.linkedToGate) {
+      this.gatePage = 'solo';
+    }
     this.gateTurn = '';
     this.gateSide = '';
     /* Which door opened the Mini games page, 'cover', 'solo' or

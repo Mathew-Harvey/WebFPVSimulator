@@ -3547,7 +3547,10 @@ const BOARD_STUB = (board = {}) => `(() => {
       const id = decodeURIComponent(one[1]);
       return answer(200, { id, official: Boolean(board.official[id]), times: [] });
     }
-    if (method === 'GET' && /\\/api\\/tracks$/.test(url)) return answer(200, { tracks: board.tracks || [] });
+    /* With or without ?plans=0, which the builder's list has sent since the
+     * first review round: the stub answered only the bare path, so every
+     * case that lists the board's tracks timed out on main until 2026-11-12. */
+    if (method === 'GET' && /\\/api\\/tracks(\\?[^/]*)?$/.test(url)) return answer(200, { tracks: board.tracks || [] });
     const doc = url.match(/\\/api\\/tracks\\/([^/]+)\\/document$/);
     if (method === 'GET' && doc && board.documents && board.documents[decodeURIComponent(doc[1])]) {
       return answer(200, board.documents[decodeURIComponent(doc[1])]);

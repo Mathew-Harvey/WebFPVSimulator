@@ -175,7 +175,11 @@ async function sceneHerd() {
     await ev("window.__ui.dogfight = { game: 'goats', bots: 3, skill: 'ace', round: '3m' }; return 1;");
     check('the round is built on the map\'s herd', await until(`${G} return Boolean(g && g.herd && g.total === g.herd.count);`, 30000));
     check('nothing is fired in goat herding', await ev('return window.__input.weaponsLive === false'));
-    check('the round\'s HUD is up and the map\'s own steps aside', await until("return !document.querySelector('.df-hud').classList.contains('is-off') && document.querySelector('.goat-hud').classList.contains('is-off')", 5000));
+    /* The map's own score box steps aside for the round's. The arrow at
+     * the garage stays (the owner's "always say where the goats go",
+     * 2026-11-11): the round is herding too. */
+    check('the round\'s HUD is up and the map\'s own score box steps aside', await until("return !document.querySelector('.df-hud').classList.contains('is-off') && document.querySelector('.goat-box').classList.contains('is-off')", 5000));
+    check('and the arrow at the garage stays up for the round', await until("return !document.querySelector('.goat-hud').classList.contains('is-off') && !document.querySelector('.goat-aim').classList.contains('is-off')", 5000));
     check('the herd is handed the bots', await ev(`${G} return g.pen.nOthers === 3 && g.pen.others[2] < 1e8 && g.pen.others[8] < 1e8;`));
     await ev('window.__stick(0, 0, 0, 0.7); return 1;');
     check('taking off starts the round', await until(`${G} return g.startedMs >= 0;`, 20000));
@@ -461,6 +465,29 @@ async function sceneFrontDoor() {
     check('no errors on the page', errs.length === 0, errs.slice(0, 3).join(' | '));
   } finally {
     await page.close();
+  }
+  /* A link that names a quad and does not fly (the builder's Back to the
+   * simulator) opens on Fly solo with its way under the cursor, never on
+   * the list behind the gate. It landed on that list until 2026-11-12. */
+  const linked = await openPage({ root: ROOT, width: 1280, height: 720, url: '/index.html?map=custom&craft=whoop65' });
+  try {
+    await linked.until('window.__shellReady === true', 120000);
+    const at = JSON.parse(await linked.evaluate("(() => { const u = window.__ui; return JSON.stringify({ gate: u.onGate(), page: u.gatePageNow(), on: (u.items()[u.cursor] || {}).label, craft: u.settings.airframe, rows: u.items().map((i) => i.label).join(',') }); })()"));
+    /* The cursor follows titleStop: Career until a career is started,
+     * which a fresh profile has not, then the seated way. */
+    check('a link that seats the whoop and stops at the title opens on Fly solo, not the list behind it',
+      at.gate && at.page === 'solo' && (at.on === 'Whoop racing' || at.on === 'Career') && at.craft === 'whoop65' && !at.rows.includes('Track'), JSON.stringify(at));
+    const fly = await openPage({ root: ROOT, width: 1280, height: 720, url: '/index.html?map=custom&craft=5inch&fly=1' }).catch(() => null);
+    if (fly) {
+      try {
+        const up = await fly.until("window.__ui && window.__ui.screen === 'flight'", 120000).then(() => true, () => false);
+        check('and one that carries fly=1 still goes straight to the air', up);
+      } finally {
+        await fly.close();
+      }
+    }
+  } finally {
+    await linked.close();
   }
 }
 
@@ -785,6 +812,11 @@ async function sceneDriftBots() {
   console.log('driftbots: Drift Matsuri with bots');
   const { page, ev, until } = await flying('drift');
   try {
+    /* The tyre smoke is see through (the owner, 2026-11-11, 86654e1): blended,
+     * never writing depth, so the road and the car show through a puff, and
+     * the fill's alpha below one. One mesh, so no draw call is added. */
+    const smoke = await ev("const s = window.__mapScene && window.__mapScene(); const m = s ? s.getObjectByName('driftSmoke') : null; if (!m) return null; const a = /float a = ([0-9.]+);/.exec(m.material.fragmentShader); return { transparent: m.material.transparent, depthWrite: m.material.depthWrite, alpha: a ? Number(a[1]) : null };");
+    check('the drift smoke is see through and writes no depth', Boolean(smoke && smoke.transparent && smoke.depthWrite === false && smoke.alpha > 0 && smoke.alpha < 1), JSON.stringify(smoke));
     await ev("window.__ui.dogfight = { game: 'drift', bots: 3, skill: 'ace' }; return 1;");
     check('the round is built on the map\'s judge', await until(`${G} return Boolean(g && g.film && g.driftRules && g.driftRules.bots === 3);`, 30000));
     check('nothing is fired in Drift Matsuri', await ev('return window.__input.weaponsLive === false'));

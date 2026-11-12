@@ -877,6 +877,31 @@ void bridge_set_crashflip(int on) {
   if (next != g_crashflip) {
     pidResetIterm();
   }
+  /*
+   * AND ANTI GRAVITY, on the way out, or the first PID loop after a turtle
+   * is NaN (bug-11110853, 2026-11-11: the frame loop faulted with
+   * "setTargetAtTime ... non-finite" when the shell's manual flip, T, let
+   * go in Angle mode, every double of the state NaN one step later).
+   *
+   * pidController multiplies pidRuntime.antiGravityThrottleD by
+   * anti_gravity_gain at the top of every loop and leaves putting it back
+   * to mixTable, whose pidUpdateAntiGravityThrottleFilter overwrites it
+   * with the filtered throttle derivative. mixTable returns before that
+   * call while crashflip is active, so the number compounds by the gain
+   * every loop: at the shipped 80 it passes the largest float in 21 loops.
+   * The next loop's I term is (Ki + inf) * dT * error. In Angle mode iterm
+   * relax makes that error exactly zero, inf times zero is NaN, and the I
+   * term carries it into every loop after (pid.c, iTermChange); in acro it
+   * pins the I term at its limit on both axes, a roll after a flip with
+   * pitch only. Hardware never meets it: it leaves crashflip by disarming,
+   * and every disarmed loop runs the whole mixer, refresh included. This
+   * is that refresh, once, with the throttle the mixer last mixed, which
+   * is also the last the filter saw: a zero derivative, one sample of the
+   * filter's decay, and the value back where mixTable keeps it.
+   */
+  if (!next && g_crashflip) {
+    pidUpdateAntiGravityThrottleFilter(mixerGetThrottle());
+  }
   g_crashflip = next;
 }
 

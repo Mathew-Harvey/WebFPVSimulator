@@ -26,6 +26,11 @@
  *      vel or omega just because a ground plane exists metres below
  *  10. a 135 deg flip must not freeze in the 8 mm near halo before
  *      the hull actually hits
+ *  11. leaving crashflip in the air with a stick held, the shell's
+ *      manual flip (T) let go, keeps every double finite in Angle mode
+ *      and leaves no roll in acro after a flip on pitch alone, on both
+ *      airframes (bug-11110853: anti gravity compounds while the mixer
+ *      is in turtle; see bridge_set_crashflip in src/native/bf/bf_glue.c)
  *
  * Run: node scripts/contact-selftest.js   (npm run contact:selftest)
  * Exit code is the failure count.
@@ -862,6 +867,88 @@ function sameState(a, b) {
   check('and does not freeze in the 8 mm halo before the hull meets the plane',
     !haloFreeze,
     `haloFreeze=${haloFreeze} w=${omegaMag(st).toFixed(3)} z=${st[ST.Z].toFixed(3)} corner=${deepestHullCorner(st).toFixed(4)} upz=${upZ(st).toFixed(3)}`);
+}
+
+/*
+ * 11. THE WAY OUT OF A MANUAL FLIP, bug-11110853 ("doesnt let me restart",
+ * lesson 2-1, Angle mode, 2026-11-11): the report carried a frame fault,
+ * "setTargetAtTime ... non-finite" from the motor sound, because every
+ * double of the state was NaN. Reproduced in the shell by holding T in the
+ * air with pitch held and letting T go: the next step is NaN in Angle mode,
+ * on both airframes. Betaflight's anti gravity multiplies its throttle
+ * derivative by the gain every PID loop and only mixTable puts it back, and
+ * mixTable returns before that while crashflip is active, so it is infinite
+ * after 21 loops at the shipped gain of 80; the first loop after the flip is
+ * then (Ki + inf) times an error that iterm relax makes zero in Angle mode.
+ * In acro the same infinity pins the I term at its limit on both axes, so a
+ * flip on pitch alone ended in a roll nobody asked for.
+ *
+ * Measured on the module shipped on 2026-11-12 (8175c37f) and on a native
+ * build of the same sources with bridge_set_crashflip's refresh, which
+ * agreed with the shipped module to the digit before it:
+ *
+ *                     peak pitch rate   after the flip
+ *                     in the flip       Angle            acro, peak |p|
+ *   five inch  base   13.23 rad/s       NaN              4.552 rad/s
+ *              fix    13.23             finite           0.309
+ *   whoop      base   72.71             NaN              4.189
+ *              fix    72.71             finite           0.796
+ *
+ * ROLL_KICK_MAX sits between them: under the base's roll by a factor of
+ * two, over the fix's by more than two.
+ */
+const ROLL_KICK_MAX = 2.0;
+const AIRFRAME_TUNES = [
+  { name: 'five inch', airframe: 0, config },
+  { name: 'whoop', airframe: 1, config: await readFile(join(root, 'configs/whoop-freestyle.diff'), 'utf8') },
+];
+for (const af of AIRFRAME_TUNES) {
+  for (const angle of [true, false]) {
+    const sim = await loadSim(wasm);
+    sim.e.sim_set_airframe(af.airframe);
+    if (sim.init(af.config) !== SIM_OK) {
+      throw new Error(`sim_init failed for the ${af.name}`);
+    }
+    sim.reset();
+    sim.setCellVoltage(4.2);
+    sim.setAngleMode(angle);
+    /* Twenty metres up, a second and a half on half throttle: no ground,
+     * so nothing but the controller decides what happens. */
+    sim.e.sim_set_pose(0, 0, 20, 1, 0, 0, 0);
+    hold(sim, 1500, { throttle: 0.5 });
+    sim.e.sim_set_crashflip(1);
+    let peakQ = 0;
+    let t = sim.readState().state[ST.T];
+    for (let i = 0; i < 150; i += 1) {
+      t += 0.001;
+      sim.input(t, 0, 0.6, 0, 0.4);
+      sim.step(1);
+      peakQ = Math.max(peakQ, Math.abs(sim.readState().state[ST.OY]));
+    }
+    sim.e.sim_set_crashflip(0);
+    let allFinite = true;
+    let peakP = 0;
+    for (let i = 0; i < 300; i += 1) {
+      t += 0.001;
+      sim.input(t, 0, 0, 0, 0.4);
+      sim.step(1);
+      const st = sim.readState().state;
+      if (!st.every(Number.isFinite)) {
+        allFinite = false;
+      }
+      peakP = Math.max(peakP, Math.abs(st[ST.OX]));
+    }
+    const mode = angle ? 'Angle mode' : 'acro';
+    check(`${af.name}, ${mode}: the manual flip ran the turtle mixer`,
+      peakQ > 5, `peak pitch rate ${peakQ.toFixed(2)} rad/s`);
+    if (angle) {
+      check(`${af.name}, Angle mode: leaving crashflip with pitch held keeps every double finite`,
+        allFinite, 'the state went non-finite after crashflip ended');
+    } else {
+      check(`${af.name}, acro: a flip on pitch alone leaves no roll behind it`,
+        allFinite && peakP < ROLL_KICK_MAX, `peak |roll rate| ${peakP.toFixed(3)} rad/s, under ${ROLL_KICK_MAX}`);
+    }
+  }
 }
 
 {

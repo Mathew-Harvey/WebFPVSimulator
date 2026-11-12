@@ -1162,6 +1162,7 @@ export function askArm(ui, kit, input) {
       input.beginWeaponCapture(which);
       /* The radio's switch is the answer here, not a menu press. */
       ui.quadDialog = false;
+      ui.padListening = true;
       paintBinds();
     };
     const stopListening = () => {
@@ -1169,6 +1170,7 @@ export function askArm(ui, kit, input) {
         input.cancelWeaponCapture();
         listening = null;
         ui.quadDialog = true;
+        ui.padListening = false;
         paintBinds();
       }
     };
@@ -1180,6 +1182,7 @@ export function askArm(ui, kit, input) {
       if (!p.box.isConnected) {
         /* Closed by another route, a dialog opened over it. */
         input.cancelWeaponCapture();
+        ui.padListening = false;
         input.weaponsLive = wasLive;
         input.touchGun = false;
         return;
@@ -1188,6 +1191,7 @@ export function askArm(ui, kit, input) {
       if (res) {
         listening = null;
         ui.quadDialog = true;
+        ui.padListening = false;
         paintBinds();
       }
       panels[0].lamp.classList.toggle('is-on', !listening && input.gunHeld());

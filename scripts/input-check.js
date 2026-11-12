@@ -861,6 +861,38 @@ async function mousePage(page) {
     JSON.stringify(edges));
 
   /* --------------------------------------------------------------------
+   * 5c2. The dogfight's Arm up page listens for the next button or switch,
+   *      and the radio's answer is also a menu press: button 1 is Back and
+   *      a roll left is Back. QA, 2026-11-12, a Pocket that bound keys and
+   *      nothing else: the flick closed the listening before the capture
+   *      saw it. The pad must take nothing from the menu while it listens.
+   * ------------------------------------------------------------------ */
+  section('the Arm up page keeps listening through a radio flick that is also a menu press');
+  const arm = await page.evaluate(`(async () => { const ui = window.__ui; const input = window.__input;
+    ${PAST_GATE}
+    const out = {};
+    const pages = await ui.fightPages();
+    const done = pages.askArm(ui, { letterHeading() {} }, input);
+    ui.nameDialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'p', code: 'KeyP', bubbles: true }));
+    out.listening = Boolean(input.weaponCapture);
+    ui.pollPad({});
+    ui.pollPad({});
+    ui.pollPad({ back: true });
+    ui.pollPad({});
+    ui.pollPad({ left: true });
+    out.stillListening = Boolean(input.weaponCapture);
+    out.padListening = ui.padListening === true;
+    ui.nameDialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }));
+    out.afterEsc = Boolean(input.weaponCapture);
+    out.padFreed = ui.padListening === false;
+    ui.nameDialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }));
+    out.closed = await Promise.race([done.then(() => true), new Promise((r) => setTimeout(() => r(false), 1500))]);
+    return JSON.stringify(out); })()`).then(JSON.parse);
+  check('P starts the listening', arm.listening === true, JSON.stringify(arm));
+  check('a Back and a roll left from the radio do not stop it', arm.stillListening === true && arm.padListening === true, JSON.stringify(arm));
+  check('Escape on the keyboard still does, and gives the pad back', arm.afterEsc === false && arm.padFreed === true, JSON.stringify(arm));
+
+  /* --------------------------------------------------------------------
    * 5d. A frozen picture has to be able to say why. bug-579a663f, "when I
    *     really hardly crash the drone the game just freezes". main.js
    *     catches the first thrown frame fault, records it on

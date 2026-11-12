@@ -108,7 +108,12 @@ const PAD_MISSILE_DEFAULT = 5;
 /* Keys a weapon may not take: the sticks, and the menu's own. */
 const WEAPON_KEYS_REFUSED = new Set(['Escape', 'Enter', 'Tab', 'KeyR']);
 
-const RESTART_FLIP = 1.0;
+/* Nine tenths, not the whole span of a two position switch: a three position
+ * switch at its middle is a hair off zero (a USB joystick's 0..2047 puts
+ * the middle at 0.0005), so a flick from the middle to either end moves
+ * 0.9995, and 1.0 refused it. A two position switch moves 2.0 and a button
+ * is not an axis, so nothing that was a flip stops being one. */
+const RESTART_FLIP = 0.9;
 /* And the switch is ON while the axis is this far towards the side it was
  * flipped to. */
 const RESTART_ON = 0.5;

@@ -3010,6 +3010,45 @@ section('a radio the browser shows with no axes is named, not dropped in silence
     && /with 2 axes/.test(unflyableNote([{ name: 'A', axes: 2 }])) && /with 1 axis,/.test(unflyableNote([{ name: 'A', axes: 1 }])));
 }
 
+section('the dogfight gun and missile bind to a radio switch or button (QA 2026-11-12, a Pocket)');
+{
+  const id = '1209-4f54-EdgeTX Radiomaster Pocket Joystick';
+  const mk = (n, mid = null) => {
+    const p = makePad([0, 0, -1, 0, -1, -1, -1, -1], n, id);
+    if (mid !== null) {
+      p.axes[5] = mid;
+    }
+    return p;
+  };
+  const bindOne = (pad, move, which = 'gun') => {
+    const rig = new Rig(pad);
+    rig.run(64);
+    rig.im.beginWeaponCapture(which);
+    rig.run(48);
+    move(rig, pad);
+    rig.run(48);
+    return { res: rig.im.takeWeaponResult(), im: rig.im, rig };
+  };
+  const press = (i) => (rig, pad) => { pad.buttons[i] = { pressed: true, value: 1 }; pad.timestamp += 1; };
+  const flip = (i, v) => (rig) => rig.ax(i, v);
+  let r = bindOne(mk(0), flip(5, 1));
+  check('a two position switch as an axis binds', r.res && r.res.label === 'Switch on axis 5', JSON.stringify(r.res));
+  r = bindOne(mk(0, 0.0005), flip(5, 1));
+  check('a three position switch flicked from its middle to the top binds', r.res && r.res.label === 'Switch on axis 5'
+    && r.im.weaponSpec.gun.dir === 1, JSON.stringify(r.res));
+  r = bindOne(mk(0, 0.0005), flip(5, -1));
+  check('and from its middle to the bottom, on the side it went to', r.res && r.im.weaponSpec.gun.dir === -1, JSON.stringify(r.res));
+  r = bindOne(mk(8), press(3), 'missile');
+  check('a button binds the missile', r.res && r.res.which === 'missile' && r.res.label === 'Button 3', JSON.stringify(r.res));
+  /* The gun is held, the missile is the moment it goes on. */
+  const g = bindOne(mk(0), flip(5, 1));
+  g.im.weaponsLive = true;
+  g.rig.run(32);
+  check('the gun bound to a switch is held while it is on', g.im.gunHeld() === true);
+  g.rig.ax(5, -1); g.rig.run(32);
+  check('and let go when it is off', g.im.gunHeld() === false);
+}
+
 console.log(failed ?`\n${failed} failed, ${passed} passed` : `\nall ${passed} passed`);
 for (const f of fails) {
   console.log(`  FAIL ${f}`);

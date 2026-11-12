@@ -8933,6 +8933,7 @@ export class Ui {
     /* And the quad picker's pad routing, which a dialog opened over the
      * picker would otherwise leave pointed at a page that is gone. */
     this.quadDialog = false;
+    this.padListening = false;
     /* Any route out of the dialog retires the unsaved guard with it, or a
      * stale restore would hide the next form behind a panel that is no
      * longer in the document. */
@@ -24721,6 +24722,20 @@ export class Ui {
      * still tracked, so releasing a switch while a dialog closes cannot
      * fire on the screen that comes back.
      */
+    /*
+     * A PAD LISTENING FOR A BINDING TAKES NOTHING FROM THE MENU. The Arm up
+     * page asks for the next button or switch on the radio (Input
+     * beginWeaponCapture), and the radio's own answer is also a menu press:
+     * buttons 0 to 3 are menu keys and button 1 is Back, a roll to the left
+     * is Back, so the flick that was meant to be the gun closed the
+     * listening before the capture saw it. QA, 2026-11-12, a Pocket that
+     * bound keys and nothing else. Edges are still tracked, so the page does
+     * not see the held switch as a press when it stops listening.
+     */
+    if (this.padListening) {
+      this.padPrev = now;
+      return;
+    }
     if (this.nameDialog && !this.nameDialog.hidden) {
       /*
        * BACK CLOSES A DIALOG, once the sticks have been seen at rest since

@@ -1908,6 +1908,12 @@ async function scenarioFront() {
   try {
     await page.until('window.__shellReady === true && !!window.__ui', 120000);
     await page.until("(() => { const m = window.__map(); return m.id === 'city' && m.ready; })()", 120000);
+    /* And the loading screen gone, not only fading: it is over the whole
+     * window until its fade ends (src/ui/loading.js finish), so a click
+     * sent while it fades lands on it. Headless draws a frame a second
+     * here, and every line below raced that fade and lost, on main as well,
+     * until 2026-11-12. */
+    await page.until("document.getElementById('loading').hidden", 30000);
     /* The cover is there while rooms are on, which the board says; no
      * board here, so the page is told. */
     await page.evaluate("(() => { const ui = window.__ui; ui.roomsOn = true; ui.firstRun = false; ui.renderMenu(); return 1; })()");

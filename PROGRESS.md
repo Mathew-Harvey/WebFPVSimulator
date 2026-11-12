@@ -75770,3 +75770,33 @@ What went wrong: this is the third outline change of the day. I offered to lower
 
 - The owner, 2026-11-12, in this thread after the run's report: "Push to main". It covers b8cb3d2 (the crash flip exit's anti gravity refresh in src/native/bf/bf_glue.c and the four new cases in contact:selftest), b809bf8 and this record. Main had not moved from 1ca177e, so it fast forwards.
 - What it does NOT do: render.yaml serves the committed dist/sim.wasm and never builds one, and no emsdk was here, so the live module is still the shipped 8175c37f and pilots still meet bug-11110853 until a rebuilt dist/sim.wasm is committed. Until then `contact:selftest` on main fails its four new cases, as it does on the shipped module, and `check:plant` passes; after the rebuild, `check:plant`'s two "inverted landing then turtle" scenarios move from 3.9 s and the golden's `--write` is the owner's call. bug-11110853 stays closed `wontfix` with its note until the rebuilt module is live, and is marked fixed then.
+
+## 2026-11-12 | sweep | a full bug sweep and test hardening (branch claude/project-thread-iobe89)
+
+- The owner, 01:10Z: "Full bug sweep and test hardening time". Read as: run what main has, find what is red and why, fix the root causes, and bring every check that was red for a stale or racy reason back to being evidence. Main at b745c51.
+- What ran on main, in this container: 32 Node checks and self tests, 34 browser checks one at a time, and the board's `npm test` (all passed). vendor/betaflight was not checked out here; `git submodule update --init --depth 50 vendor/betaflight` made `lint:catalog` pass.
+
+### Real bugs, fixed
+
+- The arrow and card at Heads' garage (dd6bfb7, the owner's goat target of 2026-11-11) stood over the HUD of a dogfight or ribbon round flown on the goat street, because `setAim` ignored `fightGame`. Now the arrow shows alone or in a goat herding round only (`goatFrame` in src/main.js). `check:minigames` "goats: and steps aside while the fight is on" failed on main and passes; its herd scene now says the score box steps aside and the arrow stays, which is what the owner's "always say where the goats go" asks of a herding round.
+- A link that names a quad and does not fly (the builder's Back to the simulator, `?map=custom&craft=whoop65`, or a typed one) opened on the list behind the gate, the screen the owner called the legacy screen on 2026-11-11; the menu sweep left it open. The constructor's `craftGate` now skips the gate only for a link that flies or joins a room, and such a link opens on Fly solo with what it named seated. The board's links all carry `?fly=1` and still go straight to the air. New lines in `check:minigames` frontdoor: fail on main, pass here.
+
+### Checks that were red on main for stale or racy reasons
+
+- `lint:shell`, four gate lines: still expected five cards on Fly solo after Mini games joined it (2026-11-01). Now pinned as Career, the three ways, Builder, the week when the board names one, Mini games; the Builder card found by name. 12 problems on main, 8 here.
+- `lint:nouns`: read the screen id 'courses' in the menu crawler's page probe (scripts/menu-map.js) as a player visible word. An argued ALLOWED entry.
+- `check:goats`: did not know the yard track's 'yard bar' parts (Track 4 since 2026-11-07), so read them as house parts lost.
+- `check:rooms`: still expected a made up name in a listed room after the owner's word of 2026-11-08 gave own names to every room but a school safe one (the board's handleFor). The school safe half, which pins made up names, is unchanged.
+- `check:features` front: five lines clicked the cover while the loading screen was still fading over it (src/ui/loading.js finish hides it 320 ms after the fade starts, and headless draws about a frame a second). It now waits for `#loading` to be hidden. Red on main every run, 10 of 10 here.
+- `check:builder` stub: the board stub answered `GET /api/tracks` only, and the builder has asked `/api/tracks?plans=0` since the first review round, so "five inch empty" and "official tracks" timed out on main. Both pass here.
+- `check:minigames` gains a line that the drift smoke (86654e1) is blended, writes no depth and has an alpha under one.
+
+### Still red, for the owner
+
+- `contact:selftest` four cases: they wait for dist/sim.wasm rebuilt with the crash flip fix (bug-11110853, b8cb3d2). Installing emsdk 3.1.61 here was refused by this session's permission check, so the module was not built.
+- `lint:shell` eight lines are its recorded baseline: six are this container's fonts (pilot, rates, pids, fc, tricks, stick help at 844 by 390), and two are screens that changed by design: freestyle is the picture picker now (its rows sit under 33 map cards), and the quad room's Aircraft row is picture cards (312 px). A re-record on the owner's machine is the fix; no threshold was touched.
+- `check:builder`: "five inch: the Nationals qualifier, built from an empty canvas" has stopped at its first card press since PR 252 (2026-11-09) moved Spiral down out of the round row into a How row, so the rest of that case has not run since; a first try at the new rows showed more of the case has drifted (the wall's pieces and orders), so it is left as it was, to be rewritten against the new card. "passes by touch" times out waiting for a pass's focus, on main as here; not chased.
+- Load: with the batch and probes together the load average reached 11 to 14, and retry, ghosttop, tuneinvite G and features front failed; alone, retry, ghosttop and tuneinvite G pass on main. An orphaned headless Chromium from a timed out check (parent pid 1) was eating 150 percent of a core and was killed.
+
+- Latency: none in the flight loop. The goat arrow does less (it no longer updates under another mini game's round); the link change runs once at boot. Proxies only, no GPU here.
+- Not run: `npm run verify` (no physics, plant, ABI or build change), `lint:input`, `shots.js`. Not flown.

@@ -526,7 +526,12 @@ async function sceneShelf() {
     check('and its card joins it', await pass(page.until(`${T} && window.__together().inRoom && window.__together().code === ${JSON.stringify(lister.s.room.code)}`, 20000)));
     await flying(page);
     const shown = [...lister.s.link.pilots.values()].map((p) => p.handle);
-    check('a listed room shows the page under a made up name, never its own', shown.length === 2 && !shown.includes('School Host'), shown.join(', '));
+    /* Own names everywhere but a school safe room, the owner's word of
+     * 2026-11-08 (the board's normaliseSettings and handleFor). This line
+     * still expected a made up name in a listed room and was red from the
+     * board's change on; the school safe half below keeps the made up
+     * names it always pinned. */
+    check('a listed room shows the page under its own name, as every room but a school safe one', shown.length === 2 && shown.includes('School Host'), shown.join(', '));
     await leaveRoom(page);
     await toFlight(page);
 

@@ -201,7 +201,10 @@ function houseBlock() {
   const inA = new Set(a.parts.map(J));
   const gone = a.parts.filter((p) => !inB.has(J(p)));
   const added = b.parts.filter((p) => !inA.has(J(p)));
-  const yardOrCar = (p) => String(p.m).startsWith('car') || /^yard (gate|pole)/.test(String(p.name));
+  /* Every name src/maps/yardtrack/yardtrack.js gives a part. 'yard bar'
+   * (Track 4's bars, since the yards took Track 4 on 2026-11-07) was missing here, so this line
+   * had been red since the yard track changed track. */
+  const yardOrCar = (p) => String(p.m).startsWith('car') || /^yard (gate|pole|bar|zone)/.test(String(p.name));
   check('the only parts gone are the yard track\'s and the drive\'s two cars', gone.every(yardOrCar),
     `${gone.length} gone, ${gone.filter((p) => !yardOrCar(p)).map((p) => p.name).slice(0, 3).join(', ') || 'all yard track or car'}`);
   check('the only parts added are the two cars at the kerb', added.every((p) => String(p.m).startsWith('car')), `${added.length}`);

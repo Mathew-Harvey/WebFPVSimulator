@@ -75761,3 +75761,7 @@ What went wrong: this is the third outline change of the day. I offered to lower
 ### Not to main
 
 - The standing rule of 2026-11-10 lets this run push a fix only when every check for it passes on the tree pushed, and a change to the module waits for the owner's word. This fix is in the compiled controller, it cannot be built here, and it moves a bit for bit golden. So it stays on this branch, with the question for the owner: build it, look at the two turtle scenarios in `check:plant`, and rewrite the golden if the new traces are right.
+
+### The board closed, by the standing rule of 2026-11-07
+
+- Read again before closing (about 00:55Z): 30 open, the one filed since the triage began (bug-ce7e189a) read in full above, 0 in progress. Closed with the run's token (`POST /board/api/bugs/:id`, status and resolution): 30 updates, 30 answered 200, 0 failures, all `wontfix`, because the fix is not on main. bug-11110853's resolution says reproduced, root cause found, fixed on this branch in b8cb3d2 and to be marked fixed when it reaches main, with R and avoiding T in Angle mode as the way round it until then; bug-f6be2b7c Angle mode by the curriculum; bug-9dd1f29e the table block a design call for the owner; bug-8bb5d2e2 radio or browser side; the feel and tune notes no code defect, tune numbers kept in the Tunes panel. Afterwards the board lists 0 open and 0 in progress.

@@ -36,9 +36,12 @@ if ! command -v emcc >/dev/null 2>&1; then
     if [ -n "$d" ] && [ -f "$d/emsdk_env.sh" ]; then
       # shellcheck disable=SC1091
       source "$d/emsdk_env.sh" >/dev/null 2>&1 || true
+      ver=$(grep -som1 '"[^"]\+"' "$d/upstream/emscripten/emscripten-version.txt" || echo '""')
+      echo "build:wasm: loade EMSDK version $ver from $d." >&2
       break
     fi
   done
+  unset ver
 fi
 
 if ! command -v emcc >/dev/null 2>&1; then

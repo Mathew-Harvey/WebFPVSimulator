@@ -32,7 +32,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 if ! command -v emcc >/dev/null 2>&1; then
-  for d in "${EMSDK:-}" "$HOME/emsdk" /opt/emsdk; do
+  for d in "${EMSDK:-}" "$HOME/emsdk" /opt/emsdk "$(pwd)/.emsdk"; do
     if [ -n "$d" ] && [ -f "$d/emsdk_env.sh" ]; then
       # shellcheck disable=SC1091
       source "$d/emsdk_env.sh" >/dev/null 2>&1 || true

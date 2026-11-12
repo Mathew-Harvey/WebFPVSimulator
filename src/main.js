@@ -7754,8 +7754,12 @@ export async function boot({ loading, bootStart, mapId }) {
      * callouts wait for the fight to end. */
     ui.goatHud.setVisible(Boolean(game) && !fightGame && !replayMode && (ui.screen === 'flight' || ui.screen === 'paused'));
     /* The arrow at the garage is up whenever the map is being flown,
-     * round or no round, but not over a replay. */
-    ui.goatHud.setAim(Boolean(game) && !replayMode && (ui.screen === 'flight' || ui.screen === 'paused'));
+     * alone or in a goat herding round, but not over a replay, and not
+     * over any other mini game flown on the street: a dogfight or a
+     * ribbon round there has no goats to send anywhere, and the arrow
+     * stood over its HUD from 2026-11-11 (dd6bfb7) until 2026-11-12. */
+    ui.goatHud.setAim(Boolean(game) && !replayMode && (!fightGame || fightKind === 'goats')
+      && (ui.screen === 'flight' || ui.screen === 'paused'));
     if (!game) {
       return;
     }

@@ -1391,8 +1391,8 @@ const BEHAVIOUR = `(() => {
     const cards = cardsOf();
     /* The last card's action, read and not pressed: pressing it leaves for
      * the builder, which would end this probe. */
-    const lastCard = gateItems.filter((it) => it.card).pop();
-    const builderAction = lastCard ? lastCard.action : null;
+    const builderCard = gateItems.find((it) => it.card && it.label === 'Builder');
+    const builderAction = builderCard ? builderCard.action : null;
     /*
      * THE GATE WITH THE MODE ALREADY ANSWERED, which is the case that
      * shipped broken once and which a probe that always nulls the mode
@@ -1537,21 +1537,27 @@ const BEHAVIOUR = `(() => {
        * drawing, then the builder's card with a photograph and no drawing,
        * and not a row among them: the whole point of the screen is that it
        * is not a menu. */
-      asksFour: gate.length === 5
-        /* The Career card leads (src/ui/ui.js CAREER_CARD, since the career
-         * came over from the Steam edition). The last card is the builder,
-         * under its one name since MENUS-PLAN.md 4.1: it was Map builder on
-         * this card and Track builder in the builder's own title. */
-        && gate.join() === 'Career,Five inch racing,Whoop racing,Freestyle,Builder'
+      /* The Career card leads (src/ui/ui.js CAREER_CARD, since the career
+       * came over from the Steam edition). Then the builder, under its one
+       * name since MENUS-PLAN.md 4.1: it was Map builder on this card and
+       * Track builder in the builder's own title. Then, when the board
+       * names one, the track of the week, and last the Mini games door,
+       * which the owner put on this page on 2026-11-01 and on the cover as
+       * well on 2026-11-11 (src/ui/gatepages.js). This line said five
+       * cards until 2026-11-12 and was red on every run since the Mini
+       * games card arrived, which is how a red check stops being read. */
+      asksFour: /^Career,Five inch racing,Whoop racing,Freestyle,Builder,(Track of the week,)?Mini games$/.test(gate.join())
         && gateItems.filter((it) => !it.card).length === 0,
-      asCards: cards.length === 5 && cards.slice(1, 4).every((c) => c.shot && c.drawn)
-        && Boolean(cards[0].shot) && !cards[0].drawn
-        && Boolean(cards[4].shot) && !cards[4].drawn,
+      /* Every card has a photograph. The three ways in carry the aircraft's
+       * plan as well; Career, Builder, the week and Mini games seat no
+       * aircraft by their card, so they carry none. */
+      asCards: cards.length === gate.length && cards.every((c) => c.shot)
+        && cards.every((c, i) => c.drawn === (i >= 1 && i <= 3)),
       builderAction,
       modeSetGate,
       /* Four cards, laid out and visible, and the menu's own copy off the
        * screen, when the mode is answered and the aircraft is not. */
-      gateWithMode: modeSetGate.isGate && modeSetGate.cards.length === 5
+      gateWithMode: modeSetGate.isGate && modeSetGate.cards.length === gate.length
         && modeSetGate.cards.every((c) => c.wide) && modeSetGate.keepNote === 0,
       /* One press: the whoop is seated, the mode is race, the seat is a
        * track rather than a world, the gate is gone and no Freestyle row
@@ -2160,7 +2166,7 @@ async function main() {
         );
       }
       if (g.builderAction !== 'builder') {
-        failures.push(`the gate's last card acts as ${g.builderAction}, not as the builder`);
+        failures.push(`the gate's Builder card acts as ${g.builderAction}, not as the builder`);
       }
       if (!g.gateWithMode) {
         failures.push(`the gate: with the mode already answered it drew ${g.modeSetGate.cards.length} card(s), ${g.modeSetGate.cards.filter((c) => c.wide).length} of them visible, is-gate ${g.modeSetGate.isGate}, ${g.modeSetGate.keepNote} menu note(s) still showing`);

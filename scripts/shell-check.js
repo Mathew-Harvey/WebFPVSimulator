@@ -982,6 +982,39 @@ const BEHAVIOUR = `(() => {
       trips['pause-' + door] = hops;
     }
 
+    /* Change map, from the pause and from Results (the Discord ask of
+     * 2026-11-13). The row is the way's own picker, opened with the run
+     * kept: Back is the screen it was opened from, and the row is named for
+     * what the seat is, a map or a track. Not in a room, not in a lesson. */
+    const changeRows = {};
+    for (const [mode, label, door] of [['freestyle', 'Change map', 'freestyle'], ['race', 'Change track', 'courses']]) {
+      for (const from of ['paused', 'results']) {
+        ui.show('title');
+        ui.roomFrom = null;
+        ui.returnTo = from === 'paused' ? 'paused' : null;
+        ui.mode = mode;
+        ui.show(from);
+        const row = ui.items().find((it) => it.action === door && it.label === label);
+        const key = mode + '-' + from;
+        changeRows[key] = { row: Boolean(row) };
+        if (row) {
+          ui.act(door);
+          changeRows[key].opened = ui.screen;
+          ui.back();
+          changeRows[key].back = ui.screen;
+        }
+      }
+    }
+    ui.show('title');
+    ui.roomFrom = null;
+    ui.returnTo = 'paused';
+    ui.mode = 'freestyle';
+    ui.roomInfo = { code: 'TEST', n: 2, host: true };
+    ui.show('paused');
+    changeRows.room = ui.items().some((it) => /^Change (map|track)$/.test(it.label));
+    ui.roomInfo = null;
+    trips.changeMap = changeRows;
+
     /* Back from a way's rooms (the Tracks or Maps picker) is the gate's Fly
      * solo page, never the list behind the gate (the owner, 2026-11-11, on
      * that list: "this is the legacy screen"). */
@@ -2318,6 +2351,25 @@ async function main() {
         if (hops !== `${door} -> pilot -> paused`) {
           failures.push(`room return: Settings from the pause, then ${door}, then Back twice went "${hops}"`);
         }
+      }
+      const cm = rr.changeMap || {};
+      for (const key of ['freestyle-paused', 'race-paused', 'freestyle-results', 'race-results']) {
+        const c = cm[key];
+        if (!c || !c.row) {
+          failures.push(`change map: no Change map or Change track row on ${key}`);
+          continue;
+        }
+        const want = key.startsWith('race') ? 'courses' : 'freestyle';
+        if (c.opened !== want) {
+          failures.push(`change map: ${key} opened "${c.opened}", not "${want}"`);
+        }
+        const home = key.endsWith('paused') ? 'paused' : 'results';
+        if (c.back !== home) {
+          failures.push(`change map: Back from the picker opened from ${key} landed on "${c.back}", not "${home}"`);
+        }
+      }
+      if (cm.room) {
+        failures.push('change map: a room\'s pause offers Change map, and the host owns the map there');
       }
       if (rr.wayBack !== 'title true solo') {
         failures.push(`room return: Back from Tracks landed on "${rr.wayBack}", not the gate's Fly solo page`);

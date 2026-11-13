@@ -387,7 +387,7 @@ const FILM_START_MS = 10000;
  */
 const COURSE_PLAN_MS = 50;
 
-const ROOM_PARENTS = new Set(['courses', 'freestyle', 'launch', 'quad', 'pilot']);
+const ROOM_PARENTS = new Set(['courses', 'freestyle', 'launch', 'quad', 'pilot', 'results']);
 
 /* The rooms whose list is their content, sized to the window by
  * fitMenuHeight. */
@@ -12138,6 +12138,7 @@ export class Ui {
       return [
         { label: 'Resume', action: 'resume', primary: true },
         { label: 'Restart run', action: 'restart' },
+        ...(this.changeMapItem() ? [this.changeMapItem()] : []),
         ...(builder ? [builder] : []),
         ...this.ghostItems(),
         ...(trouble ? [trouble] : []),
@@ -12260,6 +12261,7 @@ export class Ui {
           || this.settings.map === 'school';
         return [
           { label: 'Fly again', action: 'restart', primary: true },
+          ...(this.changeMapItem() ? [this.changeMapItem()] : []),
           this.runPosted
             ? {
               label: this.runPosted.improved === false ? 'Your best still stands' : 'Run posted',
@@ -12371,6 +12373,7 @@ export class Ui {
       if (!listing) {
         return [
           { label: 'Fly again', action: 'restart', primary: true },
+          ...(this.changeMapItem() ? [this.changeMapItem()] : []),
           ...this.tuneShareRows(),
           feelItem(),
           { label: 'Back to title', action: 'title' },
@@ -12392,6 +12395,7 @@ export class Ui {
       const rival = this.rivalRow();
       return [
         { label: 'Fly again', action: 'restart', primary: true },
+        ...(this.changeMapItem() ? [this.changeMapItem()] : []),
         ...(next ? [{
           label: 'Next track',
           value: next.name,
@@ -22778,6 +22782,31 @@ export class Ui {
       this.act(got.tune ? 'quad' : 'fly');
     });
     return true;
+  }
+
+  /*
+   * CHANGE MAP, FROM THE PAUSE AND FROM RESULTS. A pilot on the Discord
+   * (2026-11-13) paused and found no way to fly somewhere else without
+   * quitting to the title and answering everything again. The row opens the
+   * picker the seated way came from (the Maps shelf for freestyle, the
+   * Tracks shelf for a race), the same doors Fly solo opens, and every
+   * answer the pilot has given stays: quad, tune, rates, mode. Nothing here
+   * is loaded until the row is pressed. Escape and Back from the picker
+   * land on the screen it was opened from (returnTo).
+   *
+   * Not in a room (the host's map, and the room's own page changes it), not
+   * in a career lesson (a lesson is its own track), and not in a mini game
+   * played through its own pause (miniGamePauseItems), whose map is part of
+   * the game.
+   */
+  changeMapItem() {
+    if ((this.screen !== 'paused' && this.screen !== 'results') || this.careerLesson || this.roomInfo || this.dogfight) {
+      return null;
+    }
+    const race = this.mode === 'race' || (this.mode !== 'freestyle' && seatIsRace(this.settings));
+    return race
+      ? { label: 'Change track', action: 'courses', note: 'Pick another track. Your quad, tune and rates stay as they are.' }
+      : { label: 'Change map', action: 'freestyle', note: 'Pick another map. Your quad, tune and rates stay as they are.' };
   }
 
   /*

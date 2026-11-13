@@ -744,8 +744,21 @@ export function createCareer(shell) {
         if (d === 'right') {
           return { text: 'Turn right: {yaw} to the right.', tone: 'info' };
         }
+        /* One line for each way out of the zone, which the judge now names
+         * (faceMiss in objectives.js). The one line there was, "Stay low,
+         * over the pad.", told a pilot under the floor to stay there:
+         * bug-47398013. */
+        if (d === 'airborne') {
+          return { text: 'Take off again: a low hover over the pad.', tone: 'info' };
+        }
+        if (d === 'low') {
+          return { text: 'A little higher: more throttle.', tone: 'warn' };
+        }
+        if (d === 'high') {
+          return { text: 'Too high: ease off the throttle.', tone: 'warn' };
+        }
         if (d === 'outside') {
-          return { text: 'Stay low, over the pad.', tone: 'warn' };
+          return { text: 'Back over the pad.', tone: 'warn' };
         }
         return null;
       case 'orbit':
@@ -927,7 +940,10 @@ export function createCareer(shell) {
     if (cur.kind === 'takeoff') {
       const min = o.minHeight ?? 0.5;
       band = [min, Math.max(3, min + 2)];
-    } else if (cur.kind === 'hold' && o.zone && o.zone.kind === 'cylinder') {
+    } else if ((cur.kind === 'hold' || cur.kind === 'face') && o.zone && o.zone.kind === 'cylinder') {
+      /* Face too: its cylinder has a floor and a top the judge holds the
+       * pilot to, and with no band drawn the only word on it was the coach
+       * (bug-47398013). */
       band = [o.zone.y0, o.zone.y1];
     } else if (cur.kind === 'hold' && o.zone && o.zone.kind === 'box') {
       band = [o.zone.c.y - o.zone.hy, o.zone.c.y + o.zone.hy];

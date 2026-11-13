@@ -179,6 +179,53 @@ const near2d = (a, b, r) => {
   return dx * dx + dz * dz <= r * r;
 };
 
+/*
+ * Which way a craft the face judge is not counting has left its zone: on
+ * the ground ('airborne', the hold judge's word for "take off"), off it
+ * across the field ('outside'), under its floor ('low') or over its top
+ * ('high'). Across before up and down, because a craft off the pad is
+ * pointed back to it by the marker and the height is the next thing. A
+ * zone this cannot place is 'outside', the one word the judge had before.
+ */
+function faceMiss(o, f) {
+  if (f.landed) {
+    return 'airborne';
+  }
+  const z = o.zone;
+  if (z && z.kind === 'cylinder') {
+    if (!near2d(f.pos, z.c, z.r)) {
+      return 'outside';
+    }
+    if (f.pos.y < z.y0) {
+      return 'low';
+    }
+    if (f.pos.y > z.y1) {
+      return 'high';
+    }
+  } else if (z && z.kind === 'box') {
+    if (Math.abs(f.pos.x - z.c.x) > z.hx || Math.abs(f.pos.z - z.c.z) > z.hz) {
+      return 'outside';
+    }
+    if (f.pos.y < z.c.y - z.hy) {
+      return 'low';
+    }
+    if (f.pos.y > z.c.y + z.hy) {
+      return 'high';
+    }
+  } else if (z && z.kind === 'band') {
+    if (f.height < z.lo) {
+      return 'low';
+    }
+    if (f.height > z.hi) {
+      return 'high';
+    }
+  }
+  if (o.maxHeight != null && f.height > o.maxHeight) {
+    return 'high';
+  }
+  return 'outside';
+}
+
 const JUDGES = {
   /* takeoff { minHeight = 0.5 }: off the ground and climbing. */
   takeoff: {
@@ -336,6 +383,19 @@ const JUDGES = {
   /*
    * face { headings: [degrees], tol = 12, hold = 0.8, zone, maxHeight }:
    * turn on the spot to point the nose along each heading in turn.
+   *
+   * WHY IT IS NOT COUNTING, in the detail, and not only that it is not.
+   * bug-47398013, "giving the same commands and not completeing the
+   * mission", on Into the Goggles: the zone is a cylinder over the pad from
+   * 0.4 m to 6 m, the briefing says "a low hover", and the detail was one
+   * word, 'outside', for being on the ground, under the floor, over the top
+   * and off the pad alike. The coach's line for it was "Stay low, over the
+   * pad.", which to a pilot hovering at 0.3 m right over the pad says keep
+   * doing what you are doing, and nothing ever counted (measured in the real
+   * shell: 25 s at 0.3 m, every heading passed, none counted, that line the
+   * whole time). So the detail says which: 'airborne' on the ground (the
+   * hold judge's word for it), 'outside' off the pad, 'low' under the
+   * floor, 'high' over the top. See faceMiss.
    */
   face: {
     start: () => ({ index: 0, acc: 0 }),
@@ -347,7 +407,7 @@ const JUDGES = {
       const inside = !f.landed && inZone(o.zone, f.pos, f.height)
         && (o.maxHeight == null || f.height <= o.maxHeight);
       s.error = err;
-      s.detail = !inside ? 'outside' : (err > (o.tol ?? 12) ? (angleDiff(want, have) > 0 ? 'left' : 'right') : '');
+      s.detail = !inside ? faceMiss(o, f) : (err > (o.tol ?? 12) ? (angleDiff(want, have) > 0 ? 'left' : 'right') : '');
       if (inside && err <= (o.tol ?? 12)) {
         s.acc += ctx.dtMs;
         if (s.acc >= (o.hold ?? 0.8) * 1000) {

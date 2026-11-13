@@ -236,6 +236,38 @@ test('face: four headings in turn, held', () => {
   assert.equal(run.status().phase, 'complete');
 });
 
+/*
+ * bug-47398013, "giving the same commands and not completeing the mission",
+ * on Into the Goggles. The zone is over the pad from 0.4 m to 6 m and the
+ * detail was 'outside' for every way out of it, so the coach said "Stay low,
+ * over the pad." to a pilot hovering at 0.3 m over the pad, and nothing
+ * counted however they turned. The detail now says which way out: on the
+ * base each of these reads 'outside'.
+ */
+test('face: says why it is not counting, under the floor, over the top, off the pad, on the ground', () => {
+  const lesson = lessonById('1-3');
+  const run = createRun(lesson, { W, D });
+  const east = v3(1, 0, 0);
+  let t = hover(run, 0, 100, [80, 25, 1.5], { height: 1.5 });
+  assert.equal(run.status().current.kind, 'face', 'taken off, on to the turns');
+  const look = (doc, extra) => {
+    t = hover(run, t, 1500, doc, { fwd: east, ...extra });
+    const cur = run.status().current;
+    return { detail: cur.detail, index: cur.state.index, progress: cur.progress };
+  };
+  const low = look([80, 25, 0.3], { height: 0.3 });
+  assert.deepEqual(low, { detail: 'low', index: 0, progress: 0 }, '0.3 m over the pad, facing the first flag: under the floor');
+  const high = look([80, 25, 7], { height: 7 });
+  assert.deepEqual(high, { detail: 'high', index: 0, progress: 0 }, '7 m over the pad: over the top');
+  const off = look([80, 40, 1.5], { height: 1.5 });
+  assert.deepEqual(off, { detail: 'outside', index: 0, progress: 0 }, '15 m off the pad at a good height: off it');
+  const down = look([80, 25, 0], { height: 0, landed: true });
+  assert.deepEqual(down, { detail: 'airborne', index: 0, progress: 0 }, 'parked on the pad: take off again');
+  /* And none of those words is a dead end: back inside, the flag counts. */
+  const back = look([80, 25, 1.5], { height: 1.5 });
+  assert.equal(back.index, 1, 'back at 1.5 m over the pad facing the first flag, it counts');
+});
+
 test('a crash fails a lesson that says so, and only that one', () => {
   const strict = createRun({ id: 's', failOn: { crash: true }, objectives: [{ kind: 'speed', text: 'go', min: 10 }] }, { W, D });
   strict.frame(frame(0, [80, 40, 2], { height: 2 }));

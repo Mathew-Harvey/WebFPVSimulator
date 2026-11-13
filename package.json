@@ -97,6 +97,7 @@
     "check:career": "node --test tests/career/career-laps.test.js tests/career/career-maps.test.js tests/career/career-objectives.test.js tests/career/career-words.test.js tests/career/career-progress.test.js tests/career/career-wiring.test.js",
     "check:careerui": "node scripts/career-ui-check.js",
     "check:careerland": "node scripts/careerland-check.js",
+    "check:careerface": "node scripts/careerface-check.js",
     "check:career:rig": "node --test tests/career/rig.test.js",
     "check:bardwell": "node scripts/bardwell-check.js",
     "check:sunny": "node scripts/sunny-check.js",

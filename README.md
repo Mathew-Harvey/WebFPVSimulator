@@ -13,7 +13,7 @@ To fly it: Node 22 or newer, nothing else. `dist/sim.wasm` is committed so
 the toolchain is optional, and there are no npm dependencies to install.
 
 To rebuild the physics module or run the full verification: Emscripten
-(emsdk on PATH, or in `$EMSDK`, `~/emsdk` or `/opt/emsdk`), a shell that
+(emsdk on PATH, or in `$EMSDK`, `~/emsdk`, `/opt/emsdk`, or an `.emsdk` directory in the project root), a shell that
 can run `scripts/build-wasm.sh` (Git Bash or WSL on Windows), and a Chrome
 or Chromium install for the browser checks (`SIM_CHROME_BIN` overrides the
 location).

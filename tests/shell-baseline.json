@@ -84,7 +84,7 @@
     "1280x720": {
       "title": 0,
       "launch": 0,
-      "paused": 0,
+      "paused": 10,
       "results": 0,
       "stickhelp": 0,
       "howto": 146,

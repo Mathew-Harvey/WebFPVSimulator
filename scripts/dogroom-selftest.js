@@ -313,6 +313,66 @@ check(B.over && !B.dismissed, 'and its results put the table up again');
   check(R.nameOf(s7) === 'Kite Runner', 'and the last name heard stands when the list has nobody');
 }
 
+/* POP! is a pop and nothing else (bug-85f93166): a room's pilot who is not
+ * in the round is not alive, and the HUD showed POP! and BACK IN 1 for
+ * not alive. waitingBack is what the HUD asks now; waitLine is what it
+ * says instead to a pilot who is only out of the round. */
+{
+  const tick = (P, me, n) => {
+    for (let k = 0; k < n; k += 1) {
+      clock.t += DOGFIGHT_EVERY;
+      P.step(me);
+      P.takeOutbox();
+      P.eventCount = 0;
+    }
+  };
+  const me = {
+    x: 0, y: 6, z: 0, fx: 1, fy: 0, fz: 0, ux: 0, uy: 1, uz: 0, flying: true, gun: false, missile: false,
+  };
+  const G = new DogfightRoom(world(), { now, seed: 31 });
+  G.setYou(3, false);
+  tick(G, me, 50);
+  check(!G.inFight[ME] && !G.waitingBack(ME), 'a room in the pit: not in a round, and not waiting to come back from a pop');
+  check(/host/.test(G.waitLine) && /start/.test(G.waitLine), 'and a guest is told the host starts the round', G.waitLine);
+
+  const H = new DogfightRoom(world(), { now, seed: 32 });
+  H.setYou(1, true);
+  check(/needs two/.test(H.waitLine), 'a host alone is told a dogfight needs two', H.waitLine);
+  H.setBots([{ id: 201, name: 'MOCHI', skill: 'pilot' }]);
+  check(/Press G/.test(H.waitLine), 'and with a bot seated, to press G', H.waitLine);
+
+  /* A round on that this page is not in: it came in after GO. */
+  board.start();
+  board.rows.delete(3);
+  G.heard(board.state('count'), toLocal);
+  check(!G.inFight[ME] && !G.waitingBack(ME) && /next one/.test(G.waitLine), 'a round counting down without this pilot: not popped, told it flies the next one', G.waitLine);
+  clock.t = board.goAt + 100;
+  G.heard(board.state('live'), toLocal);
+  tick(G, me, 400);
+  check(!G.inFight[ME] && !G.waitingBack(ME), 'four seconds into a live round it is not in, still nothing to come back from');
+  check(/started without you/.test(G.waitLine), 'and it is told the round started without it', G.waitLine);
+
+  /* The next round has it, and a real pop is still a pop, and ends. */
+  board.start();
+  board.rows.set(3, {
+    hp: HITS.arcade.hp, pops: 0, popped: 0, dealt: 0, backAt: 0, shieldUntil: board.goAt + SHIELD_MS,
+  });
+  G.heard(board.state('count'), toLocal);
+  clock.t = board.goAt + SHIELD_MS + 100;
+  G.heard(board.state('live'), toLocal);
+  tick(G, me, 5);
+  check(G.inFight[ME] && G.alive[ME] && !G.waitingBack(ME), 'in the next round and whole: not waiting');
+  const backAt = clock.t + HITS.arcade.backMs;
+  G.heardHit({
+    t: 'dfHit', n: board.n, by: YOU_A, to: 3, w: 'missile', d: 55, hp: 0, pop: true, backAt,
+  }, toLocal);
+  check(G.waitingBack(ME), 'popped by the board: waiting to come back');
+  tick(G, me, HITS.arcade.backMs / DOGFIGHT_EVERY + 5);
+  check(G.alive[ME] && !G.waitingBack(ME), 'and back when the board\'s wait is up');
+  G.heard(board.state('results'), toLocal);
+  check(!G.waitingBack(ME), 'and the round\'s results are not a pop');
+}
+
 /* Cost: the host with two bots and a room of eight others. */
 {
   const H = new DogfightRoom(world(), { now, seed: 5 });

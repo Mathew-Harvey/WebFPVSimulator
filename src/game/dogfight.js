@@ -637,6 +637,15 @@ export class Dogfight {
     return this.live(i) && this.clockMs >= this.shieldUntil[i];
   }
 
+  /* Popped and waiting to come back: in the fight, not alive, the round
+   * not over. Not alive alone is not that: a room's pilot is not alive
+   * while not in the round at all (src/game/dogroom.js heard), and the
+   * HUD's POP! went up over the picture for as long as that lasted
+   * (bug-85f93166). */
+  waitingBack(i) {
+    return this.inFight[i] === 1 && this.alive[i] === 0 && !this.over;
+  }
+
   /* Whether the round's clock is running and a shot may land. */
   get running() {
     return this.startedMs >= 0 && !this.over;

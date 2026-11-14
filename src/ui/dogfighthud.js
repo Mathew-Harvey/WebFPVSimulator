@@ -699,8 +699,11 @@ export class DogfightHud {
       this.rack.innerHTML = html;
     }
 
-    /* Popped, waiting to come back, and the words before a round. */
-    const out = !alive && !g.over;
+    /* Popped, waiting to come back, and the words before a round. Only a
+     * pilot in the fight can have been popped: a room's pilot out of the
+     * round is not alive either, and was shown POP! and BACK IN 1 until
+     * the next round (bug-85f93166). They get the room's line instead. */
+    const out = g.waitingBack(ME);
     const back = out ? Math.max(1, Math.ceil((g.backAt[ME] - g.clockMs) / 1000)) : 0;
     if (L.out !== out || L.back !== back) {
       L.out = out;
@@ -709,7 +712,9 @@ export class DogfightHud {
       this.popBack.innerHTML = out ? `BACK IN <b>${back}</b>` : '';
     }
     let banner = '';
-    if (!g.over && alive) {
+    if (g.room && !g.inFight[ME]) {
+      banner = g.over ? '' : g.waitLine;
+    } else if (!g.over && alive) {
       if (g.startedMs < 0) {
         const n = g.rules.bots;
         /* The shell's own take off words (extra.start), so the banner up

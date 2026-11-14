@@ -27,6 +27,10 @@
  *            host's own name never sent to the room
  *   bots     a dogfight room the page ends up hosting, a bot seated from
  *            the roster sheet and seen as a pilot by somebody who joins
+ *   dfpop    a dogfight room joined with a round on: no POP! for a pilot
+ *            who is only out of the round, in it or in the pit, a line
+ *            that says why, and POP! still up and gone for a real pop
+ *            (bug-85f93166)
  *   deploy   the board replaced the way a deploy replaces it (SIGTERM,
  *            every socket closed with 1012) and started again with the
  *            same secret: the page is back in its room from the sealed
@@ -37,7 +41,7 @@
  * purpose is a failed load. Nothing here times anything: other browser
  * checks share the machine, so every wait polls for its outcome.
  *
- * Usage: node scripts/rooms-check.js [--only=pair,shelf]
+ * Usage: node scripts/rooms-check.js [--only=pair,shelf,bots,dfpop,deploy]
  *
  * This file is part of WebFPVSimulator.
  *
@@ -625,6 +629,103 @@ async function sceneBots() {
   }
 }
 
+/*
+ * POP IS A POP, AND NOTHING ELSE. bug-85f93166, "Pop always stays there
+ * when playing dogfights" (a Chromebook in room JREZ7Q, on the town): the
+ * HUD put up POP! and BACK IN 1 for any pilot whose slot was not alive,
+ * and in a room a pilot is not alive while not in the round at all,
+ * before the host starts one, after joining one already on (the board's
+ * "watching until the next round", its roundsJoin), or after sitting in
+ * the menus through GO. So the overlay sat over the picture until the next
+ * round, which for a pilot alone in a room is never. Here: a page joins a
+ * round two Node pilots are already in, sits through the pit and is in the
+ * next round, and is then popped for real by a Node pilot's two missiles,
+ * which must still show POP and still clear when the board says back.
+ */
+const POP_SHOWN = `(() => {
+  const h = window.__dogfightHud && window.__dogfightHud();
+  return Boolean(h && h.visible && h.pop && h.pop.getClientRects().length > 0);
+})()`;
+const BANNER = `(() => {
+  const h = window.__dogfightHud && window.__dogfightHud();
+  return h && h.banner && h.banner.getClientRects().length > 0 ? h.banner.textContent : '';
+})()`;
+async function sceneDfPop() {
+  console.log('\ndfpop: a dogfight room, POP only for a pilot who was popped');
+  const kite = bot('Kite Runner', 451);
+  const moss = bot('Moss Comet', 453);
+  const room = await hostRoom(kite, {
+    name: 'Dogfight', way: 'freestyle', map: 'bardwell', mapName: "Bardwell's house", scale: 50, game: 'dogfight',
+  });
+  const page = await open('Late Pilot');
+  const G = 'window.__dogfight && window.__dogfight()';
+  const dfState = (b) => {
+    const r = b.heard.filter((h) => h.name === 'dogfight').pop();
+    return r && r.data && r.data.dogfight ? r.data.dogfight : null;
+  };
+  try {
+    moss.s.join(room.code, {});
+    check('a second pilot joins the host', await until(() => moss.s.inRoom, 8000));
+    kite.s.link.raceSend({ t: 'dfStart' });
+    check('the host starts a round with the two of them in it', await until(() => {
+      const d = dfState(moss);
+      return d && (d.phase === 'count' || d.phase === 'live') && d.rows.length === 2;
+    }, 10000, 100), JSON.stringify(dfState(moss)));
+
+    /* The page comes in with the round on: it watches this one. */
+    await joinByCode(page, room.code);
+    await page.until(`${T} && window.__together().inRoom`, 20000);
+    await flying(page);
+    await page.until(`${G} && window.__dogfight().room === true && ['count', 'live'].includes(window.__dogfight().state.phase)`, 20000);
+    await page.until(`${G} && window.__dogfight().state.phase === 'live'`, 20000);
+    await wait(500);
+    const outOf = await page.evaluate(`${G} && window.__dogfight().inFight[0] === 0`);
+    check('a pilot who came in after GO is not in this round (the board\'s rule)', outOf);
+    check('and is not shown POP!, because nobody popped them', !(await page.evaluate(POP_SHOWN)),
+      JSON.stringify(await page.evaluate(`(() => { const g = window.__dogfight(); return { alive: g.alive[0], inFight: g.inFight[0], over: g.over }; })()`)));
+    const late = await page.evaluate(BANNER);
+    check('the HUD says the round started without them and they fly the next one', /next one/i.test(late), late);
+
+    /* Back to the pit: still nobody popped, and the page says it waits. */
+    kite.s.link.raceSend({ t: 'dfPit' });
+    await page.until(`${G} && window.__dogfight().state.phase === 'pit'`, 10000);
+    await wait(300);
+    check('in the pit, before the host starts a round, there is no POP! either', !(await page.evaluate(POP_SHOWN)));
+    const pit = await page.evaluate(BANNER);
+    check('and the HUD says the host starts the round', /host/i.test(pit) && /start/i.test(pit), pit);
+
+    /* The next round has the page in it. */
+    kite.s.link.raceSend({ t: 'dfStart' });
+    check('the host\'s next round has the page in it', await pass(page.until(`${G} && window.__dogfight().inFight[0] === 1 && window.__dogfight().alive[0] === 1`, 15000)));
+    check('in a round and whole, no POP!', !(await page.evaluate(POP_SHOWN)));
+    check('and no wait line', (await page.evaluate(BANNER)).indexOf('next one') < 0);
+
+    /* Popped for real: two of Moss's missiles, past the page's shield. */
+    await page.until(`${G} && window.__dogfight().state.phase === 'live'`, 15000);
+    const d = dfState(moss);
+    const you = (await state(page)).you;
+    const shieldOver = d.goAt + 2000;
+    await until(() => Date.now() > shieldOver + 300, 10000, 100);
+    const hit = () => moss.s.link.raceSend({ t: 'dfHit', n: d.n, to: you, w: 'missile', d: 55 });
+    hit();
+    await wait(150);
+    hit();
+    check('two missiles pop the page, and the page shows POP!', await pass(page.until(POP_SHOWN, 8000)),
+      JSON.stringify(await page.evaluate(`(() => { const g = window.__dogfight(); return { alive: g.alive[0], inFight: g.inFight[0], hp: g.hp[0] }; })()`)));
+    const back = await page.evaluate("(() => { const h = window.__dogfightHud(); return h.popBack.textContent; })()");
+    check('with the count back', /BACK IN/.test(back), back);
+    check('and POP! goes when the board\'s wait is up', await pass(page.until(`!${POP_SHOWN} && window.__dogfight().alive[0] === 1`, 10000)));
+    endChecks(page);
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.stack || e.message}`);
+  } finally {
+    kite.s.leave();
+    moss.s.leave();
+    await close(page);
+  }
+}
+
 async function sceneDeploy() {
   console.log('\ndeploy: the board replaced under a room, and back in from the ticket');
   const keeper = bot('Night Owl', 151);
@@ -671,6 +772,7 @@ try {
   if (wanted('pair')) { await freshBoard(); await scenePair(); }
   if (wanted('shelf')) { await freshBoard(); await sceneShelf(); }
   if (wanted('bots')) { await freshBoard(); await sceneBots(); }
+  if (wanted('dfpop')) { await freshBoard(); await sceneDfPop(); }
   if (wanted('deploy')) { await freshBoard(); await sceneDeploy(); }
 } catch (e) {
   failures += 1;

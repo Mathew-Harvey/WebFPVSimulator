@@ -130,6 +130,37 @@ export class DogfightRoom extends Dogfight {
     this.havePrevMe = false;
   }
 
+  /*
+   * WHAT A PILOT WHO IS NOT IN THE ROUND IS TOLD, for the HUD's banner:
+   * before the host starts one, or with one on that this pilot is not in
+   * (they came in after GO, or sat in the menus through it), which the
+   * board means as watching until the next round (its roundsJoin). Ribbon
+   * cutting's room says the same (src/game/ribbons.js banner). Without a
+   * line here the HUD had nothing to say but POP! (bug-85f93166).
+   */
+  get waitLine() {
+    const ph = this.state.phase;
+    if (ph === 'count') {
+      return 'A round is starting without you. You fly the next one.';
+    }
+    if (ph === 'live') {
+      return 'This round started without you. You fly the next one.';
+    }
+    if (ph === 'results') {
+      return '';
+    }
+    if (!this.host) {
+      return 'Waiting for the host to start a round. Fly about and get ready.';
+    }
+    /* The board's dfStart wants two seats, a bot's or a pilot's. */
+    for (let i = 1; i < ROOM_SLOTS; i += 1) {
+      if (this.idOf[i] >= 0 && (this.isBot[i] || this.here(i))) {
+        return 'Press G to start a round. Everybody flying here is in it.';
+      }
+    }
+    return 'A dogfight needs two. Fill the roster with bots, or send the room\'s link.';
+  }
+
   /* The round is the board's, not this page's. */
   get judged() {
     return false;

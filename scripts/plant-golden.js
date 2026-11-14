@@ -484,6 +484,70 @@ const SCENARIOS = [
     name: 'whoop, free air acro, motor power 1.2', ms: 6000, airframe: 1, kv: 1.2, sticks: FREESTYLE,
     exercises: (s) => s.maxRate > 8 && s.minUpZ < -0.5,
   },
+  /*
+   * THE FIVE INCH AS THE SHELL SHIPS IT, pinned 2026-11-14, before the
+   * Realistic physics switch touched the plant. The owner's condition is
+   * that coverage lands before the model's shape changes, and the switch
+   * has to leave the shipped machine bit identical while it is off. Most
+   * runs above fly the module's own 1.0 weight and 1.0 air, which is the
+   * harness machine and not the one a pilot meets: the shell flies 1.62
+   * times the weight (configs/airframes.js gravityBase) and Air grip 110
+   * (TUNE_DEFAULTS in src/share/tune.js). These four fly that machine
+   * through the places the switch's terms live: the thrust curve in a
+   * climb, a dive and fast edgewise flight; a flare and a descent back
+   * through the air the craft has just used; the first rotor diameters
+   * above the grass; and a long pull on the pack. Written from the module
+   * built off main before any of that code existed.
+   */
+  {
+    name: 'shell five inch, acro freestyle', ms: 8000, gravity: 1.62, air: 1.1,
+    sticks: FREESTYLE,
+    exercises: (s) => s.maxRate > 8 && s.maxSpeed > 8 && s.minUpZ < -0.5,
+  },
+  {
+    name: 'shell five inch, fast run, flare, chop and punch out', ms: 9000, gravity: 1.62, air: 1.1,
+    angle: true,
+    events: [{ ms: 0, pose: { z: 40, q: LEVEL } }],
+    sticks: (ms, st, ctx) => {
+      if (ms < 3000) {
+        return [0, 1, 0, heightHold(ctx, st, 40)];
+      }
+      if (ms < 3900) {
+        return [0, -1, 0, 0.3];
+      }
+      if (ms < 5600) {
+        return [0, 0, 0, 0];
+      }
+      if (ms < 6600) {
+        return [0, 0, 0, 0.85];
+      }
+      return [0.5, 0.6, 0.3, heightHold(ctx, st, 30)];
+    },
+    exercises: (s) => s.maxSpeed > 15 && s.minZ < 36 && s.minZ > 5,
+  },
+  {
+    name: 'shell five inch, grass, low hover, creep and land', ms: 8000, gravity: 1.62, air: 1.1,
+    ground: 'grass', angle: true,
+    sticks: (ms, st, ctx) => {
+      if (ms < 300 || ctx.touched) {
+        return [0, 0, 0, 0];
+      }
+      if (ms >= 6000 && ctx.contacts > 0) {
+        ctx.touched = true;
+        return [0, 0, 0, 0];
+      }
+      const z = ms < 5500 ? 0.12 : 0.12 - ((ms - 5500) / 1500) * 0.4;
+      return [0, ms > 2500 && ms < 4500 ? 0.15 : 0, 0, heightHold(ctx, st, z)];
+    },
+    exercises: (s) => s.maxZ > 0.08 && s.maxZ < 0.6 && s.lastContactMs > 5500 && s.endSpeed < 0.3,
+  },
+  {
+    name: 'shell five inch, long pull on a part used pack', ms: 6000, gravity: 1.62, air: 1.1,
+    cellV: 3.9,
+    sticks: seq(hold(0, 400, 0, 0, 0, 0.4), hold(400, 3000, 0, 0.1, 0, 1),
+      hold(3400, 1200, 0, 0, 0, 0), hold(4600, 1400, 0, 0, 0, 0.5)),
+    exercises: (s) => s.minVolts < 3.5 * 6 && s.maxSpeed > 20,
+  },
 ];
 
 const CONFIG_FOR = {

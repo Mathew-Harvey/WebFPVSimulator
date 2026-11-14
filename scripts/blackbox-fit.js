@@ -435,51 +435,92 @@ export function estimate(log) {
     }
   }
 
-  /* Agility: gyro' = A (difference of rpm squared) - B gyro + c.
-   * Betaflight order: 0 rear right, 1 front right, 2 rear left, 3 front left. */
+  /* Agility: gyro' = A (difference of rpm squared) + c, ON THE SNAPS ONLY.
+   * Betaflight order: 0 rear right, 1 front right, 2 rear left, 3 front left.
+   *
+   * The first version regressed over the whole flight, and on four real
+   * logs rpm explained under a quarter of the gyro's acceleration, flips
+   * and all: between snaps the acceleration is noise and the rpm
+   * difference sits at the telemetry's own step (57 rpm on a 14 pole
+   * motor), so the slope collapsed toward zero. A snap is where the signal
+   * is, a hundred times the noise. So: both sides smoothed over the same
+   * 16 ms window, only the samples where the gyro is accelerating past 60
+   * rad/s2 with the props off the idle, and the rpm allowed to arrive up
+   * to 12 ms late, which telemetry does. The share explained is printed,
+   * and a fit explaining under half prints no number. */
   if (log.rpm) {
+    const half = Math.max(2, Math.round(0.008 / dt));
+    const kern = [];
+    let ksum = 0;
+    for (let j = -half; j <= half; j += 1) {
+      const v = 0.5 + 0.5 * Math.cos(Math.PI * j / (half + 1));
+      kern.push(v);
+      ksum += v;
+    }
+    const smooth = (x) => {
+      const y = new Float64Array(n);
+      for (let k = half; k < n - half; k += 1) {
+        let s = 0;
+        for (let j = -half; j <= half; j += 1) {
+          s += kern[j + half] * x[k + j];
+        }
+        y[k] = s / ksum;
+      }
+      return y;
+    };
+    const sorted = Float64Array.from(sumW2.filter((_, k) => k % 8 === 0)).sort();
+    const floor = 4 * sorted[Math.floor(0.01 * (sorted.length - 1))];
     const sq = (m, k) => log.rpm[m][k] * log.rpm[m][k];
     const axes = [
       ['roll', 0, (k) => sq(2, k) + sq(3, k) - sq(0, k) - sq(1, k)],
       ['pitch', 1, (k) => sq(0, k) + sq(2, k) - sq(1, k) - sq(3, k)],
     ];
+    const maxLag = Math.round(0.012 / dt);
     for (const [name, ax, diff] of axes) {
-      const f = new Fit(3);
-      for (let k = h; k < n - h; k += 1) {
-        f.add([1, diff(k), -log.gyro[ax][k]], d(log.gyro[ax], k));
+      const gs = smooth(log.gyro[ax]);
+      const raw = new Float64Array(n);
+      for (let k = 0; k < n; k += 1) {
+        raw[k] = diff(k);
       }
-      const s = f.solve();
-      /* How much of the gyro's acceleration the rpm explains. A gentle
-       * flight leaves the rpm difference at the telemetry's own step (57
-       * rpm on a 14 pole motor) and the slope collapses toward zero, so a
-       * poor fit prints nothing. The first two real logs, 40 seconds of
-       * hovering each, explained under a fifth. */
-      let r2 = 0;
-      if (s) {
-        let res = 0;
-        let tot = 0;
-        let mean = 0;
-        let cnt = 0;
-        for (let k = h; k < n - h; k += 3) {
-          mean += d(log.gyro[ax], k);
-          cnt += 1;
+      const ds = smooth(raw);
+      const ev = [];
+      for (let k = half + maxLag + 1; k < n - half - 1; k += 1) {
+        const acc = (gs[k + 1] - gs[k - 1]) / (t[k + 1] - t[k - 1]);
+        if (Math.abs(acc) > 60 && sumW2[k] > floor) {
+          ev.push([k, acc]);
         }
-        mean /= cnt;
-        for (let k = h; k < n - h; k += 3) {
-          const y = d(log.gyro[ax], k);
-          const e = y - (s[0] + s[1] * diff(k) - s[2] * log.gyro[ax][k]);
-          res += e * e;
-          tot += (y - mean) * (y - mean);
-        }
-        r2 = 1 - res / tot;
-        out[`${name}Fit`] = r2;
       }
-      if (s && r2 >= 0.5) {
-        out[`${name}PerW2`] = Math.abs(s[1]);
+      out[`${name}Snaps`] = ev.length;
+      if (ev.length < 150) {
+        continue;
+      }
+      let best = null;
+      for (let lag = 0; lag <= maxLag; lag += 1) {
+        let sx = 0;
+        let sy = 0;
+        let sxx = 0;
+        let sxy = 0;
+        let syy = 0;
+        for (const [k, acc] of ev) {
+          const x = ds[k - lag];
+          sx += x; sy += acc; sxx += x * x; sxy += x * acc; syy += acc * acc;
+        }
+        const m = ev.length;
+        const cov = sxy - sx * sy / m;
+        const vx = sxx - sx * sx / m;
+        const vy = syy - sy * sy / m;
+        const r2 = vx > 0 && vy > 0 ? (cov * cov) / (vx * vy) : 0;
+        if (!best || r2 > best.r2) {
+          best = { r2, slope: cov / vx };
+        }
+      }
+      out[`${name}Fit`] = best.r2;
+      if (best.r2 >= 0.5 && best.slope > 0) {
+        out[`${name}PerW2`] = best.slope;
         if (out.thrustPerW2) {
           /* Inertia over (mass times arm): thrust per w^2 over mass, divided
            * by torque per w^2 over inertia. Metres. */
-          out[`${name}Gyration`] = out.thrustPerW2 / Math.abs(s[1]);
+          out[`${name}Gyration`] = out.thrustPerW2 / best.slope;
         }
       }
     }
@@ -712,10 +753,10 @@ const LINES = [
   ['hoverAmps', 'amps at hover, as the sensor reads', 2],
   ['cellMilliohm', 'pack resistance, milliohm a cell', 2],
   ['restDropPerAh', 'resting volts lost a cell per Ah', 3],
-  ['rollFit', 'roll: share of gyro explained by rpm', 2],
+  ['rollFit', 'roll snaps: share explained by rpm', 2],
   ['rollPerW2', 'roll kick per rpm squared difference', 9],
   ['rollGyration', 'roll inertia over mass and arm, mm', 1, 1000],
-  ['pitchFit', 'pitch: share of gyro explained by rpm', 2],
+  ['pitchFit', 'pitch snaps: share explained by rpm', 2],
   ['pitchPerW2', 'pitch kick per rpm squared difference', 9],
   ['pitchGyration', 'pitch inertia over mass and arm, mm', 1, 1000],
   ['shakeLow', 'shake at low throttle, deg/s rms', 2],
@@ -831,8 +872,10 @@ async function main() {
       + ' so the current sensor reads low and the two lines that use it mean nothing.');
   }
   for (const ax of ['roll', 'pitch']) {
-    if (mine[`${ax}Fit`] != null && mine[`${ax}Fit`] < 0.5) {
-      console.log(`  NOTE: ${ax} inertia not read: the flight is too gentle (rpm explains ${(100 * Math.max(0, mine[`${ax}Fit`])).toFixed(0)} percent of the gyro). It needs hard snaps.`);
+    if (mine[`${ax}Snaps`] != null && mine[`${ax}Snaps`] < 150) {
+      console.log(`  NOTE: ${ax} inertia not read: under a sixth of a second of hard ${ax} acceleration in the whole flight. It needs snaps.`);
+    } else if (mine[`${ax}Fit`] != null && mine[`${ax}Fit`] < 0.5) {
+      console.log(`  NOTE: ${ax} inertia not read: on the snaps, rpm explains only ${(100 * mine[`${ax}Fit`]).toFixed(0)} percent of the gyro. Check the motor order and each motor's rpm.`);
     }
   }
   table({ 'this log': mine, 'sim stock': stock, 'sim Realistic': real });

@@ -63,6 +63,8 @@
     "check:roompick": "node scripts/roompick-check.js",
     "check:tuneplant": "node scripts/tuneplant-check.js",
     "check:hoverline": "node scripts/hoverline-check.js",
+    "check:blackbox": "node scripts/blackbox-fit.js --selftest",
+    "check:realrow": "node scripts/realrow-check.js",
     "check:threedrow": "node scripts/threedrow-check.js",
     "check:autoreset": "node scripts/autoreset-check.js",
     "check:gatesettings": "node scripts/gate-settings-check.js",

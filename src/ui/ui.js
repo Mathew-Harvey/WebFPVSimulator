@@ -925,8 +925,11 @@ const WEIGHT_FEEL = {
  * Clamped to the airframe's own top, so a weight stored on a five inch at
  * 140 can never ask the module for a whoop gravity it refuses.
  */
-export function gravityScaleFor(weight, airframeId) {
-  const base = airframeById(airframeId).gravityBase;
+export function gravityScaleFor(weight, airframeId, real = false) {
+  /* REALISTIC PHYSICS flies the true weight: the base is 1, one real g, and
+   * the airframe's heavier world is left to the switch being off. The
+   * slider still scales it, from the same stops. See realPhysics below. */
+  const base = real ? 1 : airframeById(airframeId).gravityBase;
   return Math.round(base * (clampWeight(weight, airframeId) / 100) * 1000) / 1000;
 }
 /*
@@ -1643,6 +1646,14 @@ const DEFAULTS = {
    * so nobody's flight changes until they flip it. Read as `=== true`, so a
    * blob from before it existed is Off. See run3d in src/main.js. */
   mode3d: false,
+  /* REALISTIC PHYSICS, the owner's ask of 2026-11-14: "Let's build it all
+   * but put all changes behind a realistic physics switch in settings, so
+   * nothing changes untill the switch is toggled to on". Off is the quad
+   * everybody has always flown, bit for bit, and the default. On is the
+   * module's sim_set_realism and one real g instead of the airframe's
+   * heavier world. Read as `=== true`, so a blob from before it existed is
+   * Off. See runReal in src/main.js. */
+  realPhysics: false,
   /* Betaflight launch control. Off: ordinary takeoff. On: L on the start
    * line holds attitude at idle until you punch throttle. */
   launchControl: false,
@@ -11390,6 +11401,7 @@ export class Ui {
          */
         { label: 'Flying', section: true },
         this.mode3dRow(s, midRun),
+        this.realPhysicsRow(s),
         { label: 'Camera', section: true },
         this.cameraAngleRow(s),
         this.cameraFovRow(s),
@@ -13786,6 +13798,26 @@ export class Ui {
     row.flip = press;
     row.confirmOn = press;
     return row;
+  }
+
+  /*
+   * REALISTIC PHYSICS, under 3D mode and for 3D mode's reason: it is not a
+   * stick setting, it changes what the quad IS. One switch for the whole
+   * model, the owner's ask of 2026-11-14, and Off is the flight as it has
+   * always been. It lands at once, mid run too, on prop wash's rule: the
+   * lap it lands in is voided. The words say what a pilot will feel and
+   * nothing about how it is built. See runReal in src/main.js.
+   */
+  realPhysicsRow(s) {
+    const on = s.realPhysics === true;
+    return toggle(
+      'Realistic physics',
+      on
+        ? 'On, experimental: the quad flies at its true weight in real gravity. It turns more freely, the air pushes back on the props the way it does outdoors, wash hangs where you left it, the ground cushions a low hover, and in freestyle the pack sags and runs down until you reset. It has not been matched to a real flight log yet. Laps post to the public board tagged Tuned and keep a best lap of their own. Changing it mid lap voids that lap.'
+        : 'Off: the flight everybody has always flown here. Turn it on to try the experimental real world model: true weight and gravity, freer rotation, truer air on the props, wash that hangs where you left it, a ground cushion, and a pack that runs down in freestyle. Laps flown with it on post to the public board tagged Tuned.',
+      on,
+      (v) => { s.realPhysics = Boolean(v); },
+    );
   }
 
   /* One place that writes a switch, so the sound, the repaint and the

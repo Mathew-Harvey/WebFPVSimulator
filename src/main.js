@@ -5378,7 +5378,11 @@ export async function boot({ loading, bootStart, mapId }) {
     const washPart = runWash ? '' : '.nowash';
     /* And 3D, on the same rule: only when on. */
     const part3d = run3d ? '.3d' : '';
-    return `webfpv.best.${h.toString(16)}.${runVoltage.toFixed(2)}${style}${craft}${gravPart}${airPart}${kvPart}${washPart}${part3d}`;
+    /* And Realistic physics, on the same rule: only when on. Its gravity is
+     * exactly 1.0 at the stock weight, the bare `gravPart`, and this suffix
+     * is what keeps it off the old 1.0 records the note above protects. */
+    const realPart = runReal ? '.real' : '';
+    return `webfpv.best.${h.toString(16)}.${runVoltage.toFixed(2)}${style}${craft}${gravPart}${airPart}${kvPart}${washPart}${part3d}${realPart}`;
   }
 
   let mode = 'title'; /* title, flight, paused, results */
@@ -5894,7 +5898,67 @@ export async function boot({ loading, bootStart, mapId }) {
   /* Whether the machine being flown is off stock in any way the board tags
    * as Tuned: the two flight feel scales, prop wash switched off, or 3D. */
   function offStock() {
-    return offBoardTune(runAirGrip, runMotorKv, runAirframe) || !runWash || run3d;
+    return offBoardTune(runAirGrip, runMotorKv, runAirframe) || !runWash || run3d || runReal !== 0;
+  }
+  /*
+   * REALISTIC PHYSICS, as the module is flying it: the mask last given to
+   * sim_set_realism, 0 for the flight everybody has always flown. The owner,
+   * 2026-11-14: "Let's build it all but put all changes behind a realistic
+   * physics switch in settings, so nothing changes untill the switch is
+   * toggled to on". On is every part of the model the module has (see THE
+   * REALISTIC MODEL in src/native/plant.c) and one real g in place of the
+   * airframe's heavier world, which gravityScaleFor answers. Another machine
+   * in the sense prop wash off is: Tuned on the board, a best of its own.
+   *
+   * THE PACK IS THE ONE PART THAT IS NOT ALWAYS ON. A pack that runs down
+   * makes a lap depend on how long the pilot has been flying, so it drains
+   * only where nothing is timed or scored: solo freestyle with no clock and
+   * no game. Everywhere else the pack is the fresh one a run always had.
+   */
+  const REAL_ALL = 127;
+  const REAL_PACK = 16;
+  /* Charge used, in amp hours, at which the low pack is called: about
+   * three quarters of the module's pack (pack_ah in src/native/plant.c). */
+  const REAL_PACK_LOW_AH = 1.0;
+  let runReal = 0;
+  /* Whether the low pack has been called on this pack yet. */
+  let toldPackLow = false;
+  function realMaskWanted() {
+    if (ui.settings.realPhysics !== true) {
+      return 0;
+    }
+    const drains = Boolean(view) && view.mode === 'freestyle'
+      && ui.settings.freestyleScoring !== 'scored'
+      && !view.filmGame && !view.goatGame && !view.ballGame && !view.infectedGame
+      && !view.balloonChase && !view.yardTrack
+      && !(together && together.session && together.session.inRoom);
+    return drains ? REAL_ALL : REAL_ALL & ~REAL_PACK;
+  }
+  /* Give the module the mask the settings and the run ask for. True when
+   * the switch itself moved, which is a different machine; the pack bit
+   * alone moving is not. Guarded because an older dist/sim.wasm predates
+   * the export; on such a build the row goes back to Off, which is what
+   * that module flies. */
+  function applyRealism() {
+    const want = realMaskWanted();
+    if (want === runReal) {
+      return false;
+    }
+    if (typeof sim.e.sim_set_realism !== 'function') {
+      ui.settings.realPhysics = false;
+      return false;
+    }
+    const moved = (want !== 0) !== (runReal !== 0);
+    sim.e.sim_set_realism(want);
+    runReal = want;
+    toldPackLow = false;
+    return moved;
+  }
+  /* The weight the keyboard's hover table is read at. The table is measured
+   * in the airframe's own heavier world, so one real g reads as a lighter
+   * quad on it, and the table's own clamp holds the bottom. */
+  function hoverWeight() {
+    return runReal ? runWeight / airframeById(runAirframe).gravityBase : runWeight;
   }
   /*
    * How far the stick is asking the craft to climb, for the shell's own
@@ -8041,6 +8105,11 @@ export async function boot({ loading, bootStart, mapId }) {
      * key and the Tuned stamp follow it below, after race.reset. */
     const was3d = run3d;
     apply3d();
+    /* Realistic physics' pack on the same rule: whether it drains follows
+     * the run that is starting (see realMaskWanted), and the sim_reset in
+     * resetCraft is a fresh pack either way. */
+    applyRealism();
+    toldPackLow = false;
     /*
      * AND SAY SO, because nothing in flight did. Four pilots in three days
      * flew 3D without knowing it was on and called the sim broken: hover at
@@ -9094,7 +9163,7 @@ export async function boot({ loading, bootStart, mapId }) {
    */
   function syncKeyHover() {
     input.setKeyHover(hoverStickPercent(
-      normaliseRates(ui.settings.rates).throttleCap, runAirframe, runWeight, runVoltage, runMotorKv,
+      normaliseRates(ui.settings.rates).throttleCap, runAirframe, hoverWeight(), runVoltage, runMotorKv,
     ) / 100);
   }
 
@@ -9322,6 +9391,17 @@ export async function boot({ loading, bootStart, mapId }) {
        * take: the whoop's is 120, because 125 of its base is over 2.5. */
       const wantWeight = clampWeight(s.weight, runAirframe);
       /*
+       * REALISTIC PHYSICS FIRST, because the gravity below reads it: one
+       * real g with the switch on. It lands at once, on prop wash's rule,
+       * and a lap it lands in is voided; the Tuned stamp and the record key
+       * follow at the end of this block and below it like every other
+       * machine change.
+       */
+      const realMoved = applyRealism();
+      if (realMoved && race.currentLapMs(simTimeMs) != null) {
+        race.noteChange();
+      }
+      /*
        * The scale follows the airframe as well as the slider, because the
        * base lives on the airframe entry; and the test is on the SCALE, not
        * the weight, so the boot time disagreement between the module's 1.0
@@ -9329,7 +9409,10 @@ export async function boot({ loading, bootStart, mapId }) {
        * the base would be too. The airframe itself only changes between
        * runs, above, so this cannot swap the plant under a lap.
        */
-      const wantScale = gravityScaleFor(wantWeight, runAirframe);
+      const wantScale = gravityScaleFor(wantWeight, runAirframe, runReal !== 0);
+      if (realMoved) {
+        syncKeyHover();
+      }
       if (wantScale !== runGravityScale) {
         if (typeof sim.e.sim_set_gravity === 'function'
           && sim.e.sim_set_gravity(wantScale) === SIM_OK) {
@@ -12350,6 +12433,12 @@ export async function boot({ loading, bootStart, mapId }) {
       } else {
       scoring = view.mode === 'freestyle';
       let sawGroundHit = false;
+      /* Realistic physics' pack, called once when most of it is used. One
+       * integer test a frame with the switch off, which is the default. */
+      if ((runReal & REAL_PACK) !== 0 && !toldPackLow && sim.e.sim_bf_debug(74) > REAL_PACK_LOW_AH) {
+        toldPackLow = true;
+        notice = { text: 'Pack is getting low.\nReset for a fresh one.', untilMs: performance.now() + 5000 };
+      }
       acc += dt;
       let steps = Math.floor(acc / MS_PER_STEP);
       acc -= steps * MS_PER_STEP;
@@ -15549,6 +15638,15 @@ export async function boot({ loading, bootStart, mapId }) {
   window.__flightMode = () => (angleModeOn ? 'angle' : 'acro');
   /* Whether the module is flying prop wash, as the shell last told it. */
   window.__propwash = () => runWash;
+  /* Realistic physics: the mask the shell gave, what the module says it is
+   * flying, and the gravity the module was last given. */
+  window.__realism = () => ({
+    shell: runReal,
+    module: typeof sim.e.sim_realism === 'function' ? sim.e.sim_realism() : null,
+    gravity: runGravityScale,
+    key: recordKey(),
+    tuned: offStock(),
+  });
   /* What 3D mode the module is flying, and what the module says it is. */
   window.__mode3d = () => ({
     shell: run3d,

@@ -44,6 +44,9 @@
  * a megahertz, which every rate worth running does. */
 #define SIM_US_PER_STEP (1000000 / SIM_STEP_HZ)
 #define SIM_MOTOR_COUNT 4
+/* How many puffs of its own downwash the plant remembers; see SIM_REAL. A
+ * power of two, because the ring's index is masked with it. */
+#define SIM_WAKE_N 64
 
 /*
  * Reference airframe constants from STAGE1.md. Everything not fixed by
@@ -167,6 +170,17 @@ typedef struct {
    * strikes and rubs when it stands outside the hull.
    */
   int ducted;
+  /*
+   * WHAT THE REALISTIC PHYSICS SWITCH READS, and nothing reads it while the
+   * switch is off. See SIM_REAL below and the block at PLANT_REAL in
+   * plant.c for where each number comes from.
+   */
+  double inertia_real[3]; /* Ixx, Iyy, Izz built up from the parts, kg m^2 */
+  double k_ground_real;   /* ground effect strength with the switch on */
+  double pack_ah;         /* what the pack holds, amp hours */
+  double r_cell_slow;     /* the slow half of a cell's sag, ohms: the part
+                           * that builds over a second of load and comes
+                           * back over a second of rest */
 } PlantParams;
 
 /*
@@ -209,6 +223,32 @@ typedef struct {
   double vbat_load;       /* pack voltage under load, volts */
   /* time */
   long long step_index; /* completed 1 ms steps since reset */
+  /*
+   * REALISTIC PHYSICS STATE. Written only while SIM_REAL is non zero and
+   * never part of what sim_state reports, so a flight with the switch off
+   * neither reads nor moves any of it. Cleared by plant_reset and by
+   * plant_real_forget.
+   *
+   * real_vi is each rotor's induced velocity as the air actually has it,
+   * which lags what the blades are asking for by a few milliseconds.
+   * pack_used_ah and pack_vp are the charge taken out of the pack and the
+   * slow part of its sag. The wake_ fields are where the craft's own
+   * downwash was left, as a short trail of puffs: where each was shed
+   * (scene metres), the way it was blown and how fast (the airframe's own
+   * metres a second), and the step it was shed on. wake_depth is how deep
+   * the craft is in that trail, 0 to 1, as of the last time it was looked
+   * for.
+   */
+  double real_vi[SIM_MOTOR_COUNT];
+  double pack_used_ah;
+  double pack_vp;
+  double wake_depth;
+  int wake_head;
+  int wake_count;
+  double wake_p[SIM_WAKE_N][3];
+  double wake_u[SIM_WAKE_N][3];
+  double wake_v[SIM_WAKE_N];
+  long long wake_t[SIM_WAKE_N];
 } SimState;
 
 /*
@@ -389,6 +429,57 @@ extern double SIM_GRAVITY;
  */
 extern double SIM_MOTOR_KV;
 
+/*
+ * REALISTIC PHYSICS, set by sim_set_realism: a set of bits, 0 by default,
+ * and at 0 the plant is the one every check and every pilot has flown, bit
+ * for bit. The owner's word of 2026-11-14, on a review of the plant against
+ * a critic who called it basic: build all of it, behind one switch, "so
+ * nothing changes untill the switch is toggled to on".
+ *
+ * Each bit is one correction, so a check or a fit can fly them one at a
+ * time. The shell's switch sets all of them (and leaves SIM_REAL_PACK out
+ * of a race, so a time is never flown on a tired pack).
+ *
+ *   SIM_REAL_INFLOW     thrust from blade element and momentum theory
+ *                       solved together, in place of the straight line
+ *                       against pitch speed. The straight line is about
+ *                       one and a half times too sensitive to a climb or a
+ *                       descent at the hover, and that same slope is the
+ *                       airframe's roll and pitch damping.
+ *   SIM_REAL_INERTIA    the airframe's inertia built up from its parts,
+ *                       roughly half the figure the table was given.
+ *   SIM_REAL_GROUND     ground effect on the five inch, which the table
+ *                       leaves out.
+ *   SIM_REAL_WAKE       prop wash from flying back into the air the craft
+ *                       has already used: the plant remembers where its
+ *                       downwash went.
+ *   SIM_REAL_PACK       the pack runs down over a flight, and part of its
+ *                       sag builds and recovers over about a second.
+ *   SIM_REAL_TANDEM     at speed the downstream rotors fly in the wake of
+ *                       the upstream ones and lose thrust. Needs INFLOW.
+ *   SIM_REAL_DYNINFLOW  the air through a rotor cannot change speed at
+ *                       once, so thrust leads a little on a sharp throttle
+ *                       change. Needs INFLOW.
+ *
+ * Gravity is not a bit here. The shell's heavy world is sim_set_gravity's
+ * 1.62; the switch has the shell ask for 1.0 instead.
+ *
+ * A mode, same rule as SIM_ARCADE: it survives sim_reset and sim_init and
+ * the shell owns asserting it. Changing it forgets the wake, the lagged
+ * inflow and the charge used, because they are meaningless across a change
+ * of model. plant_step is built in copies, as it is for 3D mode, so at 0
+ * the step runs no realism test at all on the rotor loop.
+ */
+#define SIM_REAL_INFLOW 1
+#define SIM_REAL_INERTIA 2
+#define SIM_REAL_GROUND 4
+#define SIM_REAL_WAKE 8
+#define SIM_REAL_PACK 16
+#define SIM_REAL_TANDEM 32
+#define SIM_REAL_DYNINFLOW 64
+#define SIM_REAL_ALL 127
+extern int SIM_REAL;
+
 /* Motor spin direction, position and cant moved INTO PlantParams when the
  * second airframe landed: they are airframe data and a whoop's are its own.
  * The names below are the shorthand plant.c reads them through. */
@@ -416,6 +507,22 @@ void world_step(SimState *s, int ground_on, const double gn[3], double gd);
 void world_tick(void);
 
 void plant_reset(SimState *s);
+
+/* Point the plant at the table the realism bits ask for. Called by
+ * sim_set_realism after SIM_REAL has moved. */
+void plant_set_realism(void);
+/* Forget the wake trail, the lagged inflow and the charge used. A teleport
+ * calls it for the wake's sake; a change of SIM_REAL for all three. */
+void plant_real_forget(SimState *s, int pack_too);
+/* Taps for the checks, read through sim_bf_debug cases 71 on, written by
+ * the realistic step only: 0 how deep the craft is in its remembered wake,
+ * 1 motor 0's lagged induced velocity, 2 the interference inflow the rear
+ * right rotor last saw, 3 the charge used in amp hours, 4 the slow sag in
+ * volts, 5 motor 0's thrust factor, 6 the wash depth motor 0 was shaken
+ * at. */
+extern double PLANT_DBG_REAL[8];
+/* The steady inflow curve, for sim_real_curve. See plant.c. */
+double plant_real_curve(int what, double x, double xp);
 
 /* sqrt for the debug exports, backed by libm/sim_math.h. */
 double sim_sqrt_pub(double x);

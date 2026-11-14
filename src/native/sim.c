@@ -1437,6 +1437,8 @@ SIM_EXPORT int sim_set_pose(double px, double py, double pz,
   S.quat[2] = qy * ninv;
   S.quat[3] = qz * ninv;
   world_forget();
+  /* The wake trail is where the craft was, and it is not there any more. */
+  plant_real_forget(&S, 0);
   return SIM_OK;
 }
 
@@ -1610,6 +1612,40 @@ SIM_EXPORT int sim_set_3d(int on) {
 }
 
 SIM_EXPORT int sim_3d(void) { return SIM_3D; }
+
+/* Realistic physics, see sim_internal.h. A mode, same rule as the flight
+ * style. A change of model forgets what the old one left in the air and
+ * in the pack. */
+int SIM_REAL = 0;
+
+SIM_EXPORT int sim_set_realism(int mask) {
+  /* Refused rather than masked, same argument as sim_set_air: a host that
+   * sends a bit this build does not have is a newer host, and it should
+   * hear that instead of flying something else. */
+  if (mask < 0 || (mask & ~SIM_REAL_ALL) != 0) {
+    return SIM_ERR_BAD_ARG;
+  }
+  /* The two that act through the inflow solve are nothing without it. */
+  if (!(mask & SIM_REAL_INFLOW)) {
+    mask &= ~(SIM_REAL_TANDEM | SIM_REAL_DYNINFLOW);
+  }
+  if (mask == SIM_REAL) {
+    return SIM_OK;
+  }
+  SIM_REAL = mask;
+  plant_set_realism();
+  plant_real_forget(&S, 1);
+  return SIM_OK;
+}
+
+SIM_EXPORT int sim_realism(void) { return SIM_REAL; }
+
+/* A diagnostic, not part of flight: the realistic thrust curve itself, so
+ * scripts/realism-check.js can hold the solver to a bisection and to the
+ * two ends it is meant to keep. See plant_real_curve. */
+SIM_EXPORT double sim_real_curve(int what, double x, double xp) {
+  return plant_real_curve(what, x, xp);
+}
 
 /* Air scale, see sim_internal.h. A mode, same rule as the flight style. */
 double SIM_AIR = 1.0;

@@ -353,6 +353,40 @@ int sim_set_3d(int on);
 int sim_3d(void);
 
 /*
+ * Realistic physics. 0, the default, is the plant every check was measured
+ * on and every pilot has flown. Otherwise a set of bits, each one
+ * correction to that plant:
+ *
+ *     1  thrust from blade element and momentum theory solved together
+ *     2  the airframe's inertia built up from its parts
+ *     4  ground effect on the five inch
+ *     8  prop wash from the craft's own remembered wake
+ *    16  a pack that runs down, with sag that builds and recovers
+ *    32  downstream rotors in the upstream rotors' wake (needs 1)
+ *    64  the air's own lag behind a throttle change (needs 1)
+ *
+ * 127 is all of them. A bit this build does not have is refused with
+ * SIM_ERR_BAD_ARG. Takes effect on the next step, mid flight included, and
+ * a change forgets the remembered wake and puts the pack back to the
+ * charge sim_set_cell_voltage gave it. Survives sim_reset and sim_init,
+ * same as the flight style; sim_reset is a fresh pack. sim_realism returns
+ * what is set. It does not touch gravity: a host that wants the real
+ * weight asks sim_set_gravity for 1.0 as well.
+ *
+ * Additive ABI change, version unchanged: a replay that never calls this
+ * is bit identical to one from before it existed, and the state block
+ * sim_state fills is the same twenty doubles either way.
+ */
+int sim_set_realism(int mask);
+int sim_realism(void);
+/* A diagnostic for the checks, not part of flight: the realistic thrust
+ * curve for the airframe in force. what 0 is the thrust factor at axial
+ * speed x and edgewise speed xp, both as multiples of the induced velocity
+ * at rest; 1 is the induced velocity as the same multiple; 2 is the blade
+ * element constant. */
+double sim_real_curve(int what, double x, double xp);
+
+/*
  * Choose the airframe: 0 is the five inch this project was built around and
  * is the default, 1 is a 65 mm 1S brushless whoop. Returns SIM_ERR_BAD_ARG
  * for anything else.

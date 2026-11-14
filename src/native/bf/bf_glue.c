@@ -744,6 +744,14 @@ double sim_bf_debug(int what) {
   case 68: return PLANT_DBG_DUCT;
   case 69: return PLANT_DBG_VPERP;
   case 70: return PLANT_DBG_PITCH_UP;
+  /* The Realistic physics taps, see PLANT_DBG_REAL in sim_internal.h. */
+  case 71: return PLANT_DBG_REAL[0];
+  case 72: return PLANT_DBG_REAL[1];
+  case 73: return PLANT_DBG_REAL[2];
+  case 74: return PLANT_DBG_REAL[3];
+  case 75: return PLANT_DBG_REAL[4];
+  case 76: return PLANT_DBG_REAL[5];
+  case 77: return PLANT_DBG_REAL[6];
   default: return 0.0;
   }
 }

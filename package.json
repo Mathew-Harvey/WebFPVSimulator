@@ -50,6 +50,8 @@
     "check:wall": "node scripts/wall-check.js",
     "check:plant": "node scripts/plant-golden.js",
     "check:plant:selftest": "node scripts/plant-golden.js --selftest",
+    "check:realism": "node scripts/realism-check.js",
+    "time:step": "node scripts/step-time.js",
     "check:motorkv": "node scripts/motor-kv-check.js",
     "check:crash": "node scripts/crash-check.js",
     "check:wallpin": "node scripts/wallpin-check.js",

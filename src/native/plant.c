@@ -357,6 +357,11 @@ const PlantParams PLANT_TABLE[SIM_AIRFRAME_COUNT] = {
   .len_scale = 1.0, /* life size: the field is built in its metres */
   .ground_tip_accel = 200.0, /* sim.c TUMBLE FLAT, the drop probe's figure */
   .ducted = 0,
+  /* The Realistic physics switch's numbers; see the block at PLANT_REAL. */
+  .inertia_real = { 0.00145, 0.00204, 0.00281 },
+  .k_ground_real = 1.0,
+  .pack_ah = 1.3,
+  .r_cell_slow = 0.0015,
 },
 
 /* ---------------------------------------------------------------------
@@ -537,6 +542,15 @@ const PlantParams PLANT_TABLE[SIM_AIRFRAME_COUNT] = {
   .ground_tip_accel = 3000.0,
   /* Props in ducts: the hull above is the whole of what meets the world. */
   .ducted = 1,
+  /* The switch's numbers for this plant, which the shell does not fly
+   * (configs/airframes.js seats the whoop on the five inch's). Its inertia
+   * and its ground effect are the ones above, because nobody has built
+   * this frame up from its parts; the pack is a 1S 300 with two fifths of
+   * its sag slow, the five inch's proportion. */
+  .inertia_real = { 6.0e-6, 7.4e-6, 1.25e-5 },
+  .k_ground_real = 1.0,
+  .pack_ah = 0.30,
+  .r_cell_slow = 0.012,
 },
 };
 
@@ -577,34 +591,306 @@ static PlantParams PLANT_WORLD[SIM_AIRFRAME_COUNT];
 static int plant_world_ready = 0;
 const PlantParams *PLANT_W_P = &PLANT_TABLE[SIM_AIRFRAME_5IN];
 
+/* One airframe's entry into scene metres, in place. */
+static void plant_to_world(PlantParams *wp) {
+  PlantParams w = *wp;
+  const double L = w.len_scale;
+  w.gravity *= L;
+  w.arm_x *= L;
+  w.arm_y *= L;
+  w.prop_r *= L;
+  w.inertia[0] *= L * L;
+  w.inertia[1] *= L * L;
+  w.inertia[2] *= L * L;
+  for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
+    w.pos_x[m] *= L;
+    w.pos_y[m] *= L;
+    w.pos_z[m] *= L;
+  }
+  w.hull_hx *= L;
+  w.hull_hy *= L;
+  w.hull_hz_down *= L;
+  w.hull_hz_up *= L;
+  w.contact_patch_r *= L;
+  w.contact_arm_max *= L;
+  w.camera_x *= L;
+  w.camera_y *= L;
+  w.camera_z *= L;
+  *wp = w;
+}
+
 static void plant_build_world(void) {
   for (int a = 0; a < SIM_AIRFRAME_COUNT; a += 1) {
     PlantParams w = PLANT_TABLE[a];
-    const double L = w.len_scale;
-    w.gravity *= L;
-    w.arm_x *= L;
-    w.arm_y *= L;
-    w.prop_r *= L;
-    w.inertia[0] *= L * L;
-    w.inertia[1] *= L * L;
-    w.inertia[2] *= L * L;
-    for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
-      w.pos_x[m] *= L;
-      w.pos_y[m] *= L;
-      w.pos_z[m] *= L;
-    }
-    w.hull_hx *= L;
-    w.hull_hy *= L;
-    w.hull_hz_down *= L;
-    w.hull_hz_up *= L;
-    w.contact_patch_r *= L;
-    w.contact_arm_max *= L;
-    w.camera_x *= L;
-    w.camera_y *= L;
-    w.camera_z *= L;
+    plant_to_world(&w);
     PLANT_WORLD[a] = w;
   }
   plant_world_ready = 1;
+}
+
+/*
+ * ---------------------------------------------------------------------
+ * PLANT_REAL: THE REALISTIC PHYSICS SWITCH, and where its numbers are from.
+ *
+ * A viewer who had read this file said the plant was basic and that it
+ * leaned on hacks, "changing the weight to adjust the floaty feeling". The
+ * review of 2026-11-14 found him right about the weight (the shell flies
+ * 1.62 g, a heavier world rather than a heavier quad) and right that the
+ * rotors know nothing of each other's wake or of the craft's own, and
+ * found four things he did not name. The owner asked for all of it, behind
+ * one switch that is off until a pilot turns it on. SIM_REAL in
+ * sim_internal.h lists the bits; this block is the reasoning for each.
+ *
+ * NOTHING HERE IS FITTED TO A FLIGHT YET. Every number below is derived
+ * from the airframe or from the textbook and is written down as that. The
+ * owner has a real five inch and no blackbox log from it has been read;
+ * scripts/blackbox-fit.js is the tool that will measure these against one.
+ *
+ * INFLOW. A blade's lift goes as its pitch angle less the angle the air
+ * arrives at, and that inflow angle is the craft's own axial speed PLUS
+ * the induced velocity the rotor makes for itself, over the blade's speed.
+ * plant_step's own line is T = kt w^2 (1 - va / (w kp)), which keeps the
+ * first of those and treats the second as fixed. It is not fixed. Climb,
+ * and the rotor needs less induced velocity to make its thrust, which
+ * gives back about half of what the climb took. Momentum theory says how
+ * much: T = 2 rho A vi sqrt(vperp^2 + (va + vi)^2). Writing vi0 for the
+ * induced velocity kt w^2 implies at rest, x = va / vi0, xp = vperp / vi0
+ * and y = vi / vi0, the two together are
+ *
+ *     blade element   T / (kt w^2) = 1 - (x + y - 1) / k
+ *     momentum        T / (kt w^2) = y sqrt(xp^2 + (x + y)^2)
+ *
+ * with ONE constant, k, and it is not a free one: kt w^2 is the thrust at
+ * rest (x = 0, y = 1, both lines give 1), and the prop's pitch says where
+ * thrust reaches zero (y = 0 at x = 1 + k, which has to be the pitch speed
+ * w kp). vi0 = w sqrt(kt / (2 rho A)) is proportional to w, so k is the
+ * same at every throttle: kp / sqrt(kt / (2 rho A)) - 1, 1.176 on the five
+ * inch. Both ends of the old line are kept and only its shape between them
+ * moves. At the hover the slope against axial speed comes out 0.65 of the
+ * old line's, and in fast edgewise flight, where the induced velocity is
+ * small and cannot give much back, up to 1.85 of it: a rotor's heave
+ * damping rises with forward speed, which every helicopter text has.
+ *
+ * With no edgewise flow the pair is a quadratic in y and is solved in
+ * closed form. With it they are a quartic, and it is solved by three
+ * Newton steps from the axial answer. That is safe rather than hopeful:
+ * the residual rises and is convex in y, the axial answer is never below
+ * the root, so Newton comes down on the root from above and cannot step
+ * past it. Three steps leave an error under one part in ten thousand over
+ * the whole envelope (scripts/realism-check.js sweeps it against a
+ * bisection). A fixed count, sim_sqrt only, so it is deterministic.
+ *
+ * The edgewise flow is inside the solve, so translational lift is too,
+ * and the separate axial_gain term is not added in this mode. The descent
+ * keeps its shape: the solve runs to the same ring state onset, measured
+ * in pitch speed, and thrust rolls off from there to PLANT_VRS_FLOOR by
+ * the same ramp, faded by edgewise speed (see EDGEWISE AIR in plant_step).
+ * The torque block is unchanged.
+ *
+ * INERTIA. The table's 0.0035, 0.0038, 0.0068 is STAGE1.md's figure and
+ * has no derivation. Built up from the parts of this airframe, 710 g all
+ * up: four motors with props and screws, 40 g each at the arm ends; four
+ * 9 g arms as slender rods; 200 g of plates, stack, video and hardware as
+ * a 140 by 45 by 30 mm block; a 250 g 6S pack, 78 by 38 by 45 mm, on the
+ * top plate; and a 64 g HD camera at the nose. About the centre of gravity
+ * of that set, which sits 26 mm above the arms: 0.00145, 0.00204, 0.00281.
+ * Two fifths to a half of the table. That is an estimate from a parts
+ * list, and the honest number is a measurement: hang the real quad from
+ * two strings and time its swing (scripts/blackbox-fit.js --bifilar).
+ *
+ * GROUND. The five inch's k_ground is zero because its envelope was
+ * measured without it (see the note at the field). With the switch on it
+ * is 1.0, the whoop's Cheeseman and Bennett form on the four discs merged:
+ * a cushion inside the last two rotor radii, a third more thrust parked,
+ * seven percent at 13 cm, gone by 30 cm.
+ *
+ * WAKE. Prop wash is a rotor meeting air it has already thrown, and the
+ * plant's own version fires whenever a disc is moving bottom first,
+ * wherever the wake actually is. With the switch on it is in two places.
+ *
+ * Round the disc itself, the ring state: the same gate on the same ratio
+ * of sink to induced velocity, now faded by edgewise speed, because air
+ * crossing the disc at one induced velocity carries the wake off before
+ * the rotor can sink into it (see EDGEWISE AIR in plant_step). So a hard
+ * flare standing on its tail, a drop straight down and a pull out still
+ * shake, and coming down while moving forward does not, which is what a
+ * real quad does and what every pilot is told.
+ *
+ * And wherever the wake was left. Every 50 ms the craft sheds a puff:
+ * where it was, the way the thrust was pointing, and twice the induced
+ * velocity, which is the speed momentum theory gives the far wake. A puff
+ * slows as a jet does and spreads as it goes, and the last 3.2 s of them
+ * are kept. Every 10 ms the craft asks how near it is to the trail, older
+ * than a tenth of a second so the column under a hover is never "met".
+ * This is the drop back into the column under a hover, and the stop that
+ * sinks into air just blown ahead. It is a smaller thing than the first:
+ * measured, most moves leave their wake behind and below for good.
+ *
+ * Whichever is deeper scales the SAME turbulence at the SAME strength as
+ * before, k_propwash, the owner's 0.075.
+ *
+ * PACK. The open circuit voltage follows a LiPo cell's own discharge
+ * curve down as charge is drawn, from wherever the host set it, and a
+ * second, slow resistance sits behind the fast one: its voltage builds
+ * toward I R over about a second of load and falls back over a second of
+ * rest, which is the punch that fades and the pack that comes back.
+ *
+ * TANDEM. At speed with the discs near edgewise, an upstream rotor's wake
+ * is carried back over the downstream one, which then flies in descending
+ * air and makes less thrust for its speed. The controller holds the nose
+ * with more rear motor, and that split is on every real blackbox log of a
+ * fast pass. The wake leaves an upstream disc along the relative wind and
+ * sinks at the flow through the disc, so by the time it reaches the next
+ * rotor it has dropped h below it; the interference is that rotor's
+ * induced velocity, weighted by how much the two discs overlap across the
+ * wind, by 1 / (1 + (h/R)^2), and by how edgewise the flow is. At racing
+ * tilt the wake is gone below the rear discs before it reaches them, and
+ * this does almost nothing, which is right. PLANT_REAL_TANDEM, 0.75, is an
+ * estimate: a far wake carries up to twice the induced velocity and a
+ * disc only partly in it sees less. Tunnel tests of quadrotors edgewise
+ * put the rear pair 10 to 25 percent down on thrust at the same speed;
+ * 0.75 lands a level coast at about 15, the middle of that.
+ *
+ * DYNAMIC INFLOW. The air through a disc has mass (8/3 rho R^3 of it, the
+ * Pitt and Peters figure) and cannot change speed at once, so the induced
+ * velocity lags what the blades ask for with a time constant of
+ * 4/(3 pi) R over the flow through the disc (taken as the axial and the
+ * edgewise parts added): two milliseconds at a five inch hover, under one
+ * at full throttle. While it lags on a rising
+ * throttle the blades see less inflow and make more thrust than the
+ * steady answer, and on a chop less. It is a small effect on a prop this
+ * size, a few percent for a few milliseconds, and it is modelled at its
+ * derived size rather than at a size somebody would notice.
+ * ------------------------------------------------------------------- */
+#define PLANT_REAL_TANDEM 0.75
+/*
+ * How much of the edgewise speed the momentum line is given. Momentum
+ * theory assumes the induced velocity is the same all over the disc, and
+ * in edgewise flight it is not: it piles up at the back, and a real rotor
+ * gets less translational lift than the ideal one. The textbook carries
+ * that as an induced power factor of 1.2 or so in forward flight. 0.80 on
+ * the speed puts the lift this solve gives at ordinary speeds on what
+ * small props measure in a tunnel and on what the plant's own
+ * translational lift term gave (a tenth more thrust at one induced
+ * velocity of edgewise speed, a quarter more at two). An estimate.
+ */
+#define PLANT_REAL_EDGE 0.80
+#define PLANT_REAL_DYN 0.42441318157838759 /* 4 / (3 pi) */
+/* The wake trail. Seconds and plain numbers; lengths are per airframe. */
+#define PLANT_WAKE_EVAL_STEPS 10
+#define PLANT_WAKE_EMIT_STEPS 50
+#define PLANT_WAKE_MIN_AGE 0.10
+#define PLANT_WAKE_JET_TAU 0.35   /* a puff's speed falls as 1 / (1 + t/tau)^2 */
+#define PLANT_WAKE_TURB_TAU 0.60  /* and its turbulence as 1 / (1 + t/tau) */
+#define PLANT_WAKE_SPREAD 0.20    /* radius gained per metre travelled */
+#define PLANT_WAKE_MIN_SPEED 4.0  /* a wake slower than this is not kept */
+/* The slow half of the pack's sag builds and recovers over this, seconds. */
+#define PLANT_PACK_TAU 1.0
+
+/* Per airframe constants of the inflow solve, built once from the table. */
+typedef struct {
+  double ci;     /* induced velocity per rad/s at rest, sqrt(kt / (2 rho A)) */
+  double k;      /* the blade element constant, kp / ci - 1 */
+  double x_on;   /* ring state onset, in vi0 */
+  double x_full; /* where the loss has bottomed out */
+  double t_on;   /* the thrust factor at the onset with no edgewise flow */
+  double wake_r; /* the trail's radius where it is shed: arm plus prop */
+} PlantReal;
+static PlantReal PLANT_REAL[SIM_AIRFRAME_COUNT];
+static int plant_real_ready = 0;
+
+double PLANT_DBG_REAL[8];
+
+/*
+ * y = vi / vi0 from the pair above. x is the axial speed and xp the
+ * edgewise speed, both over vi0. Returns 0 at or past the pitch speed,
+ * where the blades have nothing left to push with.
+ */
+static inline double plant_real_y(double x, double xp, double k) {
+  const double ik = 1.0 / k;
+  const double b = x + ik;
+  const double c = (x - 1.0) * ik - 1.0;
+  if (c >= 0.0) {
+    return 0.0;
+  }
+  /* The positive root of y^2 + b y + c, written so it never subtracts two
+   * nearly equal numbers. c is negative, so the root is real. */
+  const double disc = sim_sqrt(b * b - 4.0 * c);
+  double y = (b >= 0.0) ? (-2.0 * c) / (b + disc) : 0.5 * (disc - b);
+  if (xp > 1e-9) {
+    const double y_top = y;
+    const double xp2 = xp * xp;
+    for (int it = 0; it < 3; it += 1) {
+      const double a = x + y;
+      const double sq = sim_sqrt(xp2 + a * a);
+      const double f = y * sq - 1.0 + (a - 1.0) * ik;
+      double fp = sq + (y * a) / sq + ik;
+      if (fp < 0.2) {
+        fp = 0.2;
+      }
+      y -= f / fp;
+      if (y < 0.0) {
+        y = 0.0;
+      }
+      if (y > y_top) {
+        y = y_top;
+      }
+    }
+  }
+  return y;
+}
+
+/*
+ * The table the realism bits ask for. Inertia and ground effect are the
+ * two corrections that are plain numbers in the table, and the contact
+ * solvers in sim.c and world.c read inertia through PLANT_W, so they are
+ * swapped in as a second pair of tables rather than tested for wherever
+ * they are read. With neither bit set the pointers are the const table's
+ * and its world copy's, exactly as plant_set_airframe always left them.
+ */
+static PlantParams PLANT_SEL[SIM_AIRFRAME_COUNT];
+static PlantParams PLANT_SEL_WORLD[SIM_AIRFRAME_COUNT];
+
+static void plant_select(void) {
+  if (!plant_world_ready) {
+    plant_build_world();
+  }
+  if (!(SIM_REAL & (SIM_REAL_INERTIA | SIM_REAL_GROUND))) {
+    PLANT_P = &PLANT_TABLE[g_airframe];
+    PLANT_W_P = &PLANT_WORLD[g_airframe];
+    return;
+  }
+  for (int a = 0; a < SIM_AIRFRAME_COUNT; a += 1) {
+    PlantParams t = PLANT_TABLE[a];
+    if (SIM_REAL & SIM_REAL_INERTIA) {
+      t.inertia[0] = t.inertia_real[0];
+      t.inertia[1] = t.inertia_real[1];
+      t.inertia[2] = t.inertia_real[2];
+    }
+    if (SIM_REAL & SIM_REAL_GROUND) {
+      t.k_ground = t.k_ground_real;
+    }
+    PLANT_SEL[a] = t;
+    plant_to_world(&t);
+    PLANT_SEL_WORLD[a] = t;
+  }
+  PLANT_P = &PLANT_SEL[g_airframe];
+  PLANT_W_P = &PLANT_SEL_WORLD[g_airframe];
+}
+
+void plant_set_realism(void) { plant_select(); }
+
+void plant_real_forget(SimState *s, int pack_too) {
+  for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
+    s->real_vi[m] = 0.0;
+  }
+  s->wake_depth = 0.0;
+  s->wake_head = 0;
+  s->wake_count = 0;
+  if (pack_too) {
+    s->pack_used_ah = 0.0;
+    s->pack_vp = 0.0;
+  }
 }
 
 /* Betaflight motor order: 0 RR, 1 FR, 2 RL, 3 FL. Body x forward, y left,
@@ -741,11 +1027,7 @@ void plant_set_airframe(int id) {
     return;
   }
   g_airframe = id;
-  PLANT_P = &PLANT_TABLE[id];
-  if (!plant_world_ready) {
-    plant_build_world();
-  }
-  PLANT_W_P = &PLANT_WORLD[id];
+  plant_select();
 }
 
 int plant_airframe(void) { return g_airframe; }
@@ -984,6 +1266,63 @@ static double plant_wash_noise(SimState *s) {
  */
 #define PLANT_3D_PROP_THRUST 0.85
 
+static void plant_build_real(void) {
+  for (int a = 0; a < SIM_AIRFRAME_COUNT; a += 1) {
+    const PlantParams *P = &PLANT_TABLE[a];
+    PlantReal r;
+    r.ci = sim_sqrt(P->kt / (2.0 * P->rho * 3.14159265358979323846 * P->prop_r * P->prop_r));
+    r.k = P->k_inflow / r.ci - 1.0;
+    if (r.k < 0.2) {
+      r.k = 0.2;
+    }
+    /* The onset and the floor where they always were, in pitch speed: one
+     * pitch speed is 1 + k of vi0. */
+    r.x_on = -PLANT_VRS_ONSET * (1.0 + r.k);
+    r.x_full = -PLANT_VRS_FULL * (1.0 + r.k);
+    r.t_on = 1.0 - (r.x_on + plant_real_y(r.x_on, 0.0, r.k) - 1.0) / r.k;
+    r.wake_r = sim_sqrt(P->arm_x * P->arm_x + P->arm_y * P->arm_y) + P->prop_r;
+    PLANT_REAL[a] = r;
+  }
+  plant_real_ready = 1;
+}
+
+/*
+ * The steady inflow solve, for a check to sweep without flying it: what 0
+ * is the thrust factor at axial speed x and edgewise speed xp (both over
+ * vi0), ring state ramp included; 1 is y, the induced velocity over vi0;
+ * 2 is the blade element constant k of the airframe in force; 3 is
+ * PLANT_REAL_EDGE, so the check can solve the same pair.
+ */
+double plant_real_curve(int what, double x, double xp) {
+  if (!plant_real_ready) {
+    plant_build_real();
+  }
+  const PlantReal *R = &PLANT_REAL[g_airframe];
+  if (what == 2) {
+    return R->k;
+  }
+  if (what == 3) {
+    return PLANT_REAL_EDGE;
+  }
+  const double xs = (x < R->x_on) ? R->x_on : x;
+  const double y = plant_real_y(xs, PLANT_REAL_EDGE * xp, R->k);
+  if (what == 1) {
+    return y;
+  }
+  double axial = 1.0 - (xs + y - 1.0) / R->k;
+  if (axial < 0.0) {
+    axial = 0.0;
+  }
+  if (x < R->x_on) {
+    double kk = (R->x_on - x) / (R->x_on - R->x_full);
+    if (kk > 1.0) {
+      kk = 1.0;
+    }
+    axial *= 1.0 - (1.0 - PLANT_VRS_FLOOR / R->t_on) * kk;
+  }
+  return axial;
+}
+
 void plant_reset(SimState *s) {
   for (int i = 0; i < 3; i += 1) {
     s->pos[i] = 0.0;
@@ -1010,6 +1349,8 @@ void plant_reset(SimState *s) {
   s->ground_n[1] = 0.0;
   s->ground_n[2] = 1.0;
   s->step_index = 0;
+  /* A reset is a fresh pack and still air. */
+  plant_real_forget(s, 1);
 }
 
 /* q = a x b, Hamilton product, w x y z. */
@@ -1037,7 +1378,204 @@ static void quat_rotate_inv(const double q[4], const double v[3], double out[3])
   quat_rotate(qc, v, out);
 }
 
-static inline __attribute__((always_inline)) void plant_step_body(SimState *s, const double duty_in[SIM_MOTOR_COUNT], const int mode3d) {
+/*
+ * THE WAKE TRAIL: how deep the craft is in its own old downwash, then,
+ * every 50 ms, one more puff of it left behind. See WAKE at PLANT_REAL.
+ *
+ * A puff shed at speed v along a unit direction has travelled
+ * v tau t / (t + tau) after t seconds, which is a jet whose speed falls as
+ * 1 / (1 + t/tau)^2: closed form, so nothing is integrated per puff and
+ * nothing transcendental is called. Its radius grows with the distance
+ * travelled and its turbulence falls with age and with that spreading.
+ * Consecutive puffs are joined, so a fast pass leaves a line rather than
+ * a row of dots a craft could fly between. The depth is the strongest
+ * such stretch the craft is inside, over the induced velocity the rotors
+ * are making now, capped at one: a rotor working hard shrugs off an old
+ * weak wake and a rotor at low throttle does not.
+ */
+static void plant_wake_step(SimState *s) {
+  const PlantReal *R = &PLANT_REAL[g_airframe];
+  const double len = PLANT.len_scale;
+  const double inv_len = 1.0 / len;
+  const double w_mean = 0.25 * (sim_fabs(s->motor_omega[0]) + sim_fabs(s->motor_omega[1])
+    + sim_fabs(s->motor_omega[2]) + sim_fabs(s->motor_omega[3]));
+  const double vi_now = R->ci * (w_mean < 60.0 ? 60.0 : w_mean);
+  double best = 0.0;
+  int have_prev = 0;
+  double prev_c[3] = { 0.0, 0.0, 0.0 };
+  double prev_r = 0.0;
+  double prev_u = 0.0;
+  const int n = s->wake_count;
+  for (int k = 0; k < n; k += 1) {
+    /* Oldest first, so each puff is joined to the one shed after it. */
+    const int i = (s->wake_head - n + k + 2 * SIM_WAKE_N) & (SIM_WAKE_N - 1);
+    const double v = s->wake_v[i];
+    const double age = (double)(s->step_index - s->wake_t[i]) * SIM_DT;
+    if (v <= 0.0 || age < PLANT_WAKE_MIN_AGE) {
+      have_prev = 0;
+      continue;
+    }
+    const double travel = v * PLANT_WAKE_JET_TAU * age / (age + PLANT_WAKE_JET_TAU);
+    const double c[3] = {
+      s->wake_p[i][0] + s->wake_u[i][0] * travel * len,
+      s->wake_p[i][1] + s->wake_u[i][1] * travel * len,
+      s->wake_p[i][2] + s->wake_u[i][2] * travel * len,
+    };
+    const double rad = R->wake_r + PLANT_WAKE_SPREAD * travel;
+    /* v (R / rad) / (1 + age / tau), as one division. */
+    const double turb = (v * R->wake_r * PLANT_WAKE_TURB_TAU) / (rad * (PLANT_WAKE_TURB_TAU + age));
+    /* The nearest point of the stretch from the last puff to this one. */
+    double near_c[3] = { c[0], c[1], c[2] };
+    double near_r = rad;
+    double near_u = turb;
+    if (have_prev) {
+      const double ex = c[0] - prev_c[0];
+      const double ey = c[1] - prev_c[1];
+      const double ez = c[2] - prev_c[2];
+      const double e2 = ex * ex + ey * ey + ez * ez;
+      if (e2 > 1e-12) {
+        double t = ((s->pos[0] - prev_c[0]) * ex + (s->pos[1] - prev_c[1]) * ey
+          + (s->pos[2] - prev_c[2]) * ez) / e2;
+        if (t < 0.0) {
+          t = 0.0;
+        }
+        if (t > 1.0) {
+          t = 1.0;
+        }
+        near_c[0] = prev_c[0] + ex * t;
+        near_c[1] = prev_c[1] + ey * t;
+        near_c[2] = prev_c[2] + ez * t;
+        near_r = prev_r + (rad - prev_r) * t;
+        near_u = prev_u + (turb - prev_u) * t;
+      }
+    }
+    const double dx = (s->pos[0] - near_c[0]) * inv_len;
+    const double dy = (s->pos[1] - near_c[1]) * inv_len;
+    const double dz = (s->pos[2] - near_c[2]) * inv_len;
+    const double d2 = dx * dx + dy * dy + dz * dz;
+    const double r2 = near_r * near_r;
+    if (d2 < r2) {
+      const double u = near_u * (1.0 - d2 / r2);
+      if (u > best) {
+        best = u;
+      }
+    }
+    have_prev = 1;
+    prev_c[0] = c[0];
+    prev_c[1] = c[1];
+    prev_c[2] = c[2];
+    prev_r = rad;
+    prev_u = turb;
+  }
+  double depth = best / vi_now;
+  if (depth > 1.0) {
+    depth = 1.0;
+  }
+  s->wake_depth = depth;
+
+  if (s->step_index % PLANT_WAKE_EMIT_STEPS == 0) {
+    /* Shed one. The far wake of a rotor making kt w^2 moves at twice the
+     * induced velocity, along the way the thrust is not pointing. A wake
+     * too slow to matter is kept as a gap, so the trail is not joined
+     * across it. */
+    const double w2 = 0.25 * (s->motor_omega[0] * s->motor_omega[0] + s->motor_omega[1] * s->motor_omega[1]
+      + s->motor_omega[2] * s->motor_omega[2] + s->motor_omega[3] * s->motor_omega[3]);
+    const double v_wake = 2.0 * R->ci * sim_sqrt(w2);
+    const double down_b[3] = { 0.0, 0.0,
+      (SIM_3D && (s->motor_omega[0] + s->motor_omega[1] + s->motor_omega[2] + s->motor_omega[3]) < 0.0) ? 1.0 : -1.0 };
+    double down_w[3];
+    quat_rotate(s->quat, down_b, down_w);
+    const int h = s->wake_head;
+    s->wake_p[h][0] = s->pos[0];
+    s->wake_p[h][1] = s->pos[1];
+    s->wake_p[h][2] = s->pos[2];
+    s->wake_u[h][0] = down_w[0];
+    s->wake_u[h][1] = down_w[1];
+    s->wake_u[h][2] = down_w[2];
+    s->wake_v[h] = (v_wake >= PLANT_WAKE_MIN_SPEED) ? v_wake : 0.0;
+    s->wake_t[h] = s->step_index;
+    s->wake_head = (h + 1) % SIM_WAKE_N;
+    if (s->wake_count < SIM_WAKE_N) {
+      s->wake_count += 1;
+    }
+  }
+}
+
+/*
+ * The open circuit voltage of one LiPo cell against the charge left in it,
+ * the resting figures every charger's chart prints, joined by straight
+ * lines. Below empty it falls away fast, as a cell does.
+ */
+#define PLANT_OCV_N 13
+static const double PLANT_OCV_SOC[PLANT_OCV_N] = {
+  -0.05, 0.00, 0.05, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90, 1.00,
+};
+static const double PLANT_OCV_V[PLANT_OCV_N] = {
+  2.80, 3.27, 3.61, 3.69, 3.73, 3.77, 3.80, 3.84, 3.87, 3.95, 4.02, 4.11, 4.20,
+};
+
+static double plant_ocv(double soc) {
+  if (soc <= PLANT_OCV_SOC[0]) {
+    return PLANT_OCV_V[0];
+  }
+  for (int i = 1; i < PLANT_OCV_N; i += 1) {
+    if (soc <= PLANT_OCV_SOC[i]) {
+      const double u = (soc - PLANT_OCV_SOC[i - 1]) / (PLANT_OCV_SOC[i] - PLANT_OCV_SOC[i - 1]);
+      return PLANT_OCV_V[i - 1] + (PLANT_OCV_V[i] - PLANT_OCV_V[i - 1]) * u;
+    }
+  }
+  return PLANT_OCV_V[PLANT_OCV_N - 1];
+}
+
+/* And the other way: the charge a resting cell at this voltage holds. */
+static double plant_soc_of(double volts) {
+  if (volts <= PLANT_OCV_V[0]) {
+    return PLANT_OCV_SOC[0];
+  }
+  for (int i = 1; i < PLANT_OCV_N; i += 1) {
+    if (volts <= PLANT_OCV_V[i]) {
+      const double u = (volts - PLANT_OCV_V[i - 1]) / (PLANT_OCV_V[i] - PLANT_OCV_V[i - 1]);
+      return PLANT_OCV_SOC[i - 1] + (PLANT_OCV_SOC[i] - PLANT_OCV_SOC[i - 1]) * u;
+    }
+  }
+  return PLANT_OCV_SOC[PLANT_OCV_N - 1];
+}
+
+/*
+ * The pack's open circuit voltage with the switch on: the host's cell
+ * voltage is where the flight starts, and it comes down the curve from
+ * there by the charge used. Written as the start plus the curve's own
+ * fall, so with nothing used it is the host's number exactly, and a pack
+ * charged past 4.2 keeps its extra.
+ */
+static double plant_pack_voc(const SimState *s) {
+  const double soc0 = plant_soc_of(s->cell_voltage_oc);
+  const double used = s->pack_used_ah / PLANT.pack_ah;
+  const double cell = s->cell_voltage_oc + (plant_ocv(soc0 - used) - plant_ocv(soc0));
+  return cell * PLANT.cells - s->pack_vp;
+}
+
+static inline __attribute__((always_inline)) void plant_step_body(SimState *s, const double duty_in[SIM_MOTOR_COUNT], const int mode3d, const int real) {
+  /*
+   * REALISTIC PHYSICS. `real` is a literal at each call, like mode3d, so in
+   * the copies built with 0 every line below that names it is folded away
+   * and the step is the one it was. In the copies built with 1 each bit of
+   * SIM_REAL is read once, here.
+   */
+  const int real_inflow = real && (SIM_REAL & SIM_REAL_INFLOW);
+  const int real_wake = real && (SIM_REAL & SIM_REAL_WAKE);
+  const int real_pack = real && (SIM_REAL & SIM_REAL_PACK);
+  const int real_tandem = real_inflow && (SIM_REAL & SIM_REAL_TANDEM);
+  const int real_dyn = real_inflow && (SIM_REAL & SIM_REAL_DYNINFLOW);
+  if (real) {
+    if (!plant_real_ready) {
+      plant_build_real();
+    }
+    if (real_wake && s->step_index % PLANT_WAKE_EVAL_STEPS == 0) {
+      plant_wake_step(s);
+    }
+  }
+
   /*
    * 0. The motor as the pilot has wound it. SIM_MOTOR_KV scales kV, so the
    * back EMF constant goes down by that much and the winding resistance by
@@ -1083,7 +1621,7 @@ static inline __attribute__((always_inline)) void plant_step_body(SimState *s, c
     sumA += d * d;
     sumB += d * ke_eff * s->motor_omega[m];
   }
-  const double v_oc = s->cell_voltage_oc * PLANT.cells;
+  const double v_oc = real_pack ? plant_pack_voc(s) : s->cell_voltage_oc * PLANT.cells;
   double v_load = (v_oc + (r_pack * sumB) / r_motor_eff) /
                   (1.0 + (r_pack * sumA) / r_motor_eff);
   if (v_load < 1.0) {
@@ -1143,6 +1681,37 @@ static inline __attribute__((always_inline)) void plant_step_body(SimState *s, c
   v_body[1] = v_body[1] / len;
   v_body[2] = v_body[2] / len;
 
+  /*
+   * What the tandem term needs that is the same for all four rotors, once a
+   * step: the unit direction of the craft's speed across the discs, and,
+   * for each rotor as a source, its induced velocity as it stood a step
+   * ago times how edgewise the flow is. See TANDEM in the rotor loop.
+   */
+  const double dyn_gain = real_dyn ? SIM_DT / (PLANT_REAL_DYN * PLANT.prop_r) : 0.0;
+  int tandem_on = 0;
+  double tandem_ux = 0.0;
+  double tandem_uy = 0.0;
+  double tandem_inv_vp_r = 0.0;
+  double tandem_inv_2r = 0.0;
+  double tandem_vi[SIM_MOTOR_COUNT] = { 0.0, 0.0, 0.0, 0.0 };
+  double tandem_src[SIM_MOTOR_COUNT] = { 0.0, 0.0, 0.0, 0.0 };
+  if (real_tandem) {
+    const double vp2 = v_body[0] * v_body[0] + v_body[1] * v_body[1];
+    if (vp2 > 0.01) {
+      const double inv_vp = 1.0 / sim_sqrt(vp2);
+      tandem_on = 1;
+      tandem_ux = v_body[0] * inv_vp;
+      tandem_uy = v_body[1] * inv_vp;
+      tandem_inv_vp_r = inv_vp / PLANT.prop_r;
+      tandem_inv_2r = 0.5 / PLANT.prop_r;
+      for (int o = 0; o < SIM_MOTOR_COUNT; o += 1) {
+        const double vi_o = s->real_vi[o];
+        tandem_vi[o] = vi_o;
+        tandem_src[o] = PLANT_REAL_TANDEM * vi_o * vp2 / (vp2 + vi_o * vi_o);
+      }
+    }
+  }
+
   for (int m = 0; m < SIM_MOTOR_COUNT; m += 1) {
     const double d = duty[m];
     /*
@@ -1175,7 +1744,43 @@ static inline __attribute__((always_inline)) void plant_step_body(SimState *s, c
      * side of the same physics.
      */
     const double v_rot = p * PLANT_POS_Y[m] - q * PLANT_POS_X[m];
-    const double va = (v_body[2] + v_rot) * rotor_dir;
+    const double va_own = (v_body[2] + v_rot) * rotor_dir;
+    /*
+     * TANDEM: the air this rotor is handed by the ones upwind of it. See
+     * PLANT_REAL. Each other rotor's wake leaves along the relative wind
+     * and sinks at the flow through its disc, so it arrives here offset
+     * across the wind by c and below the disc by h, and what it adds is
+     * that rotor's induced velocity as it stood a step ago, descending.
+     */
+    double v_int = 0.0;
+    if (real_tandem) {
+      if (tandem_on) {
+        for (int o = 0; o < SIM_MOTOR_COUNT; o += 1) {
+          if (o == m) {
+            continue;
+          }
+          const double ddx = PLANT_POS_X[m] - PLANT_POS_X[o];
+          const double ddy = PLANT_POS_Y[m] - PLANT_POS_Y[o];
+          /* Downwind distance: the wake goes the way the craft is not. */
+          const double along = -(ddx * tandem_ux + ddy * tandem_uy);
+          if (along <= 0.0) {
+            continue;
+          }
+          const double across = sim_fabs(ddx * tandem_uy - ddy * tandem_ux);
+          const double w_c = 1.0 - across * tandem_inv_2r;
+          if (w_c <= 0.0) {
+            continue;
+          }
+          const double vi_o = tandem_vi[o];
+          const double hr = (v_body[2] * rotor_dir + vi_o) * along * tandem_inv_vp_r;
+          v_int += tandem_src[o] * w_c / (1.0 + hr * hr);
+        }
+      }
+      if (m == 0) {
+        PLANT_DBG_REAL[2] = v_int;
+      }
+    }
+    const double va = real_tandem ? va_own + v_int : va_own;
     const double pitch_speed = (w < 60.0 ? 60.0 : w) * PLANT.k_inflow;
     const double mu = va / pitch_speed;
     double axial;
@@ -1305,7 +1910,70 @@ static inline __attribute__((always_inline)) void plant_step_body(SimState *s, c
         }
       }
     }
-    if (mu >= 0.0) {
+    /*
+     * EDGEWISE AIR CARRIES THE WAKE AWAY, and with the switch on the ring
+     * state knows it. A rotor is in its own wake only while the air leaves
+     * it slowly: sink at about the induced velocity with little speed
+     * across the disc. Give it one induced velocity of edgewise speed and
+     * the wake is swept off behind before the disc can sink into it, which
+     * is the whole of the advice every pilot is given, come down moving
+     * forward and it will not wobble. The published ring state boundaries
+     * (Johnson's model is the usual one) close at about that speed. So the
+     * thrust loss and the shake both fade as one minus the square of the
+     * edgewise speed over the induced velocity, to nothing at one. The
+     * plant without the switch fires both at any forward speed.
+     */
+    double real_flush = 1.0;
+    if (real) {
+      const double xf = vperp_m / ((w < 60.0 ? 60.0 : w) * PLANT_REAL[g_airframe].ci);
+      real_flush = (xf < 1.0) ? 1.0 - xf * xf : 0.0;
+    }
+    if (real_inflow) {
+      /*
+       * THE COUPLED SOLVE, in place of every branch below and of the
+       * translational lift term, which it contains. See INFLOW at
+       * PLANT_REAL. Everything is over vi0, the induced velocity kt w^2
+       * implies at rest, with the same floor on w the pitch speed has.
+       */
+      const PlantReal *R = &PLANT_REAL[g_airframe];
+      const double vi0 = (w < 60.0 ? 60.0 : w) * R->ci;
+      const double x = va / vi0;
+      const double xp = PLANT_REAL_EDGE * vperp_m / vi0;
+      /* Past the ring state onset the solve is held at the onset and the
+       * loss is the old ramp, measured in the same pitch speed. */
+      const double xs = (x < R->x_on) ? R->x_on : x;
+      const double y_ss = plant_real_y(xs, xp, R->k);
+      double vi = y_ss * vi0;
+      if (real_dyn) {
+        /* The air's own lag: 4/(3 pi) R over the flow through the disc,
+         * taken implicitly so the step is stable however short it is. */
+        /* The speed is the two parts added rather than squared and
+         * rooted: a time constant of a millisecond or two does not need
+         * the square root, and this is on every rotor of every step. */
+        const double thru = va + 2.0 * vi;
+        double vm = vperp_m + sim_fabs(thru);
+        if (vm < 0.5) {
+          vm = 0.5;
+        }
+        const double a_lag = vm * dyn_gain;
+        vi = (s->real_vi[m] + a_lag * vi) / (1.0 + a_lag);
+      }
+      s->real_vi[m] = vi;
+      axial = 1.0 - (xs + vi / vi0 - 1.0) / R->k;
+      if (axial < 0.0) {
+        axial = 0.0;
+      }
+      if (x < R->x_on) {
+        double kk = (R->x_on - x) / (R->x_on - R->x_full);
+        if (kk > 1.0) {
+          kk = 1.0;
+        }
+        axial *= 1.0 - (1.0 - PLANT_VRS_FLOOR / R->t_on) * kk * real_flush;
+      }
+      if (m == 0) {
+        PLANT_DBG_REAL[1] = vi;
+      }
+    } else if (mu >= 0.0) {
       /* Climb and hover. Thrust falls as the craft chases its own wake, and
        * crosses zero when the axial speed reaches the pitch speed. */
       axial = 1.0 - mu;
@@ -1351,7 +2019,22 @@ static inline __attribute__((always_inline)) void plant_step_body(SimState *s, c
      * deterministic, and scaled by how deep into the loss the rotor is so it
      * does nothing in normal flight.
      */
-    axial += axial_gain;
+    if (!real_inflow) {
+      axial += axial_gain;
+    }
+    /* With the switch on the shake is in two places: the ring state round
+     * the disc itself, which edgewise air flushes, and the craft's own old
+     * wake wherever it was left. Whichever is deeper. See WAKE at
+     * PLANT_REAL. */
+    if (real_wake) {
+      wash_depth *= real_flush;
+      if (s->wake_depth > wash_depth) {
+        wash_depth = s->wake_depth;
+      }
+      if (m == 0) {
+        PLANT_DBG_REAL[6] = wash_depth;
+      }
+    }
     if (axial < 1.0 && !SIM_ARCADE && SIM_PROPWASH) {
       const double depth = 1.0 - axial;
       axial += depth * PLANT_INFLOW_ASYM[m];
@@ -1489,6 +2172,9 @@ static inline __attribute__((always_inline)) void plant_step_body(SimState *s, c
     if (m == 0) {
       PLANT_DBG_DUCT = duct;
       PLANT_DBG_VPERP = vperp_m;
+      if (real) {
+        PLANT_DBG_REAL[5] = axial;
+      }
     }
     /*
      * Prop drag torque, profile part plus induced part. See the block at
@@ -1569,6 +2255,18 @@ static inline __attribute__((always_inline)) void plant_step_body(SimState *s, c
     }
   }
   s->pack_current = pack_current;
+  if (real_pack) {
+    /* What this step drew comes out of the pack, and the slow half of the
+     * sag moves toward what this current would hold it at. */
+    s->pack_used_ah += pack_current * (SIM_DT / 3600.0);
+    s->pack_vp += (SIM_DT / PLANT_PACK_TAU)
+      * (pack_current * PLANT.r_cell_slow * PLANT.cells - s->pack_vp);
+  }
+  if (real) {
+    PLANT_DBG_REAL[0] = s->wake_depth;
+    PLANT_DBG_REAL[3] = s->pack_used_ah;
+    PLANT_DBG_REAL[4] = s->pack_vp;
+  }
 
   /*
    * 3. Body frame forces: thrust along +z, quadratic drag per axis.
@@ -1919,10 +2617,21 @@ static inline __attribute__((always_inline)) void plant_step_body(SimState *s, c
  * ran before 3D mode existed rather than paying a test for it on every
  * rotor of every step. The flag is read once, here.
  */
+/*
+ * AND TWO MORE FOR REALISTIC PHYSICS, on the same argument: with SIM_REAL
+ * at zero the step takes one of the first two calls, in which `real` is the
+ * literal 0 and none of that code exists.
+ */
 void plant_step(SimState *s, const double duty_in[SIM_MOTOR_COUNT]) {
-  if (SIM_3D) {
-    plant_step_body(s, duty_in, 1);
+  if (SIM_REAL) {
+    if (SIM_3D) {
+      plant_step_body(s, duty_in, 1, 1);
+    } else {
+      plant_step_body(s, duty_in, 0, 1);
+    }
+  } else if (SIM_3D) {
+    plant_step_body(s, duty_in, 1, 0);
   } else {
-    plant_step_body(s, duty_in, 0);
+    plant_step_body(s, duty_in, 0, 0);
   }
 }

@@ -181,6 +181,23 @@ export async function openPage({
   url = '/index.html',
   touch = false,
   seed = [],
+  /*
+   * WHICH PHYSICS THE PAGE FLIES. 'classic' holds the shell to the model
+   * every check here was written against, through the same force the
+   * address offers a pilot (?physics=classic, readPhysicsForce in
+   * src/ui/ui.js). The owner made Realistic the five inch's default on
+   * 2026-11-14, and a check that measures a hover, a lap or a crash on the
+   * old model's numbers is still a check of that model, which is one switch
+   * away for every pilot and the whoop's default. Not through the settings
+   * blob, because an empty blob is how the shell knows a first visit. A
+   * check of the default itself asks for 'pilot' and gets no force.
+   *
+   * WEBFPV_PHYSICS=pilot (or real) in the environment moves that default
+   * for one run, so any check here can be pointed at the model the pilots
+   * now fly to see what it makes of it: an instrument, and its failures
+   * are findings about the default, not about the check.
+   */
+  physics = process.env.WEBFPV_PHYSICS || 'classic',
   /* Make every request for the CDN fail, as a network that cannot reach it
    * does, so a page that has to work without Three.js can be shown to. */
   block = false,
@@ -299,6 +316,10 @@ export async function openPage({
     await cdp.send('Emulation.setTouchEmulationEnabled', {
       enabled: true, maxTouchPoints: 5,
     }, sessionId);
+  }
+  if (physics === 'classic' || physics === 'real') {
+    await cdp.send('Page.addScriptToEvaluateOnNewDocument',
+      { source: `window.__physicsForce = ${JSON.stringify(physics)};` }, sessionId);
   }
   for (const source of seed) {
     await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source }, sessionId);

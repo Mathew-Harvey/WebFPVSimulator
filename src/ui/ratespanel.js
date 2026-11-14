@@ -351,7 +351,7 @@ export function mountRatesPanel() {
    * was one aircraft. `motorKv` is the Motor power the quad flies on, which
    * moves hover too: since 2026-10-21 the whoop ships at 90, not 100, so
    * reading the table at 100 put its hover 4.5 points low. */
-  function paint(rates, next, airframe, motorKv) {
+  function paint(rates, next, airframe, motorKv, hoverWeight = 100) {
     const r = normaliseRates(rates || {});
     curves = ratesCurves(r);
     if (next) {
@@ -385,7 +385,7 @@ export function mountRatesPanel() {
       });
     }
     if (hoverDd) {
-      hoverDd.textContent = `${hoverStickPercent(r.throttleCap, airframe, 100, 4.2, motorKv).toFixed(1)}% stick`;
+      hoverDd.textContent = `${hoverStickPercent(r.throttleCap, airframe, hoverWeight, 4.2, motorKv).toFixed(1)}% stick`;
     }
     canvas.setAttribute('aria-label', describe(curves));
     draw();

@@ -925,10 +925,66 @@ const WEIGHT_FEEL = {
  * Clamped to the airframe's own top, so a weight stored on a five inch at
  * 140 can never ask the module for a whoop gravity it refuses.
  */
+/*
+ * REALISTIC PHYSICS, PER QUAD (the owner, 2026-11-14, after flying it: "for
+ * 5 inch, default the realistic phyiscs to on, leave it defualted to off for
+ * whoop"). Two stored answers, one per quad, so the five inch's default can
+ * be On while the whoop's stays Off, and a pilot's choice on one never
+ * moves the other. The five inch is read as `!== false` and the whoop as
+ * `=== true`, so a blob from before either existed lands on the defaults.
+ *
+ * THE FORCE. `?physics=classic` or `?physics=real` in the address flies
+ * that model whatever the rows say, for the session, on ?loop's rule: an A
+ * against B stays one address away. The headless checks use the same force
+ * through window.__physicsForce (tests/lib/page.js), because every one of
+ * them that flies was written against the classic model's numbers, and the
+ * settings blob is not a door they can share: an empty blob is how the
+ * shell knows a first visit. A forced session is never shown the explainer.
+ */
+function readPhysicsForce() {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  let v = null;
+  try {
+    v = new URLSearchParams(window.location.search).get('physics');
+  } catch (e) {
+    v = null;
+  }
+  v = v || window.__physicsForce || null;
+  return v === 'classic' ? false : (v === 'real' ? true : null);
+}
+const PHYSICS_FORCE = readPhysicsForce();
+export function physicsForced() {
+  return PHYSICS_FORCE !== null;
+}
+/* What a quad flies when its pilot has said nothing. */
+export function realPhysicsDefault(airframeId) {
+  return airframeById(airframeId).trackClass !== 'micro';
+}
+function realPhysicsKey(airframeId) {
+  return airframeById(airframeId).trackClass === 'micro' ? 'realPhysicsWhoop' : 'realPhysicsFive';
+}
+/* What these settings ask this quad to fly. */
+export function realPhysicsFor(s, airframeId) {
+  if (PHYSICS_FORCE !== null) {
+    return PHYSICS_FORCE;
+  }
+  return realPhysicsDefault(airframeId) ? s[realPhysicsKey(airframeId)] !== false : s[realPhysicsKey(airframeId)] === true;
+}
+export function setRealPhysics(s, airframeId, on) {
+  s[realPhysicsKey(airframeId)] = Boolean(on);
+}
+/* The weight the hover table is read at for these settings: the table is
+ * measured in the airframe's heavier world, so one real g reads as a
+ * lighter quad on it. See hoverWeight in src/main.js, which flies on it. */
+export function hoverWeightFor(s, weight = 100) {
+  return realPhysicsFor(s, s.airframe) ? weight / airframeById(s.airframe).gravityBase : weight;
+}
 export function gravityScaleFor(weight, airframeId, real = false) {
   /* REALISTIC PHYSICS flies the true weight: the base is 1, one real g, and
    * the airframe's heavier world is left to the switch being off. The
-   * slider still scales it, from the same stops. See realPhysics below. */
+   * slider still scales it, from the same stops. See realPhysicsFor. */
   const base = real ? 1 : airframeById(airframeId).gravityBase;
   return Math.round(base * (clampWeight(weight, airframeId) / 100) * 1000) / 1000;
 }
@@ -1651,9 +1707,17 @@ const DEFAULTS = {
    * nothing changes untill the switch is toggled to on". Off is the quad
    * everybody has always flown, bit for bit, and the default. On is the
    * module's sim_set_realism and one real g instead of the airframe's
-   * heavier world. Read as `=== true`, so a blob from before it existed is
-   * Off. See runReal in src/main.js. */
-  realPhysics: false,
+   * heavier world. See runReal in src/main.js.
+   *
+   * PER QUAD since the same evening, once he had flown it: On is the five
+   * inch's default and Off the whoop's. See realPhysicsFor. The first key,
+   * `realPhysics`, lived for half an hour with Off as its default and is not
+   * read: a stored false there was the default, not a pilot's choice.
+   * `realPhysicsTold` is whether the explainer has been shown; see
+   * tellRealPhysics. */
+  realPhysicsFive: true,
+  realPhysicsWhoop: false,
+  realPhysicsTold: false,
   /* Betaflight launch control. Off: ordinary takeoff. On: L on the start
    * line holds attitude at idle until you punch throttle. */
   launchControl: false,
@@ -8274,7 +8338,7 @@ export class Ui {
    * the confirming button takes focus instead. Resolves true or false, and
    * a backdrop click or Escape is false.
    */
-  askConfirm({ title, detail, yes, no }) {
+  askConfirm({ title, detail, yes, no, escape = false }) {
     return new Promise((resolve) => {
       this.nameWait = resolve;
       const box = el('div', 'name-dialog-box');
@@ -8324,7 +8388,14 @@ export class Ui {
           e.preventDefault();
           e.stopPropagation();
           finish(true);
-        } else if (e.key === 'Escape' || e.key === 'n' || e.key === 'N') {
+        } else if (e.key === 'Escape') {
+          /* `escape` is what walking away answers. False for a question;
+           * true for a notice whose other button changes something, so
+           * Escape can never be the press that changes it. */
+          e.preventDefault();
+          e.stopPropagation();
+          finish(Boolean(escape));
+        } else if (e.key === 'n' || e.key === 'N') {
           e.preventDefault();
           e.stopPropagation();
           finish(false);
@@ -9722,8 +9793,9 @@ export class Ui {
       if (show) {
         /* At the Motor power flown, which is not 100 on a stock whoop. */
         const kv = effectiveTune(this.settings).motorKv;
-        const eased = hoverStickPercent(75, this.settings.airframe, 100, 4.2, kv);
-        const now = hoverStickPercent(100, this.settings.airframe, 100, 4.2, kv);
+        const hw = hoverWeightFor(this.settings);
+        const eased = hoverStickPercent(75, this.settings.airframe, hw, 4.2, kv);
+        const now = hoverStickPercent(100, this.settings.airframe, hw, 4.2, kv);
         capHint.textContent = `This quad hovers at ${now.toFixed(1)} percent of stick with no throttle limit, so nearly all the travel is above hover. Rates, Throttle limit, 75 percent moves hover to ${eased.toFixed(1)} percent and gives the fine control back without losing any climb you can use indoors. Worth trying before you wait on us.`;
       }
     };
@@ -12455,7 +12527,7 @@ export class Ui {
        */
       const r = s.rates;
       const split = Boolean(s.ratesSplitPitch);
-      const hover = hoverStickPercent(r.throttleCap, this.settings.airframe, 100, 4.2, effectiveTune(this.settings).motorKv);
+      const hover = hoverStickPercent(r.throttleCap, this.settings.airframe, hoverWeightFor(this.settings), 4.2, effectiveTune(this.settings).motorKv);
       const tilt = Math.sin(cameraTiltRad(s.cameraAngle));
       const noteFor = (axis, key) => {
         const spec = rateField(r.type, key);
@@ -13134,7 +13206,7 @@ export class Ui {
     if (this.screen !== 'rates') {
       return;
     }
-    this.ratesPanel.paint(this.settings.rates, this.ratesStick, this.settings.airframe, effectiveTune(this.settings).motorKv);
+    this.ratesPanel.paint(this.settings.rates, this.ratesStick, this.settings.airframe, effectiveTune(this.settings).motorKv, hoverWeightFor(this.settings));
   }
 
   /* The live sticks, from the frame loop. Only while the screen is up: the
@@ -13809,15 +13881,67 @@ export class Ui {
    * nothing about how it is built. See runReal in src/main.js.
    */
   realPhysicsRow(s) {
-    const on = s.realPhysics === true;
+    const on = realPhysicsFor(s, s.airframe);
+    const whoop = airframeById(s.airframe).trackClass === 'micro';
+    const quad = whoop ? 'whoop' : 'five inch';
+    const stock = realPhysicsDefault(s.airframe);
+    const tag = 'Laps flown this way post to the public board tagged Tuned.';
     return toggle(
       'Realistic physics',
       on
-        ? 'On, experimental: the quad flies at its true weight in real gravity. It turns more freely, the air pushes back on the props the way it does outdoors, wash hangs where you left it, the ground cushions a low hover, and in freestyle the pack sags and runs down until you reset. Its turning, motors and pack are matched to flight logs from two real quads; the rest is worked out, not measured. Laps post to the public board tagged Tuned and keep a best lap of their own. Changing it mid lap voids that lap.'
-        : 'Off: the flight everybody has always flown here. Turn it on to try the experimental real world model: true weight and gravity, freer rotation, truer air on the props, wash that hangs where you left it, a ground cushion, and a pack that runs down in freestyle. Laps flown with it on post to the public board tagged Tuned.',
+        ? `On for the ${quad}, experimental: it flies at its true weight in real gravity. It turns more freely, the air pushes back on the props the way it does outdoors, wash hangs where you left it, the ground cushions a low hover, the pack sags on a punch, and in freestyle it runs down until you reset. Its turning, motors and pack are matched to flight logs from two real quads; the rest is worked out, not measured. Realistic laps keep a best lap of their own.${stock ? '' : ` ${tag}`} Turn it off to fly the ${quad} the way it always flew here. Changing it mid lap voids that lap.`
+        : `Off for the ${quad}: the flight it always had here. Turn it on for the experimental real world model: true weight and gravity, freer rotation, truer air on the props, wash that hangs where you left it, a ground cushion, and a pack that sags and runs down in freestyle.${stock ? ` ${tag}` : ''} Each quad keeps its own answer.`,
       on,
-      (v) => { s.realPhysics = Boolean(v); },
+      (v) => { setRealPhysics(s, s.airframe, v); s.realPhysicsTold = true; },
     );
+  }
+
+  /*
+   * THE EXPLAINER, the owner's ask of 2026-11-14 with the default: "In 5
+   * inch show the user a modal to explain the experiemental flight feel
+   * realistic physics, and tell them how to turn it back to how it was if
+   * they like". Once, in front of the first Fly on a five inch with the
+   * model on, and never in flight. It says what changed in the pilot's
+   * hands, that it is experimental, where the switch is, and it carries the
+   * way back as its own button so nobody has to go and find a row to undo
+   * something they did not ask for.
+   *
+   * Not for a pilot who has never flown: there is no "how it was" to tell
+   * them about, and First flight has enough to say; they meet it on a later
+   * visit. Not in a room, where the flight is other people's too. Not when
+   * the address or a check forces a model. A pilot who has already worked
+   * the row has been told (realPhysicsRow sets the flag). Escape is "Got
+   * it", never the button that changes the flight: see askConfirm's escape.
+   *
+   * Returns true when it has taken the Fly, which it gives back by acting
+   * `fly` again once answered, the quad picker's own pattern.
+   */
+  tellRealPhysics() {
+    const s = this.settings;
+    if (s.realPhysicsTold || physicsForced() || this.roomInfo || !s.hasFlown || this.firstRun
+      || airframeById(s.airframe).trackClass === 'micro' || !realPhysicsFor(s, s.airframe)) {
+      return false;
+    }
+    s.realPhysicsTold = true;
+    saveSettings(s);
+    this.askConfirm({
+      title: 'Realistic physics is on',
+      detail: 'The five inch now flies on an experimental real world model, matched to flight logs from real quads. It weighs what a real quad weighs, so hover sits lower on the throttle and it carries its speed. It turns more freely, the motors take a moment to answer, and the pack sags when you punch. In freestyle the pack also runs down, and a reset gives you a fresh one. Your old best laps are kept and come back with the old feel. To change it any time: Settings, Pilot, Realistic physics.',
+      yes: 'Got it, fly',
+      no: 'Use the old feel',
+      escape: true,
+    }).then((keep) => {
+      if (!keep) {
+        setRealPhysics(this.settings, this.settings.airframe, false);
+        saveSettings(this.settings);
+        this.renderMenu();
+        if (this.onSettings) {
+          this.onSettings(this.settings);
+        }
+      }
+      this.act('fly');
+    });
+    return true;
   }
 
   /* One place that writes a switch, so the sound, the repaint and the
@@ -14114,7 +14238,7 @@ export class Ui {
     const before = it.num.cli;
     it.set(next);
     try {
-      this.ratesPanel.paint(this.settings.rates, this.ratesStick, this.settings.airframe, effectiveTune(this.settings).motorKv);
+      this.ratesPanel.paint(this.settings.rates, this.ratesStick, this.settings.airframe, effectiveTune(this.settings).motorKv, hoverWeightFor(this.settings));
     } finally {
       it.set(before);
     }
@@ -24037,6 +24161,9 @@ export class Ui {
     }
     if (action === 'fly') {
       this.seatCraftForCourse();
+    }
+    if (action === 'fly' && this.tellRealPhysics()) {
+      return;
     }
     if (action === 'fly' && !this.seatMatchesMode()) {
       /*

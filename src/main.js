@@ -91,7 +91,7 @@ import { uploadWorld, setWorldFrame, setMover, setBoxHeight, kindOf, setVehicleC
 import { Chase, CHASE_EVERY, pays } from './game/chase.js';
 import { sincos } from './props/trig.js';
 import { setCraftAirframe, CRAFT_R, CRAFT_WORLD_R, CRAFT_V_UP, CRAFT_V_DOWN, craftVerticalHalf, craftVerticalOffset, canPerch, heldStill, stuckClockStep, STUCK_SPEED, STUCK_RATE, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, TURTLE_EXIT_UPZ, turtleClearance, findRestSpot, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, CLIP_SPAWN_GRACE_MS, CrashJudge, putDullBounce, DULL_OUT_MAX, STUCK_LEAN_UPZ, emptyWorldReport, foldWorldReport } from './game/collide.js';
-import { Ui, formatTime, WEIGHT_STOCK, clampWeight, gravityScaleFor, loadSettings, pacingTimerOn } from './ui/ui.js';
+import { Ui, formatTime, WEIGHT_STOCK, clampWeight, gravityScaleFor, loadSettings, pacingTimerOn, realPhysicsFor, realPhysicsDefault, setRealPhysics, physicsForced } from './ui/ui.js';
 import { TAKEOFF, guideKind, stepOf, textOf } from './ui/firstflight.js';
 import {
   AIR_GRIP_STOCK,
@@ -5898,7 +5898,8 @@ export async function boot({ loading, bootStart, mapId }) {
   /* Whether the machine being flown is off stock in any way the board tags
    * as Tuned: the two flight feel scales, prop wash switched off, or 3D. */
   function offStock() {
-    return offBoardTune(runAirGrip, runMotorKv, runAirframe) || !runWash || run3d || runReal !== 0;
+    return offBoardTune(runAirGrip, runMotorKv, runAirframe) || !runWash || run3d
+      || (runReal !== 0) !== realPhysicsDefault(runAirframe);
   }
   /*
    * REALISTIC PHYSICS, as the module is flying it: the mask last given to
@@ -5908,7 +5909,16 @@ export async function boot({ loading, bootStart, mapId }) {
    * toggled to on". On is every part of the model the module has (see THE
    * REALISTIC MODEL in src/native/plant.c) and one real g in place of the
    * airframe's heavier world, which gravityScaleFor answers. Another machine
-   * in the sense prop wash off is: Tuned on the board, a best of its own.
+   * in the sense prop wash off is: a best of its own (`.real` on the key).
+   *
+   * WHICH OF THE TWO IS "TUNED" FOLLOWS THE QUAD'S DEFAULT, since the owner
+   * made On the five inch's default the same evening (realPhysicsFor in
+   * src/ui/ui.js): the board's tag means "not the quad as it ships", so on
+   * the five inch it is the old model that posts Tuned and on the whoop it
+   * is this one. The record key does not follow the default the way the
+   * flight feel scales' does: a lap at one g and a lap at 1.62 are not the
+   * same lap, so each model keeps its own best on every quad, and a five
+   * inch pilot's old bests are where they left them, one switch away.
    *
    * THE PACK IS THE ONE PART THAT IS NOT ALWAYS ON. A pack that runs down
    * makes a lap depend on how long the pilot has been flying, so it drains
@@ -5924,7 +5934,7 @@ export async function boot({ loading, bootStart, mapId }) {
   /* Whether the low pack has been called on this pack yet. */
   let toldPackLow = false;
   function realMaskWanted() {
-    if (ui.settings.realPhysics !== true) {
+    if (!realPhysicsFor(ui.settings, runAirframe)) {
       return 0;
     }
     const drains = Boolean(view) && view.mode === 'freestyle'
@@ -5945,7 +5955,7 @@ export async function boot({ loading, bootStart, mapId }) {
       return false;
     }
     if (typeof sim.e.sim_set_realism !== 'function') {
-      ui.settings.realPhysics = false;
+      setRealPhysics(ui.settings, runAirframe, false);
       return false;
     }
     const moved = (want !== 0) !== (runReal !== 0);
@@ -15646,6 +15656,7 @@ export async function boot({ loading, bootStart, mapId }) {
     gravity: runGravityScale,
     key: recordKey(),
     tuned: offStock(),
+    forced: physicsForced(),
   });
   /* What 3D mode the module is flying, and what the module says it is. */
   window.__mode3d = () => ({

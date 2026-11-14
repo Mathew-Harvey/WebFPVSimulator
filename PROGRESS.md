@@ -75953,3 +75953,8 @@ The owner, after the bug board run reported `check:rooms`' one failure (the shel
 - Latency: none with the switch off (step time ratio against the base 0.985 and 1.018, noise). On: 1.9 us a step, as before; the change is constants and one table field. dist/sim.wasm 177554 bytes.
 - What went wrong: the first resistance, 6.5 mOhm from dividing the logged volts by the plant's hover current, read 0.25 V through the estimator and not 0.21, so it was set by the estimator instead (5.2). The fit tool's self test still expected the old inertia ratio and failed until it read both figures out of the module.
 - Checks run on this tree: `check:plant` 35 of 35, `check:plant:selftest`, `check:realism`, `check:blackbox`, `check:realrow`, `lint:fc` 33 of 33, `contact:selftest`, `check:world-golden`, `lint:propwash`. `git diff --stat vendor/betaflight` empty. `npm run verify` not run.
+
+### To main, 2026-11-14 (the owner: "push to main and i'll fly the switch on")
+
+- That is the owner's word for the deploy and, the rise having been stated to him twice in the thread, for the opt in step cost with the switch on (about 0.4 us a physics step; none with it off). Fetched first: main had not moved from 8647e68, so this is a fast forward of the branch's five commits, nothing forced.
+- The owner picked "fly it" as the verification: the switch on, on the live site. What to feel for was given in the thread (hover near a quarter throttle, snaps that stop a little softer, throttle a touch later, a punch that sags more, clean forward descents). `npm run verify` was not run.

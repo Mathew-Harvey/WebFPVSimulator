@@ -3384,7 +3384,8 @@ export function createTogether(shell) {
    * QUAD BALL'S QUICK MATCH, the owner's ask of 2026-10-30: kick off with
    * bots, and real pilots who also asked for a quick match take a bot's
    * seat. No queue lives anywhere: a quick match is a listed Quad Ball room
-   * (preset chat, made up names, no addresses, as every listed room is), so
+   * (preset chat, typed names through the word list, no addresses, as
+   * every listed room is since the owner's word of 2026-11-08), so
    * the pilot joins the first open one on this map, and with none opens
    * their own for the next pilot to find. The bots are seated by the room's
    * rules as in any Quad Ball room (seatRoomRules).
@@ -3887,7 +3888,7 @@ export function createTogether(shell) {
       h('div.page-body', null, h('div.tg-cols', { style: { color: 'var(--ink)' } },
         h('div.stack', { style: { gap: '14px' } },
           blk('Nobody joins you uninvited', 'Solo flight is always private. You only join a room you pick, and a room only gets people its host invites or lists. A link always asks first.'),
-          blk('Other pilots see', 'Your name, your avatar, your quad and what you say. In listed and school safe rooms, a made up name and never your internet address.'),
+          blk('Other pilots see', 'Your name, your avatar, your quad and what you say. A name the word list stops shows as a made up one. In a school safe room everybody has a made up name, and listed, school safe and streamer rooms never show your internet address.'),
           blk('Chat', 'Listed rooms talk in preset lines only. Typed chat exists only in private rooms whose host allows it, and the board filters it: no links, no handles, no phone numbers.')),
         h('div.stack', { style: { gap: '14px' } },
           blk('The board sees', "Your address while you are connected, your name, your avatar's part numbers and the room's chat as it goes past. It keeps none of it after the room closes."),
@@ -4137,8 +4138,17 @@ export function createTogether(shell) {
         session.link.settings(msg);
         again();
       };
-      /* A streamer room names everybody for them whatever is switched. */
-      const renames = !r.streamer && (f.listed || f.schoolSafe) !== (r.listed || r.schoolSafe);
+      /* Only School safe changes names (the owner's word of 2026-11-08:
+       * own names in every room but a school safe one). Listing a room
+       * keeps them, and this said it gave everybody a made up name. A
+       * streamer room's names proved on the stream stay either way. */
+      const renames = f.schoolSafe !== r.schoolSafe;
+      let renameNote = '';
+      if (renames && f.schoolSafe) {
+        renameNote = r.streamer ? 'Saving gives everybody a made up name, except a name proved on the stream.' : 'Saving gives everybody in the room a made up name.';
+      } else if (renames) {
+        renameNote = 'Saving gives everybody their own name back.';
+      }
       return scrimmed(h('div.page.fit.sheet.halftone', null,
         h('div.page-head', null, h('div.grow', null, h('span.kicker', { text: r.name }), lettered('ROOM SETTINGS', [INKS.cream, INKS.amber], 46, 600)),
           btn('Cancel', 'small ghost', () => back(), { 'data-k': 'cancel' })),
@@ -4165,7 +4175,7 @@ export function createTogether(shell) {
               { locked: strict, why: strict ? 'Always on in listed, school safe and streamer rooms.' : '' }),
             f.listed && !r.streamer ? tagPicker(f, again) : null))),
         h('div.footer-row', null, btn(settingsSaving ? 'Saving' : 'Save', '', saveIt, { 'data-k': 'save', 'data-autofocus': true, disabled: settingsSaving }),
-          renames ? h('span.note', { style: { color: 'var(--red)' }, text: f.listed || f.schoolSafe ? 'Saving gives everybody in the room a made up name.' : 'Saving gives everybody their own name back.' }) : null)));
+          renameNote ? h('span.note', { style: { color: 'var(--red)' }, text: renameNote }) : null)));
     });
   }
 

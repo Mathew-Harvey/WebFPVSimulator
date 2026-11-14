@@ -546,7 +546,7 @@ export function askPlayHow(ui, kit, {
     const join = btn('df-chip', 'Join');
     row.append(make, join);
     const friends = mk('With friends', 'GG!', 'Play with friends', 'Make a private game and send its code, or type a friend\'s code. Bots keep the empty seats, and a friend who joins takes one.', row, code);
-    const quickCard = quick ? mk('Real pilots', 'GO!', 'Quick match', 'Kick off now with bots. Another pilot who picks Quick match takes a bot\'s seat. Preset chat and made up names only.') : null;
+    const quickCard = quick ? mk('Real pilots', 'GO!', 'Quick match', 'Kick off now with bots. Another pilot who picks Quick match takes a bot\'s seat. Preset chat only.') : null;
     const cards = quickCard ? [bots, friends, quickCard] : [bots, friends];
     const n = cards.length;
     const goBtn = btn('qp-btn qp-fly', 'Play with bots');

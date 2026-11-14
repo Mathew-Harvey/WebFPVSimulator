@@ -4641,8 +4641,12 @@ async function sceneQuickBall() {
     /* Through the cover's Fly solo and its Freestyle maps, as a pilot
      * reaches the cards: the gate answered, then the shelf. A shelf opened
      * straight off the cover leaves the gate up, and the room's flight
-     * into the stadium then waits on the cover for an answer. */
-    await page.evaluate("(() => { const u = window.__ui; if (u.onGate()) { u.craftGate = false; u.settings.airframeAsked = true; } u.pickerShelfChosen('maps'); return 1; })()");
+     * into the stadium then waits on the cover for an answer. Marked as a
+     * mini game's pick first, as the Mini games page's Quad Ball panel
+     * does (ui.playMapGame): the Maps shelf has not listed Quad Ball
+     * since it moved to that page, and this scene looked for its card
+     * and found none, so quick match went unchecked from then on. */
+    await page.evaluate("(() => { const u = window.__ui; if (u.onGate()) { u.craftGate = false; u.settings.airframeAsked = true; } u.mapGamePick = true; u.pickerShelfChosen('maps'); return 1; })()");
     await page.until('window.__ui.pickerLib', 60000);
     await wait(600);
     await page.evaluate("(() => { const u = window.__ui; u.pickerAction('fly', u.pickerEntries().find((e) => e.item && e.item.action === 'map:ball')); return 1; })()");

@@ -21,10 +21,13 @@
  *            following a move) and opens the overview (picks the pilot,
  *            keeps them in view). A Node pilot is banned and refused at the
  *            door; the second browser is kicked and told so again at the door.
- *   shelf    a listed room on the Rooms shelf, joined from its card; then
- *            a school safe room hosted by the page: typed chat locked off,
- *            a typed line refused, no typing box in the talk scene, and the
- *            host's own name never sent to the room
+ *   shelf    a listed room on the Rooms shelf, joined from its card under
+ *            the name the page typed, and a name the word list stops shown
+ *            as a made up one; then a school safe room hosted by the page:
+ *            typed chat locked off, a typed line refused, no typing box in
+ *            the talk scene, and the host's own name never sent to the
+ *            room; then School safe off gives the typed name back, and
+ *            listing the room warns of no new names and changes none
  *   bots     a dogfight room the page ends up hosting, a bot seated from
  *            the roster sheet and seen as a pilot by somebody who joins
  *   dfpop    a dogfight room joined with a round on: no POP! for a pilot
@@ -529,8 +532,22 @@ async function sceneShelf() {
     await pressKey(page, `room-${lister.s.room.code}`);
     check('and its card joins it', await pass(page.until(`${T} && window.__together().inRoom && window.__together().code === ${JSON.stringify(lister.s.room.code)}`, 20000)));
     await flying(page);
+    /* Own names in every room but a school safe one, the owner's word of
+     * 2026-11-08 ("in all multi player, if i don't select school mode, i
+     * should be able to make my own name. Lets put a black list of words
+     * to keep it clean"). This line expected a made up name in a listed
+     * room, the rule before that, and failed on main from then on. */
     const shown = [...lister.s.link.pilots.values()].map((p) => p.handle);
-    check('a listed room shows the page under a made up name, never its own', shown.length === 2 && !shown.includes('School Host'), shown.join(', '));
+    check('a listed room shows the page under the name it typed', shown.length === 2 && shown.includes('School Host'), shown.join(', '));
+    /* The word list's half of the same rule: a name it stops flies under
+     * a made up one, in a listed room as anywhere. */
+    const snap = bot('Snapchat Sam', 229);
+    snap.s.join(lister.s.room.code, {});
+    check('a pilot whose typed name the word list stops joins the listed room', await until(() => snap.s.inRoom, 8000));
+    const withSnap = await until(() => lister.s.link.pilots.size === 3, 8000);
+    const snapShown = [...lister.s.link.pilots.values()].map((p) => p.handle);
+    check('and is shown under a made up name, never the one typed', withSnap && !snapShown.some((n) => /snapchat/i.test(n)), snapShown.join(', '));
+    snap.s.leave();
     await leaveRoom(page);
     await toFlight(page);
 
@@ -564,6 +581,37 @@ async function sceneShelf() {
     await sheetIs(page, 'scene');
     check('the talk scene offers the preset lines and no box to type in',
       await page.evaluate("Boolean(document.querySelector('#tg [data-k=\"q-0\"]')) && !document.querySelector('#tg-say')"));
+    await toFlight(page);
+
+    /* School safe off, from Room settings: the sheet says everybody gets
+     * their own name back, and they do. The board kept the made up names
+     * School safe had forced, for good. */
+    const note = () => page.evaluate("(() => { const n = document.querySelector('#tg .footer-row .note'); return n ? n.textContent : ''; })()");
+    await roomPage(page);
+    await pressKey(page, 'settings');
+    await sheetIs(page, 'roomSettings');
+    await pressKey(page, 'sw-schoolSafe');
+    const offNote = await note();
+    check('turning School safe off says everybody gets their own name back', /own name back/.test(offNote), offNote);
+    await pressKey(page, 'save');
+    check('and saved, the room is no longer school safe', await until(() => pupil.s.room && pupil.s.room.schoolSafe === false, 8000), JSON.stringify(pupil.s.room));
+    const ownAgain = await until(() => [...pupil.s.link.pilots.values()].some((p) => p.handle === 'School Host'), 8000);
+    check('and the other pilot sees the host under the name it typed', ownAgain, [...pupil.s.link.pilots.values()].map((p) => p.handle).join(', '));
+    await toFlight(page);
+
+    /* Listing the room keeps the names: the sheet said listing gave
+     * everybody a made up name, the rule before 2026-11-08. */
+    await roomPage(page);
+    await pressKey(page, 'settings');
+    await sheetIs(page, 'roomSettings');
+    await pressKey(page, 'sw-listed');
+    const listNote = await note();
+    check('turning Listed on warns of no new names, because there are none', !/made up name/.test(listNote), listNote);
+    await pressKey(page, 'save');
+    check('and saved, the room is listed', await until(() => pupil.s.room && pupil.s.room.listed === true, 8000), JSON.stringify(pupil.s.room));
+    await wait(500);
+    check('and the host keeps the name it typed', [...pupil.s.link.pilots.values()].some((p) => p.handle === 'School Host'),
+      [...pupil.s.link.pilots.values()].map((p) => p.handle).join(', '));
     await toFlight(page);
     endChecks(page);
   } catch (e) {

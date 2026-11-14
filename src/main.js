@@ -5915,7 +5915,7 @@ export async function boot({ loading, bootStart, mapId }) {
    * only where nothing is timed or scored: solo freestyle with no clock and
    * no game. Everywhere else the pack is the fresh one a run always had.
    */
-  const REAL_ALL = 127;
+  const REAL_ALL = 255;
   const REAL_PACK = 16;
   /* Charge used, in amp hours, at which the low pack is called: about
    * three quarters of the module's pack (pack_ah in src/native/plant.c). */

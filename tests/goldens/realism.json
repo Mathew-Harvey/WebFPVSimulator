@@ -1,8 +1,8 @@
 {
  "note": "Written by scripts/realism-check.js --write. The Realistic physics switch's own traces. Rewrite when a realism constant is retuned on the owner's word, and say which in PROGRESS.md.",
  "scenarios": {
-  "all on, acro freestyle at one g": "8afb7129fb669a4b9d2c841fb06a52dc387860a7604e6d4ba9e65e18e00d6d8f",
-  "race mask, acro freestyle at one g": "fcb8339902c63fefaa446b1f153f8fc79965a0667d507fcb16d2f7a656697ec0",
-  "all on, grass, hover low and fly off": "953a5ef9f3b1c8f915fc698090e001a67627ec96b823a6d09bb3ec7eada07a8d"
+  "all on, acro freestyle at one g": "1f8938f5d687eba8af32fd95df6515e836197ca4fca820254a5f327c85f47c68",
+  "race mask, acro freestyle at one g": "205dc6db66f6ee422b171d941e05b8c36a74d758f057c2781cb0097a2266a7d6",
+  "all on, grass, hover low and fly off": "bbf30eb5993b03fd48e58dabb66b68005167bcdac08b5363c0b3e130b530428d"
  }
 }

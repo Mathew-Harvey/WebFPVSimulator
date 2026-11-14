@@ -175,7 +175,12 @@ typedef struct {
    * switch is off. See SIM_REAL below and the block at PLANT_REAL in
    * plant.c for where each number comes from.
    */
-  double inertia_real[3]; /* Ixx, Iyy, Izz built up from the parts, kg m^2 */
+  double inertia_real[3]; /* Ixx, Iyy, Izz with the switch on, kg m^2 */
+  double j_rotor_real;    /* rotor plus prop inertia with the switch on,
+                           * set so the motor follows a command as slowly
+                           * as a logged one does */
+  double r_cell_real;     /* the fast resistance per cell with the switch
+                           * on, ohms, from logged sag */
   double k_ground_real;   /* ground effect strength with the switch on */
   double pack_ah;         /* what the pack holds, amp hours */
   double r_cell_slow;     /* the slow half of a cell's sag, ohms: the part
@@ -446,8 +451,11 @@ extern double SIM_MOTOR_KV;
  *                       one and a half times too sensitive to a climb or a
  *                       descent at the hover, and that same slope is the
  *                       airframe's roll and pitch damping.
- *   SIM_REAL_INERTIA    the airframe's inertia built up from its parts,
- *                       roughly half the figure the table was given.
+ *   SIM_REAL_INERTIA    the airframe's inertia and the rotors' own, as
+ *                       the owner's flight logs read them: the airframe
+ *                       about two thirds of the figure the table was
+ *                       given, the motors about 40 percent slower to
+ *                       follow a command.
  *   SIM_REAL_GROUND     ground effect on the five inch, which the table
  *                       leaves out.
  *   SIM_REAL_WAKE       prop wash from flying back into the air the craft
@@ -460,6 +468,10 @@ extern double SIM_MOTOR_KV;
  *   SIM_REAL_DYNINFLOW  the air through a rotor cannot change speed at
  *                       once, so thrust leads a little on a sharp throttle
  *                       change. Needs INFLOW.
+ *   SIM_REAL_SAG        the pack's resistance as logged on real packs,
+ *                       which is two to three times the table's. Its own
+ *                       bit, apart from PACK, so a race has the real sag
+ *                       without a pack that runs down.
  *
  * Gravity is not a bit here. The shell's heavy world is sim_set_gravity's
  * 1.62; the switch has the shell ask for 1.0 instead.
@@ -477,7 +489,8 @@ extern double SIM_MOTOR_KV;
 #define SIM_REAL_PACK 16
 #define SIM_REAL_TANDEM 32
 #define SIM_REAL_DYNINFLOW 64
-#define SIM_REAL_ALL 127
+#define SIM_REAL_SAG 128
+#define SIM_REAL_ALL 255
 extern int SIM_REAL;
 
 /* Motor spin direction, position and cant moved INTO PlantParams when the

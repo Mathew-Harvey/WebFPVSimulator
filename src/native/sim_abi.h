@@ -358,14 +358,15 @@ int sim_3d(void);
  * correction to that plant:
  *
  *     1  thrust from blade element and momentum theory solved together
- *     2  the airframe's inertia built up from its parts
+ *     2  the airframe's inertia and the motors' lag, as logged
  *     4  ground effect on the five inch
  *     8  prop wash from the craft's own remembered wake
  *    16  a pack that runs down, with sag that builds and recovers
  *    32  downstream rotors in the upstream rotors' wake (needs 1)
  *    64  the air's own lag behind a throttle change (needs 1)
+ *   128  the pack's resistance as logged, without the running down
  *
- * 127 is all of them. A bit this build does not have is refused with
+ * 255 is all of them. A bit this build does not have is refused with
  * SIM_ERR_BAD_ARG. Takes effect on the next step, mid flight included, and
  * a change forgets the remembered wake and puts the pack back to the
  * charge sim_set_cell_voltage gave it. Survives sim_reset and sim_init,

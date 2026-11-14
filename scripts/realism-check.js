@@ -59,7 +59,8 @@ const WAKE = 8;
 const PACK = 16;
 const TANDEM = 32;
 const DYN = 64;
-const ALL = 127;
+const SAG = 128;
+const ALL = 255;
 
 /* sim_abi.h's state block. */
 const Z = 3;
@@ -74,6 +75,8 @@ const AMPS = 19;
 /* sim_bf_debug taps. */
 const TAP_OLD_WASH = 46;
 const TAP_IXX = 55;
+const TAP_JROTOR = 60;
+const TAP_RCELL = 63;
 const TAP_WAKE = 71;
 const TAP_TANDEM = 73;
 const TAP_USED = 74;
@@ -201,7 +204,7 @@ async function theSwitchItself() {
   const sim = await loadSim(wasm);
   sim.init(config);
   check(sim.e.sim_realism() === 0, 'a module nobody has asked is at 0');
-  check(sim.e.sim_set_realism(128) === SIM_ERR_BAD_ARG && sim.e.sim_set_realism(-1) === SIM_ERR_BAD_ARG
+  check(sim.e.sim_set_realism(256) === SIM_ERR_BAD_ARG && sim.e.sim_set_realism(-1) === SIM_ERR_BAD_ARG
     && sim.e.sim_realism() === 0, 'a bit this build does not have is refused and changes nothing');
   sim.e.sim_set_realism(TANDEM | DYN);
   check(sim.e.sim_realism() === 0, 'the two bits that act through the inflow solve are nothing without it');
@@ -302,24 +305,46 @@ async function inertia(hover) {
   console.log('\ninertia');
   const off = await open(0);
   const on = await open(INERTIA);
-  check(tap(off, TAP_IXX) === 0.0035 && tap(on, TAP_IXX) === 0.00145, 'the plant is on the built up figure with the bit set and the table\'s without',
+  /* The logged figure since 2026-11-14 (PROGRESS.md, the owner's flights),
+   * and the rotor's with it, because a motor's lag is its rotor's inertia. */
+  check(tap(off, TAP_IXX) === 0.0035 && tap(on, TAP_IXX) === 0.00235, 'the plant is on the logged figure with the bit set and the table\'s without',
     `Ixx ${tap(off, TAP_IXX)} off, ${tap(on, TAP_IXX)} on`);
-  /* The same two motors opened by hand on both: the roll it starts is the
-   * inertia and nothing else. */
-  const rate = (sim) => {
+  check(tap(off, TAP_JROTOR) === 8.0e-6 && tap(on, TAP_JROTOR) === 11.0e-6, 'and so is the rotor',
+    `${tap(off, TAP_JROTOR)} off, ${tap(on, TAP_JROTOR)} on`);
+  /* The same two motors opened by hand on both. The roll rate it reaches,
+   * over the rpm squared difference that drove it, is the inertia and
+   * nothing else; the rotors spin up at their own pace on each, which is
+   * why it is taken per unit of what they actually did. And the time the
+   * rpm takes to cover 63 percent of its step is the motor's lag. */
+  const push = (sim) => {
     sim.e.sim_set_pose(0, 0, 50, 1, 0, 0, 0);
     fly(sim, 600, () => [0, 0, 0, hover]);
+    const from = state(sim)[14 + 2];
     sim.motorOverride(2, 0.6);
     sim.motorOverride(3, 0.6);
     sim.motorOverride(0, 0.1);
     sim.motorOverride(1, 0.1);
-    fly(sim, 25, () => [0, 0, 0, hover]);
-    return state(sim)[P];
+    let drive = 0;
+    let kick = 0;
+    const rpm = [];
+    fly(sim, 400, () => [0, 0, 0, hover], (t, st) => {
+      if (t < 25) {
+        drive += st[16] * st[16] + st[17] * st[17] - st[14] * st[14] - st[15] * st[15];
+        kick = st[P];
+      }
+      rpm.push(st[16]);
+    });
+    const to = rpm[rpm.length - 1];
+    const lag = rpm.findIndex((x) => x - from >= 0.632 * (to - from));
+    return { kick: kick / drive, lag };
   };
-  const r0 = rate(off);
-  const r1 = rate(on);
-  check(Math.abs(r1 / r0 - 0.0035 / 0.00145) < 0.12, 'the same push on two motors rolls it faster by the ratio of the two inertias',
-    `${(r1 / r0).toFixed(3)} against ${(0.0035 / 0.00145).toFixed(3)}`);
+  const r0 = push(off);
+  const r1 = push(on);
+  const wantI = 0.0035 / 0.00235;
+  check(Math.abs(r1.kick / r0.kick / wantI - 1) < 0.05, 'the same rpm difference rolls it faster by the ratio of the two inertias',
+    `${(r1.kick / r0.kick).toFixed(3)} against ${wantI.toFixed(3)}`);
+  check(Math.abs(r1.lag / r0.lag / (11.0 / 8.0) - 1) < 0.10, 'and the motors take longer to get there by the ratio of the two rotors',
+    `${r0.lag} ms to ${r1.lag} ms, ${(r1.lag / r0.lag).toFixed(3)} against ${(11.0 / 8.0).toFixed(3)}`);
 
   /* And the shipped tune still holds it: a half stick roll, then centred. */
   const step = async (mask) => {
@@ -505,6 +530,23 @@ async function pack(hover) {
   fly(on.sim, 5, () => [0, 0, 0, 0]);
   check(tap(on.sim, TAP_USED) < 1e-5 && tap(on.sim, TAP_SLOW) < 1e-2, 'a reset is a fresh pack',
     `${tap(on.sim, TAP_USED).toExponential(1)} Ah used, ${tap(on.sim, TAP_SLOW).toExponential(1)} V of slow sag, 5 ms in`);
+
+  /* The sag bit alone: the logged resistance, and nothing that remembers. */
+  const sagOn = await open(SAG);
+  const sagOff = await open(0);
+  check(tap(sagOff, TAP_RCELL) === 0.0025 && tap(sagOn, TAP_RCELL) === 0.0052, 'the sag bit puts the cell on the logged resistance',
+    `${tap(sagOff, TAP_RCELL)} off, ${tap(sagOn, TAP_RCELL)} on`);
+  const drop = (sim) => {
+    sim.e.sim_set_pose(0, 0, 200, 1, 0, 0, 0);
+    fly(sim, 800, () => [0, 0, 0, hover]);
+    const st = state(sim);
+    return (4.2 * 6 - st[VOLTS]) / st[AMPS];
+  };
+  const dOn = drop(sagOn);
+  const dOff = drop(sagOff);
+  check(Math.abs(dOn / dOff / (5.2 / 2.5) - 1) < 0.05 && tap(sagOn, TAP_USED) === 0 && tap(sagOn, TAP_SLOW) === 0,
+    'a hover gives up volts for amps by the ratio of the two, and nothing is drawn down',
+    `${(dOn * 1000).toFixed(1)} mOhm against ${(dOff * 1000).toFixed(1)}`);
 
   /* The mask the shell flies a race on: everything but the pack. */
   const race = await run(ALL & ~PACK);

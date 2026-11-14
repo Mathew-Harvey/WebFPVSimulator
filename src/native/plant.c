@@ -358,7 +358,9 @@ const PlantParams PLANT_TABLE[SIM_AIRFRAME_COUNT] = {
   .ground_tip_accel = 200.0, /* sim.c TUMBLE FLAT, the drop probe's figure */
   .ducted = 0,
   /* The Realistic physics switch's numbers; see the block at PLANT_REAL. */
-  .inertia_real = { 0.00145, 0.00204, 0.00281 },
+  .inertia_real = { 0.00235, 0.00246, 0.0039 },
+  .j_rotor_real = 11.0e-6,
+  .r_cell_real = 0.0052,
   .k_ground_real = 1.0,
   .pack_ah = 1.3,
   .r_cell_slow = 0.0015,
@@ -548,6 +550,9 @@ const PlantParams PLANT_TABLE[SIM_AIRFRAME_COUNT] = {
    * this frame up from its parts; the pack is a 1S 300 with two fifths of
    * its sag slow, the five inch's proportion. */
   .inertia_real = { 6.0e-6, 7.4e-6, 1.25e-5 },
+  /* No whoop has been logged: the rotor and the cell stay the table's. */
+  .j_rotor_real = 1.5e-8,
+  .r_cell_real = 0.030,
   .k_ground_real = 1.0,
   .pack_ah = 0.30,
   .r_cell_slow = 0.012,
@@ -694,9 +699,30 @@ static void plant_build_world(void) {
  * a 140 by 45 by 30 mm block; a 250 g 6S pack, 78 by 38 by 45 mm, on the
  * top plate; and a 64 g HD camera at the nose. About the centre of gravity
  * of that set, which sits 26 mm above the arms: 0.00145, 0.00204, 0.00281.
- * Two fifths to a half of the table. That is an estimate from a parts
- * list, and the honest number is a measurement: hang the real quad from
- * two strings and time its swing (scripts/blackbox-fit.js --bifilar).
+ * Two fifths to a half of the table. That was an estimate from a parts
+ * list, and it was the first realistic table.
+ *
+ * THEN THE OWNER'S QUADS WERE LOGGED (2026-11-14, two five inch on 6S,
+ * four flights, scripts/blackbox-fit.js; the numbers are in PROGRESS.md)
+ * and the estimate had overshot. On the flight with full rate flips, roll
+ * and pitch inertia over mass and arm read 45 to 57 mm, where the table
+ * reads 71 and 74 and the parts estimate 30 and 40. The fit explains six
+ * tenths of the snaps, and a fit that loose reads high, so the figure
+ * taken is 48 mm on both axes, the low end of what was read: 0.00235 and
+ * 0.00246. Yaw was not excited enough to read, so it keeps the parts
+ * estimate's own share of roll plus pitch, 0.81: 0.0039. The owner's word
+ * for it: "align the realism changes behind the switch with real life
+ * best as you can". One quad, one flight; a string hang would settle it
+ * (scripts/blackbox-fit.js --bifilar).
+ *
+ * MOTOR LAG, on the same bit, because it is the rotor's inertia. The same
+ * four flights read 37 to 42 ms for an rpm to follow its command near
+ * hover, and the same estimator reads 28 to 29 on this plant. A motor's
+ * lag goes as the inertia it turns, so j_rotor_real is the table's 8.0e-6
+ * times 39.4 over 28.6: 11.0e-6. That is more than a 2207 bell and a
+ * triblade weigh out at (near 9e-6), so it is an effective figure that
+ * also holds whatever the ESC adds, and it says so here rather than
+ * pretending to be a part.
  *
  * GROUND. The five inch's k_ground is zero because its envelope was
  * measured without it (see the note at the field). With the switch on it
@@ -734,6 +760,16 @@ static void plant_build_world(void) {
  * second, slow resistance sits behind the fast one: its voltage builds
  * toward I R over about a second of load and falls back over a second of
  * rest, which is the punch that fades and the pack that comes back.
+ *
+ * SAG. The table's 2.5 mOhm a cell is a fresh race pack on a bench. The
+ * owner's packs in the air, leads, connectors and age included, gave up
+ * 0.16, 0.21 and 0.37 V to hold a hover (voltage against rpm cubed, no
+ * current sensor, because theirs read a fifth of the truth), where this
+ * plant gave up 0.09 with the fast and slow resistances together at 4.0
+ * mOhm. The middle of the three is 0.21 V, and the same estimator reads
+ * 0.21 off this plant with r_cell_real at 5.2 and the slow 1.5 left as it
+ * was (it read 0.25 at 6.5). It has a bit of its own, SIM_REAL_SAG, so a
+ * race flies the real sag too.
  *
  * TANDEM. At speed with the discs near edgewise, an upstream rotor's wake
  * is carried back over the downstream one, which then flies in descending
@@ -855,7 +891,7 @@ static void plant_select(void) {
   if (!plant_world_ready) {
     plant_build_world();
   }
-  if (!(SIM_REAL & (SIM_REAL_INERTIA | SIM_REAL_GROUND))) {
+  if (!(SIM_REAL & (SIM_REAL_INERTIA | SIM_REAL_GROUND | SIM_REAL_SAG))) {
     PLANT_P = &PLANT_TABLE[g_airframe];
     PLANT_W_P = &PLANT_WORLD[g_airframe];
     return;
@@ -866,6 +902,10 @@ static void plant_select(void) {
       t.inertia[0] = t.inertia_real[0];
       t.inertia[1] = t.inertia_real[1];
       t.inertia[2] = t.inertia_real[2];
+      t.j_rotor = t.j_rotor_real;
+    }
+    if (SIM_REAL & SIM_REAL_SAG) {
+      t.r_cell = t.r_cell_real;
     }
     if (SIM_REAL & SIM_REAL_GROUND) {
       t.k_ground = t.k_ground_real;

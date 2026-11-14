@@ -103,7 +103,7 @@ import { loadSim, SIM_OK } from '../tests/lib/simmod.js';
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const G = 9.80665;
 const RPM = Math.PI / 30;
-const REAL_ALL = 127;
+const REAL_ALL = 255;
 
 function arg(name) {
   const a = process.argv.slice(2).find((x) => x === `--${name}` || x.startsWith(`--${name}=`));
@@ -789,7 +789,7 @@ function bifilar() {
   }
   const inertia = m * G * dd * dd * period * period / (16 * Math.PI * Math.PI * len);
   console.log(`bifilar: I = ${inertia.toExponential(4)} kg m2`);
-  console.log('  the plant holds, roll pitch yaw:  stock 3.50e-3 3.80e-3 6.80e-3,  Realistic 1.45e-3 2.04e-3 2.81e-3');
+  console.log('  the plant holds, roll pitch yaw:  stock 3.50e-3 3.80e-3 6.80e-3,  Realistic 2.35e-3 2.46e-3 3.90e-3');
 }
 
 async function selftest() {
@@ -819,9 +819,17 @@ async function selftest() {
   check('stock: pack resistance is the plant r_cell', near(es.cellMilliohm, 1000 * stock.truth.rCell, 0.20),
     `${es.cellMilliohm.toFixed(2)} against ${(1000 * stock.truth.rCell).toFixed(2)}`);
   check('stock: motor lag is a real motor, 15 to 80 ms', es.motorTauMs > 15 && es.motorTauMs < 80, `${es.motorTauMs.toFixed(1)}`);
-  const want = 0.0035 / 0.00145;
+  const want = stock.truth.ixx / real.truth.ixx;
   check('roll kick rises by the inertia ratio with Realistic on', near(er.rollPerW2 / es.rollPerW2, want, 0.15),
     `${(er.rollPerW2 / es.rollPerW2).toFixed(2)} against ${want.toFixed(2)}`);
+  /* And the alignment itself: Realistic reads inside what the owner's four
+   * flights of 2026-11-14 read on the same lines (PROGRESS.md). */
+  check('Realistic: motor lag is inside the logged 37 to 42 ms', er.motorTauMs >= 37 && er.motorTauMs <= 42, `${er.motorTauMs.toFixed(1)}`);
+  check('Realistic: roll and pitch inertia over mass and arm are inside the logged 45 to 57 mm',
+    [er.rollGyration, er.pitchGyration].every((x) => x >= 0.045 && x <= 0.057),
+    `${(1000 * er.rollGyration).toFixed(1)} and ${(1000 * er.pitchGyration).toFixed(1)}`);
+  check('Realistic: the volts given up to hover are inside the logged 0.16 to 0.37', er.hoverSagVolts >= 0.16 && er.hoverSagVolts <= 0.37,
+    `${er.hoverSagVolts.toFixed(2)}`);
   check('Realistic: the pack rests lower as it is used, stock does not',
     er.restDropPerAh > 0.05 && Math.abs(es.restDropPerAh) < 0.05,
     `${er.restDropPerAh.toFixed(3)} and ${es.restDropPerAh.toFixed(3)} V a cell per Ah`);

@@ -45,7 +45,7 @@ import { SETTINGS_KEY } from '../src/ui/ui.js';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const wait = (ms) => new Promise((r) => { setTimeout(r, ms); });
 
-const ALL = 127;
+const ALL = 255;
 const PACK = 16;
 
 let failures = 0;

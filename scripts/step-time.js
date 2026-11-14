@@ -18,7 +18,7 @@
  *
  * Usage:
  *   node scripts/step-time.js                     dist/sim.wasm, switch off
- *   node scripts/step-time.js --real=127          with the Realistic mask
+ *   node scripts/step-time.js --real=255          with the Realistic mask
  *   node scripts/step-time.js --wasm=/tmp/a.wasm  another module
  *   node scripts/step-time.js --compare=/tmp/base.wasm
  *       both modules, interleaved rep by rep, and the ratio

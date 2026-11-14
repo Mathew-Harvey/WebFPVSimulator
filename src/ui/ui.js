@@ -13813,7 +13813,7 @@ export class Ui {
     return toggle(
       'Realistic physics',
       on
-        ? 'On, experimental: the quad flies at its true weight in real gravity. It turns more freely, the air pushes back on the props the way it does outdoors, wash hangs where you left it, the ground cushions a low hover, and in freestyle the pack sags and runs down until you reset. It has not been matched to a real flight log yet. Laps post to the public board tagged Tuned and keep a best lap of their own. Changing it mid lap voids that lap.'
+        ? 'On, experimental: the quad flies at its true weight in real gravity. It turns more freely, the air pushes back on the props the way it does outdoors, wash hangs where you left it, the ground cushions a low hover, and in freestyle the pack sags and runs down until you reset. Its turning, motors and pack are matched to flight logs from two real quads; the rest is worked out, not measured. Laps post to the public board tagged Tuned and keep a best lap of their own. Changing it mid lap voids that lap.'
         : 'Off: the flight everybody has always flown here. Turn it on to try the experimental real world model: true weight and gravity, freer rotation, truer air on the props, wash that hangs where you left it, a ground cushion, and a pack that runs down in freestyle. Laps flown with it on post to the public board tagged Tuned.',
       on,
       (v) => { s.realPhysics = Boolean(v); },

@@ -67,7 +67,8 @@
  *
  * Usage:
  *   node scripts/blackbox-fit.js flight.csv
- *   node scripts/blackbox-fit.js flight.csv --poles=14 --mass=0.68
+ *   node scripts/blackbox-fit.js flight.csv --poles=14 --motor-range=48,2047
+ *   node scripts/blackbox-fit.js flight.csv --replay   the sim on the log's sticks
  *   node scripts/blackbox-fit.js --bifilar --mass=0.68 --d=0.20 --length=1.0 --period=0.71
  *   node scripts/blackbox-fit.js --sim-log=/tmp/sim.csv [--real]
  *       write the sim's own scripted flight as a log, for a look at the format
@@ -103,10 +104,6 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const G = 9.80665;
 const RPM = Math.PI / 30;
 const REAL_ALL = 127;
-/* Where the shipped tune hovers on the throttle, in the shell's heavier
- * world and at one real g, for the scripted flight. */
-const HOVER_STOCK = 0.345;
-const HOVER_REAL = 0.265;
 
 function arg(name) {
   const a = process.argv.slice(2).find((x) => x === `--${name}` || x.startsWith(`--${name}=`));
@@ -190,17 +187,21 @@ export function parseLog(text, opts = {}) {
   const raw = iM.map((i) => take(i));
   let lo = 1000;
   let hi = 2000;
-  const mo = (head.motorOutput || '').split(',').map(Number);
+  const mo = String(opts.motorRange || head.motorOutput || '').split(',').map(Number);
   if (mo.length === 2 && mo[1] > mo[0]) {
     [lo, hi] = mo;
   } else {
+    /* blackbox_decode writes no header rows. DShot values start at 48 and
+     * an analogue ESC's at 1000, so anything seen under 900 is DShot. */
+    let min = Infinity;
     let max = 0;
     for (const m of raw) {
-      for (let k = 0; k < n; k += 97) {
+      for (let k = 0; k < n; k += 7) {
+        min = Math.min(min, m[k]);
         max = Math.max(max, m[k]);
       }
     }
-    if (max > 2000 || max < 1000) {
+    if (max > 2000 || min < 900) {
       lo = 48;
       hi = 2047;
     }
@@ -222,6 +223,8 @@ export function parseLog(text, opts = {}) {
     v: iV >= 0 ? take(iV) : null,
     i: iI >= 0 ? take(iI) : null,
     poles,
+    /* A sim log says what world it flew in; a real one flew in this one. */
+    gravity: Number(head.sim_gravity) || G,
   };
 }
 
@@ -339,43 +342,96 @@ export function estimate(log) {
     }
   }
 
-  /* Thrust over mass: body up specific force against summed rpm squared. */
+  /* Hover. In a hover the lift is the weight whatever the accelerometer
+   * says, so the calm airborne samples give lift per rpm squared with no
+   * sensor but the rpm: not rolling or pitching, rpm steady, off the idle.
+   * (The first version read the accelerometer, which on a real frame shakes
+   * by several g and sat 6 and 11 percent high on the first two real logs.) */
   let sumW2 = null;
+  let sumW3 = null;
   if (log.rpm) {
     sumW2 = new Float64Array(n);
+    sumW3 = new Float64Array(n);
     for (let k = 0; k < n; k += 1) {
       for (let m = 0; m < 4; m += 1) {
-        sumW2[k] += log.rpm[m][k] * log.rpm[m][k];
+        const w = log.rpm[m][k];
+        sumW2[k] += w * w;
+        sumW3[k] += w * w * w;
       }
     }
-  }
-  if (sumW2 && log.acc) {
-    /* The median of lift over rpm squared, on the calm samples only: not
-     * turning, rpm steady, props working. A regression over the whole log
-     * is led by its punch outs, where the quad is fast and a prop has lost
-     * a third of its thrust to the air coming at it, and reads far low. */
-    const ratios = [];
-    const floor = 0.2 * median(sumW2.filter((_, k) => k % 16 === 0));
-    for (let k = h; k < n - h; k += 2) {
-      const turn = Math.hypot(log.gyro[0][k], log.gyro[1][k], log.gyro[2][k]);
-      if (turn < 0.5 && sumW2[k] > floor && Math.abs(d(sumW2, k)) * 0.1 < 0.1 * sumW2[k]) {
-        ratios.push(log.acc[2][k] / sumW2[k]);
-      }
-    }
-    const s = ratios.length > 200 ? [0, median(ratios)] : null;
-    if (s && s[1] > 0) {
-      out.thrustPerW2 = s[1];
-      /* The rpm each motor turns to hold one real g, and the command that
-       * was on the motors when the log did. */
-      out.oneGRpm = Math.sqrt(G / s[1] / 4) / RPM;
-      const cmd = [];
-      for (let k = h; k < n - h; k += 1) {
-        const lift = s[1] * sumW2[k];
-        if (Math.abs(lift - G) < 0.05 * G && Math.abs(d(sumW2, k)) * 0.05 < 0.1 * sumW2[k]) {
-          cmd.push((log.motor[0][k] + log.motor[1][k] + log.motor[2][k] + log.motor[3][k]) / 4);
+    const sorted = Float64Array.from(sumW2.filter((_, k) => k % 8 === 0)).sort();
+    /* Off the idle: four times the quietest the props ever turned. */
+    const floor = 4 * sorted[Math.floor(0.01 * (sorted.length - 1))];
+    const span = Math.max(h, Math.round(0.1 / dt));
+    /* And not accelerating, where there is an accelerometer: its length
+     * averaged over a fifth of a second, within a fifth of gravity. That is
+     * what tells a hover from a steady pull, and the average is what makes
+     * a shaking sensor usable for it. */
+    let accLen = null;
+    if (log.acc) {
+      accLen = new Float64Array(n);
+      let run = 0;
+      const len = (k) => Math.hypot(log.acc[0][k], log.acc[1][k], log.acc[2][k]);
+      for (let k = 0; k < n; k += 1) {
+        run += len(k) - (k >= 2 * span ? len(k - 2 * span) : 0);
+        if (k >= 2 * span) {
+          accLen[k - span] = run / (2 * span);
         }
       }
-      out.oneGMotorPct = cmd.length > 50 ? 100 * median(cmd) : null;
+    }
+    const w2 = [];
+    const stick = [];
+    const cmd = [];
+    const volts = [];
+    const amps = [];
+    for (let k = span; k < n - span; k += 2) {
+      const steady = Math.abs(sumW2[k + span] - sumW2[k - span]) < 0.06 * sumW2[k];
+      const level = !accLen || Math.abs(accLen[k] - log.gravity) < 0.2 * log.gravity;
+      if (sumW2[k] > floor && steady && level && Math.abs(log.gyro[0][k]) < 0.5 && Math.abs(log.gyro[1][k]) < 0.5) {
+        w2.push(sumW2[k]);
+        cmd.push((log.motor[0][k] + log.motor[1][k]) / 2);
+        if (log.rc) {
+          stick.push((log.rc[3][k] - 1000) / 10);
+        }
+        if (log.v) {
+          volts.push(log.v[k]);
+        }
+        if (log.i) {
+          amps.push(log.i[k]);
+        }
+      }
+    }
+    if (w2.length > 300) {
+      const hoverW2 = median(w2);
+      out.hoverSamples = w2.length;
+      out.thrustPerW2 = log.gravity / hoverW2;
+      out.hoverRpm = Math.sqrt(hoverW2 / 4) / RPM;
+      out.hoverMotorPct = 100 * median(cmd);
+      out.hoverStickPct = stick.length ? median(stick) : null;
+      out.hoverVolts = volts.length ? median(volts) : null;
+      out.hoverAmps = amps.length ? median(amps) : null;
+      /* Sag with no current sensor: V = V0 - k (sum of rpm cubed) - c t.
+       * Shaft power goes as rpm cubed, so k times the hover's own sum is
+       * the volts the pack gives up to hold a hover. */
+      if (log.v) {
+        const f = new Fit(3);
+        for (let k = 0; k < n; k += 1) {
+          f.add([1, -sumW3[k], -t[k]], log.v[k]);
+        }
+        const s = f.solve();
+        if (s) {
+          let w3 = 0;
+          let cnt = 0;
+          for (let k = span; k < n - span; k += 2) {
+            if (Math.abs(sumW2[k] - hoverW2) < 0.1 * hoverW2) {
+              w3 += sumW3[k];
+              cnt += 1;
+            }
+          }
+          out.hoverSagVolts = cnt ? s[1] * (w3 / cnt) : null;
+          out.sagCells = Math.max(1, Math.round(s[0] / 4.2 + 0.2));
+        }
+      }
     }
   }
 
@@ -393,7 +449,32 @@ export function estimate(log) {
         f.add([1, diff(k), -log.gyro[ax][k]], d(log.gyro[ax], k));
       }
       const s = f.solve();
+      /* How much of the gyro's acceleration the rpm explains. A gentle
+       * flight leaves the rpm difference at the telemetry's own step (57
+       * rpm on a 14 pole motor) and the slope collapses toward zero, so a
+       * poor fit prints nothing. The first two real logs, 40 seconds of
+       * hovering each, explained under a fifth. */
+      let r2 = 0;
       if (s) {
+        let res = 0;
+        let tot = 0;
+        let mean = 0;
+        let cnt = 0;
+        for (let k = h; k < n - h; k += 3) {
+          mean += d(log.gyro[ax], k);
+          cnt += 1;
+        }
+        mean /= cnt;
+        for (let k = h; k < n - h; k += 3) {
+          const y = d(log.gyro[ax], k);
+          const e = y - (s[0] + s[1] * diff(k) - s[2] * log.gyro[ax][k]);
+          res += e * e;
+          tot += (y - mean) * (y - mean);
+        }
+        r2 = 1 - res / tot;
+        out[`${name}Fit`] = r2;
+      }
+      if (s && r2 >= 0.5) {
         out[`${name}PerW2`] = Math.abs(s[1]);
         if (out.thrustPerW2) {
           /* Inertia over (mass times arm): thrust per w^2 over mass, divided
@@ -471,7 +552,7 @@ function scriptedSticks(hover, gentle = false) {
   if (gentle) {
     return { frames: f, seconds: t };
   }
-  hold(4, 0, 0, 0, 0.75);
+  hold(1.5, 0, 0, 0, 0.75);
   hold(1, 0, 0, 0, hover);
   return { frames: f, seconds: t };
 }
@@ -486,6 +567,27 @@ function sticksFromLog(log) {
 }
 
 const clamp1 = (x) => Math.min(1, Math.max(-1, x));
+
+/* Where the sim hovers on the throttle, by bisection: the stick at which a
+ * level quad neither climbs nor sinks over the second half of a second. */
+async function simHover(real) {
+  let lo = 0.1;
+  let hi = 0.6;
+  for (let it = 0; it < 12; it += 1) {
+    const mid = (lo + hi) / 2;
+    const { log } = await simLog({ frames: [[0, 0, 0, 0, mid]], seconds: 1.2 }, real);
+    let up = 0;
+    for (let k = 600; k < log.n; k += 1) {
+      up += log.acc[2][k] - log.gravity;
+    }
+    if (up > 0) {
+      hi = mid;
+    } else {
+      lo = mid;
+    }
+  }
+  return (lo + hi) / 2;
+}
 
 /* Fly the sticks and return a log of the same shape parseLog gives. Motor
  * commands are the two the module's debug tap carries, 0 and 1. */
@@ -508,12 +610,12 @@ export async function simLog(sticks, real) {
   sim.setCellVoltage(4.2);
   const n = Math.floor(sticks.seconds * 1000);
   const log = {
-    head: {}, n, poles: 14,
+    head: {}, n, poles: 14, gravity: G * gScale,
     t: new Float64Array(n),
     gyro: [0, 1, 2].map(() => new Float64Array(n)),
     motor: [0, 1, 2, 3].map(() => new Float64Array(n)),
     rpm: [0, 1, 2, 3].map(() => new Float64Array(n)),
-    rc: null,
+    rc: [0, 1, 2, 3].map(() => new Float64Array(n)),
     acc: [0, 1, 2].map(() => new Float64Array(n)),
     v: new Float64Array(n),
     i: new Float64Array(n),
@@ -535,6 +637,10 @@ export async function simLog(sticks, real) {
     sim.step(1);
     sim.readStateInto(st);
     log.t[k] = now;
+    for (let a = 0; a < 3; a += 1) {
+      log.rc[a][k] = 500 * clamp1(sticks.frames[fi][1 + a]);
+    }
+    log.rc[3][k] = 1000 + 1000 * sticks.frames[fi][4];
     for (let a = 0; a < 3; a += 1) {
       log.gyro[a][k] = st[11 + a];
     }
@@ -578,32 +684,39 @@ export async function simLog(sticks, real) {
 
 function logCsv(log) {
   const rows = ['loopIteration,time (us),gyroADC[0],gyroADC[1],gyroADC[2],motor[0],motor[1],motor[2],motor[3],'
-    + 'eRPM[0],eRPM[1],eRPM[2],eRPM[3],accSmooth[0],accSmooth[1],accSmooth[2],vbatLatest (V),amperageLatest (A)'];
+    + 'eRPM[0],eRPM[1],eRPM[2],eRPM[3],rcCommand[0],rcCommand[1],rcCommand[2],rcCommand[3],accSmooth[0],accSmooth[1],accSmooth[2],vbatLatest (V),amperageLatest (A)'];
   const e = (x) => (x / RPM * (log.poles / 2) / 100).toFixed(2);
   for (let k = 0; k < log.n; k += 1) {
     rows.push([k, Math.round(log.t[k] * 1e6),
       ...[0, 1, 2].map((a) => (log.gyro[a][k] * 180 / Math.PI).toFixed(3)),
       ...[0, 1, 2, 3].map((m) => (1000 + 1000 * log.motor[m][k]).toFixed(1)),
       ...[0, 1, 2, 3].map((m) => e(log.rpm[m][k])),
+      ...[0, 1, 2, 3].map((a) => log.rc[a][k].toFixed(0)),
       ...[0, 1, 2].map((a) => (log.acc[a][k] * 2048 / G).toFixed(2)),
       log.v[k].toFixed(3), log.i[k].toFixed(3)].join(','));
   }
-  return `"motorOutput","1000,2000"\n"acc_1G","2048"\n"motor_poles","${log.poles}"\n${rows.join('\n')}\n`;
+  return `"motorOutput","1000,2000"\n"acc_1G","2048"\n"motor_poles","${log.poles}"\n"sim_gravity","${log.gravity}"\n${rows.join('\n')}\n`;
 }
 
 /* ------------------------------------------------------------------ */
 /* The report.                                                         */
 
 const LINES = [
+  ['hoverStickPct', 'throttle stick at hover, percent', 1],
+  ['hoverMotorPct', 'motor output at hover, percent', 1],
+  ['hoverRpm', 'rpm a motor at hover', 0],
+  ['thrustPerW2', 'lift per rpm squared, m/s2 per (rad/s)2', 9],
   ['motorTauMs', 'motor lag, ms', 1],
+  ['hoverVolts', 'pack volts at hover', 2],
+  ['hoverSagVolts', 'volts the pack sags to hold a hover', 2],
+  ['hoverAmps', 'amps at hover, as the sensor reads', 2],
   ['cellMilliohm', 'pack resistance, milliohm a cell', 2],
   ['restDropPerAh', 'resting volts lost a cell per Ah', 3],
-  ['thrustPerW2', 'lift per rpm squared, m/s2 per (rad/s)2', 9],
-  ['oneGRpm', 'rpm a motor to lift one real g', 0],
-  ['oneGMotorPct', 'motor output at one real g, percent', 1],
+  ['rollFit', 'roll: share of gyro explained by rpm', 2],
   ['rollPerW2', 'roll kick per rpm squared difference', 9],
-  ['pitchPerW2', 'pitch kick per rpm squared difference', 9],
   ['rollGyration', 'roll inertia over mass and arm, mm', 1, 1000],
+  ['pitchFit', 'pitch: share of gyro explained by rpm', 2],
+  ['pitchPerW2', 'pitch kick per rpm squared difference', 9],
   ['pitchGyration', 'pitch inertia over mass and arm, mm', 1, 1000],
   ['shakeLow', 'shake at low throttle, deg/s rms', 2],
   ['shakeMid', 'shake at mid throttle, deg/s rms', 2],
@@ -617,7 +730,7 @@ function table(cols) {
     const cell = (c) => {
       const v = cols[c][key];
       if (v == null || !Number.isFinite(v)) {
-        return 'not in log'.padStart(16);
+        return '-'.padStart(16);
       }
       return (digits === 9 ? (v * scale).toExponential(3) : (v * scale).toFixed(digits)).padStart(16);
     };
@@ -645,27 +758,29 @@ async function selftest() {
     failures += ok ? 0 : 1;
   };
   const near = (a, b, tol) => Math.abs(a / b - 1) <= tol;
-  const stock = await simLog(scriptedSticks(HOVER_STOCK), 0);
-  const real = await simLog(scriptedSticks(HOVER_REAL), REAL_ALL);
+  const hs = await simHover(0);
+  const hr = await simHover(REAL_ALL);
+  const stock = await simLog(scriptedSticks(hs), 0);
+  const real = await simLog(scriptedSticks(hr), REAL_ALL);
   /* Through the writer and the reader, so the file format is in the test. */
   const es = estimate(parseLog(logCsv(stock.log)));
   const er = estimate(parseLog(logCsv(real.log)));
   table({ 'sim stock': es, 'sim Realistic': er });
-  /* Lift is read off a slow flight, as the header says a real one must be. */
-  const calm = estimate(parseLog(logCsv((await simLog(scriptedSticks(HOVER_STOCK, true), 0)).log)));
   const kts = stock.truth.kt / stock.truth.mass;
-  check('stock, flown gently: lift per rpm squared is the plant kt over mass', near(calm.thrustPerW2, kts, 0.10),
-    `${calm.thrustPerW2.toExponential(3)} against ${kts.toExponential(3)}`);
-  check('and the same line on the hard flight reads low, never high', es.thrustPerW2 < kts * 1.02,
-    `${es.thrustPerW2.toExponential(3)}`);
+  check('stock: lift per rpm squared is the plant kt over mass', near(es.thrustPerW2, kts, 0.10),
+    `${es.thrustPerW2.toExponential(3)} against ${kts.toExponential(3)}`);
+  check('Realistic: and the same, in its own lighter world', near(er.thrustPerW2, kts, 0.10),
+    `${er.thrustPerW2.toExponential(3)}`);
+  check('stock: the hover it reads is the hover the sim holds', Math.abs(es.hoverStickPct - 100 * hs) < 1.5,
+    `${es.hoverStickPct.toFixed(1)} against ${(100 * hs).toFixed(1)}`);
+  check('Realistic: the hover it reads is the hover the sim holds', Math.abs(er.hoverStickPct - 100 * hr) < 1.5,
+    `${er.hoverStickPct.toFixed(1)} against ${(100 * hr).toFixed(1)}`);
   check('stock: pack resistance is the plant r_cell', near(es.cellMilliohm, 1000 * stock.truth.rCell, 0.20),
     `${es.cellMilliohm.toFixed(2)} against ${(1000 * stock.truth.rCell).toFixed(2)}`);
   check('stock: motor lag is a real motor, 15 to 80 ms', es.motorTauMs > 15 && es.motorTauMs < 80, `${es.motorTauMs.toFixed(1)}`);
   const want = 0.0035 / 0.00145;
   check('roll kick rises by the inertia ratio with Realistic on', near(er.rollPerW2 / es.rollPerW2, want, 0.15),
     `${(er.rollPerW2 / es.rollPerW2).toFixed(2)} against ${want.toFixed(2)}`);
-  check('Realistic: one real g of lift sits near the stick it hovers at', er.oneGMotorPct > 12 && er.oneGMotorPct < 40,
-    `${er.oneGMotorPct == null ? 'none' : er.oneGMotorPct.toFixed(1)}`);
   check('Realistic: the pack rests lower as it is used, stock does not',
     er.restDropPerAh > 0.05 && Math.abs(es.restDropPerAh) < 0.05,
     `${er.restDropPerAh.toFixed(3)} and ${es.restDropPerAh.toFixed(3)} V a cell per Ah`);
@@ -685,7 +800,7 @@ async function main() {
   const simOut = arg('sim-log');
   if (simOut) {
     const real = arg('real') ? REAL_ALL : 0;
-    const { log } = await simLog(scriptedSticks(real ? HOVER_REAL : HOVER_STOCK), real);
+    const { log } = await simLog(scriptedSticks(await simHover(real)), real);
     await writeFile(simOut, logCsv(log));
     console.log(`wrote ${simOut}: ${log.n} rows, ${real ? 'Realistic physics' : 'stock'}`);
     return;
@@ -696,15 +811,30 @@ async function main() {
     process.exitCode = 2;
     return;
   }
-  const log = parseLog(await readFile(file, 'utf8'), { poles: arg('poles'), acc1g: arg('acc1g') });
+  const log = parseLog(await readFile(file, 'utf8'),
+    { poles: arg('poles'), acc1g: arg('acc1g'), motorRange: arg('motor-range') });
   const mine = estimate(log);
-  console.log(`blackbox-fit: ${file}, ${mine.seconds.toFixed(1)} s at ${mine.hz.toFixed(0)} Hz, ${mine.cells || '?'} cells`
+  console.log(`blackbox-fit: ${file}, ${mine.seconds.toFixed(1)} s at ${mine.hz.toFixed(0)} Hz, ${mine.sagCells || mine.cells || '?'} cells`
     + `${log.rpm ? '' : ', NO eRPM (most lines need bidirectional DShot)'}`);
-  /* The sim on the same sticks if the log has them, else on its own script. */
-  const sticks = (real) => (log.rc ? sticksFromLog(log) : scriptedSticks(real ? HOVER_REAL : HOVER_STOCK));
-  const stock = estimate((await simLog(sticks(false), 0)).log);
-  const real = estimate((await simLog(sticks(true), REAL_ALL)).log);
-  console.log(log.rc ? '  the sim columns fly this log\'s own sticks' : '  the log has no rcCommand, so the sim columns fly a scripted hover');
+  /* The sim flies its own scripted flight around its own hover, unless
+   * --replay asks for the log's sticks. A replay is open loop: the sim is
+   * not the pilot's quad, so on the same sticks it flies somewhere else and
+   * usually into a tumble, which the first real logs showed at once. */
+  const replay = Boolean(arg('replay')) && log.rc;
+  const fly = async (real) => estimate((await simLog(
+    replay ? sticksFromLog(log) : scriptedSticks(await simHover(real)), real)).log);
+  const stock = await fly(0);
+  const real = await fly(REAL_ALL);
+  console.log(replay ? '  the sim columns fly this log\'s own sticks, open loop' : '  the sim columns fly the sim\'s own scripted flight around its own hover');
+  if (mine.hoverAmps != null && mine.hoverVolts != null && mine.hoverAmps * mine.hoverVolts < 45) {
+    console.log(`  NOTE: ${(mine.hoverAmps * mine.hoverVolts).toFixed(0)} W at hover is less than the air itself needs to hold a five inch up,`
+      + ' so the current sensor reads low and the two lines that use it mean nothing.');
+  }
+  for (const ax of ['roll', 'pitch']) {
+    if (mine[`${ax}Fit`] != null && mine[`${ax}Fit`] < 0.5) {
+      console.log(`  NOTE: ${ax} inertia not read: the flight is too gentle (rpm explains ${(100 * Math.max(0, mine[`${ax}Fit`])).toFixed(0)} percent of the gyro). It needs hard snaps.`);
+    }
+  }
   table({ 'this log': mine, 'sim stock': stock, 'sim Realistic': real });
   console.log('  Read across: the sim column nearer the log is the truer plant on that line.');
 }

@@ -352,7 +352,7 @@ const LINES = [
   ['out of the west lane under the orange racking (36, 37)', [[4.1, 26.5, 1.2], [8.2, 26.5, 1.2], [8.2, 30.0, 1.2]]],
   ['under the orange racking again further north', [[4.1, 39.4, 1.2], [8.6, 39.4, 1.2]]],
   ['through the cardboard tube in the west lane (230)', [[3.8, 13.0, 0.3], [3.8, 20.4, 0.3]]],
-  ['through the forklift\'s cab (95, 103)', [[17.525, 49.3, 1.75], [17.525, 53.2, 1.75]]],
+  ['through the forklift\'s cab (95, 103)', [[15.525, 49.3, 1.75], [15.525, 53.3, 1.75]]],
   ['under the white table by the sliding door (134)', [[25.9, 23.9, 0.4], [31.4, 23.9, 0.4]]],
   ['through the white frame booth and out of its open top (77 to 89)', [[17.3, 27.9, 1.4], [14.1, 27.9, 1.4], [14.1, 27.9, 4.4]]],
   ['in under the white booth\'s transom and out by the screen wall', [[11.9, 29.5, 1.4], [16.4, 29.5, 1.4], [16.4, 31.0, 1.4]]],

@@ -1852,12 +1852,12 @@ export const CHAPTERS = [
         camera: 'fpv',
         world: place('warehouse'),
         briefing: {
-          goal: 'The shop\'s loop: into the paint shop by the sliding door and out again, up the workshop and through the Barani Doorway, and out by the back door.',
-          why: 'Thomas More flies this loop, and the Barani Doorway is his favourite: wide and tall, the place to carry speed. A loop through a building is a lap of a race track with walls.',
+          goal: 'The shop\'s loop: into the paint shop by the sliding door and out again, west along the flat wall and through the Barani Doorway under the rolls of veneer, then up the crate aisle and out by the back door.',
+          why: 'Thomas More flies this loop, and the Barani Doorway is his favourite: a wood lined opening under the racking, narrow enough that you line up early. A loop through a building is a lap of a race track with walls.',
           steps: [
-            'East through the sliding door into the paint shop, round by the booth and back out.',
-            'North up the workshop and east through the Barani Doorway into the machine room.',
-            'Back out by the doorway and north out of the back door to finish.',
+            'North east to the sliding door, into the paint shop, round by the booths and back out.',
+            'South down the workshop, then west along the flat wall and through the Barani Doorway at its corner.',
+            'North up the crate aisle to the dock doors, east along the dock wall and out of the back door to finish.',
           ],
           sticks: [{ stick: 'throttle', dir: 'hold' }, { stick: 'roll', dir: 'both' }, { stick: 'yaw', dir: 'both' }],
         },
@@ -1869,7 +1869,7 @@ export const CHAPTERS = [
         ],
         /* PROVISIONAL: about 340 m round the shop. */
         medals: { gold: 55000, silver: 95000 },
-        crashTip: 'Carry speed through the wide doorway, not the narrow ones.',
+        crashTip: 'Line up on the doorway from well back along the wall. It is narrow, and the rolls are right over it.',
       },
     ],
   },

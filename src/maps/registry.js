@@ -166,7 +166,7 @@ export const MAPS = [
     id: 'warehouse',
     name: "Thomas More's Shop",
     mode: 'freestyle',
-    note: "Thomas More's Shop, flown on a whoop: the dock wall, the crate aisle to the white office, the workshop, the wide doorway into the machine room, and the spray room.",
+    note: "Thomas More's Shop, flown on a whoop: the dock doors, the crate aisle to the white office, the Barani Doorway under the veneer rolls, the workshop, the paint shop and the machine room.",
     buildMs: MAP_BUILD_MS.warehouse,
     /* 3.5 times life size, as Nick's house: see there. */
     craft: 'whoop65',

@@ -17,64 +17,70 @@
  * flown through the shop when the photos were taken (in
  * /mnt/project-files/tcmore-warehouse/reel-frames/), for its LINES: every
  * way it flies is a way here, and what a line needs is built for it, the
- * print room behind the grey door, the red carpet corner, the coat room
- * through the wood lined door, a way under the racking, a cardboard tube,
- * and, by the owner's pick, two plain exhibit booths (the section "The
- * reel's lines" below).
+ * print room behind the grey door, the red carpet by it, the coat room
+ * and its plywood passage, a way under the racking, a cardboard tube, and,
+ * by the owner's pick, plain exhibit booths (the section "The reel's
+ * lines" below; the white one still stands).
+ *
+ * And since 15 November 2026 Thomas More's own correction of it: fifteen
+ * photos of the shop set beside pictures of this map, and his markup of
+ * the floor plan of 4 November (all in
+ * /mnt/project-files/tcmore-warehouse/refine-2026-11-15/, his words in
+ * direction.md there). Where they disagree with an earlier reading, they
+ * win: the barani doorway is the wood lined opening under the rolls of
+ * veneer and not the wide one into the machine room; there is no white
+ * block, the office area is one flat wall across; the dock wall has two
+ * bay doors and a regular door beside each; the paint shop is narrow and
+ * long with two booths at its far end; the machine room is the CNC area
+ * the photos show; and the whole shop is smaller than it was drawn.
  *
  * WHAT THE FLIGHT AND THE PHOTOS SHOW, and so what this is. One tall hall
  * under a dark steel deck, open web joists down it and maroon girders
- * across it, a round silver duct down it, long white lights and two ceiling
- * fans, cream block walls and cream round columns. The north wall is the
- * dock wall: one white roller door shut under a grey header between tall
- * white cabinets stood against the wall, a green,
- * white and red stripe along it and orange ladders leant on it, a stack of
- * empty pallets and grey carpet rolls at its east end, and it runs to the
- * barani corner (the phone photo taken by the forklift looks along it, the
- * doors on its left, to the taped partition and the doorway at its far
- * end). Off its middle door the crate aisle runs south, the forklift parked
- * nose to the door: facing the doors, orange racking and crates on the
- * left and green racking piled with mouldings on the right (frame 8.12.25),
- * the grey carpet runner and the black panel wall standing in it; crates on
- * pallets along the west wall, crate stacks two and three high east of the
- * aisle and a cantilever rack of sheet stock along the dock lane. At the
- * aisle's south end the white office against the south wall, a French door
- * and a window, a red tool chest under the window and black shelving of
- * carpet rolls beside it; east of it, past a narrow slot with the
- * office's side door in it, a tall white block walled to the roof, the wood
- * lined door in its side, a work cart before it, and the green racking's
- * end bay stood full of panels against it. In the middle the workshop: big
- * assembly tables on plywood cupboards each side of a clear aisle, carts,
- * a big table on trestles, white carcasses, cabinet towers and wrapped
- * panels on pallets, teal racking with yellow cabinets and navy bins off
- * the south wall with the red corridor behind it to the washroom, plywood
- * stacked head high against the dock wall short of the barani corner and
- * the white exit door standing open past it. Down the east side a
- * partition, painted white along the grey door's room at the south end and
- * taped drywall to the roof from there, racking against it all the way
- * with a black display box on top, and in it three ways through: the
- * grey door near the south wall into the print room, the grey sliding
- * door into the paint shop at its south west corner, and at the north end
- * the wide opening into the machine room, Thomas's doorway to barani
- * through, with a white door and a cubby beside it. Behind it the
- * spray room, its booth in the corner by the partition, white hood over a
- * dark filter wall with its back to the taped wall between the rooms, the
- * desk, cabinets and counter along the cream wall, drying racks and a big
- * square duct; and the machine
- * room, long and wide (the photos taken in the doorway), dust collectors
- * with their socks one after another down the dock wall, two sliding table
- * saws, the stripe across its far wall.
+ * across it, round silver ducts down it, long white lights, orange unit
+ * heaters and two ceiling fans, cream block walls and cream round columns.
+ * The north wall is the dock wall: two white roller doors side by side
+ * under silver hoods, a regular door beside each, a green, white and red
+ * stripe along it, a big crate and rug rolls on its left hand, the
+ * forklift and stacks of empty pallets on its right, and it runs east to
+ * the white exit door standing open in its corner. Off the doors the crate
+ * aisle runs south: facing the doors, orange racking and crates on the
+ * left and green racking piled with mouldings on the right (frame
+ * 8.12.25), the grey carpet runner and the black panel wall standing in
+ * it; crates on pallets along the west wall, crate stacks two and three
+ * high east of the aisle and a cantilever rack of sheet stock along the
+ * dock lane. At the aisle's south end open floor, and across it the white
+ * office against the south wall, a French door and a window, a red tool
+ * chest under the window and black shelving of carpet rolls beside it. The
+ * office butts against the poster wall, the west face of the office area,
+ * and at that wall's north corner, where the green racking begins, is
+ * THE BARANI DOORWAY: a wood lined opening through the racking's line,
+ * rolls of veneer piled over it and over the panel rack beside it. Through
+ * it, the lane along the flat wall, the workshop's south wall: the lunch
+ * room's green door, a dark window, a first aid cabinet, a green door,
+ * then teal racking against it to the hallway. In the middle the workshop:
+ * big assembly tables on plywood cupboards each side of a clear aisle,
+ * carts, a big table on trestles, white carcasses and cabinet towers,
+ * plywood stacked head high against the dock wall. Down the east side,
+ * from the south: the hallway, red floored, between the flat wall and the
+ * Digital Department, to the washroom's door; the Digital Department, its
+ * white face out into the workshop and the grey door in it; then the
+ * partition, taped drywall to the roof, racking against it with a black
+ * display box on top, and in it the grey sliding door into the paint shop
+ * at its south west corner and, at the north end, the wide opening into
+ * the machine room with a white door and a cubby beside it. The paint
+ * shop: long and narrow, two booths at its far end, the square duct along
+ * its left wall, drying racks, work tables. The machine room: the router
+ * along the stripe wall, the beam saw on the partition, two sliding table
+ * saws, dust collectors, sheet stock on pallets, a roller door in the
+ * dock wall.
  *
- * WHAT IS A GUESS. Neither source gives the plan from above or a single
- * measurement, so where the rooms stand relative to each other is read
- * from what each picture has on its left and right, and every length is a
- * reading; inside the machine room the machines are the kind the photos
- * show, not counted ones; and where the wood lined door leads is not
- * shown, so here it leads round to the coat room and the front door. The
- * floor plan of 4 November 2026 (in /mnt/project-files/tcmore-warehouse/
- * plans/) marks which walls are read and which are guessed: the white
- * block's east and north extent, the passage's way out and the red
- * corridor's line are the guesses.
+ * WHAT IS A GUESS. No source gives a single measurement, so every length
+ * is a reading; inside the machine room the machines are the kind the
+ * photos show, not counted ones; and how the lunch room joins the plywood
+ * passage and the coat room at the front door is not shown, so here the
+ * one leads to the other. The floor plan of 15 November 2026 (in
+ * /mnt/project-files/tcmore-warehouse/refine-2026-11-15/) is this file
+ * drawn from above, for Thomas to mark again.
  *
  * NO WORDS. The pictures show crate labels, signs and a name sprayed on
  * the booth, and the reel's booths carry their clients' names. None of it
@@ -82,15 +88,21 @@
  * name nothing. The only marks on this map are the partners' signs
  * (./index.js).
  *
- * THE SCALE IS THE HOUSES'. Everything is three and a half times life size
- * (S, as in ../house/house.js), so a five inch flies it the way a whoop
- * flies the real shop. The plan below is in REAL metres and turned into the
- * world's by S once, in the helpers under it.
+ * THE SCALE. The houses are three and a half times life size, so a five
+ * inch flies them the way a whoop flies the real thing, and the registry
+ * says the same of this map (mapScale in ../registry.js). The plan below
+ * is in the first build's reading of REAL metres, and Thomas More's word
+ * on it, 15 November 2026, is "Overall shop I think is too big". So a plan
+ * metre is drawn as S = 3.0 world metres and not 3.5: the shop is six
+ * sevenths of that reading in every direction, about a seventh smaller,
+ * and life size is what it was. The plan is turned into the world's by S
+ * once, in the helpers under it.
  *
  * THE PLAN'S FRAME. px runs east, py north, h up from the ground, real
  * metres, the origin the hall's south west corner inside on the slab. The
  * hall is 50 by 56 and 7 high. The dock wall is north, the office south
- * west, the partition and the two rooms behind it east.
+ * west, the office area along the south wall, and the Digital Department,
+ * the paint shop and the machine room down the east side.
  *
  * WHAT IS SOLID. Walls, the roof, columns, joists, racking, crates, benches,
  * machines and the lights, each drawn and solid from the same numbers
@@ -129,7 +141,8 @@ import { sincos } from '../../props/trig.js';
 /* The frame                                                           */
 /* ------------------------------------------------------------------ */
 
-/* World metres to a real metre, the houses'. */
+/* World metres to a plan metre: six sevenths of the houses' 3.5, because
+ * the plan's reading was that much too big (see THE SCALE above). */
 export const S = 3.0;
 
 /* The hall inside, real metres, and 6 m of apron round it. 50 wide since
@@ -188,7 +201,7 @@ export const SPAWN = { px: 24.2, py: 14.6, h: FLOOR0 };
 /* THE OFFICE AREA, Thomas More's markup of 15 November 2026: "This tall
  * white block doesn't exist", "Everything in that space is office area",
  * "move everything on the right of the tall white block to be in line with
- * the tall white block". So one flat cream wall, to the roof deck, from the
+ * the tall white block". So one flat wall, to the roof deck, from the
  * barani doorway's corner east to the hallway, and everything south of it
  * is offices nobody flies in, solid, but for the lunch room behind its
  * green door, the plywood passage and the coat room at the front door. Its
@@ -606,9 +619,10 @@ function shell(H) {
 /* ------------------------------------------------------------------ */
 
 /* The green, white and red stripe along the dock wall and on into the
- * machine room, red at the bottom. */
+ * machine room, red at the bottom, at the height photos 0420, 0423 and
+ * 0425 have it: its top a little over half way up a dock door. */
 function stripe(H, dir, at, side, a0, a1, holes = []) {
-  for (const [m, c0, c1] of [['whRed', 1.9, 2.15], ['whWhite', 2.15, 2.4], ['whGreen', 2.4, 2.65]]) {
+  for (const [m, c0, c1] of [['whRed', 1.0, 1.25], ['whWhite', 1.25, 1.5], ['whGreen', 1.5, 1.75]]) {
     H.faceBut(m, dir, at, side, a0, a1, c0, c1, holes);
   }
 }
@@ -625,7 +639,7 @@ const DOCK_DOORS = [[6.6, 9.6], [10.4, 13.4]];
 const DOCK_SIDE_DOORS = [[4.7, 5.6, 'whDeck'], [14.5, 15.4, 'whWhite']];
 /* The forklift, parked east of the doors before the pallet stacks, its
  * forks to the west (photo 0425): its back's east end and its south side. */
-export const FORKLIFT = { x: 19.4, y: 50.2 };
+export const FORKLIFT = { x: 17.4, y: 50.4 };
 
 function dock(H) {
   const f = FLOOR0;
@@ -634,14 +648,14 @@ function dock(H) {
    * faces with their panel joints, a steel track up each side, a silver
    * hood over each and a dark mat on the slab before it. */
   for (const [x0, x1] of DOCK_DOORS) {
-    H.face('whWhite', 'x', DEP, -1, x0, x1, f, 3.3);
-    H.face('whWhite', 'x', DEP + TW + 0.012, 1, x0, x1, f, 3.3);
-    for (let h = 0.55; h < 3.3; h += 0.55) {
+    H.face('whWhite', 'x', DEP, -1, x0, x1, f, 3.0);
+    H.face('whWhite', 'x', DEP + TW + 0.012, 1, x0, x1, f, 3.0);
+    for (let h = 0.6; h < 3.0; h += 0.6) {
       H.paint('whSteel', x0, DEP - 0.02, f + h, x1, DEP - 0.012, f + h + 0.03);
     }
-    H.box('whSteel', x0 - 0.12, DEP - 0.12, f, x0, DEP, 3.35, { name: 'door track' });
-    H.box('whSteel', x1, DEP - 0.12, f, x1 + 0.12, DEP, 3.35, { name: 'door track' });
-    H.box('whConcrete', x0 - 0.12, DEP - 0.5, 3.35, x1 + 0.12, DEP, 3.85, { name: 'door hood' });
+    H.box('whSteel', x0 - 0.12, DEP - 0.12, f, x0, DEP, 3.05, { name: 'door track' });
+    H.box('whSteel', x1, DEP - 0.12, f, x1 + 0.12, DEP, 3.05, { name: 'door track' });
+    H.box('whConcrete', x0 - 0.12, DEP - 0.5, 3.05, x1 + 0.12, DEP, 3.55, { name: 'door hood' });
     H.paint('whBlack', x0 + 0.3, DEP - 1.7, f, x1 - 0.3, DEP - 0.25, f + 0.014);
   }
   /* The regular doors: a grey frame, the leaf, its handle, and the exit
@@ -672,7 +686,7 @@ function dock(H) {
    * the crates (photos 0105 and 0106). Conduit along the wall over it. */
   stripe(H, 'y', 0, 1, 0, DEP);
   const holes = [
-    ...DOCK_DOORS.map(([x0, x1]) => [x0 - 0.2, x1 + 0.2, 0, 4]),
+    ...DOCK_DOORS.map(([x0, x1]) => [x0 - 0.12, x1 + 0.12, 0, 4]),
     ...DOCK_SIDE_DOORS.map(([x0, x1]) => [x0 - 0.08, x1 + 0.08, 0, 2.7]),
   ];
   stripe(H, 'x', DEP, -1, 0, OPENINGS.backDoor.x0 - 0.2, holes);
@@ -685,16 +699,16 @@ function dock(H) {
    * wrapped load on it, empty pallets stacked behind it against the wall,
    * and before it black rug rolls laid on a pallet, the rolls drawn inside
    * one solid. */
-  H.crate('whCrate', 0.0, 51.8, 3.0, 55.0, f, f + 1.9, { faces: 'es', label: 'e' });
-  H.box('whWhite', 0.0, 52.2, f + 1.9, 2.6, 55.0, f + 2.55, { name: 'wrapped load' });
-  H.box('whCrateDark', 0.0, 55.0, f, 3.0, DEP, f + 3.4, { name: 'pallet stack' });
-  for (let z = 0.12; z < 3.35; z += 0.3) {
-    H.paint('whCrate', 3.0, 55.0, f + z, 3.012, DEP, f + z + 0.05);
+  H.crate('whCrate', 3.0, 50.4, 5.8, 52.8, f, f + 1.9, { faces: 'wesn', label: 's' });
+  H.box('whWhite', 3.2, 50.6, f + 1.9, 5.6, 52.6, f + 2.5, { name: 'wrapped load' });
+  H.box('whCrateDark', 0.0, 54.4, f, 3.2, DEP, f + 3.2, { name: 'pallet stack' });
+  for (let z = 0.12; z < 3.15; z += 0.3) {
+    H.paint('whCrate', 0.03, 54.388, f + z, 3.17, 54.4, f + z + 0.05);
   }
-  H.box('whCrateDark', 0.8, 49.0, f, 2.2, 51.2, f + 0.15, { name: 'pallet' });
-  H.hidden(0.8, 49.0, f + 0.15, 2.2, 51.2, f + 0.95, 'rug rolls');
-  for (const [x, h, m] of [[1.05, 0.36, 'whBlack'], [1.5, 0.36, 'whDeck'], [1.95, 0.36, 'whWhite'], [1.28, 0.72, 'whBlack'], [1.73, 0.72, 'whBlack']]) {
-    H.cap(m, [x, 49.1, f + h], [x, 51.1, f + h], 0.2, { solid: false, seg: 8, name: 'rug roll' });
+  H.box('whCrateDark', 4.4, 47.9, f, 5.8, 49.9, f + 0.15, { name: 'pallet' });
+  H.hidden(4.4, 47.9, f + 0.15, 5.8, 49.9, f + 0.95, 'rug rolls');
+  for (const [x, h, m] of [[4.65, 0.36, 'whBlack'], [5.1, 0.36, 'whDeck'], [5.55, 0.36, 'whWhite'], [4.88, 0.72, 'whBlack'], [5.33, 0.72, 'whBlack']]) {
+    H.cap(m, [x, 48.0, f + h], [x, 49.8, f + h], 0.2, { solid: false, seg: 8, name: 'rug roll' });
   }
   /* The forklift: cream over an orange red chassis, a black mast and
    * guard, the forks down. Written along its own length (v, from its back)
@@ -719,8 +733,8 @@ function dock(H) {
   fk('whSteel', 0.3, 2.55, 0, 0.42, 3.75, 0.05, 'fork');
   fk('whSteel', 0.98, 2.55, 0, 1.1, 3.75, 0.05, 'fork');
   /* A red pallet jack by it. */
-  H.box('whRed', 4.2, 50.4, f, 4.8, 51.6, f + 0.1, { name: 'pallet jack' });
-  H.box('whRed', 4.42, 50.2, f, 4.58, 50.4, f + 1.2, { name: 'pallet jack' });
+  H.box('whRed', 10.6, 49.0, f, 11.2, 50.2, f + 0.1, { name: 'pallet jack' });
+  H.box('whRed', 10.82, 48.8, f, 10.98, 49.0, f + 1.2, { name: 'pallet jack' });
   /* The cantilever rack along the dock lane's south side, the one frame
    * 8.11.54 flies past with the doors on its other hand: three tiers of
    * sheet stock on pallets, a steel spine down its middle. */
@@ -739,7 +753,7 @@ function dock(H) {
   }
   /* East of the doors, against the wall, the stacks of empty pallets behind
    * the forklift and the grey carpet rolls laid on the slab before them. */
-  for (const [x0, x1, h] of [[17.0, 18.8, 2.6], [18.8, 20.6, 2.0], [20.6, 22.4, 2.9]]) {
+  for (const [x0, x1, h] of [[16.35, 18.4, 2.6], [18.4, 20.4, 2.0], [20.4, 22.4, 2.9]]) {
     H.box('whCrateDark', x0, 54.0, f, x1, DEP, f + h, { name: 'pallet stack' });
     for (let z = 0.12; z < h - 0.05; z += 0.3) {
       H.paint('whCrate', x0 + 0.03, 53.988, f + z, x1 - 0.03, 54.0, f + z + 0.05);
@@ -1102,7 +1116,8 @@ function baraniDoorway(H) {
  * THE OFFICE AREA behind the flat wall (Thomas More's markup of 15
  * November 2026: "Everything in that space is office area"). Solid from
  * the poster wall to the east wall and from the south wall to the flat
- * wall, cream to the roof deck on the two faces the hall sees. Inside, all
+ * wall, to the roof deck on the two faces the hall sees, the poster wall
+ * cream and the flat wall the white Thomas calls it. Inside, all
  * a pilot can reach: the lunch room behind the open green door in the
  * flat wall (photo 0414 looks in at its cupboards), white, lit; out of
  * its south side the plywood passage, a jacket hung in it (photo 0173 and
@@ -1111,7 +1126,7 @@ function baraniDoorway(H) {
  * else in it is solid, not drawn. That the lunch room leads to the passage
  * is a guess: no picture shows the way between them.
  */
-function whiteBlock(H) {
+function officeArea(H) {
   const f = FLOOR0;
   const { x0, x1, y1 } = BLOCK;
   const d = OPENINGS.lunchDoor;
@@ -1134,7 +1149,7 @@ function whiteBlock(H) {
   /* Its two faces: the poster wall and the flat wall. */
   H.face('whWall', 'y', x0, -1, OFFICE.y1, y1, 0, HIGH);
   H.face('whWall', 'y', x0, -1, 0, OFFICE.y1, 3.0, HIGH);
-  H.faceBut('whWall', 'x', y1, 1, x0, DIG.x1, 0, HIGH, [holeOf(d)]);
+  H.faceBut('whWhite', 'x', y1, 1, x0, DIG.x1, 0, HIGH, [holeOf(d)]);
   /* The lunch room: white walls and ceiling, grey floor, the cupboards and
    * the counter along its east side, a fridge, a light. */
   H.face('whWhite', 'y', L.x0, 1, L.y0, L.y1, f, C.h);
@@ -1216,10 +1231,10 @@ function flatWall(H) {
   H.box('whBlack', 12.0, Y, f, 12.6, Y + 0.08, f + 2.0, { name: 'panel' });
   H.face('whWhite', 'x', Y, 1, 14.5, 16.5, 1.1, 2.3);
   H.face('whDeck', 'x', Y + 0.012, 1, 14.58, 16.42, 1.18, 2.22);
-  H.box('whWhite', 16.9, Y, f + 1.05, 17.9, Y + 0.28, f + 2.0, { name: 'first aid cabinet' });
-  H.paint('whSteel', 17.39, Y + 0.28, f + 1.1, 17.41, Y + 0.292, f + 1.95);
-  for (const x of [17.07, 17.57]) {
-    H.paint('whRed', x, Y + 0.28, f + 1.68, x + 0.16, Y + 0.292, f + 1.84);
+  H.box('whWhite', 17.05, Y, f + 1.15, 17.85, Y + 0.22, f + 1.85, { name: 'first aid cabinet' });
+  H.paint('whSteel', 17.44, Y + 0.22, f + 1.2, 17.46, Y + 0.232, f + 1.8);
+  for (const x of [17.19, 17.59]) {
+    H.paint('whRed', x, Y + 0.22, f + 1.62, x + 0.12, Y + 0.232, f + 1.74);
   }
   H.box('whCrate', 16.7, Y, f, 18.2, Y + 0.7, f + 0.55, { name: 'cartons' });
   H.box('whCrate', 16.9, Y, f + 0.55, 17.9, Y + 0.5, f + 1.05, { name: 'cartons' });
@@ -1476,8 +1491,7 @@ function clutter(H) {
   fan(26.4, 33.0);
   /* The dock end (frames 8.11.54 and the photo up the crate aisle): a
    * yellow cart against the green racking by the forklift, a red bag and a
-   * hand truck on the orange side, and low white cabinets on the slab
-   * north of the dock lane. */
+   * hand truck on the orange side. */
   H.box('whYellow', 9.3, 46.0, f, 10.1, 47.4, f + 0.06, { name: 'cart' });
   H.box('whYellow', 9.3, 46.0, f + 0.9, 10.1, 47.4, f + 0.96, { name: 'cart' });
   for (const [cx, cy] of [[9.3, 46.0], [10.04, 46.0], [9.3, 47.34], [10.04, 47.34]]) {
@@ -1487,11 +1501,6 @@ function clutter(H) {
   H.box('whRed', 6.4, 46.4, f, 7.1, 47.6, f + 0.45, { name: 'bag' });
   H.box('whSteel', 6.4, 47.6, f, 6.46, 47.66, f + 1.2, { name: 'hand truck' });
   H.box('whSteel', 7.04, 47.6, f, 7.1, 47.66, f + 1.2, { name: 'hand truck' });
-  for (const [x0, x1] of [[12.6, 14.0]]) {
-    H.box('whWhite', x0, 50.4, f, x1, 51.2, f + 0.9, { name: 'cabinet' });
-    H.paint('whSteel', x0, 50.388, f + 0.08, x1, 50.4, f + 0.11);
-    H.paint('whSteel', (x0 + x1) / 2 - 0.01, 50.388, f + 0.15, (x0 + x1) / 2 + 0.01, 50.4, f + 0.85);
-  }
   /* The Digital Department's corner (photos 0147, 0415 and 0416, and
    * frame 8.11.19's right half): against its white face north of the grey
    * door a bay of racking, orange uprights, teal beams, pallets of cartons
@@ -1820,14 +1829,14 @@ function machineRoom(H) {
   stripe(H, 'x', DEP, -1, X0, X1, [[32.8, 36.2, 0, 4]]);
   /* The roller door in the north wall, as the dock's two. */
   const [d0, d1] = [33.0, 36.0];
-  H.face('whWhite', 'x', DEP, -1, d0, d1, f, 3.3);
-  H.face('whWhite', 'x', DEP + TW + 0.012, 1, d0, d1, f, 3.3);
-  for (let h = 0.55; h < 3.3; h += 0.55) {
+  H.face('whWhite', 'x', DEP, -1, d0, d1, f, 3.0);
+  H.face('whWhite', 'x', DEP + TW + 0.012, 1, d0, d1, f, 3.0);
+  for (let h = 0.6; h < 3.0; h += 0.6) {
     H.paint('whSteel', d0, DEP - 0.02, f + h, d1, DEP - 0.012, f + h + 0.03);
   }
-  H.box('whSteel', d0 - 0.12, DEP - 0.12, f, d0, DEP, 3.35, { name: 'door track' });
-  H.box('whSteel', d1, DEP - 0.12, f, d1 + 0.12, DEP, 3.35, { name: 'door track' });
-  H.box('whConcrete', d0 - 0.2, DEP - 0.5, 3.35, d1 + 0.2, DEP, 3.85, { name: 'door hood' });
+  H.box('whSteel', d0 - 0.12, DEP - 0.12, f, d0, DEP, 3.05, { name: 'door track' });
+  H.box('whSteel', d1, DEP - 0.12, f, d1 + 0.12, DEP, 3.05, { name: 'door track' });
+  H.box('whConcrete', d0 - 0.2, DEP - 0.5, 3.05, d1 + 0.2, DEP, 3.55, { name: 'door hood' });
   /* The ducts along the north and east walls, the collector's socks, sheet
    * stock leant on the north wall, a steel table and the planer on its
    * stand. */
@@ -2067,7 +2076,7 @@ export function warehouseLayout() {
   baraniDoorway(H);
   crates(H);
   office(H);
-  whiteBlock(H);
+  officeArea(H);
   flatWall(H);
   workshop(H);
   clutter(H);
@@ -2113,9 +2122,10 @@ export function signSpots() {
  * the hall hands over its own: a loop round the workshop under the lights,
  * which passes no box closer than 2.1 m and no column or fan closer than
  * that, measured against this layout on 15 November 2026; and one lens for
- * the board's picture and card, across the workshop to the flat wall, its
- * racking and the barani doorway under the rolls at its corner
- * (src/share/orbit.js, placeCardCamera).
+ * the board's picture and card, across the open floor before the office
+ * to the barani doorway under the rolls, the poster wall and the office,
+ * the way Thomas More's photo 0427 looks (src/share/orbit.js,
+ * placeCardCamera).
  */
 const LOOP = { x: 24.5, y: 33.5, rx: 4.5, ry: 13.3, h: 4.4, n: 48 };
 export function hallLoop() {
@@ -2128,4 +2138,4 @@ export function hallLoop() {
   }
   return out;
 }
-export const CARD_LENS = { eye: worldAt(24.5, 23.5, 3.4), at: worldAt(12.5, 12.6, 1.6) };
+export const CARD_LENS = { eye: worldAt(0.8, 12.6, 2.1), at: worldAt(11.3, 9.6, 2.3) };

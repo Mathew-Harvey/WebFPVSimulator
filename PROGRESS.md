@@ -75988,3 +75988,4 @@ The owner, after the bug board run reported `check:rooms`' one failure (the shel
 - Latency: no change. Nothing is added to the flight loop or input path, the prompt and Credits are menus, one extra button and one row. Checked by reading the diff; not flown.
 - Not done: the Steam edition (paid build, the owner to say), the landing page (repository outside this session's access).
 - Checks run: syntax parse of the three changed modules. `lint:shell` was run and prints pre-existing overflow figures, not read as a pass. `verify` and `shots` not run.
+- To main. The owner, 2026-11-15 01:37Z (9:37 AM Perth), to the report that named the two draft PRs, the no-change latency effect and the checks not run: "Push to main". Covers sim PR 274 and board PR 83. Steam and the landing page were not covered.

@@ -13997,8 +13997,13 @@ export async function boot({ loading, bootStart, mapId }) {
      * this draw waits a frame rather than queue behind it, so what the
      * pilot sees is never two frames older than the sticks. Same contract as
      * the cap above: input and physics have already run. Never for the film
-     * or a replay step capture, whose frames must all be drawn, and only
-     * while Low latency view is on. See gpugate.js for why it waits for the
+     * or a replay step capture, whose frames must all be drawn. It used to
+     * run only while Low latency view was on; since that row went off by
+     * default (2026-11-15) the guard runs whatever the row says, because
+     * with it off the timer loop on Low fed a software rasteriser an
+     * unbounded queue (check:timeryield caught it: 2209 draws, no hand
+     * back) and a saturated GPU queued frames the pilot feels. The guard
+     * never tears; only the canvas's attribute does. See gpugate.js for why it waits for the
      * GPU to be saturated on average before it believes one late fence, and
      * for the timer loop's own stricter rule, passed as the last argument:
      * a timer has no compositor pacing it, so without a bound on the
@@ -14007,7 +14012,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * whole browser on the battery's software rasteriser).
      */
     if (worldLive && drawThis && !film && !replayStepMode && !capturing
-      && gpuGate.shouldSkip(renderStart, ui.settings.lowLatencyView === true, latency.targetMs(), timerLoop)) {
+      && gpuGate.shouldSkip(renderStart, true, latency.targetMs(), timerLoop)) {
       drawThis = false;
     }
     if (worldLive) {

@@ -1879,13 +1879,34 @@ function bannerKit(logoUrls, key, sponsorMarks) {
     return mat;
   };
 
+  /*
+   * THE BACK OF A GATE CARRIES NO MARK. A sponsor's logo is printed on the face a pilot sees while
+   * flying through, the approach face, and the reverse is the same racing dress without it (the
+   * chequer, the header's motif and the number zone), because a mark nobody flies toward is a mark
+   * nobody sees. One set, shared by every gate on the course, painted once and never repainted
+   * (slot -1 matches no job), so it costs three textures for the course and not three per mark. A
+   * course with no mark has nothing to leave off, so its back is its front and nothing extra is made.
+   */
+  const marked = urls.some(Boolean);
+  const back = marked ? {
+    header: printed(paint(-1, BANNER_SIZE.header, paintGateHeader, {}), 'hdrb'),
+    sleeve: printed(paint(-1, BANNER_SIZE.sleeve, paintGateSleeve, {}), 'slvb'),
+    sleeveFlipped: printed(paint(-1, BANNER_SIZE.sleeve, paintGateSleeve, { flip: true }), 'slvfb'),
+  } : null;
+
   const dress = [];
   for (let i = 0; i < n; i += 1) {
+    const header = printed(paint(i, BANNER_SIZE.header, paintGateHeader, {}), `hdr${i}`);
+    const sleeve = printed(paint(i, BANNER_SIZE.sleeve, paintGateSleeve, {}), `slv${i}`);
+    /* The far leg's, painted mirrored rather than scaled onto the mesh. */
+    const sleeveFlipped = printed(paint(i, BANNER_SIZE.sleeve, paintGateSleeve, { flip: true }), `slvf${i}`);
     dress.push({
-      header: printed(paint(i, BANNER_SIZE.header, paintGateHeader, {}), `hdr${i}`),
-      sleeve: printed(paint(i, BANNER_SIZE.sleeve, paintGateSleeve, {}), `slv${i}`),
-      /* The far leg's, painted mirrored rather than scaled onto the mesh. */
-      sleeveFlipped: printed(paint(i, BANNER_SIZE.sleeve, paintGateSleeve, { flip: true }), `slvf${i}`),
+      header,
+      sleeve,
+      sleeveFlipped,
+      headerBack: back ? back.header : header,
+      sleeveBack: back ? back.sleeve : sleeve,
+      sleeveFlippedBack: back ? back.sleeveFlipped : sleeveFlipped,
       /* This gate's own header pennants: its mark, both accents. */
       sails: [sailOf(i, 'yellow'), sailOf(i, 'orange')],
     });
@@ -2762,13 +2783,15 @@ function specFor(kindName) {
  * turned so the design reads the right way round from behind, the way a
  * double sided banner is actually printed.
  */
-function printedPanel(w, h, depth, mat, substrate) {
+function printedPanel(w, h, depth, mat, substrate, backMat = mat) {
   const g = new THREE.Group();
   const board = new THREE.Mesh(new THREE.BoxGeometry(w, h, depth), substrate);
   board.castShadow = true;
   g.add(board);
+  /* +z faces the pilot on approach (the mesh is built facing along its travel, which runs toward -z),
+   * so `mat` is the marked face and `backMat` the reverse. Equal when a gate is flown both ways. */
   for (const sz of [-1, 1]) {
-    const face = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(w, h), sz < 0 ? backMat : mat);
     face.position.z = sz * (depth * 0.5 + 0.004);
     if (sz < 0) {
       face.rotation.y = Math.PI;
@@ -2848,12 +2871,12 @@ function panelCaps(kind, cx, cy, halfLong, halfShort, axis) {
   return out;
 }
 
-function gateBanner(index, outerW, headerMat, substrate) {
+function gateBanner(index, outerW, headerMat, substrate, headerBackMat = headerMat) {
   const mats = sharedObstacleMats();
   const group = new THREE.Group();
   const boardH = GATE_BANNER_H;
   const boardW = Math.max(0.9, outerW);
-  group.add(printedPanel(boardW, boardH, 0.05, headerMat, substrate));
+  group.add(printedPanel(boardW, boardH, 0.05, headerMat, substrate, headerBackMat));
 
   /*
    * The number, as many digits as it takes. This used to be
@@ -3666,6 +3689,12 @@ function coursePlacements(course) {
       byElement.set(st.elementId, pl);
       out.push(pl);
     }
+    /* A structure flown in opposite directions has two approach faces, so it keeps its mark on both. The
+     * mesh's own heading is the first station's, and a station flown the other way round is more than a
+     * quarter turn from it. */
+    if (Math.cos(st.yaw - pl.yaw) < 0) {
+      pl.bothWays = true;
+    }
     pl.stations.push({
       flyOrder: i,
       apertureIndex: st.apertureIndex,
@@ -3701,6 +3730,8 @@ function coursePlacements(course) {
       primary: 0,
       elementId: l.elementId,
       dress: structure.dress,
+      /* No pass goes through it, so no face is the approach face. */
+      bothWays: true,
       stations: [],
     });
   }
@@ -3955,6 +3986,7 @@ function tiltedGate(spec, index, isStart, pitch, opts = {}) {
       clearW + 4 * tubeR,
       opts.kit.header,
       isStart ? mats.panelStart : mats.panelRace,
+      opts.bothWays ? opts.kit.header : opts.kit.headerBack,
     );
     plate.position.set(0, halfH + tubeR * 3 + GATE_BANNER_H * 0.5 + 0.03, 0);
     pivot.add(plate);
@@ -4476,7 +4508,8 @@ function obstacle(spec, index, isStart, opts = {}) {
      * inside of the other. Mirrored in the PAINT, so nothing about the mesh
      * or its winding changes. */
     const sleeve = printedPanel(panelW, panelH, 0.03,
-      sx < 0 ? kit.sleeveFlipped : kit.sleeve, substrate);
+      sx < 0 ? kit.sleeveFlipped : kit.sleeve, substrate,
+      opts.bothWays ? undefined : (sx < 0 ? kit.sleeveFlippedBack : kit.sleeveBack));
     sleeve.position.set(cx, panelBottom + panelH * 0.5, 0);
     g.add(sleeve);
     caps.push(...panelCaps(
@@ -4501,7 +4534,7 @@ function obstacle(spec, index, isStart, opts = {}) {
   let plateHalfW = outerW * 0.5;
   let plateR = tubeR;
   if (!micro && !unbuilt && (!sides || sides.top)) {
-    const plateGroup = gateBanner(index, outerW, kit.header, substrate);
+    const plateGroup = gateBanner(index, outerW, kit.header, substrate, opts.bothWays ? kit.header : kit.headerBack);
     plateY = upTop + GATE_BANNER_H * 0.5 + 0.03;
     plateHalfW = plateGroup.userData.halfW;
     plateR = plateGroup.userData.r;
@@ -6133,11 +6166,12 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
         : (st.spec.shape
           ? shapedGate(st.spec, flyOrder, st.isStart, st.pitch, { micro })
           : (Math.abs(st.pitch) > 1e-6
-            ? tiltedGate(st.spec, flyOrder, st.isStart, st.pitch, { kit: dress, micro })
+            ? tiltedGate(st.spec, flyOrder, st.isStart, st.pitch, { kit: dress, micro, bothWays: st.bothWays })
             : obstacle(st.spec, flyOrder, st.isStart, {
               micro,
               primary: st.primary,
               kit: dress,
+              bothWays: st.bothWays,
               flagSigns: st.flagSigns,
               flagLeans: st.flagLeans,
               flagH: st.flagH,

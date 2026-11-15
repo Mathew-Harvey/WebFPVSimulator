@@ -1065,12 +1065,25 @@ function dressKit(THREE, doc, logos, keep) {
     }
     return sails.get(key);
   };
+  /* The reverse of a gate carries no mark, only the racing dress, one set for every gate. Nothing extra is
+   * made for a course with no logo: its back is its front. */
+  const back = list.length ? {
+    header: paint(-1, BANNER_SIZE.header, paintGateHeader, {}),
+    sleeve: paint(-1, BANNER_SIZE.sleeve, paintGateSleeve, {}),
+    sleeveFlipped: paint(-1, BANNER_SIZE.sleeve, paintGateSleeve, { flip: true }),
+  } : null;
   const dress = [];
   for (let i = 0; i < n; i += 1) {
+    const header = paint(i, BANNER_SIZE.header, paintGateHeader, {});
+    const sleeve = paint(i, BANNER_SIZE.sleeve, paintGateSleeve, {});
+    const sleeveFlipped = paint(i, BANNER_SIZE.sleeve, paintGateSleeve, { flip: true });
     dress.push({
-      header: paint(i, BANNER_SIZE.header, paintGateHeader, {}),
-      sleeve: paint(i, BANNER_SIZE.sleeve, paintGateSleeve, {}),
-      sleeveFlipped: paint(i, BANNER_SIZE.sleeve, paintGateSleeve, { flip: true }),
+      header,
+      sleeve,
+      sleeveFlipped,
+      headerBack: back ? back.header : header,
+      sleeveBack: back ? back.sleeve : sleeve,
+      sleeveFlippedBack: back ? back.sleeveFlipped : sleeveFlipped,
       sails: [sailOf(i, 'yellow'), sailOf(i, 'orange')],
     });
   }
@@ -1460,9 +1473,14 @@ export function buildStage(THREE, doc, path, {
     const across = v3(THREE, f.widthAxis);
     const facing = v3(THREE, f.normal);
     const base = el.position;
-    const board = (w, h, mat, off, z) => {
+    /* The mark is on the face a pilot sees while flying through, the one on the entry side: -entry along
+     * the normal. A gate flown both ways, or not flown, keeps it on both. */
+    const entries = new Set((doc.sequence || []).filter((q) => q.elementId === el.id)
+      .map((q) => q.entry).filter((e) => e === 1 || e === -1));
+    const approach = entries.size === 1 ? -[...entries][0] : 0;
+    const board = (w, h, mat, off, z, backMat = mat) => {
       for (const sn of [-1, 1]) {
-        const face = new THREE.Mesh(keep(new THREE.PlaneGeometry(w, h)), mat);
+        const face = new THREE.Mesh(keep(new THREE.PlaneGeometry(w, h)), approach !== 0 && sn !== approach ? backMat : mat);
         face.quaternion.copy(quat);
         if (sn < 0) {
           face.rotateY(Math.PI);
@@ -1480,13 +1498,14 @@ export function buildStage(THREE, doc, path, {
     if (sleeveW > 0 && levels.every((ap) => Math.abs(ap.clearW - top.clearW) < 1e-9)) {
       for (const sx of [-1, 1]) {
         if (uprightIntact(el, sx < 0 ? 'left' : 'right') && sides[sx < 0 ? 'left' : 'right']) {
-          board(sleeveW, sleeveH, sx < 0 ? kit.sleeveFlipped : kit.sleeve, sx * (edge + sleeveW / 2), sleeveBottom + sleeveH / 2);
+          board(sleeveW, sleeveH, sx < 0 ? kit.sleeveFlipped : kit.sleeve, sx * (edge + sleeveW / 2), sleeveBottom + sleeveH / 2,
+            sx < 0 ? kit.sleeveFlippedBack : kit.sleeveBack);
         }
       }
     }
     const headerW = 2 * (edge + sleeveW);
     if (sides.top) {
-      board(headerW, GATE_BANNER_H, kit.header, 0, top.sillH + top.clearH + lift + GATE_BANNER_H / 2 + 0.03);
+      board(headerW, GATE_BANNER_H, kit.header, 0, top.sillH + top.clearH + lift + GATE_BANNER_H / 2 + 0.03, kit.headerBack);
     }
     /* The pennants on a flagged gate's header, standing on the board's top edge and leaning outboard. */
     const signs = flagSideSigns(flagSideOf(el));

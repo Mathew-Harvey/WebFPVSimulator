@@ -123,6 +123,7 @@
     "check:rooms": "node scripts/rooms-check.js",
     "check:roads": "node scripts/roads-check.js",
     "check:clip": "node src/trackbuilder/selftest.js",
+    "check:gatebrand": "node scripts/gate-branding-check.js",
     "check:builder": "node scripts/builder-flow-check.js",
     "check:town-patrons": "node scripts/town-patron-check.js",
     "check:town-patrons:selftest": "node scripts/town-patron-check.js --selftest",

@@ -49,7 +49,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { loadSim, SIM_OK, simErrorName } from '../tests/lib/simmod.js';
-import { warehouseLayout, S, FLOOR0, worldAt, FRAME, OPENINGS, LEN, DEP, HIGH } from '../src/maps/warehouse/warehouse.js';
+import { warehouseLayout, S, FLOOR0, worldAt, FRAME, OPENINGS, LEN, DEP, HIGH, SPAWN } from '../src/maps/warehouse/warehouse.js';
 import { warehouseDocument } from '../src/maps/warehouse/yard.js';
 import { MATERIALS as HOME_MATERIALS } from '../src/props/homes.js';
 import { GAP_MIN } from '../src/props/parts.js';
@@ -319,39 +319,44 @@ async function placedBlock(L) {
 const LINES = [
   ['up the crate aisle and in at the office\'s French door', [[8.2, 46.0, 1.6], [8.2, 9.0, 1.6], [9.2, 7.0, 1.6], [9.2, 2.5, 1.6]]],
   ['out through the office window over the tool chest', [[6.9, 3.0, 1.55], [6.9, 8.0, 1.55]]],
-  ['in the wood lined door, round the passage and out the front door', [[9.0, 8.1, 1.2], [13.0, 8.1, 1.2], [13.0, -2.6, 1.2]]],
+  /* Thomas More's word of 15 November 2026: the barani doorway is the wood
+   * lined opening under the rolls of veneer at the flat wall's corner. */
+  ['through the barani doorway under the rolls and along the flat wall', [[8.4, 12.17, 1.2], [12.2, 12.17, 1.2], [14.2, 12.1, 1.2], [16.2, 12.1, 1.2], [17.0, 13.4, 1.4], [23.0, 13.6, 1.4]]],
+  ['back through the barani doorway from the workshop', [[23.0, 13.6, 1.0], [17.0, 13.4, 1.0], [16.2, 12.1, 1.0], [12.2, 12.17, 1.0], [8.4, 12.17, 1.0]]],
+  ['in the lunch room\'s door, down the plywood passage and out the front door', [[13.45, 14.0, 1.2], [13.45, 9.5, 1.2], [13.0, 8.2, 1.2], [13.0, -2.6, 1.2]]],
+  ['down the lane along the flat wall and the hallway to the washroom door', [[23.0, 13.4, 1.2], [39.4, 13.4, 1.2]]],
+  ['into the open bay under the racking by the hallway', [[27.6, 13.6, 0.9], [27.6, 11.9, 0.9]]],
   ['down the dock lane past the shut doors', [[1.5, 49.4, 2.0], [17.5, 49.4, 2.0]]],
-  ['up the crate aisle to the forklift at the middle door', [[8.2, 9.0, 2.0], [8.2, 48.5, 2.0], [6.6, 52.0, 2.0], [6.6, 54.6, 2.0]]],
+  ['up the crate aisle to the left dock door', [[8.2, 14.0, 2.0], [8.2, 48.5, 2.0], [8.1, 54.6, 2.0]]],
+  ['across the open floor before the office', [[2.0, 10.5, 1.5], [9.5, 10.5, 1.5], [9.5, 7.8, 1.5]]],
+  ['along the dock wall under the door hoods', [[3.8, 55.3, 2.9], [16.6, 55.3, 2.9]]],
   ['down the lane between the west wall crates and the racking', [[4.1, 46.0, 1.8], [4.1, 7.0, 1.8]]],
   ['from the west wall through the racks and crates to the workshop', [[1.5, 21.3, 1.6], [24.0, 21.3, 1.6]]],
-  ['over the crates, under the lights', [[14.5, 12.0, 4.9], [14.5, 48.0, 4.9]]],
-  ['through the barani doorway into the machine room', [[26.0, 53.4, 1.8], [40.0, 53.4, 1.8]]],
-  ['back out by the barani doorway and down the workshop', [[40.0, 53.4, 2.4], [28.0, 53.4, 2.4], [28.0, 30.0, 2.4]]],
-  ['down the machine room past the saws', [[33.4, 52.0, 1.6], [33.4, 33.0, 1.6], [48.0, 35.0, 1.6], [48.0, 52.5, 1.6]]],
-  ['in the sliding door and across the spray room to the booth', [[26.0, 7.5, 1.5], [35.55, 7.5, 1.5], [35.55, 24.0, 1.3]]],
-  ['under the booth\'s hood between the sawhorses', [[35.55, 23.0, 1.3], [35.55, 27.6, 1.3]]],
-  ['out of the spray room by the sliding door', [[44.0, 12.0, 1.4], [36.0, 7.5, 1.4], [26.0, 7.5, 1.4]]],
+  ['over the crates, under the lights', [[14.5, 12.4, 4.9], [14.5, 48.0, 4.9]]],
+  ['through the wide doorway into the machine room', [[26.0, 53.4, 1.8], [37.0, 53.4, 1.8]]],
+  ['back out by the wide doorway and down the workshop', [[37.0, 53.4, 2.4], [28.0, 53.4, 2.4], [28.0, 30.0, 2.4]]],
+  ['round the machine room over the saws', [[34.0, 53.0, 2.0], [47.05, 53.0, 2.0], [47.05, 41.0, 2.0], [36.2, 41.0, 2.0], [36.2, 52.0, 2.0]]],
+  ['low through the machine room between the machines', [[33.6, 53.4, 1.2], [36.15, 52.0, 1.2], [36.15, 39.6, 1.2], [42.4, 39.6, 1.2], [42.4, 46.5, 1.2]]],
+  ['in the sliding door and up the paint shop into the left booth', [[26.0, 23.9, 1.5], [37.4, 23.9, 1.5], [37.4, 33.6, 1.5], [35.6, 33.6, 1.3], [35.6, 36.2, 1.3]]],
+  ['under the right booth\'s hood', [[38.6, 30.0, 1.5], [38.6, 36.3, 1.5]]],
+  ['out of the paint shop by the sliding door', [[38.6, 30.0, 1.4], [37.4, 25.0, 1.4], [33.5, 23.9, 1.4], [26.0, 23.9, 1.4]]],
   ['across the workshop between the columns', [[19.0, 34.2, 1.6], [30.0, 34.2, 1.6]]],
-  ['under the big table', [[22.2, 10.5, 0.45], [22.2, 14.5, 0.45]]],
-  ['out the exit door by the barani corner', [[30.8, 49.0, 2.2], [30.8, 54.0, 1.2], [30.8, 60.0, 1.2]]],
-  ['down the slot by the white block and into the office by its side door', [[9.6, 8.3, 1.4], [11.15, 6.2, 1.4], [11.15, 1.8, 1.4], [8.5, 1.8, 1.4]]],
-  ['down the workshop low', [[24.3, 52.0, 0.8], [24.3, 4.0, 0.8]]],
+  ['under the big table', [[22.2, 14.4, 0.45], [22.2, 17.4, 0.45]]],
+  ['out the exit door in the dock wall\'s corner', [[30.8, 49.0, 2.2], [30.8, 54.0, 1.2], [30.8, 60.0, 1.2]]],
+  ['down the workshop low', [[24.3, 52.0, 0.8], [24.3, 14.5, 0.8]]],
   /* The reel's lines, 4 November 2026 (its frame numbers in brackets). */
-  ['under the south racking\'s open bay and down the red corridor to the washroom', [[29.7, 4.0, 0.9], [29.7, 0.75, 0.9], [20.6, 0.75, 0.9]]],
-  ['in the grey door and down the print room (13 to 23)', [[29.7, 4.0, 1.2], [29.7, 1.9, 1.2], [36.0, 1.8, 1.2], [45.6, 1.7, 1.2]]],
-  ['up over the office, looking down, and into the long room (18 to 31)', [[36.0, 1.8, 1.2], [36.0, 1.8, 4.2], [38.0, 5.0, 4.2], [44.6, 5.0, 4.2], [44.6, 1.9, 4.2], [44.6, 1.9, 1.6]]],
-  ['back out of the print room by the grey door and down the red corridor (31 to 33)', [[45.0, 1.9, 1.6], [33.0, 1.8, 1.4], [30.2, 1.8, 1.2], [30.2, 0.75, 1.2], [21.0, 0.75, 1.2]]],
-  ['into the print room\'s office by its door', [[39.5, 1.8, 1.2], [39.5, 4.6, 1.2], [37.2, 4.6, 1.2]]],
+  ['in the grey door and down the print room (13 to 23)', [[26.0, 15.1, 1.2], [29.2, 15.1, 1.2], [29.6, 16.3, 1.2], [39.2, 16.3, 1.2]]],
+  ['up over the office, looking down, and into the long room (18 to 31)', [[36.0, 16.3, 1.2], [36.0, 16.3, 4.2], [36.0, 20.0, 4.2], [30.5, 18.4, 4.2], [30.5, 16.3, 4.2], [30.5, 16.3, 1.6]]],
+  ['back out of the print room by the grey door (31 to 33)', [[39.0, 16.3, 1.6], [29.6, 16.3, 1.4], [29.2, 15.1, 1.2], [26.0, 15.1, 1.2]]],
+  ['into the print room\'s office by its door', [[34.5, 16.3, 1.2], [34.5, 18.6, 1.2], [36.5, 20.0, 1.2]]],
   ['out of the west lane under the orange racking (36, 37)', [[4.1, 26.5, 1.2], [8.2, 26.5, 1.2], [8.2, 30.0, 1.2]]],
   ['under the orange racking again further north', [[4.1, 39.4, 1.2], [8.6, 39.4, 1.2]]],
-  ['through the cardboard tube in the west lane (230)', [[3.75, 9.4, 0.3], [3.75, 17.6, 0.3]]],
-  ['through the forklift\'s cab (95, 103)', [[5.2, 51.9, 1.75], [11.2, 51.9, 1.75]]],
-  ['under the white table by the sliding door (134)', [[24.6, 7.1, 0.4], [30.3, 7.1, 0.4]]],
+  ['through the cardboard tube in the west lane (230)', [[3.8, 13.0, 0.3], [3.8, 20.4, 0.3]]],
+  ['through the forklift\'s cab (95, 103)', [[17.525, 49.3, 1.75], [17.525, 53.2, 1.75]]],
+  ['under the white table by the sliding door (134)', [[25.9, 23.9, 0.4], [31.4, 23.9, 0.4]]],
   ['through the white frame booth and out of its open top (77 to 89)', [[17.3, 27.9, 1.4], [14.1, 27.9, 1.4], [14.1, 27.9, 4.4]]],
   ['in under the white booth\'s transom and out by the screen wall', [[11.9, 29.5, 1.4], [16.4, 29.5, 1.4], [16.4, 31.0, 1.4]]],
   ['through a pane of the window frame (212 to 214)', [[11.9, 34.6, 2.2], [13.4, 34.6, 2.2], [13.4, 36.4, 2.2], [18.5, 36.4, 2.2]]],
-  ['into the black booth and out of its back door (149 to 183)', [[37.4, 35.8, 1.4], [37.9, 41.0, 1.4], [37.9, 45.6, 1.4]]],
-  ['up into the black booth\'s coffer (164 to 176)', [[37.4, 39.6, 1.4], [37.4, 41.4, 3.75]]],
 ];
 
 function linesBlock(near) {
@@ -467,7 +472,7 @@ function leaksOf(L, own) {
     const py = (OZ - c[2]) / S;
     return px < -0.3 || px > LEN + 0.3 || py < -0.3 || py > DEP + 0.3 || c[1] / S > HIGH + 0.25;
   };
-  const start = worldAt(22.0, 4.0, 1.5);
+  const start = worldAt(SPAWN.px, SPAWN.py, 1.5);
   const q = new Int32Array(nx * ny * nz);
   let head = 0;
   let tail = 0;

@@ -32,7 +32,7 @@
  */
 import { WAREHOUSE_DOC_ID } from '../registry.js';
 import {
-  S, FIELD_W, FIELD_D, FLOOR0, docAt, OPENINGS, SPAWN, TUBE, WINDOW_A, BOOTH_B,
+  S, FIELD_W, FIELD_D, FLOOR0, docAt, OPENINGS, SPAWN, TUBE, WINDOW_A, FORKLIFT,
 } from './warehouse.js';
 
 const EAST = 0;
@@ -58,34 +58,34 @@ function across(o, name, points, m = MARGIN) {
 
 /* The reel's tight ones (4 November 2026): the cardboard tube, halfway
  * down it; the forklift's cab, across it behind the seat; one pane of the
- * white booth's window frame; the black booth's back door. */
+ * white booth's window frame. */
 const TUBE_GAP = { x0: TUBE.x0 + 0.05, x1: TUBE.x1 - 0.05, y: (TUBE.y0 + TUBE.y1) / 2, h0: FLOOR0 + 0.05, h1: FLOOR0 + 0.55 };
-const CAB_GAP = { y0: 51.55, y1: 52.2, x: 8.4, h0: FLOOR0 + 0.95, h1: FLOOR0 + 2.2 };
+const CAB_GAP = { x0: FORKLIFT.x - 2.2, x1: FORKLIFT.x - 1.55, y: FORKLIFT.y + 0.7, h0: FLOOR0 + 0.95, h1: FLOOR0 + 2.2 };
 const PANE_GAP = {
   x0: WINDOW_A.x0 + 0.1, x1: (WINDOW_A.x0 + WINDOW_A.x1) / 2 - 0.05, y: WINDOW_A.y + 0.05,
   h0: FLOOR0 + 0.2, h1: (FLOOR0 + WINDOW_A.h) / 2 - 0.05,
 };
-const BACK_GAP = { x0: BOOTH_B.back[0], x1: BOOTH_B.back[1], y: BOOTH_B.y1 - 0.06, h0: FLOOR0, h1: BOOTH_B.back[2] };
 
 function rows() {
   const pad = docAt(SPAWN.px, SPAWN.py);
   return [
-    /* The start: one mat on the slab at the south end of the workshop,
-     * facing north up it. */
+    /* The start: one mat on the slab at the south end of the workshop, by
+     * the hallway's mouth, facing north up it. */
     ['startPads', pad.x, pad.y, NORTH, { pads: 1, spacing: 1.5, padSize: 0.9 }, { z: S * SPAWN.h }],
     across(OPENINGS.woodDoor, 'THE WOOD DOOR', 100),
-    across(OPENINGS.woodLined, 'WOOD LINED DOOR', 250),
     across(OPENINGS.backDoor, 'BACK DOOR', 100),
-    across(OPENINGS.frontOffice, 'OFFICE SIDE DOOR', 250),
+    across(OPENINGS.lunchDoor, 'LUNCH ROOM DOOR', 250),
     across(OPENINGS.frenchDoor, 'FRENCH DOOR', 250),
     across(OPENINGS.slidingDoor, 'SLIDING DOOR', 250),
     across(OPENINGS.officeWindow, 'OFFICE WINDOW', 500),
-    /* Thomas's favourite, the wide opening into the machine room. */
+    /* Thomas's favourite: the wood lined opening under the rolls of
+     * veneer, at the flat wall's corner (his word of 15 November 2026).
+     * The wide opening into the machine room carried its name before. */
     across(OPENINGS.barani, 'BARANI DOORWAY', 1000),
+    across(OPENINGS.cncDoor, 'CNC DOORWAY', 250),
     across(OPENINGS.greyDoor, 'GREY DOOR', 250),
     across(OPENINGS.printOffice, 'PRINT OFFICE', 250),
     across(PANE_GAP, 'WINDOW PANE', 500),
-    across(BACK_GAP, 'BLACK BOOTH BACK DOOR', 500),
     across(CAB_GAP, 'FORKLIFT CAB', 1000, 0.08),
     across(TUBE_GAP, 'CARDBOARD TUBE', 1000, 0.08),
   ];

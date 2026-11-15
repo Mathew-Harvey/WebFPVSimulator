@@ -247,7 +247,7 @@ import { formatScore } from '../game/score.js';
 import { PRACTICE_LAPS } from '../game/race.js';
 import { JOKE_MS, quotedJoke } from './loading.js';
 import { fillCredits } from './credits.js';
-import { INSTAGRAM_NOTE, PATREON_NOTE, TIP_NOTE, STEAM_NOTE, openInstagram, openSupport, openTip, openWishlist, patreonAnchor, wishlistAnchor } from '../share/patreon.js';
+import { INSTAGRAM_NOTE, PATREON_NOTE, PAYPAL_NOTE, TIP_NOTE, STEAM_NOTE, openInstagram, openPaypal, openSupport, openTip, openWishlist, patreonAnchor, wishlistAnchor } from '../share/patreon.js';
 import { mountRatesPanel } from './ratespanel.js';
 import { mountPidsPanel } from './pidspanel.js';
 import { touchWanted, TOUCH_SIZES, normaliseTouchSize } from '../input/touchsticks.js';
@@ -10926,6 +10926,7 @@ export class Ui {
         },
         { label: 'Support', action: 'support', note: PATREON_NOTE },
         { label: 'Buy Mat a battery ($5)', action: 'tip', note: TIP_NOTE },
+        { label: 'Donate with PayPal', action: 'paypal', note: PAYPAL_NOTE },
         ...(wishlistAllowed() ? [{ label: 'Wishlist on Steam', action: 'wishlist', note: STEAM_NOTE, rowClass: 'row-steam' }] : []),
         { label: 'Instagram', action: 'instagram', note: INSTAGRAM_NOTE },
         {
@@ -23988,6 +23989,11 @@ export class Ui {
     /* Stripe tip link for one-off battery donation */
     if (action === 'tip') {
       openTip();
+      return;
+    }
+    /* PayPal donation, any amount. Nothing of PayPal's loads before this. */
+    if (action === 'paypal') {
+      openPaypal('menu');
       return;
     }
     if (action === 'wishlist') {

@@ -76235,3 +76235,7 @@ The rooms were over main's triangles when first built, by 58 at two of the five 
 - The first office desks stood on four legs each and the two offices by the teal racking became the map's densest cell, 53 solids where main's worst is 48. Those two desks stand on their drawers now, one solid each, and the lights are paint.
 - A desk on an inset base left a 0.39 m slot to its chair. The base is the desk's full size.
 - A chair first stood 0.1 m off a line through the open office's door. The doors were moved along the wall, clear of the desk islands.
+
+### The owner's word, and to main
+
+The owner, 22:55Z on 15 November 2026, on the reply that gave the latency table above, said the office rooms and the hallway door are guesses, said it was not flown and asked which check: "Push to main". It covers both rounds of the rebuild, draft PR 276 here and PR 84 on the board. The board's picture went first (its main 3f3abb4 to 7442944, fast forward, `npm test` all passed on that tree), then this tree, fast forward onto main cb041dc, which had not moved since the branch was merged with it. `node scripts/warehouse-check.js` and `npm run check:career` were run again on the exact tree pushed. No verification scale was picked; it goes out not flown, and what the live site showed after the deploy is in the thread's report.

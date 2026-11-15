@@ -816,16 +816,29 @@ export class View3D {
       return mat;
     };
     const n = Math.max(1, logos.length);
+    /* The reverse of a gate carries no mark, only the racing dress. One set for every gate, painted once
+     * (slot -1 matches no job); a course with no logo has nothing to leave off, so its back is its front. */
+    const back = logos.length ? {
+      header: paint(-1, BANNER_SIZE.header, paintGateHeader, {}),
+      sleeve: paint(-1, BANNER_SIZE.sleeve, paintGateSleeve, {}),
+      sleeveFlipped: paint(-1, BANNER_SIZE.sleeve, paintGateSleeve, { flip: true }),
+    } : null;
     const dress = [];
     for (let i = 0; i < n; i += 1) {
+      const header = paint(i, BANNER_SIZE.header, paintGateHeader, {});
+      const sleeve = paint(i, BANNER_SIZE.sleeve, paintGateSleeve, {});
+      /* The far leg's sleeve, painted mirrored. A second canvas rather
+       * than a negative scale on the mesh, because a negative scale
+       * inverts the winding and a single sided plane turned inside out
+       * disappears. */
+      const sleeveFlipped = paint(i, BANNER_SIZE.sleeve, paintGateSleeve, { flip: true });
       dress.push({
-        header: paint(i, BANNER_SIZE.header, paintGateHeader, {}),
-        sleeve: paint(i, BANNER_SIZE.sleeve, paintGateSleeve, {}),
-        /* The far leg's sleeve, painted mirrored. A second canvas rather
-         * than a negative scale on the mesh, because a negative scale
-         * inverts the winding and a single sided plane turned inside out
-         * disappears. */
-        sleeveFlipped: paint(i, BANNER_SIZE.sleeve, paintGateSleeve, { flip: true }),
+        header,
+        sleeve,
+        headerBack: back ? back.header : header,
+        sleeveBack: back ? back.sleeve : sleeve,
+        sleeveFlipped,
+        sleeveFlippedBack: back ? back.sleeveFlipped : sleeveFlipped,
         sails: [sailOf(i, 'yellow'), sailOf(i, 'orange')],
       });
     }
@@ -2339,9 +2352,14 @@ export class View3D {
        * the right way round, and two planes back to back is that.
        */
       const facing = new THREE.Vector3(f.normal.x, f.normal.y, f.normal.z);
-      const bannerFace = (w, h, mat, at) => {
+      /* The mark is printed on the face a pilot sees while flying through: the side the entry pane
+       * (green) is on, which is -entry along the normal. A gate flown both ways, or not flown yet, keeps
+       * its mark on both. The other face is the same dress without it. */
+      const entries = new Set(numbers.map((x) => x.seq?.entry).filter((e) => e === 1 || e === -1));
+      const approach = entries.size === 1 ? -[...entries][0] : 0;
+      const bannerFace = (w, h, mat, at, backMat = mat) => {
         for (const sn of [-1, 1]) {
-          const face = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+          const face = new THREE.Mesh(new THREE.PlaneGeometry(w, h), approach !== 0 && sn !== approach ? backMat : mat);
           face.quaternion.copy(quat);
           if (sn < 0) {
             face.rotateY(Math.PI);
@@ -2364,13 +2382,13 @@ export class View3D {
          * and on the PRINT rather than on the mesh. */
         const mat = sx < 0 ? kit.sleeveFlipped : kit.sleeve;
         at.set(across.x * off, across.y * off, sleeveBottom + sleeveH / 2);
-        bannerFace(sleeveW, sleeveH, mat, at);
+        bannerFace(sleeveW, sleeveH, mat, at, sx < 0 ? kit.sleeveFlippedBack : kit.sleeveBack);
       }
       const headerW = 2 * (top.clearW / 2 + tube + sleeveW);
       at.set(0, 0, top.sillH + top.clearH + tube * 2 + BANNER_H / 2 + 0.03);
       /* The header hangs on the top rail, and goes with it. */
       if (sides.top) {
-        bannerFace(headerW, BANNER_H, kit.header, at);
+        bannerFace(headerW, BANNER_H, kit.header, at, kit.headerBack);
       }
     }
 

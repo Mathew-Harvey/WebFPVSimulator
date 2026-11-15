@@ -53,7 +53,11 @@
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openPage } from '../tests/lib/page.js';
-import { SETTINGS_KEY } from '../src/ui/ui.js';
+/* As a namespace, so a shell without feelWeightLine fails its line below
+ * rather than this import, and every other line still runs. */
+import * as shellUi from '../src/ui/ui.js';
+
+const { SETTINGS_KEY } = shellUi;
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const wait = (ms) => new Promise((r) => { setTimeout(r, ms); });
@@ -115,6 +119,37 @@ const press = (word) => `(() => {
   return 1;
 })()`;
 const FLY = "(() => { window.__ui.act('fly'); return 1; })()";
+
+/*
+ * THE REPORT A PILOT FILES, beside what the module is flying. Every five
+ * inch ticket after Realistic became the default said the classic model's
+ * gravity and hover: bug-b5f43230's context said 1.539 times g and hover at
+ * 33.9 percent while its own tune block, read off the module, said 0.95 and
+ * the keys hovered at 26. So the report is held to the module here, on the
+ * model and off it, rather than to a number written in this file.
+ */
+const REPORT = `(() => {
+  const c = window.__ui.feelSnapshot();
+  return { physics: c.physics, gravityScale: c.gravityScale, weight: c.weight, throttle: c.throttle,
+    keyHover: c.stick && c.stick.keyHover, keys: Object.keys(c), flown: window.__realism() };
+})()`;
+async function reportSays(page, want) {
+  const c = await page.evaluate(REPORT);
+  const hover = /hover near ([0-9.]+) percent/.exec(c.throttle || '');
+  check(`the report names the model it flies, ${want}`, c.physics === want, String(c.physics));
+  check('its gravity is the gravity the module flies', c.gravityScale === c.flown.gravity, `${c.gravityScale} against ${c.flown.gravity}`);
+  check('its hover is where the keys hover', Boolean(hover) && Math.abs(Number(hover[1]) - c.keyHover) <= 0.15,
+    `${c.throttle} against keyHover ${c.keyHover}`);
+  const line = typeof shellUi.feelWeightLine === 'function' ? shellUi.feelWeightLine(c) : '';
+  check('the feel note says the same', line.includes(`${Number(c.flown.gravity).toFixed(2)} times g`)
+    && line.includes(want === 'realistic' ? 'with Realistic physics on' : 'with Realistic physics off'), line);
+  /* The board refuses a context of more than 32 top level keys, and a
+   * refused feel note is a lost one. fault, loadFailure and career are only
+   * there when there is one, so they are counted in as if they were. */
+  const optional = ['fault', 'loadFailure', 'career'].filter((k) => !c.keys.includes(k)).length;
+  check('and the report stays inside the board\'s 32 keys with every optional one in', c.keys.length + optional <= 32,
+    `${c.keys.length} + ${optional}`);
+}
 const TITLE = "(() => { const ui = window.__ui; ui.onAction('title', ui.settings); ui.show('title'); return 1; })()";
 
 /* A race's Fly stops at its launch card, as it always has; the card's own
@@ -146,6 +181,7 @@ async function fiveInch(map) {
     check('at one real g', b.gravity === 1, String(b.gravity));
     check('with a best lap of its own', /\.real$/.test(b.key), b.key);
     check('and not Tuned: it is the quad as it ships', b.tuned === false && b.forced === false);
+    await reportSays(page, 'realistic');
     await page.evaluate(FLY);
     await wait(500);
     let d = await page.evaluate(DIALOG);
@@ -176,6 +212,17 @@ async function fiveInch(map) {
     const off = await page.evaluate(READ);
     check('Off is the old five inch: no mask, its own gravity, the old key', off.shell === 0 && off.module === 0 && off.gravity === 1.62 && !/\.real/.test(off.key), JSON.stringify(off));
     check('and on the five inch it is the old model that is Tuned', off.tuned === true && off.five === false);
+    await reportSays(page, 'classic');
+    /* The slider too, on the model: a feel note at 90 said 1.46 times g
+     * (bug-01f0ca83) for a quad flown at 0.90. */
+    check('clicking On finds the switch', await page.evaluate(click('On')) === 1);
+    await page.evaluate('(() => { const ui = window.__ui; ui.settings.weight = 90; ui.onSettings(ui.settings); return 1; })()');
+    await page.until('window.__realism().gravity === 0.9', 10000).catch(() => {});
+    await reportSays(page, 'realistic');
+    await page.evaluate('(() => { const ui = window.__ui; ui.settings.weight = 100; ui.onSettings(ui.settings); return 1; })()');
+    await page.until('window.__realism().gravity === 1', 10000).catch(() => {});
+    await page.evaluate(click('Off'));
+    await wait(300);
     check('clicking On finds the switch', await page.evaluate(click('On')) === 1);
     await wait(300);
     const on = await page.evaluate(READ);

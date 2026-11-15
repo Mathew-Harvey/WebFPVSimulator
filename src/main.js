@@ -10954,9 +10954,32 @@ export async function boot({ loading, bootStart, mapId }) {
    * cannot be flown on the keyboard. A convenience is not worth a platform
    * where that happens for real.
    */
+  /*
+   * NOT ON AN IPHONE OR IPAD, where WebKit reads thumbs on the glass as
+   * typing. Element fullscreen on iOS scores every touch that ends
+   * (FullscreenTouchSecheuristic, ramp up 0.25 s, in WebKit's
+   * WKFullScreenViewController.mm) and past its threshold freezes the page
+   * under an alert, "It looks like you are typing while in full screen ...
+   * Typing is not allowed in full screen websites", Exit or Stay. Two thumbs
+   * on the sticks are touches ending a few times a second, which is what it
+   * scores, and there is no way for a page to opt out. Exit leaves
+   * fullscreen, which pauses below, and every Resume asked for it again.
+   *   bug-6912271c: "Each time I try to touch the controller it goes
+   *   offscreen Because it thought I was typing" (an iPad, the thumb sticks)
+   *   bug-df539511: "it keeps pausing game" (an iPad, the thumb sticks)
+   * Every browser there is WebKit, so it is the platform and not the
+   * browser that decides, and a pad pilot there still taps the menus.
+   * Fullscreen is in flight for a desktop's compositor (fullscreenFly in
+   * ui.js); on an iPad what going without it costs is Safari's bars staying
+   * on screen. The Pilot screen's row says so there.
+   */
+  function fullscreenReadsThumbsAsTyping() {
+    return ui.stickPlatform === 'ios';
+  }
   let fullscreenOurs = false;
   function enterFlightFullscreen() {
-    if (ui.settings.fullscreenFly === false || replayMode || document.fullscreenElement) {
+    if (ui.settings.fullscreenFly === false || replayMode || document.fullscreenElement
+      || fullscreenReadsThumbsAsTyping()) {
       return;
     }
     const root = document.documentElement;

@@ -981,6 +981,20 @@ export function setRealPhysics(s, airframeId, on) {
 export function hoverWeightFor(s, weight = 100) {
   return realPhysicsFor(s, s.airframe) ? weight / airframeById(s.airframe).gravityBase : weight;
 }
+/*
+ * The feel note's sentence on where the Weight slider was, from a report's
+ * context (bugSnapshot): the slider, the multiple of g it became, and which
+ * model was flown. The model is named because the multiple alone says it
+ * only to a reader who knows each airframe's base, and until the context
+ * learned the switch it was the classic one on every report: bug-01f0ca83
+ * said 1.46 for a five inch flown at 0.90.
+ */
+export function feelWeightLine(context = {}) {
+  const g = Number(context.gravityScale);
+  const model = context.physics === 'realistic' ? ', with Realistic physics on'
+    : (context.physics === 'classic' ? ', with Realistic physics off' : '');
+  return `Weight slider at ${context.weight} percent, which is ${g.toFixed(2)} times g on this airframe${model}.`;
+}
 export function gravityScaleFor(weight, airframeId, real = false) {
   /* REALISTIC PHYSICS flies the true weight: the base is 1, one real g, and
    * the airframe's heavier world is left to the switch being off. The
@@ -9221,6 +9235,9 @@ export class Ui {
     const s = this.settings || {};
     const seat = s.map === 'custom' ? activeCourseSummary() : null;
     const gpu = this.gpuInfo || {};
+    /* Which of the two models these settings fly, read as main.js reads it
+     * to fly them (realMaskWanted). See `physics` and `gravityScale` below. */
+    const real = realPhysicsFor(s, s.airframe);
     let href = '';
     try {
       href = String(window.location.href || '').slice(0, 300);
@@ -9302,12 +9319,21 @@ export class Ui {
        * is at the weight, pack and Motor power below, so they agree. And it
        * says 3D mode when 3D mode is on, inside this line rather than as a
        * key of its own, because the board caps a context at 32 keys and the
-       * feel report already spends 28 (see throttleSummary).
+       * feel report spends up to 30 (see throttleSummary, and check:realrow,
+       * which counts them).
+       *
+       * The hover is read at the hover weight, the slider over the
+       * airframe's base when Realistic physics is on, because the table is
+       * measured in the heavier world (hoverWeightFor). It was read at the
+       * slider itself, so from the evening Realistic became the five inch's
+       * default, every five inch report flown on it put hover eight or nine
+       * points further up the stick than the keys' own hover, in `stick`
+       * beside it: bug-b5f43230 said 33.9 percent with keyHover 26.
        */
       throttle: throttleSummary(
         s.rates || {},
         s.airframe,
-        clampWeight(s.weight, s.airframe),
+        hoverWeightFor(s, clampWeight(s.weight, s.airframe)),
         s.packVoltage,
         this.tuneCaps.kv ? effectiveTune(s).motorKv : MOTOR_KV_STOCK,
         s.mode3d === true,
@@ -9323,8 +9349,20 @@ export class Ui {
       /* And the absolute multiple of 9.80665 that weight became on this
        * airframe, because the base has moved once already and "weight 100"
        * in a ticket from before the move and one from after it are
-       * different machines. Both numbers, always. */
-      gravityScale: gravityScaleFor(s.weight, s.airframe),
+       * different machines. Both numbers, always.
+       *
+       * At the model flown. Realistic physics flies one real g where the
+       * classic model flies the airframe's heavier world (gravityScaleFor),
+       * and this was always the classic figure: bug-b5f43230's own tune
+       * block, read off the module, said 0.95 and its context said 1.539.
+       * Every five inch report flown on the new default told the people
+       * tuning the sim it was flown 1.62 times heavier than it was. */
+      gravityScale: gravityScaleFor(s.weight, s.airframe, real),
+      /* And which model, by name, because a weight and a gravity identify
+       * it only to somebody who knows the base, and the two models are two
+       * machines in the sense prop wash off is. One short key: the board's
+       * cap of 32 is counted at throttle above. */
+      physics: real ? 'realistic' : 'classic',
       /*
        * HOW THE STICKS GOT HERE, which is the field five feel reports were
        * missing and the reason they read as five opinions about one quad.
@@ -9951,7 +9989,7 @@ export class Ui {
        * on the whole band. The absolute multiple rides along so a ticket
        * from before the base moved reads correctly beside one from after.
        */
-      lines.push(`Weight slider at ${context.weight} percent, which is ${context.gravityScale.toFixed(2)} times g on this airframe.`);
+      lines.push(feelWeightLine(context));
       if (picked.length) {
         lines.push(`Noticed: ${picked.join('; ')}.`);
       }
@@ -11739,9 +11777,14 @@ export class Ui {
         },
         toggle(
           'Fullscreen in flight',
-          s.fullscreenFly
-            ? 'On: Fly, Restart and Resume go fullscreen, and back to the title gives the window back. Many desktops hand a fullscreen window straight to the display, which can take a frame off the time between your sticks and the picture. Escape leaves fullscreen and pauses, and Resume goes back to it.'
-            : 'Off: the page stays in its window. Fullscreen can take a frame off the time between your sticks and the picture on many desktops.',
+          /* Never on an iPhone or iPad, whatever this says: Safari there
+           * reads thumbs on the sticks as typing and stops the page. See
+           * fullscreenReadsThumbsAsTyping in main.js. */
+          this.stickPlatform === 'ios'
+            ? 'Not on an iPhone or iPad: Safari there reads thumbs on the sticks as typing in fullscreen and stops the game to warn you, so the page stays in its window whatever this row says.'
+            : (s.fullscreenFly
+              ? 'On: Fly, Restart and Resume go fullscreen, and back to the title gives the window back. Many desktops hand a fullscreen window straight to the display, which can take a frame off the time between your sticks and the picture. Escape leaves fullscreen and pauses, and Resume goes back to it.'
+              : 'Off: the page stays in its window. Fullscreen can take a frame off the time between your sticks and the picture on many desktops.'),
           s.fullscreenFly,
           (v) => { s.fullscreenFly = v; },
         ),

@@ -1991,13 +1991,23 @@ const DEFAULTS = {
   /*
    * LOW LATENCY VIEW: ask the browser to present the flight canvas without
    * the compositor's frame queue (the canvas's desynchronized attribute, see
-   * buildShell in src/render/shell.js). On by default because that queue is
-   * one or two frames the pilot feels in the sticks and never sees in the
-   * frame rate. It can tear, and it is a request that some platforms do not
+   * buildShell in src/render/shell.js). That queue is one or two frames the
+   * pilot feels in the sticks and never sees in the frame rate. It can tear, and it is a request that some platforms do not
    * grant, so it is a row: a context's attributes are fixed when it is made,
    * so a change here takes effect on the next load, and the note says so.
+   *
+   * OFF BY DEFAULT since 2026-11-15, the owner's pick ("Off everywhere") on
+   * a pilot's report of a tear halfway down the screen and a jittery
+   * picture, even on Low. Where a browser really presents this canvas off
+   * vsync (Android's single buffer, some Windows) every frame tears, and
+   * Android's frozen picture tickets all had it granted. A new key, not
+   * the old `lowLatency`, because a settings blob stores every field and
+   * every pilot who ever saved one has `lowLatency: true` in it: renaming
+   * is what turns it off for them too. The old key is no longer read, so
+   * the next save drops it. A pilot who wants the short path switches the
+   * row on again.
    */
-  lowLatency: true,
+  lowLatencyView: false,
   /*
    * PREDICTED VIEW: draw the FPV view where the quad will be when the frame
    * reaches the screen, one frame ahead, from its speed and rotation (see
@@ -11926,14 +11936,14 @@ export class Ui {
          * THE SHORT PATH TO THE GLASS, as a row because it can tear and
          * because it is a request a platform may refuse. The note says which
          * happened on this machine, from what the browser actually granted,
-         * and that a change waits for the next load: see lowLatency in
+         * and that a change waits for the next load: see lowLatencyView in
          * DEFAULTS and buildShell in src/render/shell.js.
          */
         toggle(
           'Low latency view',
-          lowLatencyNote(s.lowLatency, this.gpuInfo),
-          s.lowLatency,
-          (v) => { s.lowLatency = v; },
+          lowLatencyNote(s.lowLatencyView, this.gpuInfo),
+          s.lowLatencyView,
+          (v) => { s.lowLatencyView = v; },
         ),
         toggle(
           'Predicted view',

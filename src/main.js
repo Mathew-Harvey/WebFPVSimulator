@@ -58,6 +58,7 @@ import { createGpuGate } from './render/gpugate.js';
 import { AUTO_FLOOR, autoPresetMove, createAutoScale } from './render/autoscale.js';
 import { createLatencyMeter } from './render/latency.js';
 import { createTimerYield } from './render/timeryield.js';
+import { paceDelay, drawsPerRefresh, createRafPeriod } from './render/timerpace.js';
 import { moveRigid, predictDelta, PREDICT_MAX_MS } from './render/predict.js';
 import { simPosToThree, simQuatToThree, simLenToWorld, threePosToSim, threeDirToSim, WORLD_SCALE, setWorldScale } from './render/frame.js';
 import { setFisheye, fisheyeNdc } from './render/fisheye.js';
@@ -756,9 +757,11 @@ export async function boot({ loading, bootStart, mapId }) {
     pingVisit('sim');
   }
   const canvas = document.getElementById('view');
-  /* The flying view wants the shortest path to the glass it can get, and
-   * has nothing to read its own frames back for. See shell.js for what the
-   * compositor queue costs a pilot.
+  /* The flying view has nothing to read its own frames back for, so it may
+   * take the shortest path to the glass when the pilot asks for it (Low
+   * latency view, off by default since 2026-11-15 because it tears: see
+   * lowLatencyView in ui.js). See shell.js for what the compositor queue
+   * costs a pilot.
    *
    * ?gpu=low is a measurement hook: WebGL powerPreference low-power, so a
    * dual-GPU box can bind the iGPU. The flight default stays
@@ -773,7 +776,7 @@ export async function boot({ loading, bootStart, mapId }) {
    */
   const bootSettings = loadSettings();
   const shell = buildShell(canvas, {
-    desynchronized: bootSettings.lowLatency !== false,
+    desynchronized: bootSettings.lowLatencyView === true,
     opaque: true,
     powerPreference: gpuQuery === 'low' ? 'low-power' : 'high-performance',
   });
@@ -9225,6 +9228,9 @@ export async function boot({ loading, bootStart, mapId }) {
    * `timerDraws` counts the world's draws for window.__timerYield.
    */
   const timerYield = createTimerYield();
+  /* The display's refreshes as the kept rAF sees them, which the timer's
+   * draws are counted from (src/render/timerpace.js). */
+  const rafPeriod = createRafPeriod();
   let timerJudging = false;
   let timerFellBack = false;
   let timerDraws = 0;
@@ -12074,21 +12080,23 @@ export async function boot({ loading, bootStart, mapId }) {
    * events.
    */
   function timerDelay() {
-    const period = latency.displayPeriodMs();
+    /*
+     * LOCKED TO THE DISPLAY, since 2026-11-15 (src/render/timerpace.js,
+     * where the whole story is). The delay used to be the period less the
+     * GPU's frame, taken as a period: a rate a little above the display's
+     * that drifted across it and juddered, six to eight times a second on
+     * Low on an ordinary card, and walked the tear line where the canvas
+     * really presents off vsync. Now the timer draws exactly twice per
+     * refresh, counted from the last refresh the kept rAF saw, or says it
+     * cannot (a fallback tick) so the judge hands the frames to the display.
+     * The period is the kept rAF's own reading once it has one, because
+     * the refresh learner stands down under the timer and a page that
+     * booted on Low never learned it.
+     */
+    const period = rafPeriod.ready() ? rafPeriod.periodMs() : latency.displayPeriodMs();
     const gpu = gpuGate.state.samples >= 10 ? gpuGate.state.gpuMs : 0;
-    const d = period - gpu;
-    timerFellBack = false;
-    if (d >= 4) {
-      return d;
-    }
-    /* The formula assumes the GPU beats the display's period. A GPU that
-     * takes the whole period or more cannot be raced: the guard is holding
-     * the draws anyway (its queue rule), and a 4 ms tick would only spin
-     * the physics and the OSD flat out for frames that cannot exist, which
-     * on a software rasteriser starved the whole page. Tick at the period
-     * instead, exactly the cadence a display loop would have had. */
-    timerFellBack = gpu >= period;
-    return timerFellBack ? period : 4;
+    timerFellBack = drawsPerRefresh(period, gpu) === 1;
+    return paceDelay(performance.now(), rafPeriod.lastMs(), period, gpu);
   }
 
   /*
@@ -12107,6 +12115,7 @@ export async function boot({ loading, bootStart, mapId }) {
   let rafKeep = false;
   const rafKeepAlive = (ts) => {
     rafKeep = false;
+    rafPeriod.note(ts);
     /* The display's own beat, for the timer's verdict on itself: see
      * src/render/timeryield.js. */
     if (timerJudging) {
@@ -13988,8 +13997,13 @@ export async function boot({ loading, bootStart, mapId }) {
      * this draw waits a frame rather than queue behind it, so what the
      * pilot sees is never two frames older than the sticks. Same contract as
      * the cap above: input and physics have already run. Never for the film
-     * or a replay step capture, whose frames must all be drawn, and only
-     * while Low latency view is on. See gpugate.js for why it waits for the
+     * or a replay step capture, whose frames must all be drawn. It used to
+     * run only while Low latency view was on; since that row went off by
+     * default (2026-11-15) the guard runs whatever the row says, because
+     * with it off the timer loop on Low fed a software rasteriser an
+     * unbounded queue (check:timeryield caught it: 2209 draws, no hand
+     * back) and a saturated GPU queued frames the pilot feels. The guard
+     * never tears; only the canvas's attribute does. See gpugate.js for why it waits for the
      * GPU to be saturated on average before it believes one late fence, and
      * for the timer loop's own stricter rule, passed as the last argument:
      * a timer has no compositor pacing it, so without a bound on the
@@ -13998,7 +14012,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * whole browser on the battery's software rasteriser).
      */
     if (worldLive && drawThis && !film && !replayStepMode && !capturing
-      && gpuGate.shouldSkip(renderStart, ui.settings.lowLatency !== false, latency.targetMs(), timerLoop)) {
+      && gpuGate.shouldSkip(renderStart, true, latency.targetMs(), timerLoop)) {
       drawThis = false;
     }
     if (worldLive) {
@@ -15039,6 +15053,7 @@ export async function boot({ loading, bootStart, mapId }) {
       clearTimeout(timerId);
       timerId = 0;
     }
+    rafPeriod.reset();
     /* The sticks' timer that polls the GPU's fences stops with the page,
      * so a fence pending now would come back timed as the whole absence.
      * Dropped untimed: see GATE_FREEZE_MS in gpugate.js. */
@@ -16644,7 +16659,7 @@ export async function boot({ loading, bootStart, mapId }) {
     key: latency.report(),
     hz: latency.refreshHz(),
     gpuMs: gpuGate.state.samples ? gpuGate.state.gpuMs : null,
-    lowLatency: shell.granted.desynchronized && ui.settings.lowLatency !== false,
+    lowLatency: shell.granted.desynchronized && ui.settings.lowLatencyView === true,
   }));
   /*
    * FLIGHT FEEL TUNING'S TWO HANDLES ON THE MODULE, given to the Ui rather

@@ -35,7 +35,7 @@
  */
 
 import { counting, eventsUrl } from './stats.js';
-import { COFFEE_TIER_URL, PATREON_MARK, markSvg, wishlistAnchor } from './patreon.js';
+import { COFFEE_TIER_URL, PATREON_MARK, PAYPAL_BLUE, PAYPAL_MARK, PAYPAL_NOTE, markSvg, openPaypal, wishlistAnchor } from './patreon.js';
 import { batteryIcon, supportArt } from '../ui/gatepages.js';
 
 const SUPPORT_PROMPT_KEY = 'webfpv.support.prompt.v1';
@@ -211,6 +211,22 @@ export function showSupportPrompt(trigger, { onSettings = null } = {}) {
     recordPromptClick(trigger, 'tip');
   });
 
+  /* PayPal, any amount. A button and not a link: the address is built on the
+   * press (openPaypal), so it is not in the page, and PayPal loads nothing
+   * before it. */
+  const paypalBtn = document.createElement('button');
+  paypalBtn.type = 'button';
+  paypalBtn.className = 'support-prompt-btn support-prompt-btn-paypal';
+  paypalBtn.title = PAYPAL_NOTE;
+  paypalBtn.setAttribute('aria-label', PAYPAL_NOTE);
+  const paypalWord = document.createElement('span');
+  paypalWord.textContent = 'Donate with PayPal';
+  paypalBtn.append(markSvg(PAYPAL_MARK, PAYPAL_BLUE), paypalWord);
+  paypalBtn.addEventListener('click', () => {
+    openPaypal(`prompt-${trigger}`);
+    recordPromptClick(trigger, 'paypal');
+  });
+
   /* Wishlist on Steam, the sticker the title wears, on its own line under
    * the two that pay for the sim. Null in the Steam edition. */
   const wishBtn = wishlistAnchor('prompt', 'support-prompt-steam');
@@ -236,7 +252,7 @@ export function showSupportPrompt(trigger, { onSettings = null } = {}) {
     prompt.remove();
   });
 
-  actions.append(patreonBtn, tipBtn);
+  actions.append(patreonBtn, tipBtn, paypalBtn);
   const foot = document.createElement('div');
   foot.className = 'support-prompt-foot';
   if (wishBtn) {

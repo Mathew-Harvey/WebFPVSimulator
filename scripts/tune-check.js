@@ -169,6 +169,18 @@ async function openFlight({
     height,
     touch,
     url: '/index.html',
+    /*
+     * THE MODEL A PILOT GETS, not the classic hold the other flying checks
+     * are on (tests/lib/page.js). This check is about what counts as stock:
+     * the Tuned stamp, the record key and the keyboard's hover. Since
+     * 2026-11-14 the five inch ships on Realistic physics, so on the hold
+     * its "stock" five inch is the old model, which is Tuned by the owner's
+     * design, and six lines here failed on main for that reason alone. Flown
+     * as shipped, stock is stock again, the keys name the model with their
+     * own `.real` on the end, and the hover the spring is held to is the
+     * realistic model's.
+     */
+    physics: 'pilot',
     seed: [
       seedSettings({
         ...seated, graphics: 'low', graphicsAuto: false, airframeAsked: true, ...patch,
@@ -337,7 +349,7 @@ const LAYOUT = `
 /* Stock, to the call: the five inch's defaults, Air grip 110 and Motor power
  * 100, seated with the one call that takes the module off its own 1.0. */
 const isStock = (a) => a.airScale === 1.1 && a.kvScale === 1 && a.calls === 1 && a.tuned === false
-  && a.flown === null && !/\.[ak]\d+$/.test(a.key);
+  && a.flown === null && !/\.[ak]\d+(?:\.real)?$/.test(a.key);
 
 /* ------------------------------------------------------------------ */
 /* 1. A page that never turned the mode on                             */
@@ -433,7 +445,7 @@ async function phonePage() {
     const t = await ev('return window.__touch ? window.__touch() : null');
     check(t !== null, 'the page mounted the thumb sticks', t === null ? 'no window.__touch' : '');
     const a = await ev(AIR);
-    check(a.moduleAir === 0.85 && /\.a85$/.test(a.key), 'the module and the key hold Air grip 85 on glass as well', JSON.stringify({ moduleAir: a.moduleAir, key: a.key.slice(-8) }));
+    check(a.moduleAir === 0.85 && /\.a85(?:\.real)?$/.test(a.key), 'the module and the key hold Air grip 85 on glass as well', JSON.stringify({ moduleAir: a.moduleAir, key: a.key.slice(-8) }));
     await sleep(600);
     const g = await ev(GROUP);
     check(g.drawn && g.caps.some((c) => /^Air grip 85%$/.test(c)), 'landed, the group is on the glass', g.caps.join(' | '));
@@ -504,7 +516,7 @@ async function tunedPage(inspect) {
     check(a.tuning && a.airGrip === 85 && a.airScale === 0.85, 'the page holds Air grip 85 as a scale of 0.85', JSON.stringify({ airGrip: a.airGrip, airScale: a.airScale }));
     check(a.moduleAir === 0.85, 'and the module says it has 0.85', String(a.moduleAir));
     check(a.calls === 1, 'with exactly one call to the module, for the one slider that moved', String(a.calls));
-    check(/\.a85$/.test(a.key), 'the record key names it', a.key.slice(-12));
+    check(/\.a85(?:\.real)?$/.test(a.key), 'the record key names it', a.key.slice(-12));
     check(a.tuned === true, 'the race knows laps are off the public board', String(a.tuned));
     const g = await ev(GROUP);
     check(g.drawn && g.caps.some((c) => /^Air grip 85%$/.test(c)), 'the Air grip row reads 85%', g.caps.join(' | '));
@@ -520,14 +532,14 @@ async function tunedPage(inspect) {
     await ev(move.replace('"__V__"', '120'));
     const b = await ev(AIR);
     check(b.airGrip === 120 && b.airScale === 1.2 && b.moduleAir === 1.2, 'a slider moved to 120 reaches the module as 1.2', JSON.stringify({ airScale: b.airScale, moduleAir: b.moduleAir }));
-    check(/\.a120$/.test(b.key), 'and the key follows', b.key.slice(-12));
+    check(/\.a120(?:\.real)?$/.test(b.key), 'and the key follows', b.key.slice(-12));
     const stored = await ev(`return JSON.parse(localStorage.getItem(${JSON.stringify(SETTINGS_KEY)})).airGrip`);
     check(stored === 120, 'and it was stored', String(stored));
     await ev(clickText('Reset to stock', 'document.querySelector(".osd-tune")'));
     await sleep(300);
     const c = await ev(AIR);
     check(c.airGrip === 110 && c.airScale === 1.1 && c.moduleAir === 1.1, 'Reset to stock sends the module back to the default, 1.1', JSON.stringify({ airScale: c.airScale, moduleAir: c.moduleAir }));
-    check(!/\.[ak]\d+$/.test(c.key) && c.tuned === false, 'and the key and the race are stock again', c.key.slice(-12));
+    check(!/\.[ak]\d+(?:\.real)?$/.test(c.key) && c.tuned === false, 'and the key and the race are stock again', c.key.slice(-12));
     const gg = await ev(GROUP);
     check(gg.resetUp === false, 'Reset to stock puts itself away', String(gg.resetUp));
     await ev(move.replace('"__V__"', '85'));
@@ -707,7 +719,8 @@ const moveSlider = (label, value) => `
 /* What the page's keyboard spring and the table it reads say, side by side. */
 const SPRING = `
   const s = window.__ui.settings;
-  return { cap: s.rates.throttleCap, af: s.airframe, w: s.weight, v: s.packVoltage, at: window.__input.kbHover };`;
+  return { cap: s.rates.throttleCap, af: s.airframe, w: s.weight, v: s.packVoltage, at: window.__input.kbHover,
+    real: window.__realism().shell !== 0 };`;
 
 async function motorPage(inspect) {
   note('MOTOR POWER: the mode on, Motor power 110, Air grip on its default');
@@ -720,7 +733,7 @@ async function motorPage(inspect) {
       JSON.stringify({ motorKv: a.motorKv, kvScale: a.kvScale, moduleKv: a.moduleKv }));
     check(a.calls === 2 && a.airScale === 1.1 && a.moduleAir === 1.1, 'with two calls, one for Motor power and one seating the default Air grip of 1.1',
       JSON.stringify({ calls: a.calls, airScale: a.airScale, moduleAir: a.moduleAir }));
-    check(/\.k110$/.test(a.key) && !/\.a\d+/.test(a.key) && a.tuned === true, 'the record key names it and the race knows laps are off the public board', a.key.slice(-12));
+    check(/\.k110(?:\.real)?$/.test(a.key) && !/\.a\d+/.test(a.key) && a.tuned === true, 'the record key names it and the race knows laps are off the public board', a.key.slice(-12));
     const g = await ev(GROUP);
     check(g.drawn && g.caps.includes('Motor power 110%') && g.caps.includes('Air grip 110%'), 'both rows are drawn, Motor power at 110% and Air grip at 110%', g.caps.join(' | '));
     check(g.resetUp, 'Reset to stock is offered', String(g.resetUp));
@@ -728,8 +741,8 @@ async function motorPage(inspect) {
 
     /* The keyboard's throttle springs to hover, and hover moved. */
     const sp = await ev(SPRING);
-    const want = hoverStickPercent(sp.cap, sp.af, sp.w, sp.v, 110) / 100;
-    const stock = hoverStickPercent(sp.cap, sp.af, sp.w, sp.v, 100) / 100;
+    const want = hoverStickPercent(sp.cap, sp.af, sp.w, sp.v, 110, sp.real) / 100;
+    const stock = hoverStickPercent(sp.cap, sp.af, sp.w, sp.v, 100, sp.real) / 100;
     check(Math.abs(sp.at - want) < 1e-12 && sp.at < stock, 'the keyboard spring rests at the hover for Motor power 110, lower on the stick than stock',
       `${sp.at.toFixed(4)} against ${stock.toFixed(4)} stock`);
 
@@ -738,18 +751,18 @@ async function motorPage(inspect) {
     const b = await ev(AIR);
     check(b.motorKv === 90 && b.kvScale === 0.9 && b.moduleKv === 0.9 && b.calls === 3, 'Motor power moved to 90 reaches the module as 0.9, one more call',
       JSON.stringify({ kvScale: b.kvScale, moduleKv: b.moduleKv, calls: b.calls }));
-    check(/\.k90$/.test(b.key), 'and the key follows', b.key.slice(-12));
+    check(/\.k90(?:\.real)?$/.test(b.key), 'and the key follows', b.key.slice(-12));
     const sp90 = await ev(SPRING);
-    check(Math.abs(sp90.at - hoverStickPercent(sp90.cap, sp90.af, sp90.w, sp90.v, 90) / 100) < 1e-12 && sp90.at > stock,
+    check(Math.abs(sp90.at - hoverStickPercent(sp90.cap, sp90.af, sp90.w, sp90.v, 90, sp90.real) / 100) < 1e-12 && sp90.at > stock,
       'the spring moved with it: hover sits higher on the stick at 90 than at stock', `${sp90.at.toFixed(4)}`);
     await ev(moveSlider('Air grip', 120));
     const c = await ev(AIR);
-    check(c.moduleAir === 1.2 && c.moduleKv === 0.9 && /\.a120\.k90$/.test(c.key), 'both sliders at once reach the module and the key names both',
+    check(c.moduleAir === 1.2 && c.moduleKv === 0.9 && /\.a120\.k90(?:\.real)?$/.test(c.key), 'both sliders at once reach the module and the key names both',
       JSON.stringify({ moduleAir: c.moduleAir, moduleKv: c.moduleKv, key: c.key.slice(-12) }));
     await ev(clickText('Reset to stock', 'document.querySelector(".osd-tune")'));
     await sleep(300);
     const d = await ev(AIR);
-    check(d.moduleKv === 1 && d.moduleAir === 1.1 && !/\.[ak]\d+$/.test(d.key) && d.tuned === false, 'Reset to stock sends both back to the defaults, 1.0 and 1.1, and the key and the race are stock again',
+    check(d.moduleKv === 1 && d.moduleAir === 1.1 && !/\.[ak]\d+(?:\.real)?$/.test(d.key) && d.tuned === false, 'Reset to stock sends both back to the defaults, 1.0 and 1.1, and the key and the race are stock again',
       JSON.stringify({ moduleKv: d.moduleKv, moduleAir: d.moduleAir, key: d.key.slice(-12) }));
     const sp100 = await ev(SPRING);
     check(Math.abs(sp100.at - stock) < 1e-12, 'and the keyboard spring is back at the stock hover, to the last bit', `${sp100.at}`);

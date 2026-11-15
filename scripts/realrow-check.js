@@ -58,6 +58,9 @@ import { openPage } from '../tests/lib/page.js';
 import * as shellUi from '../src/ui/ui.js';
 
 const { SETTINGS_KEY } = shellUi;
+/* The hover tables the keys fly on, the same way: a tree without
+ * packRestVolts fails the lines that need it, not the run. */
+const rates = await import('../configs/rates.js');
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const wait = (ms) => new Promise((r) => { setTimeout(r, ms); });
@@ -140,6 +143,19 @@ async function reportSays(page, want) {
   check('its gravity is the gravity the module flies', c.gravityScale === c.flown.gravity, `${c.gravityScale} against ${c.flown.gravity}`);
   check('its hover is where the keys hover', Boolean(hover) && Math.abs(Number(hover[1]) - c.keyHover) <= 0.15,
     `${c.throttle} against keyHover ${c.keyHover}`);
+  /*
+   * AND THE KEYS REST WHERE THIS MODEL HOVERS AT THIS WEIGHT. The line above
+   * holds the report to the keys; this holds the keys to the model's own
+   * table, which scripts/hoverline-check.js holds to the module. The first
+   * cut read the classic table at the slider over the airframe's base, so
+   * at Weight 90 on Realistic the keys rested a point over hover and at 75
+   * three and a half, and a light quad climbed every time a key came up.
+   */
+  const usedAh = Number(c.flown.used) || 0;
+  const volts = typeof rates.packRestVolts === 'function' ? rates.packRestVolts(4.2, usedAh) : 4.2;
+  const wantHover = rates.hoverStickPercent(100, '5inch', c.weight, volts, 100, want === 'realistic');
+  check('and the keys rest at this model\'s own hover for this weight', Math.abs(c.keyHover - wantHover) <= 0.15,
+    `keyHover ${c.keyHover} against ${wantHover.toFixed(2)} at Weight ${c.weight}`);
   const line = typeof shellUi.feelWeightLine === 'function' ? shellUi.feelWeightLine(c) : '';
   check('the feel note says the same', line.includes(`${Number(c.flown.gravity).toFixed(2)} times g`)
     && line.includes(want === 'realistic' ? 'with Realistic physics on' : 'with Realistic physics off'), line);
@@ -198,6 +214,41 @@ async function fiveInch(map) {
     check('Escape is Got it: the model stays on and the flight starts', f.shell !== 0 && f.five !== false && f.told === true, JSON.stringify(f));
     check(f.mode === 'freestyle' ? 'in freestyle the pack drains' : 'on a race course the pack does not drain',
       ((f.shell & PACK) !== 0) === (f.mode === 'freestyle') && f.module === f.shell, JSON.stringify(f));
+    if (f.mode === 'freestyle') {
+      /*
+       * AND THE KEYS FOLLOW THE PACK DOWN. Hover climbs the stick as the
+       * pack falls, three or four points over a pack, and the keyboard's
+       * throttle springs to hover: left on the fresh pack's figure it let a
+       * half used pack sink at two metres a second whenever a key came up.
+       * A punch straight up uses the charge; the shell reads it twice a
+       * second and moves the spring.
+       */
+      const KEYS = '(() => ({ at: window.__input.kbHover * 100, used: window.__realism().used }))()';
+      const fresh = await page.evaluate(KEYS);
+      const freshWant = rates.hoverStickPercent(100, '5inch', 100, 4.2, 100, true);
+      check('on a fresh pack the keys rest at the realistic hover', fresh.used === 0 && Math.abs(fresh.at - freshWant) <= 0.15,
+        `${fresh.at.toFixed(2)} against ${freshWant.toFixed(2)}, ${fresh.used} Ah used`);
+      await page.evaluate('(window.__stick(0, 0, 0, 1), 1)');
+      await page.until('window.__realism().used > 0.05', 90000).catch(() => {});
+      await page.evaluate('(window.__stick(0, 0, 0, 0.3), 1)');
+      await wait(1200);
+      const spent = await page.evaluate(KEYS);
+      await page.evaluate('(window.__stick(), 1)');
+      const spentWant = typeof rates.packRestVolts === 'function'
+        ? rates.hoverStickPercent(100, '5inch', 100, rates.packRestVolts(4.2, spent.used), 100, true) : NaN;
+      check('a punch uses the pack and the shell sees it', spent.used > 0.05, `${spent.used} Ah used`);
+      check('and the keys\' rest has moved up the stick with it, to the hover of the pack as it stands',
+        spent.at > fresh.at + 0.2 && Math.abs(spent.at - spentWant) <= 0.15,
+        `${spent.at.toFixed(2)} against ${Number.isFinite(spentWant) ? spentWant.toFixed(2) : 'no packRestVolts'}, from ${fresh.at.toFixed(2)}`);
+      await page.evaluate(TITLE);
+      await wait(500);
+      await page.evaluate(FLY);
+      await toAir(page);
+      await wait(800);
+      const again = await page.evaluate(KEYS);
+      check('a new run is a fresh pack, and the keys are back on its hover', again.used === 0 && Math.abs(again.at - freshWant) <= 0.15,
+        `${again.at.toFixed(2)}, ${again.used} Ah used`);
+    }
     await page.evaluate(TITLE);
     await wait(500);
     await page.evaluate(FLY);

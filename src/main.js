@@ -140,7 +140,7 @@ import { MAP_PRELOAD } from './maps/preload.js';
 import { TUNES, tuneById, tunePath } from '../configs/registry.js';
 import { airframeById, simIdFor, worldScaleFor } from '../configs/airframes.js';
 import { buildWhoopCraft } from './render/whoopcraft.js';
-import { hoverStickPercent, normaliseRates, ratesAreDefault, ratesDiff, ratesSummary, TOUCH_RATE_DEFAULTS } from '../configs/rates.js';
+import { hoverStickPercent, packRestVolts, normaliseRates, ratesAreDefault, ratesDiff, ratesSummary, TOUCH_RATE_DEFAULTS } from '../configs/rates.js';
 import { clearPidsFor, PID_AXES, pidCliKey, pidsDiffFor, SLIDER_KEYS, SLIDERS } from '../configs/pids.js';
 import { cliMap, composeConfig, moduleDump, moduleGet, RATES_KEEP, ratesFromDump, readFcDump, tuneBody, writeFcDump } from './fc/dump.js';
 import { GATE_SCALE, MICRO_SCALE } from './game/track.js';
@@ -5933,6 +5933,20 @@ export async function boot({ loading, bootStart, mapId }) {
   let runReal = 0;
   /* Whether the low pack has been called on this pack yet. */
   let toldPackLow = false;
+  /*
+   * THE PACK AS THE KEYBOARD'S HOVER LAST SAW IT, and when it is next looked
+   * at. Where the pack runs down, hover climbs the stick with it, three or
+   * four points over a pack, and the keyboard's throttle springs to hover
+   * (syncKeyHover): left at the fresh pack's figure, the spring let a half
+   * used pack sink at two metres a second every time a key came up. So the
+   * charge used is read twice a second, where it was read every frame for
+   * the low pack call alone, and the spring is moved when it has changed by
+   * a hundredth of an amp hour, which is a tenth of a point of stick.
+   */
+  const PACK_POLL_MS = 500;
+  const PACK_HOVER_STEP_AH = 0.01;
+  let packUsedAh = 0;
+  let packPollAtMs = 0;
   function realMaskWanted() {
     if (!realPhysicsFor(ui.settings, runAirframe)) {
       return 0;
@@ -5962,13 +5976,15 @@ export async function boot({ loading, bootStart, mapId }) {
     sim.e.sim_set_realism(want);
     runReal = want;
     toldPackLow = false;
+    /* The module forgets the pack on any change of mask, so the keys do. */
+    packUsedAh = 0;
+    packPollAtMs = 0;
     return moved;
   }
-  /* The weight the keyboard's hover table is read at. The table is measured
-   * in the airframe's own heavier world, so one real g reads as a lighter
-   * quad on it, and the table's own clamp holds the bottom. */
-  function hoverWeight() {
-    return runReal ? runWeight / airframeById(runAirframe).gravityBase : runWeight;
+  /* The charge per cell the keyboard's hover is read at: the run's own,
+   * and where the realistic pack runs down, what is left of it at rest. */
+  function hoverVolts() {
+    return (runReal & REAL_PACK) !== 0 ? packRestVolts(runVoltage, packUsedAh) : runVoltage;
   }
   /*
    * How far the stick is asking the craft to climb, for the shell's own
@@ -8109,7 +8125,6 @@ export async function boot({ loading, bootStart, mapId }) {
      * without this a player could change packs mid run and have the lap
      * compared against another pack's record. */
     runVoltage = ui.settings.packVoltage;
-    syncKeyHover();
     /* 3D mode on the same rule, and it has to come before resetCraft: the
      * sim_reset in there is what the controller latches it at. The record
      * key and the Tuned stamp follow it below, after race.reset. */
@@ -8120,6 +8135,13 @@ export async function boot({ loading, bootStart, mapId }) {
      * resetCraft is a fresh pack either way. */
     applyRealism();
     toldPackLow = false;
+    /* The sim_reset in resetCraft is a fresh pack, and the keyboard's hover
+     * is read on it and on the model the run flies, so after the line
+     * above. It was read before it, which is the same number only while
+     * the model cannot move between runs. */
+    packUsedAh = 0;
+    packPollAtMs = 0;
+    syncKeyHover();
     /*
      * AND SAY SO, because nothing in flight did. Four pilots in three days
      * flew 3D without knowing it was on and called the sim broken: hover at
@@ -9173,7 +9195,7 @@ export async function boot({ loading, bootStart, mapId }) {
    */
   function syncKeyHover() {
     input.setKeyHover(hoverStickPercent(
-      normaliseRates(ui.settings.rates).throttleCap, runAirframe, hoverWeight(), runVoltage, runMotorKv,
+      normaliseRates(ui.settings.rates).throttleCap, runAirframe, runWeight, hoverVolts(), runMotorKv, runReal !== 0,
     ) / 100);
   }
 
@@ -9420,9 +9442,6 @@ export async function boot({ loading, bootStart, mapId }) {
        * runs, above, so this cannot swap the plant under a lap.
        */
       const wantScale = gravityScaleFor(wantWeight, runAirframe, runReal !== 0);
-      if (realMoved) {
-        syncKeyHover();
-      }
       if (wantScale !== runGravityScale) {
         if (typeof sim.e.sim_set_gravity === 'function'
           && sim.e.sim_set_gravity(wantScale) === SIM_OK) {
@@ -12466,11 +12485,20 @@ export async function boot({ loading, bootStart, mapId }) {
       } else {
       scoring = view.mode === 'freestyle';
       let sawGroundHit = false;
-      /* Realistic physics' pack, called once when most of it is used. One
-       * integer test a frame with the switch off, which is the default. */
-      if ((runReal & REAL_PACK) !== 0 && !toldPackLow && sim.e.sim_bf_debug(74) > REAL_PACK_LOW_AH) {
-        toldPackLow = true;
-        notice = { text: 'Pack is getting low.\nReset for a fresh one.', untilMs: performance.now() + 5000 };
+      /* Realistic physics' pack, read twice a second where it runs down:
+       * called once when most of it is used, and the keyboard's hover kept
+       * on it (see packUsedAh). One integer test a frame anywhere else. */
+      if ((runReal & REAL_PACK) !== 0 && nowWall >= packPollAtMs) {
+        packPollAtMs = nowWall + PACK_POLL_MS;
+        const used = sim.e.sim_bf_debug(74);
+        if (!toldPackLow && used > REAL_PACK_LOW_AH) {
+          toldPackLow = true;
+          notice = { text: 'Pack is getting low.\nReset for a fresh one.', untilMs: performance.now() + 5000 };
+        }
+        if (Math.abs(used - packUsedAh) >= PACK_HOVER_STEP_AH) {
+          packUsedAh = used;
+          syncKeyHover();
+        }
       }
       acc += dt;
       let steps = Math.floor(acc / MS_PER_STEP);
@@ -15674,6 +15702,8 @@ export async function boot({ loading, bootStart, mapId }) {
   /* Realistic physics: the mask the shell gave, what the module says it is
    * flying, and the gravity the module was last given. */
   window.__realism = () => ({
+    /* The charge used as the keyboard's hover last saw it, amp hours. */
+    used: packUsedAh,
     shell: runReal,
     module: typeof sim.e.sim_realism === 'function' ? sim.e.sim_realism() : null,
     gravity: runGravityScale,

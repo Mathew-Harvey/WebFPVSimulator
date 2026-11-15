@@ -975,12 +975,6 @@ export function realPhysicsFor(s, airframeId) {
 export function setRealPhysics(s, airframeId, on) {
   s[realPhysicsKey(airframeId)] = Boolean(on);
 }
-/* The weight the hover table is read at for these settings: the table is
- * measured in the airframe's heavier world, so one real g reads as a
- * lighter quad on it. See hoverWeight in src/main.js, which flies on it. */
-export function hoverWeightFor(s, weight = 100) {
-  return realPhysicsFor(s, s.airframe) ? weight / airframeById(s.airframe).gravityBase : weight;
-}
 /*
  * The feel note's sentence on where the Weight slider was, from a report's
  * context (bugSnapshot): the slider, the multiple of g it became, and which
@@ -9322,10 +9316,10 @@ export class Ui {
        * feel report spends up to 30 (see throttleSummary, and check:realrow,
        * which counts them).
        *
-       * The hover is read at the hover weight, the slider over the
-       * airframe's base when Realistic physics is on, because the table is
-       * measured in the heavier world (hoverWeightFor). It was read at the
-       * slider itself, so from the evening Realistic became the five inch's
+       * The hover is read off the model flown, Realistic physics' own
+       * tables when it is on (hoverStickPercent's `real`), as the keys' own
+       * hover is in src/main.js. It was read off the classic table at the
+       * slider, so from the evening Realistic became the five inch's
        * default, every five inch report flown on it put hover eight or nine
        * points further up the stick than the keys' own hover, in `stick`
        * beside it: bug-b5f43230 said 33.9 percent with keyHover 26.
@@ -9333,10 +9327,11 @@ export class Ui {
       throttle: throttleSummary(
         s.rates || {},
         s.airframe,
-        hoverWeightFor(s, clampWeight(s.weight, s.airframe)),
+        clampWeight(s.weight, s.airframe),
         s.packVoltage,
         this.tuneCaps.kv ? effectiveTune(s).motorKv : MOTOR_KV_STOCK,
         s.mode3d === true,
+        real,
       ),
       /*
        * THE SLIDER'S POSITION, and it belongs in the report for the same
@@ -9831,9 +9826,9 @@ export class Ui {
       if (show) {
         /* At the Motor power flown, which is not 100 on a stock whoop. */
         const kv = effectiveTune(this.settings).motorKv;
-        const hw = hoverWeightFor(this.settings);
-        const eased = hoverStickPercent(75, this.settings.airframe, hw, 4.2, kv);
-        const now = hoverStickPercent(100, this.settings.airframe, hw, 4.2, kv);
+        const real = realPhysicsFor(this.settings, this.settings.airframe);
+        const eased = hoverStickPercent(75, this.settings.airframe, 100, 4.2, kv, real);
+        const now = hoverStickPercent(100, this.settings.airframe, 100, 4.2, kv, real);
         capHint.textContent = `This quad hovers at ${now.toFixed(1)} percent of stick with no throttle limit, so nearly all the travel is above hover. Rates, Throttle limit, 75 percent moves hover to ${eased.toFixed(1)} percent and gives the fine control back without losing any climb you can use indoors. Worth trying before you wait on us.`;
       }
     };
@@ -12570,7 +12565,7 @@ export class Ui {
        */
       const r = s.rates;
       const split = Boolean(s.ratesSplitPitch);
-      const hover = hoverStickPercent(r.throttleCap, this.settings.airframe, hoverWeightFor(this.settings), 4.2, effectiveTune(this.settings).motorKv);
+      const hover = hoverStickPercent(r.throttleCap, this.settings.airframe, 100, 4.2, effectiveTune(this.settings).motorKv, realPhysicsFor(this.settings, this.settings.airframe));
       const tilt = Math.sin(cameraTiltRad(s.cameraAngle));
       const noteFor = (axis, key) => {
         const spec = rateField(r.type, key);
@@ -13249,7 +13244,7 @@ export class Ui {
     if (this.screen !== 'rates') {
       return;
     }
-    this.ratesPanel.paint(this.settings.rates, this.ratesStick, this.settings.airframe, effectiveTune(this.settings).motorKv, hoverWeightFor(this.settings));
+    this.ratesPanel.paint(this.settings.rates, this.ratesStick, this.settings.airframe, effectiveTune(this.settings).motorKv, realPhysicsFor(this.settings, this.settings.airframe));
   }
 
   /* The live sticks, from the frame loop. Only while the screen is up: the
@@ -14281,7 +14276,7 @@ export class Ui {
     const before = it.num.cli;
     it.set(next);
     try {
-      this.ratesPanel.paint(this.settings.rates, this.ratesStick, this.settings.airframe, effectiveTune(this.settings).motorKv, hoverWeightFor(this.settings));
+      this.ratesPanel.paint(this.settings.rates, this.ratesStick, this.settings.airframe, effectiveTune(this.settings).motorKv, realPhysicsFor(this.settings, this.settings.airframe));
     } finally {
       it.set(before);
     }

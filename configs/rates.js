@@ -646,13 +646,13 @@ export function ratesShort(r) {
  * the line names the straight curve rather than quoting a number for a
  * curve it never measured. Expo 0 is a straight line whatever the mid.
  */
-export function throttleSummary(r, airframe = '5inch', weight = 100, cellV = 4.2, motorKv = 100, mode3d = false) {
+export function throttleSummary(r, airframe = '5inch', weight = 100, cellV = 4.2, motorKv = 100, mode3d = false, real = false) {
   const p = normaliseRates(r);
   const curve = p.thrExpo > 0 ? `, mid ${p.thrMid} expo ${p.thrExpo}` : ', no expo';
   if (mode3d === true) {
     return `cap ${p.throttleCap}${curve}, 3D mode on: mid stick is no thrust and the bottom is full reverse, so hover is above the middle`;
   }
-  const hover = hoverStickPercent(p.throttleCap, airframe, weight, cellV, motorKv);
+  const hover = hoverStickPercent(p.throttleCap, airframe, weight, cellV, motorKv, real);
   const straight = p.thrExpo > 0 ? ' on a straight curve, before the expo' : '';
   return `cap ${p.throttleCap}${curve}, hover near ${hover.toFixed(1)} percent of stick${straight}`;
 }
@@ -1074,6 +1074,170 @@ const HOVER_WHOOP_KV120 = new Map([
     ]),
   ]],
 ]);
+/*
+ * AND THE SAME TABLES ON REALISTIC PHYSICS, which is another machine and since
+ * 2026-11-14 the five inch's default. With the switch on the shell flies one
+ * real g times the Weight slider (gravityScaleFor) and the module's realistic
+ * model (sim_set_realism), and that quad does not hover where the classic
+ * plant does at any weight the classic table holds.
+ *
+ * The first cut of the switch read the classic table at the slider over the
+ * airframe's base, 100 over 1.62, on the reasoning that one g is a lighter
+ * quad on the heavier world's table. Measured on 2026-11-15, flying the
+ * keyboard's rest throttle through the module on the realistic model:
+ *
+ *     Weight   true hover   the keys rested at   vertical speed after 3 s
+ *       75        22.6            26.0                3.4 m/s up
+ *       85        24.3            26.0                1.9 m/s up
+ *      100        26.6            26.4                0.3 m/s down
+ *      125        30.3            29.9                0.5 m/s down
+ *
+ * The classic table's light column is its Weight 60, which is 0.972 g, so
+ * every realistic weight under 97 fell off its end and read the same number,
+ * and the keys' spring, which is meant to be hover, sent a light quad up at
+ * walking pace and then running pace every time a key was let go. So these
+ * are read off the realistic model itself, the classic tables' own way:
+ *
+ *     node scripts/flightcheck.js --real=239 --gravity=0.6 --cell=4.2
+ *
+ * and so on for 1.0 and 1.4, for 3.8 and 3.5, and with --kv=0.8 and 1.2 for
+ * the two Motor power tables. 239 is the mask the shell flies wherever the
+ * pack does not run down. Where it does (solo freestyle), the pack's fall is
+ * the shell's to follow from the charge used: see packRestVolts below.
+ * scripts/hoverline-check.js holds these to the module.
+ */
+const HOVER_5IN_REAL = new Map([
+  [4.2, [
+    new Map([
+      [100, 20.0], [90, 21.6], [80, 23.7], [75, 24.9], [70, 26.3],
+      [65, 27.9], [60, 29.8], [50, 34.9], [40, 42.3],
+    ]),
+    new Map([
+      [100, 26.6], [90, 29.1], [80, 32.0], [75, 33.8], [70, 35.9],
+      [65, 38.3], [60, 41.1], [50, 48.2], [40, 59.0],
+    ]),
+    new Map([
+      [100, 32.4], [90, 35.4], [80, 39.2], [75, 41.5], [70, 44.1],
+      [65, 47.1], [60, 50.6], [50, 59.7], [40, 73.4],
+    ]),
+  ]],
+  [3.8, [
+    new Map([
+      [100, 22.1], [90, 24.0], [80, 26.4], [75, 27.8], [70, 29.5],
+      [65, 31.3], [60, 33.5], [50, 39.2], [40, 47.7],
+    ]),
+    new Map([
+      [100, 29.6], [90, 32.3], [80, 35.6], [75, 37.7], [70, 40.0],
+      [65, 42.8], [60, 45.9], [50, 54.0], [40, 66.2],
+    ]),
+    new Map([
+      [100, 35.9], [90, 39.3], [80, 43.6], [75, 46.2], [70, 49.1],
+      [65, 52.5], [60, 56.5], [50, 66.8], [40, 82.2],
+    ]),
+  ]],
+  [3.5, [
+    new Map([
+      [100, 24.0], [90, 26.1], [80, 28.8], [75, 30.4], [70, 32.2],
+      [65, 34.3], [60, 36.7], [50, 43.0], [40, 52.5],
+    ]),
+    new Map([
+      [100, 32.1], [90, 35.2], [80, 39.0], [75, 41.1], [70, 43.8],
+      [65, 46.8], [60, 50.2], [50, 59.2], [40, 72.8],
+    ]),
+    new Map([
+      [100, 39.2], [90, 43.0], [80, 47.7], [75, 50.5], [70, 53.8],
+      [65, 57.5], [60, 61.9], [50, 73.2], [40, 90.3],
+    ]),
+  ]],
+]);
+const HOVER_5IN_REAL_KV80 = new Map([
+  [4.2, [
+    new Map([
+      [100, 25.1], [90, 27.3], [80, 30.0], [75, 31.7], [70, 33.6],
+      [65, 35.8], [60, 38.4], [50, 45.0], [40, 55.0],
+    ]),
+    new Map([
+      [100, 33.5], [90, 36.6], [80, 40.5], [75, 42.9], [70, 45.6],
+      [65, 48.7], [60, 52.4], [50, 61.8], [40, 75.9],
+    ]),
+    new Map([
+      [100, 40.6], [90, 44.6], [80, 49.5], [75, 52.5], [70, 55.9],
+      [65, 59.8], [60, 64.3], [50, 76.1], [40, 93.9],
+    ]),
+  ]],
+  [3.8, [
+    new Map([
+      [100, 27.8], [90, 30.3], [80, 33.5], [75, 35.4], [70, 37.4],
+      [65, 40.0], [60, 42.9], [50, 50.5], [40, 61.8],
+    ]),
+    new Map([
+      [100, 37.1], [90, 40.6], [80, 45.0], [75, 47.7], [70, 50.7],
+      [65, 54.3], [60, 58.3], [50, 69.0], [40, 84.9],
+    ]),
+    new Map([
+      [100, 45.0], [90, 49.5], [80, 55.0], [75, 58.3], [70, 62.1],
+      [65, 66.5], [60, 71.6], [50, 84.9], [40, 100],
+    ]),
+  ]],
+  [3.5, [
+    new Map([
+      [100, 30.2], [90, 33.0], [80, 36.5], [75, 38.6], [70, 41.0],
+      [65, 43.7], [60, 46.9], [50, 55.3], [40, 67.8],
+    ]),
+    new Map([
+      [100, 40.3], [90, 44.2], [80, 49.1], [75, 52.1], [70, 55.4],
+      [65, 59.3], [60, 63.8], [50, 75.5], [40, 93.1],
+    ]),
+    new Map([
+      [100, 49.0], [90, 54.0], [80, 60.1], [75, 63.7], [70, 67.8],
+      [65, 72.7], [60, 78.4], [50, 93.0], [40, 100],
+    ]),
+  ]],
+]);
+const HOVER_5IN_REAL_KV120 = new Map([
+  [4.2, [
+    new Map([
+      [100, 16.5], [90, 17.9], [80, 19.4], [75, 20.3], [70, 21.5],
+      [65, 22.7], [60, 24.2], [50, 28.0], [40, 33.7],
+    ]),
+    new Map([
+      [100, 22.1], [90, 24.0], [80, 26.4], [75, 27.8], [70, 29.5],
+      [65, 31.4], [60, 33.5], [50, 39.2], [40, 47.7],
+    ]),
+    new Map([
+      [100, 26.9], [90, 29.4], [80, 32.4], [75, 34.2], [70, 36.3],
+      [65, 38.7], [60, 41.5], [50, 48.7], [40, 59.7],
+    ]),
+  ]],
+  [3.8, [
+    new Map([
+      [100, 18.3], [90, 19.9], [80, 21.7], [75, 22.8], [70, 24.0],
+      [65, 25.5], [60, 27.2], [50, 31.6], [40, 38.3],
+    ]),
+    new Map([
+      [100, 24.5], [90, 26.7], [80, 29.5], [75, 31.1], [70, 32.9],
+      [65, 35.1], [60, 37.5], [50, 44.0], [40, 53.8],
+    ]),
+    new Map([
+      [100, 29.8], [90, 32.6], [80, 36.1], [75, 38.1], [70, 40.5],
+      [65, 43.2], [60, 46.4], [50, 54.6], [40, 67.1],
+    ]),
+  ]],
+  [3.5, [
+    new Map([
+      [100, 20.0], [90, 21.7], [80, 23.7], [75, 25.0], [70, 26.3],
+      [65, 28.0], [60, 29.9], [50, 34.9], [40, 42.3],
+    ]),
+    new Map([
+      [100, 26.7], [90, 29.2], [80, 32.1], [75, 33.9], [70, 36.0],
+      [65, 38.4], [60, 41.1], [50, 48.4], [40, 59.2],
+    ]),
+    new Map([
+      [100, 32.6], [90, 35.6], [80, 39.4], [75, 41.7], [70, 44.3],
+      [65, 47.3], [60, 50.8], [50, 60.1], [40, 73.7],
+    ]),
+  ]],
+]);
 const HOVER_STICK_PERCENT = {
   '5inch': {
     weights: [60, 100, 140],
@@ -1091,10 +1255,27 @@ const HOVER_STICK_PERCENT = {
   },
 };
 
+/* The same shape for Realistic physics. Both entries, because both
+ * airframes fly the five inch's plant (simId in configs/airframes.js). */
+const HOVER_STICK_PERCENT_REAL = {
+  '5inch': {
+    weights: [60, 100, 140],
+    cells: HOVER_5IN_REAL,
+    kv: { 80: HOVER_5IN_REAL_KV80, 120: HOVER_5IN_REAL_KV120 },
+  },
+  whoop65: {
+    weights: [60, 100, 140],
+    cells: HOVER_5IN_REAL,
+    kv: { 80: HOVER_5IN_REAL_KV80, 120: HOVER_5IN_REAL_KV120 },
+  },
+};
+
 /* One table's answer for this cap, weight and charge: the weight columns
  * interpolated, the pack block picked by the nearest charge. */
 function hoverAt(table, cells, cap, weight, cellV) {
-  const cols = cells.get(nearest(HOVER_CELLS, Number(cellV) || 4.2));
+  return hoverInBlock(table, cells.get(nearest(HOVER_CELLS, Number(cellV) || 4.2)), cap, weight);
+}
+function hoverInBlock(table, cols, cap, weight) {
   const c = nearest(THROTTLE_CAP_CHOICES, cap);
   const at = (i) => cols[i].get(c) ?? cols[i].get(100);
   const [light, mid, heavy] = table.weights;
@@ -1104,6 +1285,80 @@ function hoverAt(table, cells, cap, weight, cellV) {
   const edge = w < mid ? 0 : 2;
   const u = (w - mid) / ((edge === 0 ? light : heavy) - mid);
   return u === 0 ? at(1) : at(1) + (at(edge) - at(1)) * u;
+}
+/*
+ * And between two charge blocks, for a pack that is running down. The
+ * classic pack never moves, so its charge is always one of the three a run
+ * can start on and the nearest block is the answer. The realistic pack in
+ * solo freestyle falls from wherever it started, and hover climbs the stick
+ * as it does, three or four points over a pack: straight lines between the
+ * blocks, and the last slope carried on below 3.5 to where the cell's own
+ * curve ends, because a pack near empty is where hover moves fastest. At a
+ * block's own charge this is that block's figure exactly.
+ */
+function hoverAtVolts(table, cells, cap, weight, cellV) {
+  const v = Math.min(HOVER_CELLS[0], Math.max(PACK_OCV_V[0], Number(cellV) || HOVER_CELLS[0]));
+  let hi = 0;
+  while (hi < HOVER_CELLS.length - 2 && v < HOVER_CELLS[hi + 1]) {
+    hi += 1;
+  }
+  const a = hoverInBlock(table, cells.get(HOVER_CELLS[hi]), cap, weight);
+  if (v === HOVER_CELLS[hi]) {
+    return a;
+  }
+  const b = hoverInBlock(table, cells.get(HOVER_CELLS[hi + 1]), cap, weight);
+  if (v === HOVER_CELLS[hi + 1]) {
+    return b;
+  }
+  const u = (HOVER_CELLS[hi] - v) / (HOVER_CELLS[hi] - HOVER_CELLS[hi + 1]);
+  return Math.min(100, a + (b - a) * u);
+}
+
+/*
+ * THE REALISTIC PACK'S RESTING VOLTAGE PER CELL, from the charge a run
+ * started on and the amp hours used since. The module's own sum, repeated
+ * here because the shell has to follow it (plant_pack_voc and the two
+ * PLANT_OCV tables in src/native/plant.c, and pack_ah on the five inch's
+ * table): the keyboard's throttle springs to hover, and hover moves as the
+ * pack falls. A copy that drifts from the module is a spring to the wrong
+ * number, so scripts/hoverline-check.js runs a pack down through the module
+ * and holds the hover this predicts to the hover flown.
+ */
+export const PACK_AH = 1.3;
+const PACK_OCV_SOC = [-0.05, 0.00, 0.05, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90, 1.00];
+const PACK_OCV_V = [2.80, 3.27, 3.61, 3.69, 3.73, 3.77, 3.80, 3.84, 3.87, 3.95, 4.02, 4.11, 4.20];
+function packOcv(soc) {
+  if (soc <= PACK_OCV_SOC[0]) {
+    return PACK_OCV_V[0];
+  }
+  for (let i = 1; i < PACK_OCV_SOC.length; i += 1) {
+    if (soc <= PACK_OCV_SOC[i]) {
+      const u = (soc - PACK_OCV_SOC[i - 1]) / (PACK_OCV_SOC[i] - PACK_OCV_SOC[i - 1]);
+      return PACK_OCV_V[i - 1] + (PACK_OCV_V[i] - PACK_OCV_V[i - 1]) * u;
+    }
+  }
+  return PACK_OCV_V[PACK_OCV_V.length - 1];
+}
+function packSocOf(volts) {
+  if (volts <= PACK_OCV_V[0]) {
+    return PACK_OCV_SOC[0];
+  }
+  for (let i = 1; i < PACK_OCV_V.length; i += 1) {
+    if (volts <= PACK_OCV_V[i]) {
+      const u = (volts - PACK_OCV_V[i - 1]) / (PACK_OCV_V[i] - PACK_OCV_V[i - 1]);
+      return PACK_OCV_SOC[i - 1] + (PACK_OCV_SOC[i] - PACK_OCV_SOC[i - 1]) * u;
+    }
+  }
+  return PACK_OCV_SOC[PACK_OCV_SOC.length - 1];
+}
+export function packRestVolts(startCellV = 4.2, usedAh = 0) {
+  const start = Number(startCellV) || 4.2;
+  const used = Math.max(0, Number(usedAh) || 0);
+  if (used === 0) {
+    return start;
+  }
+  const soc0 = packSocOf(start);
+  return start + (packOcv(soc0 - used / PACK_AH) - packOcv(soc0));
 }
 
 /*
@@ -1118,16 +1373,23 @@ function hoverAt(table, cells, cap, weight, cellV) {
  * figure exactly as it always did: that branch is taken before any of the new
  * arithmetic, so a pilot who never touches the slider reads the numbers that
  * were measured before it existed.
+ *
+ * `real` is Realistic physics, and it reads the realistic model's own tables
+ * at the same slider weight, with the charge taken as a voltage between the
+ * blocks so a pack that is running down can be followed (packRestVolts).
+ * False, the default, is every line above exactly as it was.
  */
-export function hoverStickPercent(cap, airframe = '5inch', weight = 100, cellV = 4.2, motorKv = 100) {
-  const table = Object.hasOwn(HOVER_STICK_PERCENT, airframe) ? HOVER_STICK_PERCENT[airframe] : HOVER_STICK_PERCENT['5inch'];
-  const stock = hoverAt(table, table.cells, cap, weight, cellV);
+export function hoverStickPercent(cap, airframe = '5inch', weight = 100, cellV = 4.2, motorKv = 100, real = false) {
+  const tables = real === true ? HOVER_STICK_PERCENT_REAL : HOVER_STICK_PERCENT;
+  const read = real === true ? hoverAtVolts : hoverAt;
+  const table = Object.hasOwn(tables, airframe) ? tables[airframe] : tables['5inch'];
+  const stock = read(table, table.cells, cap, weight, cellV);
   const kv = Math.min(120, Math.max(80, Number(motorKv) || 100));
   if (kv === 100) {
     return stock;
   }
   const stop = kv < 100 ? 80 : 120;
-  const far = hoverAt(table, table.kv[stop], cap, weight, cellV);
+  const far = read(table, table.kv[stop], cap, weight, cellV);
   if (kv === stop) {
     return far;
   }

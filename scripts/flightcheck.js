@@ -102,6 +102,33 @@ function setKv(sim) {
     throw new Error(`sim_set_motor_kv returned ${rc}`);
   }
 }
+/*
+ * --real=MASK, default 0: Realistic physics, through sim_set_realism. The
+ * keyboard's hover table has a second set read with this flag (HOVER_5IN_REAL
+ * in configs/rates.js), because the realistic model is another machine: at
+ * one real g it does not hover where the classic plant does at the same
+ * weight. 239 is the mask the shell flies wherever the pack does not run
+ * down, and the pack's own fall is handled by the shell from the charge
+ * used. At 0 the export is never called, so a run without the flag is the
+ * module's own default and every figure below is the one it always printed.
+ */
+const REAL = Number(process.argv.slice(2)
+  .find((a) => a.startsWith('--real='))?.slice('--real='.length) ?? '0');
+if (!(Number.isInteger(REAL) && REAL >= 0 && REAL <= 255)) {
+  throw new Error(`--real=${REAL} is not a realism mask, 0 to 255`);
+}
+function setReal(sim) {
+  if (REAL === 0) {
+    return;
+  }
+  if (typeof sim.e.sim_set_realism !== 'function') {
+    throw new Error('this dist/sim.wasm has no sim_set_realism');
+  }
+  const rc = sim.e.sim_set_realism(REAL);
+  if (rc !== SIM_OK) {
+    throw new Error(`sim_set_realism returned ${rc}`);
+  }
+}
 const MASS = WHOOP ? 0.0234 : 0.71;
 
 /* State indices, sim_abi.h. */
@@ -142,6 +169,7 @@ async function fresh(cellV = CELL_V) {
   }
   setGravity(sim);
   setKv(sim);
+  setReal(sim);
   if (sim.init(config) !== SIM_OK) {
     throw new Error('sim_init failed');
   }
@@ -324,6 +352,7 @@ for (const cap of THROTTLE_CAP_CHOICES) {
     }
     setGravity(sim);
     setKv(sim);
+    setReal(sim);
     if (sim.init(config + lines) !== SIM_OK) {
       throw new Error('sim_init failed with the cap lines');
     }

@@ -76187,3 +76187,51 @@ None on any other map. On this map it is lower: the same five lens positions on 
 - The first comparison shots were taken from inside a rack and behind a column; the lens positions were wrong, not the map. Reshot.
 - The hidden partner sign first landed on the paint shop's east wall in plain view from its door. Moved to the wall the door is in.
 - The dock's first layout put the crate in the far corner and the forklift at the door, as the old frames had it; photo 0425 has the crate near the left door and the forklift on the right. Fixed in round 3.
+
+## 2026-11-16: Thomas More's Shop: the office area built to fly, and the paint shop turned (draft PR 276)
+
+The owner, 22:09Z on 15 November (06:09 on the 16th his time), on the floor plan of the rebuild above, with a ring drawn where the hallway meets the flat wall: "Add the office area" and "Paint shop does technically need to be turned 90 degrees clockwise to match the real thing".
+
+### What changed
+
+- **The paint shop** (`sprayRoom`, `PAINT`, `partition` in `src/maps/warehouse/warehouse.js`). It ran north from the sliding door, the door in its long wall, so a pilot coming in looked across it and the booths were off to the left. Thomas's photo 0418 is taken in that doorway and looks straight down the room at the booths. So the room is turned a quarter clockwise about its door corner: it now runs east from the partition, 14.25 by 8.05, the sliding door in its short west wall by the south corner, the booths against its east end, the square duct along its north wall. Nothing in it was redesigned: the room is now written in the photo's own terms, `a` metres along from the doorway's wall and `c` across from the left wall, and every piece keeps the place it had. The strip the old room filled north of the new one, up to the machine room's south wall, is solid and not flown. The machine room is untouched.
+- **The office area** (`officeArea`, `OFFICES`, three new `OPENINGS`). It was one solid behind the flat wall but for the lunch room, the plywood passage and the coat room. It is now rooms under a 2.7 ceiling from the coat room east to the line of the hallway's end: a corridor down the middle; south of it reception (off the coat room, so the front door leads somewhere), an open office of three desk islands, and a corner office; north of it a lobby inside the green door, two offices, a meeting room. Ways in: the lunch room's door as before; the window beside it, which photos 0169 and 0170 look through, now an opening; the other green door in the flat wall, shut in photo 0414 and open here; the front door through the coat room; and a door from the hallway through the plywood at the spot the owner ringed. East of the hallway's end it stays solid.
+- `src/maps/warehouse/yard.js`: three gaps in, LUNCH ROOM WINDOW (500), GREEN DOOR (250), HALLWAY DOOR (250). Sixteen now.
+- `scripts/warehouse-check.js`: the three paint shop lines rewritten for the turned room, nine lines in for the offices (in at the green door and out by the hallway door, the front door to the corridor, in at the window and out at the lunch room's door, round the open office, under one of its desks, round the meeting table, the corner office, an office, the corridor end to end). 47 lines.
+- The hidden partner sign moved with its wall: it is on the paint shop's west wall, the one the door is in, as before.
+- `assets/thumbs/warehouse.jpg` redrawn: 595 of its pixels changed, the sliver of flat wall seen through the barani doorway.
+
+### What is a guess, said plainly
+
+No picture is taken inside the offices. Photos 0144 to 0173 and the fifteen of 15 November were gone through again for them and show their edges only: the lunch room through its door and its window, the green door, the passage, the coat room. So every room past the lunch room is laid out the way a shop's front offices usually are, and none of it is Thomas's. The door from the hallway is a reading of a ring drawn on a plan, and no photo of the hallway shows a door there. The floor plan of 16 November (`/mnt/project-files/tcmore-warehouse/refine-2026-11-15/floor-plan-2026-11-16.png`) labels the rooms and says they are a guess, for Thomas to mark.
+
+### Self verify
+
+The same scratch rig as above, High, headless Chromium. The lens parked in the sliding door looking down the paint shop, set beside photo 0418: the duct along the left wall under the roof, the wall cabinet and the counter of tins on the left, the drying racks left of the middle, the two hoods at the far end with their flues, the mirror cabinet and the dollies on the right. That is the photo's arrangement, which the old room could not give from its door. Then a picture of each new room, the lobby seen through the green door from the lane, the hallway's new door, and the window from the lane. First pictures had the chairs as plain black cubes; they got backs.
+
+### Checks run on this tree
+
+- `node scripts/warehouse-check.js`: all passed. Layout (18 colours, two builds one hash), placed, 47 lines swept clear, 16 gaps clear, no slots among 1051 solids, no leaks (the air leaves only by the front door and the exit door, so the offices are sealed from outside and from the solid round them), lift off twice bit identical.
+- `npm run check:career`, `node scripts/attract-check.js warehouse`, `lint:preload` 2 of 2, `lint:partners` 133 of 133, `check:props`: passed.
+- Not run: `npm run verify`. Nothing in physics, the plant, the module ABI or the build changed. Not flown by a person.
+
+### Latency
+
+Flat, a little under main. The same five lens positions on main (cb041dc) and on this tree, headless Chromium, no GPU here so these are draw cost proxies:
+
+| | workshop | aisle | dock | CNC | high |
+|---|---|---|---|---|---|
+| High, main | 99081 | 99021 | 97993 | 98835 | 98835 |
+| High, here | 98621 | 98743 | 97303 | 98371 | 98557 |
+| Low, main | 73435 | 73559 | 72531 | 73373 | 73373 |
+| Low, here | 72273 | 72395 | 71139 | 72207 | 72209 |
+
+Draw calls within one of main's at every position (High 38 to 48 here, 39 to 47 on main; Low 26 to 35 against 27 to 35), which is which partner sign is in view. The collision set is 1051 solids where main has 1011, forty more, and what one physics step can gather is the number that costs: 47 at worst here, 48 on main. No new colour, texture, light or shader.
+
+The rooms were over main's triangles when first built, by 58 at two of the five positions. Brought under by spending less, not by moving a threshold: eight ceiling lights for twelve and all of them paint, six meeting chairs for eight, the drying racks' shelves 0.25 apart for 0.2, nine tins for twelve, the flat wall's white face only where the drawn wall is not.
+
+### What went wrong
+
+- The first office desks stood on four legs each and the two offices by the teal racking became the map's densest cell, 53 solids where main's worst is 48. Those two desks stand on their drawers now, one solid each, and the lights are paint.
+- A desk on an inset base left a 0.39 m slot to its chair. The base is the desk's full size.
+- A chair first stood 0.1 m off a line through the open office's door. The doors were moved along the wall, clear of the desk islands.

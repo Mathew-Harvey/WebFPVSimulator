@@ -75,6 +75,12 @@ function rows() {
     across(OPENINGS.woodDoor, 'THE WOOD DOOR', 100),
     across(OPENINGS.backDoor, 'BACK DOOR', 100),
     across(OPENINGS.lunchDoor, 'LUNCH ROOM DOOR', 250),
+    /* The office area's ways in, open since 16 November 2026: the window
+     * beside the lunch room's door, the other green door in the flat wall,
+     * and the door from the hallway. */
+    across(OPENINGS.lunchWindow, 'LUNCH ROOM WINDOW', 500),
+    across(OPENINGS.greenDoor, 'GREEN DOOR', 250),
+    across(OPENINGS.hallDoor, 'HALLWAY DOOR', 250),
     across(OPENINGS.frenchDoor, 'FRENCH DOOR', 250),
     across(OPENINGS.slidingDoor, 'SLIDING DOOR', 250),
     across(OPENINGS.officeWindow, 'OFFICE WINDOW', 500),

@@ -76,6 +76,7 @@
     "check:tuneload": "node scripts/tuneload-check.js",
     "check:crash-pacing": "node scripts/crash-pacing.js",
     "check:timeryield": "node scripts/timeryield-check.js",
+    "check:timerpace": "node scripts/timerpace-check.js",
     "check:bounce": "node scripts/bounce-check.js",
     "check:stall": "node scripts/stall-check.js",
     "check:takeoff": "node scripts/takeoff-check.js",

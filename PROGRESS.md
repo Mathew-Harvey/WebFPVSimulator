@@ -76104,3 +76104,32 @@ The owner, after the bug board run reported `check:rooms`' one failure (the shel
 - Main moved while the sweep ran: f0e24e6 to 9e8051a (a sponsor's mark on a gate's approach face, and a PayPal button on the support prompt and Credits). Merged into this branch, not rebased over; the one conflict was this file, both sides kept. On the merged tree, which is the tree pushed: `npm run verify` 18 of 19 with check 16 failing as before; `check:plant`, `check:realism`, `check:blackbox` all passed; `replay:test` 9 of 9; `check:hoverline` 42 of 42; `check:realrow`, `check:tune`, `check:touchfullscreen`, `check:takeoff` and main's new `check:gatebrand` all passed; `check:firstflight` 49 of 49; `lint:boot` 10 of 10; `dist/sim.wasm` unchanged. The wide sweep above was on the tree before the merge and was not repeated, since what the merge brought is a gate's face and a donate button.
 - To main. The owner's message of 2026-11-15 01:04Z quoted at the top is the word: "make fix self verify and push to main". Latency was stated above as none added, so nothing here waits on the latency rule. Main fetched first and fast forwarded; nothing forced. The live check follows in the next line.
 - Live check, 2026-11-15 04:08Z: main was pushed at 04:06:20Z (9e8051a to 9778141, a fast forward) and https://webfpv.org/sim/ served this tree's configs/rates.js, src/main.js and src/ui/ui.js byte for byte by 04:07:50Z (sha256 e97b03363842..., d5ae63e8f769..., 0a88983a6a43...). A fresh headless profile booted with no page error on the five inch at realism mask 239, gravity 1, the keys' rest at 0.266 and the pack reading 0 used. That is a boot and a number, not a flight on the keys: the hover is the owner's, or any keyboard pilot's, to feel.
+
+## 2026-11-15 | render | The timer loop locked to the display: Low's judder and its walking tear line
+
+### The report
+
+A pilot on the Discord, passed on by the owner with "Can you try and reproduce this issue ? Then root cause and fix it": "there's some really weird digital tearing going on halfway on the screen horizontally and it's insanely jittery, and I have prop wash off and even tried going down to the lowest settings of the graphics". No ticket, so no perf block: platform, GPU and refresh rate unknown.
+
+### Root cause
+
+Two things, one of them a bug.
+
+- The jitter, a bug. Low turns the timer loop on (Frame pacing's Auto, `pacingTimerOn`). `timerDelay` asked for the display's period less the GPU's frame and used it as a PERIOD. That number is a phase (start the frame so it finishes at the next refresh); as a period it is a rate a little above the display's that drifts across it. On a 60 Hz panel with the GPU at 2 ms, what Low makes of an ordinary desktop card, the timer drew every 14.7 ms, 68 frames a second, and about seven times a second a refresh got a picture two draws on from the last and the next only one. The lower the preset, the quicker the GPU, the closer the delay sits to the period and the slower, more visible the beat. timeryield.js keeps the timer in that case (14.7 is under 0.95 of 16.7), so it never ended. On the owner's Iris Xe (GPU 7.8 ms, the case the timer was built on) the same drift is about 109 frames a second against 120, a smaller uneven step eleven times a second.
+- The tearing, not a bug but a trade. Low latency view (the desynchronized canvas, on by default since 2026-09-27) is granted on many platforms, and where the browser really presents it off vsync (Android's single buffer, some Windows) a frame shows the moment it finishes, so a tear is expected. Under the drifting timer the tear line walked the screen with the beat. Only Low latency view off removes it; that raises latency on exactly those machines, so it is put to the owner and not changed.
+
+### Reproduced
+
+No GPU and no real display here, so not on glass. `scripts/timerpace-check.js` models a display that shows, at each refresh, the newest frame finished before the compositor's deadline, with a WebGL style GPU queue and a timeout's 0.1 to 0.6 ms lateness, and runs the old formula and the new pacing through it. On the base formula, the pilot's case juddered 6.6 times a second and its tear row spread over the whole screen; the owner's laptop's 11.5 times a second.
+
+### Fix
+
+`src/render/timerpace.js`, new, pure. The timer draws exactly twice per refresh, at times counted from the last refresh the kept rAF saw (`rafKeepAlive`'s timestamp), so every refresh takes a picture of the same age and the motion is even, and off vsync each tear row stays put. When half the period is under the GPU's frame or the 4 ms a chained timeout is clamped to (a 144 Hz panel, a slow GPU), the tick is a fallback and timeryield's existing period signal hands the frames to the display loop under Auto; any other count would beat again. The period comes from the kept rAF's own gaps (25th percentile of 16), because the refresh learner stands down under the timer and a page that boots on Low never learned it. main.js: `timerDelay` calls it, `rafKeepAlive` feeds it, the page hiding resets it. Shell only: no plant, ABI or build change, the physics accumulator untouched.
+
+### Latency
+
+Model, not glass. The picture's mean age at a refresh, averaged over compositor deadlines 0 to 13 ms before the refresh: 16.3 to 12.5 ms at GPU 2 ms, 19.2 to 18.3 ms at GPU 7.8 ms. A locked phase wins a few milliseconds where the compositor takes the frame late and loses up to 3 where it takes it 2 ms early (18.3 against 15.4 ms on the owner's GPU), which nothing in a page can learn. More draws on a fast GPU at Low (120 a second instead of about 68 on 60 Hz): more GPU work, heat and battery. A 144 Hz panel at Low now flies the display loop (it drew a beat at about 238 against 144 before; the judge kept it). Per frame cost: a handful of arithmetic and a 16 entry insertion sort on the kept rAF, no allocation.
+
+### Checks
+
+See the PR. Not run: `npm run verify` (nothing in the plant, ABI or build), `node scripts/shots.js` (a cadence, not a picture; headless frames are software rendered and not paced by a display).

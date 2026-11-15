@@ -76133,3 +76133,13 @@ Model, not glass. The picture's mean age at a refresh, averaged over compositor 
 ### Checks
 
 See the PR. Not run: `npm run verify` (nothing in the plant, ABI or build), `node scripts/shots.js` (a cadence, not a picture; headless frames are software rendered and not paced by a display).
+
+### Low latency view off by default, the owner's pick
+
+Put to the owner as a card, "Turn Low latency view off by default to stop the tearing?", with leave it on recommended. The owner, 2026-11-15 13:22Z, picked "Off everywhere". Done:
+
+- `lowLatencyView: false` in DEFAULTS replaces `lowLatency: true`. It is a new key because a settings blob stores every field, so every pilot who ever saved settings has `lowLatency: true` in it, and a changed default would not have reached them. The old key is no longer read and drops out on the next save. A pilot who switches the row on keeps it on.
+- main.js reads the new key in its three places: the canvas's desynchronized request at boot, the GPU guard's enable (the guard follows Low latency view as before, so with the row off a saturated GPU's draws are no longer held), and the latency probe.
+- `check:timerpace` section 7: a new pilot is off, a stored `lowLatency: true` is off, a stored `lowLatencyView: true` stays on. All three fail on the base ui.js and pass here.
+- Latency: a RISE, on the owner's word. Where a browser really presented the canvas off vsync, frames now wait in the compositor's queue again, up to one or two refreshes. Where the request was not really honoured (the owner's Linux laptop on 2026-09-28 saw no tearing), there is no change. The guard no longer holds draws on a saturated GPU, so a GPU that cannot keep up can queue frames. A pilot who wants the old path switches Low latency view back on in Settings.
+- To main on the owner's word, 2026-11-15 13:32Z: "push to main", after the PR stated both latency effects (the timer: no older on average in the model; Low latency view off: a rise, his pick).

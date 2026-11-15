@@ -757,9 +757,11 @@ export async function boot({ loading, bootStart, mapId }) {
     pingVisit('sim');
   }
   const canvas = document.getElementById('view');
-  /* The flying view wants the shortest path to the glass it can get, and
-   * has nothing to read its own frames back for. See shell.js for what the
-   * compositor queue costs a pilot.
+  /* The flying view has nothing to read its own frames back for, so it may
+   * take the shortest path to the glass when the pilot asks for it (Low
+   * latency view, off by default since 2026-11-15 because it tears: see
+   * lowLatencyView in ui.js). See shell.js for what the compositor queue
+   * costs a pilot.
    *
    * ?gpu=low is a measurement hook: WebGL powerPreference low-power, so a
    * dual-GPU box can bind the iGPU. The flight default stays
@@ -774,7 +776,7 @@ export async function boot({ loading, bootStart, mapId }) {
    */
   const bootSettings = loadSettings();
   const shell = buildShell(canvas, {
-    desynchronized: bootSettings.lowLatency !== false,
+    desynchronized: bootSettings.lowLatencyView === true,
     opaque: true,
     powerPreference: gpuQuery === 'low' ? 'low-power' : 'high-performance',
   });
@@ -14005,7 +14007,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * whole browser on the battery's software rasteriser).
      */
     if (worldLive && drawThis && !film && !replayStepMode && !capturing
-      && gpuGate.shouldSkip(renderStart, ui.settings.lowLatency !== false, latency.targetMs(), timerLoop)) {
+      && gpuGate.shouldSkip(renderStart, ui.settings.lowLatencyView === true, latency.targetMs(), timerLoop)) {
       drawThis = false;
     }
     if (worldLive) {
@@ -16652,7 +16654,7 @@ export async function boot({ loading, bootStart, mapId }) {
     key: latency.report(),
     hz: latency.refreshHz(),
     gpuMs: gpuGate.state.samples ? gpuGate.state.gpuMs : null,
-    lowLatency: shell.granted.desynchronized && ui.settings.lowLatency !== false,
+    lowLatency: shell.granted.desynchronized && ui.settings.lowLatencyView === true,
   }));
   /*
    * FLIGHT FEEL TUNING'S TWO HANDLES ON THE MODULE, given to the Ui rather

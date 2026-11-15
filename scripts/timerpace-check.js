@@ -218,5 +218,25 @@ check('60 Hz with the GPU past half the period is one', drawsPerRefresh(P60, 10.
   check('a reset does not count the gap across it', Math.abs(rp.periodMs() - 1000 / 144) < 0.2);
 }
 
+/* 7. Low latency view is off by default, for every pilot (the owner's pick
+ * of 2026-11-15, "Off everywhere"), including one whose saved settings
+ * carry the old default `lowLatency: true`. Its tear is half of the same
+ * report, so it lives in the same check. */
+{
+  const store = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => store.set(k, String(v)),
+    removeItem: (k) => store.delete(k),
+  };
+  const { loadSettings, SETTINGS_KEY } = await import('../src/ui/ui.js');
+  const key = SETTINGS_KEY;
+  check('a new pilot flies without the low latency canvas', loadSettings().lowLatencyView === false);
+  store.set(key, JSON.stringify({ lowLatency: true, hasFlown: true }));
+  check('a pilot whose saved settings carry the old default true is off too', loadSettings().lowLatencyView === false);
+  store.set(key, JSON.stringify({ lowLatencyView: true, hasFlown: true }));
+  check('a pilot who switches the row on keeps it on', loadSettings().lowLatencyView === true);
+}
+
 console.log(failures ? `timerpace-check: ${failures} FAILED` : 'timerpace-check: all passed');
 process.exit(failures ? 1 : 0);

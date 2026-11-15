@@ -76001,3 +76001,4 @@ The owner, after the bug board run reported `check:rooms`' one failure (the shel
 - To main. The owner, 2026-11-15 01:37Z (9:37 AM Perth), to the report that named the two draft PRs, the no-change latency effect and the checks not run: "Push to main". Covers sim PR 274 and board PR 83. Steam and the landing page were not covered.
 
 - To main, 2026-11-15 01:37Z. The owner, in the thread, after the draft PR 273 and its fly notes: "Push to maim" (read as main). Fetched first; main had moved by the PayPal button, merged onto this branch (PROGRESS.md was the only conflict, both entries kept), `check:gatebrand` 7 of 7 and the builder selftest 2676 passed on the merged tree, then fast forwarded onto main.
+- Live check, 2026-11-15: https://webfpv.org/sim/ served this tree's src/render/scene.js byte for byte (sha256 160b67069a58...) and booted in headless Chromium with no page error.

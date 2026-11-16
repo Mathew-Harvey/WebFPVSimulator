@@ -76395,3 +76395,5 @@ Calls / triangles. He stands at the bench in the first two views and is out of t
 
 - First built importing Heads' builder and skeleton from `src/maps/heads/`, as Dan does; `memory-check` showed it pulled Heads' house into the shop. Written again here instead.
 - The first walking pictures never caught him walking: the headless High renderer runs the title clock about ten times slower than the wall, so the wait ran out first. Taken on Low.
+
+The owner, 16 November 2026 23:31Z (17 November, 7:31 AM Perth), on draft PR 278 after its latency rise was stated: "Push to main". Fast forwarded onto main a04f83c; his word accepts the rise.

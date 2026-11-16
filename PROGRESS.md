@@ -76350,3 +76350,7 @@ Draw calls within one of main's at every position. 1073 solids where main has 10
 ### Still to come
 
 - Thomas walking the shop with Canadian lines: waits on his manga sheet (the Grok prompt is in the thread) and his pick of the lines. It is a rise of about one draw call and 3k triangles, so it needs the owner's word when it comes.
+
+### The owner's word, and to main
+
+The owner, 14:28Z on 16 November 2026, on the reply that gave the latency (under main), said nothing had been flown, and asked which check: "Push to main, I'll make manga Thomas tomorrow". It covers this round, draft PR 277 here and PR 85 on the board. No verification scale was picked; it goes out not flown. The board's picture went first (its main 7442944 to 91ba8e8, fast forward, `npm test` all passed on that tree), then this tree, fast forward onto main 1879d7c, which had not moved. `node scripts/warehouse-check.js` and `npm run check:career` were run again on the exact tree pushed. Thomas's manga sheet for the walking Thomas comes tomorrow.

@@ -76290,3 +76290,12 @@ The owner, 22:55Z on 15 November 2026, on the reply that gave the latency table 
 - The first scratch scene paused with `ui.act('pause')` alone, which leaves the screen on flight, so its first overlap reading was taken over the flight and not the menu. Pausing with Escape, as a pilot does, gave the real picture.
 - The first barrier probes tapped the pitch from two metres out, wallpin style, and 28 of 32 never reached the block; flying a line into it at a set speed and height is what reached it every time.
 - The first `check:ekimae` flight lines shared one list of failures between two checks, so the second check's detail showed flights the first one had failed. Split before the commit.
+
+### To main, by the standing rule of 2026-11-10
+
+- Every condition held: both bugs reproduced on the base; both fixes change the cause (the panels' missing rule against a menu, the barrier's missing foot), not a symptom; each has a check wired into an npm script that fails on the base and passes here (`check:rooms`, `check:ekimae`); every check for what the two changes touch passed on the tree pushed, or failed identically on main (verify's check 16); no change to the physics model's shape, the module ABI or the build. Main had not moved from b8ae5a7, fetched just before: pushed 2026-11-16 00:40:54Z, b8ae5a7 to a5168b0, a fast forward, nothing forced.
+- Live check: before the deploy https://webfpv.org/sim/ served the base's together.js, ui.js and Ekimae's plan.js byte for byte (so the minify step is not in effect); by 00:43Z it served this tree's, byte for byte (sha256 e90b08b852561ffe, 041dbb8f75bf5021, cc1c41a3e1c60def). A fresh headless profile booted https://webfpv.org/sim/ and https://webfpv.org/sim/?map=ekimae&craft=5inch with no page error and no console error. That is a boot, not a flight: the barrier and the vote are the pilots' to try.
+
+### The board closed, by the standing rule of 2026-11-07
+
+- Read again before closing: 30 open, none filed since the triage began; 0 in progress. Closed with the run's token through `POST /board/api/bugs/:id`, status and resolution: 30 updates, 30 answered 200. `fixed`: bug-0bead284 naming 0d271fab, bug-99b4aa8f naming a562bb63, both on main and live. `wontfix`: bug-8487fa86 the takeoff guard as a feature request for the owner; bug-75567b93 a room report with nothing to act on; 13 feel notes and 13 tune reports no code defect, tune numbers kept in the Tunes panel. Afterwards the board lists 0 open and 0 in progress.

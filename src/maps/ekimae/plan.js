@@ -357,6 +357,24 @@ function barriers(T) {
   }
   for (const seg of T.walls) {
     pcap(T, 'concrete', [seg.a[0], seg.a[1], 0.45], [seg.b[0], seg.b[1], 0.45], 0.45, { draw: false, kind: 'wall', name: 'barrier' });
+    /*
+     * THE FOOT, bug-99b4aa8f, 2026-11-15: "every time i hit a barrier i get
+     * stuck", and the way the pilot would fix it, "getting rid of the tiny
+     * gaps in the barrier". The capsule above is a round log lying at its
+     * own radius, so at the ground it is a line, and under its round side
+     * there was a wedge of air reaching 0.25 m inside the drawn block's
+     * foot. A craft that met the barrier low and slow slid into it and lay
+     * there on the ground, upright, under 17 cm of concrete it could not
+     * climb through: the ticket's craft was 0.35 m from the axis, upZ 0.97,
+     * landed. Upright and on the ground is a landing, so nothing set it
+     * down either. This second capsule, its axis on the ground and the
+     * same radius, fills the wedge: the solid now meets the ground as wide
+     * as the drawn foot, and its plan footprint is the one it had, so the
+     * course's clearances do not move. Same name, so everything that reads
+     * the barriers reads it too. scripts/ekimae-check.js flies the plant
+     * into it.
+     */
+    pcap(T, 'concrete', [seg.a[0], seg.a[1], 0], [seg.b[0], seg.b[1], 0], 0.45, { draw: false, kind: 'wall', name: 'barrier' });
   }
 }
 

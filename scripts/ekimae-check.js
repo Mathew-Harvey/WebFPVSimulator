@@ -37,6 +37,10 @@ import { placeSolids } from '../src/props/solids.js';
 import { normalize } from '../src/trackbuilder/model.js';
 import { nearestOn } from '../src/maps/built/road.js';
 import { GAP_MIN } from '../src/props/parts.js';
+import { existsSync, readFileSync } from 'node:fs';
+import { makeRig, buildWorld, V, linePath } from './lib/flightrig.js';
+import { deriveObstacles } from '../src/game/obstacles.js';
+import { heldStill } from '../src/game/collide.js';
 
 let failed = 0;
 let passed = 0;
@@ -202,6 +206,117 @@ check('a city street of four 3 m lanes is 12 m', HALF * 2 === 12);
 check('a commuter train car is about 20 m by 2.95 m', Math.abs(TRAIN.len + TRAIN.gap - 20) < 0.01 && Math.abs(TRAIN.half * 2 - 2.95) < 0.01);
 const poles = doc.elements.filter((e) => e.type === 'utilityPole');
 check('the poles stand 10 m', poles.length > 0 && poles.every((p) => p.dims.height === 10), `${poles.length} poles`);
+
+/*
+ * THE BARRIERS' FOOT, bug-99b4aa8f, 2026-11-15: "every time i hit a barrier
+ * i get stuck". The barrier was one capsule lying at its own radius, a log,
+ * and under its round side at the ground a wedge of air ran 0.25 m inside
+ * the drawn block: a craft that met it low and slow lay there upright,
+ * under concrete it could not climb through, and upright on the ground is a
+ * landing, so nothing set it down. First the shape: the drawn foot of every
+ * block is solid down to the ground. Then the plant flown into one.
+ */
+console.log('the barriers\' foot');
+{
+  const bars = placed.solids.filter((s) => s.name === 'barrier' && s.cap);
+  const inBar = (x, y, z) => bars.some((s) => {
+    const [ax, ay, az, bx, by, bz, r] = s.cap;
+    const dx = bx - ax;
+    const dy = by - ay;
+    const dz = bz - az;
+    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy + (z - az) * dz) / (dx * dx + dy * dy + dz * dz)));
+    return Math.hypot(x - ax - t * dx, y - ay - t * dy, z - az - t * dz) < r;
+  });
+  /* Across the middle and the quarter of every block, both faces, out to
+   * the drawn foot's 0.42 m (src/maps/ekimae/index.js), up to 0.3 m. */
+  let open = 0;
+  let first = '';
+  for (const seg of L.walls) {
+    const dx = seg.b[0] - seg.a[0];
+    const dy = seg.b[1] - seg.a[1];
+    const len = Math.hypot(dx, dy);
+    for (const t of [0.25, 0.5]) {
+      for (const off of [-0.4, -0.3, -0.2, -0.1, 0.1, 0.2, 0.3, 0.4]) {
+        const px = seg.a[0] + dx * t - (dy / len) * off;
+        const py = seg.a[1] + dy * t + (dx / len) * off;
+        for (const h of [0.02, 0.08, 0.15, 0.25]) {
+          const [x, , z] = w(px, py);
+          if (!inBar(x, h, z)) {
+            open += 1;
+            if (!first) first = `block ${seg.i} at ${off} m off its axis, ${h} m up`;
+          }
+        }
+      }
+    }
+  }
+  check('every block\'s drawn foot is solid to the ground, no wedge under it', open === 0,
+    open ? `${open} points open, first ${first}` : `${L.walls.length} blocks`);
+}
+
+const WASM = new URL('../dist/sim.wasm', import.meta.url);
+if (!existsSync(WASM)) {
+  console.log('  SKIP  dist/sim.wasm is not built, so nothing was flown');
+} else {
+  /*
+   * Flown through the real plant, as scripts/wallpin-check.js flies its
+   * wall: the block the ticket's craft lay against, on the start straight's
+   * north side, met head on low and slow (where the wedge was), let go with
+   * the throttle cut or at hover. A craft may not come to rest under the
+   * block's face, and wherever it rests it either climbs away with the nose
+   * up, or is still and tilted enough that stuckTick sets it down
+   * (heldStill). On the base, every throttle cut run lay under the face,
+   * upright, and could do neither.
+   */
+  const seg = L.walls.find((s) => s.a[1] === s.b[1] && s.a[0] < 197.7 && s.b[0] > 197.7 && Math.abs(s.a[1] - 62.95) < 0.01);
+  const [ax, , az] = w(seg.a[0], seg.a[1]);
+  const [bx] = w(seg.b[0], seg.b[1]);
+  const cx = (ax + bx) / 2;
+  const caps = placed.solids.filter((s) => s.name === 'barrier' && s.cap && Math.hypot(s.cap[0] - cx, s.cap[2] - az) < 30)
+    .map((s) => ({ kind: 'capsule', material: 'wall', ax: s.cap[0], ay: s.cap[1], az: s.cap[2], bx: s.cap[3], by: s.cap[4], bz: s.cap[5], r: s.cap[6] }));
+  const world = buildWorld(caps, deriveObstacles, 0);
+  const wasmBytes = readFileSync(WASM);
+  const diffText = readFileSync(new URL('../configs/betaflight-default.diff', import.meta.url), 'utf8');
+  /* The rig's hover stick on the five inch (wallpin-check's). */
+  const HOVER = 0.345;
+  let flown = 0;
+  let under = 0;
+  let held = 0;
+  const lay = [];
+  const left = [];
+  for (const h of [0.08, 0.18, 0.35]) {
+    for (const speed of [1, 2]) {
+      for (const after of [0, HOVER]) {
+        const rig = await makeRig({ wasmBytes, diffText, colliders: world.colliders, field: world.field, spawn: V(cx, 0, az + 9), spawnYaw: 0, groundY: 0 });
+        rig.hold(200, 0, 0, 0, 0.5);
+        rig.settle(V(cx, h, az + 3), Math.PI, 2.5);
+        rig.fly(linePath(rig.craft().p, V(cx, h, az - 2), 5 / speed), { heading: Math.PI });
+        rig.hold(2500, 0, 0, 0, after);
+        if (rig.stats.contacts === 0) {
+          continue;
+        }
+        flown += 1;
+        const c = rig.craft();
+        const st = rig.state();
+        const d = c.p.z - az;
+        const v = Math.hypot(st[4], st[5], st[6]);
+        const rate = Math.hypot(st[11], st[12], st[13]);
+        const isUnder = d > 0 && d < 0.45 && c.p.y < 0.45;
+        const setDown = heldStill(c.upZ, v, rate, true, false);
+        rig.hold(250, 0, 0.4, 0, 0.6);
+        rig.hold(1000, 0, 0, 0, 0.75);
+        const away = rig.craft().p.y > 1.2;
+        under += isUnder ? 1 : 0;
+        held += !away && !setDown ? 1 : 0;
+        const says = `${h} m up at ${speed} m/s, ${after ? 'hover' : 'cut'}: ${d.toFixed(2)} m off the axis, ${c.p.y.toFixed(2)} m up, upZ ${c.upZ.toFixed(2)}`;
+        if (isUnder) lay.push(says);
+        if (!away && !setDown) left.push(says);
+      }
+    }
+  }
+  check('the plant flown into the block meets it', flown >= 8, `${flown} of 12 flights touched it`);
+  check('no flight comes to rest under the block\'s face', under === 0, under ? `${under}: ${lay.slice(0, 3).join('; ')}` : `${flown} flights`);
+  check('and none is left where it can neither climb away nor be set down', held === 0, held ? `${held}: ${left.slice(0, 3).join('; ')}` : `${flown} flights`);
+}
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

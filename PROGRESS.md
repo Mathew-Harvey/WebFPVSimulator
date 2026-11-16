@@ -76314,7 +76314,7 @@ The owner, 13:56Z on 16 November 2026, relaying Thomas More with Thomas's markup
 - **The dive gap** (`DIVE`, `officeArea`). The office area's north wall stood against the flat wall's plywood. East of x 19.95 it now stands 1.5 m south of it (y 10.0), so between the plywood and the offices there is a slot open to the roof, the length of the teal racking and the hallway, to drop into over the racking and fly along. The hallway's door, the north rooms' desks, chairs, screens, the meeting table and the notice board moved south with the wall. The offices themselves are unchanged in plan, as the owner asked; their being a guess still holds.
 - **The tubes over the barani doorway** (`TUBES`, `tubeBore`, `baraniDoorway`). The rolls were round caps drawn on one hidden solid, so nothing went through them. Now two rows of cardboard tubes lie end on across the racking's line, the crate aisle at one end and the lane along the flat wall at the other: seven in the first row, six in the second laid over the first's walls. Each bore is 0.55 plan (1.65 m) square and dark inside. They are square because this map draws only boxes; the floor tube in the west lane is square for the same reason. A row is one floor, one roof and the walls between, so thirteen tubes are nineteen boxes and two dark sheets a row, fewer triangles than the rolls. The door lining and the rack's uprights now stop at the tubes' floor, and the rack's panels reach it, so no slot opens under them; the first row is packed to the green upright at its north end.
 - `src/maps/warehouse/yard.js`: one gap in, VENEER TUBE (1000, the tight margin), the middle tube of the first row. Seventeen now.
-- `scripts/warehouse-check.js`: four dive gap lines (over the racking and down into it, along it and out at the racking's open bay, down it behind the hallway's plywood, in from the Digital Department's corner), two tube lines (through a first row tube, back through a second row tube), the print room and meeting room lines moved with what moved. 53 lines.
+- `scripts/warehouse-check.js`: four dive gap lines (over the racking and down into it, along it and out at the racking's open bay, down it behind the hallway's plywood, in from the Digital Department's corner), two tube lines (through a first row tube, back through a second row tube), the print room and meeting room lines moved with what moved. 52 lines.
 - `assets/thumbs/warehouse.jpg` redrawn: the tubes are in it. The board's copy and its manifest hash go in the board's own draft PR.
 
 ### Self verify
@@ -76323,7 +76323,7 @@ The scratch rig, High, headless Chromium: the tubes from the aisle, from the lan
 
 ### Checks run on this tree
 
-- `node scripts/warehouse-check.js`: all passed. 53 lines clear, 17 gaps clear, no slots among 1039 boxes, no leaks, lift off twice bit identical.
+- `node scripts/warehouse-check.js`: all passed. 52 lines clear, 17 gaps clear, no slots among 1039 boxes, no leaks, lift off twice bit identical.
 - `npm run check:career` 183 of 183, `node scripts/attract-check.js warehouse` nothing flown through, `lint:preload` 2 of 2, `lint:partners` 133 of 133, `check:props` all passed.
 - Not run: `npm run verify` (nothing in physics, the plant, the module ABI or the build changed). Not flown by a person.
 

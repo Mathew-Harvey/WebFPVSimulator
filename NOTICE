@@ -273,6 +273,21 @@ is the thread's, not this repository's. It is in this repository only so that
 src/maps/dan/ can draw him in a RaceGOW room. The project's GPLv3 grant does
 not extend to it.
 
+## Thomas More's Shop: his manga sheet
+
+    File        assets/warehouse/thomas-manga.webp
+    Licence     NOT GPLv3. Thomas More's likeness, shown in his shop's map
+                at the owner's ask relaying Thomas's own (2026-11-16).
+
+`thomas-manga.webp` is packed from a manga sheet of Thomas More that the
+owner made with Grok and gave on 2026-11-17, one picture on a grey ground,
+cut into pieces by colour: six of his faces, his left side, the back of his
+head and him standing in a black hoodie, in one 1536 by 768 atlas, each
+piece's background filled from its edge, the hair and beard turned toward
+the ginger of his photo. The packing script is the thread's, not this
+repository's. It is in this repository only so that src/maps/warehouse/ can
+draw him in his shop. The project's GPLv3 grant does not extend to it.
+
 ## Pilot avatars
 
     File        assets/avatar/parts.png

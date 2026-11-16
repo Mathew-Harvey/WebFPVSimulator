@@ -76354,3 +76354,44 @@ Draw calls within one of main's at every position. 1073 solids where main has 10
 ### The owner's word, and to main
 
 The owner, 14:28Z on 16 November 2026, on the reply that gave the latency (under main), said nothing had been flown, and asked which check: "Push to main, I'll make manga Thomas tomorrow". It covers this round, draft PR 277 here and PR 85 on the board. No verification scale was picked; it goes out not flown. The board's picture went first (its main 7442944 to 91ba8e8, fast forward, `npm test` all passed on that tree), then this tree, fast forward onto main 1879d7c, which had not moved. `node scripts/warehouse-check.js` and `npm run check:career` were run again on the exact tree pushed. Thomas's manga sheet for the walking Thomas comes tomorrow.
+
+## 2026-11-17: Thomas More walks his shop and shouts Canadian lines (draft PR)
+
+The owner, 16 November 2026 13:56Z, relaying Thomas: "Then we need me walking around yelling Canadian stereotypes". On 17 November 2026 22:52Z (Perth morning) he gave the Grok manga sheet the thread had asked for, with a photo of Thomas, and wrote "Add Thomas !".
+
+### What changed
+
+- `src/maps/warehouse/thomas.js`: his life as a pure function of a clock, Heads' pattern. Six spots at the south end of the workshop (by the bench north of the start pad, up the middle aisle twice, the pallet at the Digital Department's corner, the lane along the flat wall, the grey door), joined by straight walks; a fixed table, so every browser sees the same walk. He turns his head to a camera that comes near and waves now and then. He is not solid. The ten lines are the stand ins sent on 16 November ("Sorry!", "Beauty, eh!", "Give 'er!", "Watch out for the moose!" and the rest); nobody has changed them yet.
+- `src/maps/warehouse/thomasdraw.js`: his model and balloon, built the way Heads and Dan are: the head a ring per row of the sheet's smiling face, each triangle painted from the face, the side or the back by the way it faces, six faces swapped by texture coordinates (laughing, shouting, surprised while he shouts, talking between); the body the black hoodie with the sheet's front (strings, pocket), a hood bunched round the neck, black trousers, black trainers on pale soles. One mesh skinned on the CPU, one draw call, and the balloon one more only while he shouts.
+- The builder, the balloon painter and the skeleton are written again in these two files rather than imported from `src/maps/heads/`, because `mandraw.js` imports Heads' whole house (`heads.js`, 93 kB and its imports) for one constant: with the imports, the shop pulled three of Heads' modules and `memory-check` failed on it. Copied, the shop loads none.
+- `assets/warehouse/thomas-manga.webp`, 76 kB, 1536 by 768, and its NOTICE entry (not GPLv3: Thomas's likeness). The sheet came as one picture on a grey ground, not cut into pieces like Heads' and Dan's, so the thread's `pack.py` (`/mnt/project-files/tcmore-warehouse/thomas/scripts/pack.py`) cuts it by colour, and turns every warm pixel's hue 11 degrees toward red with the hair and beard 45 percent more saturated, because the sheet drew him light brown and his photo is ginger.
+- `src/maps/warehouse/index.js` adds him to the scene before the programs are warmed and drives him from `updateAnim`; `__map().thomas` is his stats. `MAP_MODULE_COUNT.warehouse` 3 to 5 (the two new files; `memory-check` counts 5). `src/fresh.js` and `src/maps/preload.js` regenerated.
+- `scripts/warehouse-check.js` block 8, Thomas: every spot and every walk in his table 0.4 m clear of anything solid between 0.12 and 2.0 m, none within 1.5 m of the start pad, the same pose for the same time, every line six words at most, the sheet at most 120000 bytes. Checked that it fails: a spot moved into the sawhorse at (23.9, 31.0) fails the first two lines.
+
+### Self verify
+
+The real shell in headless Chromium, a scratch rig: Thomas from the front, a quarter, the side and behind; his face close; mid walk on the title clock; and shouting "Sorry!" with the craft put beside him. His face beside Thomas's photo and the sheet is `/mnt/project-files/tcmore-warehouse/thomas/compare-photo-sheet-game.jpg`. The first pack kept the sheet's light brown, which is not the photo's ginger; the second pack is in.
+
+### Checks run on this tree
+
+- `node scripts/warehouse-check.js`: all passed, block 8 included.
+- `node scripts/memory-check.js --map=warehouse`: 5 modules, one problem, the sunny palette pulled through Your map's parked cars, which main a04f83c fails the same way.
+- `lint:preload` 2 of 2, `check:career` 183 of 183, `check:props`, `lint:partners` 133 of 133, `attract-check warehouse`: passed.
+- The board's picture redrawn: the same bytes, he is not in it, so the board has nothing to copy.
+- Not run: `npm run verify` (nothing in physics, the plant, the module ABI or the build). Not flown by a person.
+
+### Latency
+
+A rise, which is the owner's to accept: he is one more draw call and about 2.8k triangles while he is in view, and none while he is not; his skinning (3956 vertices, a matrix each) runs only while he is in view or within 12 m, the same work Heads does (about 50 microseconds a frame measured for Heads' 3.5k). The balloon is one more call for its two and a half seconds. Low, the five lens spots, against main a04f83c, headless, with a throwaway view first:
+
+| | workshop | aisle | dock | CNC | high |
+|---|---|---|---|---|---|
+| Low, main | 33 / 71823 | 34 / 71943 | 26 / 70689 | 30 / 71759 | 30 / 71759 |
+| Low, here | 35 / 74731 | 35 / 74731 | 26 / 70689 | 30 / 71759 | 30 / 71759 |
+
+Calls / triangles. He stands at the bench in the first two views and is out of the other three. High's readings in this rig came one view behind and are not tabled; the mesh is the same on every preset. The sheet is 76 kB, fetched with the shop.
+
+### What went wrong
+
+- First built importing Heads' builder and skeleton from `src/maps/heads/`, as Dan does; `memory-check` showed it pulled Heads' house into the shop. Written again here instead.
+- The first walking pictures never caught him walking: the headless High renderer runs the title clock about ten times slower than the wall, so the wait ran out first. Taken on Low.

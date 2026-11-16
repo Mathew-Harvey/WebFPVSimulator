@@ -471,6 +471,8 @@ export const MAP_PRELOAD = {
     'maps/built/logosurface.js',
     'maps/warehouse/warehouse.js',
     'maps/warehouse/yard.js',
+    'maps/warehouse/thomasdraw.js',
+    'maps/warehouse/thomas.js',
   ],
   goats: [
     'maps/goats/index.js',

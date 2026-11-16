@@ -517,6 +517,8 @@
     'src/maps/towers/yard.js',
     'src/maps/towers/yokocho.js',
     'src/maps/warehouse/index.js',
+    'src/maps/warehouse/thomas.js',
+    'src/maps/warehouse/thomasdraw.js',
     'src/maps/warehouse/warehouse.js',
     'src/maps/warehouse/yard.js',
     'src/maps/yardtrack/course.js',

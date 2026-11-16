@@ -32,6 +32,7 @@ import {
 } from './warehouse.js';
 import { warehouseDocument } from './yard.js';
 import { INK_COLOR } from '../../render/comic.js';
+import { makeThomas } from './thomasdraw.js';
 
 const CHUNK = 'extra';
 
@@ -84,6 +85,18 @@ export async function buildMap(shell, onProgress, options) {
   map.attract = { path: hallLoop(), speed: 6, lookAhead: 14, aimDrop: 3 };
   map.cardLens = CARD_LENS;
   houseInk(map.post);
+  /* Thomas walking his shop (./thomas.js, ./thomasdraw.js): in the map's
+   * scene, so its dispose frees him, and added before the programs are
+   * warmed so his is linked with the rest. */
+  const thomas = makeThomas(shell.camera, () => (shell.quad ? shell.quad.position : null));
+  map.scene.add(thomas.group);
   await warmPrograms(shell.renderer, map.scene, shell.camera, map.post.rtScene);
+  const anim = map.updateAnim;
+  map.updateAnim = (step) => {
+    anim(step);
+    thomas.update(step);
+  };
+  const stats = map.stats;
+  map.stats = () => ({ ...stats(), thomas: thomas.stats() });
   return map;
 }

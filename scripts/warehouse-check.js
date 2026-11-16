@@ -20,6 +20,11 @@
  *   7. module   with a build of dist/sim.wasm, the craft lifted off the
  *               start and held at a metre and a half for three seconds in the
  *               real module, touching nothing, twice to the bit
+ *   8. Thomas   his walking life (src/maps/warehouse/thomas.js): every spot
+ *               and every walk a person's width clear of everything solid
+ *               under his head, none of it over the start pad, the same
+ *               pose for the same time, his lines short enough for the
+ *               balloon, and his sheet small enough to download
  *
  * Usage: node scripts/warehouse-check.js
  *
@@ -61,6 +66,8 @@ import { uploadWorld, setWorldFrame } from '../src/game/plantworld.js';
 import { threePosToSim } from '../src/render/frame.js';
 import { sincos } from '../src/props/trig.js';
 import { coplanarPairs, separateCoplanar, LIFT } from '../src/props/coplanar.js';
+import { STOPS as THOMAS_STOPS, THOMAS_PHASES, THOMAS_LINES, THOMAS_FLOOR, thomasAt, thomasPose } from '../src/maps/warehouse/thomas.js';
+import { statSync } from 'node:fs';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 let failures = 0;
@@ -779,6 +786,107 @@ async function moduleBlock(placed) {
     `${a.touched} steps in contact, up to ${r3(a.top)} m`);
 }
 
+/* ------------------------------------------------------------------ */
+/* 8. Thomas                                                           */
+/* ------------------------------------------------------------------ */
+
+/* Plan metres of room he keeps from anything solid between his shins and
+ * his head while he walks or stands, and from the start pad's middle. */
+const THOMAS_ROOM = 0.4;
+const THOMAS_PAD = 1.5;
+const THOMAS_LOW = 0.12;
+const THOMAS_HIGH = 2.0;
+/* His sheet, bytes: about as much as Heads' and Dan's. */
+const THOMAS_SHEET_MAX = 120000;
+
+function thomasBlock(L) {
+  console.log('\n8. Thomas');
+  const { OX, OZ } = FRAME;
+  /* Every solid between his shins and his head, as a plan rectangle; a
+   * capsule by the rectangle round it, which only ever asks for more room. */
+  const rects = [];
+  for (const p of L.parts) {
+    if (!p.solid) {
+      continue;
+    }
+    if (p.t === 'box') {
+      if (p.hi[1] / S < THOMAS_LOW || p.lo[1] / S > THOMAS_HIGH) {
+        continue;
+      }
+      rects.push({ x0: (p.lo[0] - OX) / S, y0: (OZ - p.hi[2]) / S, x1: (p.hi[0] - OX) / S, y1: (OZ - p.lo[2]) / S, name: p.name });
+    } else if (p.t === 'cap') {
+      const r = p.r / S;
+      const lo = Math.min(p.a[1], p.b[1]) / S - r;
+      const hi = Math.max(p.a[1], p.b[1]) / S + r;
+      if (hi < THOMAS_LOW || lo > THOMAS_HIGH) {
+        continue;
+      }
+      rects.push({
+        x0: (Math.min(p.a[0], p.b[0]) - OX) / S - r, y0: (OZ - Math.max(p.a[2], p.b[2])) / S - r,
+        x1: (Math.max(p.a[0], p.b[0]) - OX) / S + r, y1: (OZ - Math.min(p.a[2], p.b[2])) / S + r, name: p.name,
+      });
+    }
+  }
+  const room = (x, y) => {
+    let best = { d: Infinity, name: '' };
+    for (const b of rects) {
+      const d = Math.hypot(Math.max(b.x0 - x, 0, x - b.x1), Math.max(b.y0 - y, 0, y - b.y1));
+      if (d < best.d) {
+        best = { d, name: b.name };
+      }
+    }
+    return best;
+  };
+  const pad = [SPAWN.px, SPAWN.py];
+  let worstStop = { d: Infinity };
+  for (const s of THOMAS_STOPS) {
+    const r = room(s.at[0], s.at[1]);
+    if (r.d < worstStop.d) {
+      worstStop = { ...r, id: s.id };
+    }
+  }
+  check(`every spot he stands at has ${THOMAS_ROOM} m of room`, worstStop.d >= THOMAS_ROOM,
+    `${THOMAS_STOPS.length} spots, the least ${r3(worstStop.d)} m at ${worstStop.id} (${worstStop.name})`);
+  let worstWalk = { d: Infinity };
+  let nearPad = Infinity;
+  let walks = 0;
+  for (const ph of THOMAS_PHASES) {
+    if (ph.kind !== 'walk') {
+      continue;
+    }
+    walks += 1;
+    const n = Math.max(2, Math.ceil(ph.len / 0.05));
+    for (let i = 0; i <= n; i += 1) {
+      const x = ph.from[0] + ((ph.to[0] - ph.from[0]) * i) / n;
+      const y = ph.from[1] + ((ph.to[1] - ph.from[1]) * i) / n;
+      const r = room(x, y);
+      if (r.d < worstWalk.d) {
+        worstWalk = { ...r, at: [r3(x), r3(y)] };
+      }
+      nearPad = Math.min(nearPad, Math.hypot(x - pad[0], y - pad[1]));
+    }
+  }
+  check(`every walk keeps ${THOMAS_ROOM} m of room`, worstWalk.d >= THOMAS_ROOM,
+    `${walks} walks in his table, the least ${r3(worstWalk.d)} m at plan [${worstWalk.at}] (${worstWalk.name})`);
+  const stopPad = Math.min(...THOMAS_STOPS.map((s) => Math.hypot(s.at[0] - pad[0], s.at[1] - pad[1])));
+  check(`he never stands or walks within ${THOMAS_PAD} m of the start pad`, Math.min(nearPad, stopPad) >= THOMAS_PAD,
+    `the nearest ${r3(Math.min(nearPad, stopPad))} m`);
+  check('his floor is the slab', THOMAS_FLOOR === FLOOR0, `${THOMAS_FLOOR} and ${FLOOR0}`);
+  const a = thomasPose();
+  const b = thomasPose();
+  let same = true;
+  for (const T of [0, 12345, 98765.5, 400000]) {
+    thomasAt(T, { x: 25, y: 18, h: 1.5 }, 0.5, true, a);
+    thomasAt(T, { x: 25, y: 18, h: 1.5 }, 0.5, true, b);
+    same = same && a.x === b.x && a.y === b.y && a.yaw === b.yaw && a.J.every((v, i) => v === b.J[i]);
+  }
+  check('the same time gives the same pose', same);
+  const long = THOMAS_LINES.filter((l) => !l.text || l.text.split(' ').length > 6);
+  check('every line fits a balloon (six words at most)', long.length === 0, `${THOMAS_LINES.length} lines${long.length ? `, too long: ${long.map((l) => l.text).join(' | ')}` : ''}`);
+  const size = statSync(join(root, 'assets/warehouse/thomas-manga.webp')).size;
+  check(`his sheet is at most ${THOMAS_SHEET_MAX} bytes`, size <= THOMAS_SHEET_MAX, `${size} bytes`);
+}
+
 async function main() {
   console.log('warehouse-check: Thomas More\'s warehouse, src/maps/warehouse/');
   const L = layoutBlock();
@@ -788,6 +896,7 @@ async function main() {
   slotsBlock(own);
   leaksBlock(L, own);
   await moduleBlock(placed);
+  thomasBlock(L);
   console.log(failures ? `\n${failures} failed` : '\nall passed');
   process.exitCode = failures ? 1 : 0;
 }

@@ -515,9 +515,11 @@ const CAPTION_KEYS_ACRO = `Keyboard races fly ${CAPTION_ACRO}`;
  * alone. The entry is written out because it has moved with the directory:
  * it was three before looks.js came and four before egg.js, and with no
  * entry then the bar sat at 75 percent until the import resolved. */
-const MAP_MODULE_COUNT = { field: 1, city: 70, custom: 1, built: 5, house: 3, heads: 4, bardwell: 4, warehouse: 3, goats: 9, sunny: 12, factory: 9, drift: 3, towers: 11, alps: 6, office: 4, kaza: 10, sana: 6, shiokaze: 10, fmx: 8, airfield: 9, dunes: 5, arctic: 9, haikyo: 11 };
+const MAP_MODULE_COUNT = { field: 1, city: 70, custom: 1, built: 5, house: 3, heads: 4, bardwell: 4, warehouse: 5, goats: 9, sunny: 12, factory: 9, drift: 3, towers: 11, alps: 6, office: 4, kaza: 10, sana: 6, shiokaze: 10, fmx: 8, airfield: 9, dunes: 5, arctic: 9, haikyo: 11 };
 /* Kamome Wharf (src/maps/dock/): its ten. */
 MAP_MODULE_COUNT.dock = 10;
+/* Thomas More's Shop was three until 2026-11-17, when Thomas walking it
+ * brought thomas.js and thomasdraw.js. */
 /* Hayate Circuit (src/maps/hayate/): its ten. */
 MAP_MODULE_COUNT.hayate = 10;
 /* Hanabi Sound (src/maps/concert/): its five. */

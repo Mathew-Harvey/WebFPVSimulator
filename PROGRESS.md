@@ -76357,7 +76357,7 @@ The owner, 14:28Z on 16 November 2026, on the reply that gave the latency (under
 
 ## 2026-11-17: Thomas More walks his shop and shouts Canadian lines (draft PR)
 
-The owner, 16 November 2026 13:56Z, relaying Thomas: "Then we need me walking around yelling Canadian stereotypes". On 17 November 2026 22:52Z (Perth morning) he gave the Grok manga sheet the thread had asked for, with a photo of Thomas, and wrote "Add Thomas !".
+The owner, 16 November 2026 13:56Z, relaying Thomas: "Then we need me walking around yelling Canadian stereotypes". On 16 November 2026 22:52Z (17 November, Perth morning) he gave the Grok manga sheet the thread had asked for, with a photo of Thomas, and wrote "Add Thomas !".
 
 ### What changed
 

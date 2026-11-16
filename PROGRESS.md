@@ -76299,3 +76299,7 @@ The owner, 22:55Z on 15 November 2026, on the reply that gave the latency table 
 ### The board closed, by the standing rule of 2026-11-07
 
 - Read again before closing: 30 open, none filed since the triage began; 0 in progress. Closed with the run's token through `POST /board/api/bugs/:id`, status and resolution: 30 updates, 30 answered 200. `fixed`: bug-0bead284 naming 0d271fab, bug-99b4aa8f naming a562bb63, both on main and live. `wontfix`: bug-8487fa86 the takeoff guard as a feature request for the owner; bug-75567b93 a room report with nothing to act on; 13 feel notes and 13 tune reports no code defect, tune numbers kept in the Tunes panel. Afterwards the board lists 0 open and 0 in progress.
+
+### The owner's word on verification
+
+- The owner, 2026-11-16, on the run's report: "Push to main and I'll fly It". Both fixes were already on main (0d271fa and a562bb6, main at 725d524) and live, byte for byte, when the message came; nothing more needed pushing for them. The verification scale picked is **fly it**: on Ekimae, a barrier clipped low and slow should bounce off or settle beside it, never sink into the block; in a room on a controller, with the host changing the map, the pause menu should be clear of the question, Room should say "Vote: ...", and Go should take the pilot to the new map. What the flight finds goes in the next entry.

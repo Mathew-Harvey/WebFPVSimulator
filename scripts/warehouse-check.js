@@ -321,11 +321,22 @@ const LINES = [
   ['out through the office window over the tool chest', [[6.9, 3.0, 1.55], [6.9, 8.0, 1.55]]],
   /* Thomas More's word of 15 November 2026: the barani doorway is the wood
    * lined opening under the rolls of veneer at the flat wall's corner. */
-  ['through the barani doorway under the rolls and along the flat wall', [[8.4, 12.17, 1.2], [12.2, 12.17, 1.2], [14.2, 12.1, 1.2], [16.2, 12.1, 1.2], [17.0, 13.4, 1.4], [23.0, 13.6, 1.4]]],
+  ['through the barani doorway under the tubes and along the flat wall', [[8.4, 12.17, 1.2], [12.2, 12.17, 1.2], [14.2, 12.1, 1.2], [16.2, 12.1, 1.2], [17.0, 13.4, 1.4], [23.0, 13.6, 1.4]]],
+  /* His word of 16 November 2026: the rolls on top are tubes you can fly
+   * through. One in each row, both ways. */
+  ['through a veneer tube over the barani doorway', [[8.4, 13.625, 2.95], [12.4, 13.625, 2.95]]],
+  ['back through a tube in the upper row', [[12.4, 13.325, 3.57], [8.4, 13.325, 3.57]]],
   ['back through the barani doorway from the workshop', [[23.0, 13.6, 1.0], [17.0, 13.4, 1.0], [16.2, 12.1, 1.0], [12.2, 12.17, 1.0], [8.4, 12.17, 1.0]]],
   ['in the lunch room\'s door, down the plywood passage and out the front door', [[13.45, 14.0, 1.2], [13.45, 9.5, 1.2], [13.0, 8.2, 1.2], [13.0, -2.6, 1.2]]],
   ['down the lane along the flat wall and the hallway to the washroom door', [[23.0, 13.4, 1.2], [39.4, 13.4, 1.2]]],
   ['into the open bay under the racking by the hallway', [[27.6, 13.6, 0.9], [27.6, 11.9, 0.9]]],
+  /* Thomas More's markup of 16 November 2026: the dive gap behind the
+   * racking, over its top and down, along it, and out by the open bay; and
+   * the length of it behind the hallway's plywood. */
+  ['over the teal racking and down into the dive gap behind it', [[23.0, 15.5, 5.9], [23.0, 10.75, 5.9], [23.0, 10.75, 1.0]]],
+  ['along the dive gap and out by the racking\'s open bay', [[20.6, 10.75, 1.0], [27.6, 10.75, 1.0], [27.6, 13.6, 0.9]]],
+  ['down the dive gap behind the hallway\'s plywood', [[27.6, 10.75, 1.6], [39.6, 10.75, 1.6], [39.6, 10.75, 3.0], [39.6, 13.2, 3.0]]],
+  ['into the dive gap from the Digital Department\'s corner over the plywood', [[31.0, 14.6, 3.2], [31.0, 10.75, 3.2], [31.0, 10.75, 1.2]]],
   ['down the dock lane past the shut doors', [[1.5, 49.4, 2.0], [17.5, 49.4, 2.0]]],
   ['up the crate aisle to the left dock door', [[8.2, 14.0, 2.0], [8.2, 48.5, 2.0], [8.1, 54.6, 2.0]]],
   ['across the open floor before the office', [[2.0, 10.5, 1.5], [9.5, 10.5, 1.5], [9.5, 7.8, 1.5]]],
@@ -347,18 +358,18 @@ const LINES = [
   ['in at the lunch room\'s window and out at its door', [[14.75, 13.9, 1.7], [14.75, 10.2, 1.7], [13.45, 10.0, 1.4], [13.45, 13.9, 1.2]]],
   ['round the open office past the desks', [[22.85, 6.0, 1.2], [22.85, 0.7, 1.2], [32.05, 0.7, 1.2], [32.05, 6.0, 1.2]]],
   ['under an open office desk', [[24.75, 0.6, 0.35], [24.75, 4.4, 0.35]]],
-  ['round the meeting room\'s table', [[31.65, 6.0, 1.2], [31.65, 10.9, 1.2], [38.45, 10.9, 1.2], [38.45, 6.0, 1.2]]],
+  ['round the meeting room\'s table', [[31.65, 6.0, 1.2], [31.65, 9.3, 1.2], [38.45, 9.3, 1.2], [38.45, 6.0, 1.2]]],
   ['into the corner office and past its desk', [[34.45, 6.0, 1.2], [34.45, 3.6, 1.2], [38.9, 3.6, 1.2]]],
-  ['into the first office beside its desk', [[21.05, 6.0, 1.2], [21.05, 10.6, 1.2]]],
+  ['into the first office beside its desk', [[21.05, 6.0, 1.2], [21.05, 9.5, 1.2]]],
   ['down the corridor end to end', [[16.2, 6.0, 1.6], [39.6, 6.0, 1.6]]],
   ['across the workshop between the columns', [[19.0, 34.2, 1.6], [30.0, 34.2, 1.6]]],
   ['under the big table', [[22.2, 14.4, 0.45], [22.2, 17.4, 0.45]]],
   ['out the exit door in the dock wall\'s corner', [[30.8, 49.0, 2.2], [30.8, 54.0, 1.2], [30.8, 60.0, 1.2]]],
   ['down the workshop low', [[24.3, 52.0, 0.8], [24.3, 14.5, 0.8]]],
   /* The reel's lines, 4 November 2026 (its frame numbers in brackets). */
-  ['in the grey door and down the print room (13 to 23)', [[26.0, 15.1, 1.2], [29.2, 15.1, 1.2], [29.6, 16.3, 1.2], [39.2, 16.3, 1.2]]],
-  ['up over the office, looking down, and into the long room (18 to 31)', [[36.0, 16.3, 1.2], [36.0, 16.3, 4.2], [36.0, 20.0, 4.2], [30.5, 18.4, 4.2], [30.5, 16.3, 4.2], [30.5, 16.3, 1.6]]],
-  ['back out of the print room by the grey door (31 to 33)', [[39.0, 16.3, 1.6], [29.6, 16.3, 1.4], [29.2, 15.1, 1.2], [26.0, 15.1, 1.2]]],
+  ['in the grey door and down the print room (13 to 23)', [[26.0, 15.1, 1.2], [32.3, 15.1, 1.2], [32.5, 16.3, 1.2], [39.2, 16.3, 1.2]]],
+  ['up over the office, looking down, and into the long room (18 to 31)', [[36.0, 16.3, 1.2], [36.0, 16.3, 4.2], [36.0, 20.0, 4.2], [33.0, 18.4, 4.2], [33.0, 16.3, 4.2], [33.0, 16.3, 1.6]]],
+  ['back out of the print room by the grey door (31 to 33)', [[39.0, 16.3, 1.6], [32.5, 16.3, 1.4], [32.3, 15.1, 1.2], [26.0, 15.1, 1.2]]],
   ['into the print room\'s office by its door', [[34.5, 16.3, 1.2], [34.5, 18.6, 1.2], [36.5, 20.0, 1.2]]],
   ['out of the west lane under the orange racking (36, 37)', [[4.1, 26.5, 1.2], [8.2, 26.5, 1.2], [8.2, 30.0, 1.2]]],
   ['under the orange racking again further north', [[4.1, 39.4, 1.2], [8.6, 39.4, 1.2]]],

@@ -32,7 +32,7 @@
  */
 import { WAREHOUSE_DOC_ID } from '../registry.js';
 import {
-  S, FIELD_W, FIELD_D, FLOOR0, docAt, OPENINGS, SPAWN, TUBE, WINDOW_A, FORKLIFT,
+  S, FIELD_W, FIELD_D, FLOOR0, docAt, OPENINGS, SPAWN, TUBE, TUBES, tubeBore, WINDOW_A, FORKLIFT,
 } from './warehouse.js';
 
 const EAST = 0;
@@ -60,6 +60,9 @@ function across(o, name, points, m = MARGIN) {
  * down it; the forklift's cab, across it behind the seat; one pane of the
  * white booth's window frame. */
 const TUBE_GAP = { x0: TUBE.x0 + 0.05, x1: TUBE.x1 - 0.05, y: (TUBE.y0 + TUBE.y1) / 2, h0: FLOOR0 + 0.05, h1: FLOOR0 + 0.55 };
+/* One of the veneer tubes over the barani doorway (Thomas More's word of
+ * 16 November 2026), the middle of the first row, end to end. */
+const VENEER_GAP = { ...tubeBore(0, 3), x: (TUBES.x0 + TUBES.x1) / 2 };
 const CAB_GAP = { x0: FORKLIFT.x - 2.2, x1: FORKLIFT.x - 1.55, y: FORKLIFT.y + 0.7, h0: FLOOR0 + 0.95, h1: FLOOR0 + 2.2 };
 const PANE_GAP = {
   x0: WINDOW_A.x0 + 0.1, x1: (WINDOW_A.x0 + WINDOW_A.x1) / 2 - 0.05, y: WINDOW_A.y + 0.05,
@@ -94,6 +97,7 @@ function rows() {
     across(PANE_GAP, 'WINDOW PANE', 500),
     across(CAB_GAP, 'FORKLIFT CAB', 1000, 0.08),
     across(TUBE_GAP, 'CARDBOARD TUBE', 1000, 0.08),
+    across(VENEER_GAP, 'VENEER TUBE', 1000, 0.08),
   ];
 }
 

@@ -76303,3 +76303,50 @@ The owner, 22:55Z on 15 November 2026, on the reply that gave the latency table 
 ### The owner's word on verification
 
 - The owner, 2026-11-16, on the run's report: "Push to main and I'll fly It". Both fixes were already on main (0d271fa and a562bb6, main at 725d524) and live, byte for byte, when the message came; nothing more needed pushing for them. The verification scale picked is **fly it**: on Ekimae, a barrier clipped low and slow should bounce off or settle beside it, never sink into the block; in a room on a controller, with the host changing the map, the pause menu should be clear of the question, Room should say "Vote: ...", and Go should take the pilot to the new map. What the flight finds goes in the next entry.
+
+## 2026-11-16: Thomas More's Shop: the Digital Department in line, a dive gap behind the racking, and the rolls over the barani doorway made tubes to fly through (draft PR)
+
+The owner, 13:56Z on 16 November 2026, relaying Thomas More with Thomas's markup of the floor plan of 16 November: "Super close now. So those are the physical space changes that should be made. There are some minor differences elsewhere that I don't really think we need to alter as the shop changes so often anyway. The rolls on top of the barani doorway though should be tubes that you can fly through if possible. Then we need me walking around yelling Canadian stereotypes. We can deal with the office space later as its not as important." The markup crosses out the Digital Department west of the paint shop's line ("should be in line with paint shop") and brackets a strip south of the flat wall ("spacing here to dive behind racking").
+
+### What changed
+
+- **The Digital Department** (`DIG`, `partition`, `printRoom`, `flatWall` in `src/maps/warehouse/warehouse.js`). It had a notch west to x 28.2 at its south end; it now starts at the paint shop's west wall all the way down, so its west wall is one straight line with the paint shop's. The grey door, the print room, its printers, prints, bookcase and lights moved east with it. What stood in front of the old notch (the pallet and cartons, the drawer cabinet, the grey panel) stands in the open bay now, and the flat wall's plywood, joints, black boards and ladder run from the teal racking's end (`RACK_E`, 28.2) to the new wall.
+- **The dive gap** (`DIVE`, `officeArea`). The office area's north wall stood against the flat wall's plywood. East of x 19.95 it now stands 1.5 m south of it (y 10.0), so between the plywood and the offices there is a slot open to the roof, the length of the teal racking and the hallway, to drop into over the racking and fly along. The hallway's door, the north rooms' desks, chairs, screens, the meeting table and the notice board moved south with the wall. The offices themselves are unchanged in plan, as the owner asked; their being a guess still holds.
+- **The tubes over the barani doorway** (`TUBES`, `tubeBore`, `baraniDoorway`). The rolls were round caps drawn on one hidden solid, so nothing went through them. Now two rows of cardboard tubes lie end on across the racking's line, the crate aisle at one end and the lane along the flat wall at the other: seven in the first row, six in the second laid over the first's walls. Each bore is 0.55 plan (1.65 m) square and dark inside. They are square because this map draws only boxes; the floor tube in the west lane is square for the same reason. A row is one floor, one roof and the walls between, so thirteen tubes are nineteen boxes and two dark sheets a row, fewer triangles than the rolls. The door lining and the rack's uprights now stop at the tubes' floor, and the rack's panels reach it, so no slot opens under them; the first row is packed to the green upright at its north end.
+- `src/maps/warehouse/yard.js`: one gap in, VENEER TUBE (1000, the tight margin), the middle tube of the first row. Seventeen now.
+- `scripts/warehouse-check.js`: four dive gap lines (over the racking and down into it, along it and out at the racking's open bay, down it behind the hallway's plywood, in from the Digital Department's corner), two tube lines (through a first row tube, back through a second row tube), the print room and meeting room lines moved with what moved. 53 lines.
+- `assets/thumbs/warehouse.jpg` redrawn: the tubes are in it. The board's copy and its manifest hash go in the board's own draft PR.
+
+### Self verify
+
+The scratch rig, High, headless Chromium: the tubes from the aisle, from the lane and from inside one (the lane is seen through the far end), the dive gap from over the racking and from inside it, and the Digital Department's corner from the workshop. A new floor plan (`/mnt/project-files/tcmore-warehouse/refine-2026-11-15/floor-plan-2026-11-16b.png`) shows the Digital Department's west wall on the paint shop's line and the dive gap as a strip between the flat wall and the offices. Photo 0414 shows round tubes heaped loose; the square pile reads more like a cubby shelf, which is said to the owner.
+
+### Checks run on this tree
+
+- `node scripts/warehouse-check.js`: all passed. 53 lines clear, 17 gaps clear, no slots among 1039 boxes, no leaks, lift off twice bit identical.
+- `npm run check:career` 183 of 183, `node scripts/attract-check.js warehouse` nothing flown through, `lint:preload` 2 of 2, `lint:partners` 133 of 133, `check:props` all passed.
+- Not run: `npm run verify` (nothing in physics, the plant, the module ABI or the build changed). Not flown by a person.
+
+### Latency
+
+Under main at every position. The five lens positions on main (1879d7c) and on this tree, headless Chromium, no GPU, so draw cost proxies:
+
+| | workshop | aisle | dock | CNC | high |
+|---|---|---|---|---|---|
+| High, main | 98621 | 98743 | 98743 | 98371 | 98557 |
+| High, here | 97709 | 97829 | 96391 | 96391 | 97645 |
+| Low, main | 72273 | 72395 | 71139 | 72207 | 72209 |
+| Low, here | 71823 | 71943 | 70689 | 71759 | 71759 |
+
+Draw calls within one of main's at every position. 1073 solids where main has 1051, and the most one physics step can gather is 54 where main's is 48: the tubes' walls and the dive gap's two walls sit in the same cells by the doorway. That is six more box tests in the busiest cell's step, against world.c's cap of 1024. No new colour, texture, light or shader.
+
+### What went wrong
+
+- The first dive gap line crossed the plywood flat; it needed to rise over it first.
+- Moving things exposed four slots: a screen 0.12 off its wall, a chair back 0.42 from its desk, a printer 0.45 from the Digital wall, the rack's panels 0.12 under the tubes, and the last tube 0.27 from the mouldings' rack. Each closed by moving geometry.
+- The racking bay's board face on the now open stretch of flat wall was a sheet with air both sides; it is a thin solid now. Prints first overlapped the print office's door.
+- One Low measurement read 59 calls and about 80k triangles at the first position, on main and here alike: the rig's first frame catches a one off render. Measured again with a throwaway view first.
+
+### Still to come
+
+- Thomas walking the shop with Canadian lines: waits on his manga sheet (the Grok prompt is in the thread) and his pick of the lines. It is a rise of about one draw call and 3k triangles, so it needs the owner's word when it comes.

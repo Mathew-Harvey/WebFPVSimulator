@@ -34,6 +34,13 @@
  *            who is only out of the round, in it or in the pit, a line
  *            that says why, and POP! still up and gone for a real pop
  *            (bug-85f93166)
+ *   votepad  the host moves the room while the page flies on a pad, which
+ *            the question tells "Pause, then Room, to follow": the pause
+ *            menu comes up with nothing of the room's over it, its Room
+ *            row says a vote is on and takes a real click, the question
+ *            comes back in the air while unanswered, and Go on the room's
+ *            page takes the page to the host's new map in the same room
+ *            (bug-0bead284)
  *   deploy   the board replaced the way a deploy replaces it (SIGTERM,
  *            every socket closed with 1012) and started again with the
  *            same secret: the page is back in its room from the sealed
@@ -44,7 +51,7 @@
  * purpose is a failed load. Nothing here times anything: other browser
  * checks share the machine, so every wait polls for its outcome.
  *
- * Usage: node scripts/rooms-check.js [--only=pair,shelf,bots,dfpop,deploy]
+ * Usage: node scripts/rooms-check.js [--only=pair,shelf,bots,dfpop,votepad,deploy]
  *
  * This file is part of WebFPVSimulator.
  *
@@ -70,12 +77,16 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openPage } from '../tests/lib/page.js';
-import { SETTINGS_KEY } from '../src/ui/ui.js';
+import * as shellUi from '../src/ui/ui.js';
 import { roomsUrl } from '../src/net/link.js';
 import { RoomSession } from '../src/net/room.js';
 import { rollAvatar } from '../src/net/avatar.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const { SETTINGS_KEY } = shellUi;
+/* Read through the namespace, so a shell without it fails its lines and
+ * not the whole run. */
+const roomRow = shellUi.roomRow || (() => ({ value: '', note: '', action: '' }));
 const onlyArg = (process.argv.find((a) => a.startsWith('--only=')) || '').slice(7);
 const only = new Set(onlyArg.split(',').filter(Boolean));
 const wanted = (name) => !only.size || only.has(name);
@@ -816,11 +827,125 @@ async function sceneDeploy() {
   }
 }
 
+/*
+ * bug-0bead284, 2026-11-15, a guest on a pad: "Map change multiplayer is
+ * not working for guests. The info is overlapping with the pause menu. not
+ * able to switch with the host". A pad has no keys for Follow, so the
+ * question across the middle says "Pause, then Room, to follow", and on
+ * the base the pause it sent the pilot to opened under it: the panel
+ * covered the menu from the Room row down and a click on Room landed on
+ * the panel. Here the page flies on a pad the page can read, a host in
+ * Node moves the room, and the page goes the way it is told.
+ */
+const PAD_ON = `(() => {
+  window.__pad = {
+    index: 0, id: 'Check pad (Vendor: 045e Product: 028e)', connected: true, mapping: 'standard', timestamp: 1,
+    axes: [0, 0, 0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, touched: false, value: 0 })),
+  };
+  navigator.getGamepads = () => [window.__pad, null, null, null];
+  return 1;
+})()`;
+/* The shell's own menu rows the room's layer covers at their middles:
+ * what a click there would land on instead of the row. */
+const COVERED = `(() => {
+  const out = [];
+  for (const el of document.querySelectorAll('.row')) {
+    if (el.closest('#tg')) continue;
+    const b = el.getBoundingClientRect();
+    if (!b.width || !b.height || b.bottom < 0 || b.top > innerHeight) continue;
+    const at = document.elementFromPoint((b.left + b.right) / 2, (b.top + b.bottom) / 2);
+    if (at && at.closest('#tg')) out.push((el.querySelector('.row-label') || el).textContent.trim());
+  }
+  return out;
+})()`;
+const roomRowOf = (page) => page.evaluate("(() => { const r = window.__ui.items().find((it) => it.label === 'Room'); return r ? { value: r.value, note: r.note } : null; })()");
+/* A real click in the middle of the pause menu's Room row, so whatever is
+ * on top of it there is what gets it. */
+async function clickRoomRow(page) {
+  const at = await page.evaluate(`(() => {
+    const row = [...document.querySelectorAll('.row')].find((el) => !el.closest('#tg') && /^Room/.test(el.textContent.trim()));
+    if (!row) return null;
+    const b = row.getBoundingClientRect();
+    return [(b.left + b.right) / 2, (b.top + b.bottom) / 2];
+  })()`);
+  if (!at) return false;
+  for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) {
+    await page.cdp.send('Input.dispatchMouseEvent', { type, x: at[0], y: at[1], button: 'left', clickCount: 1 }, page.sessionId);
+  }
+  return true;
+}
+const splashUp = "(() => { const v = document.querySelector('#tg .tg-vote:not(.tg-swap)'); return Boolean(v && !v.hidden && v.querySelector('.vsheet')); })()";
+
+async function sceneVotePad() {
+  console.log('\nvotepad: a pad flying guest follows the host to a new map (bug-0bead284)');
+  /* The row's words, as the shell is given them. */
+  const base = { code: 'ABC234', n: 3, race: false };
+  check('the Room row with no vote is the room\'s code and pilots', roomRow(base).value === 'ABC234 · 3 pilots');
+  const asked = roomRow({ ...base, vote: { mapName: 'The town', host: false, by: 'Kite Runner', answer: null } });
+  check('with a vote on it names the map and how to answer', asked.value === 'Vote: The town' && asked.note.includes('Kite Runner') && asked.action === 'room-sheet', JSON.stringify(asked));
+  check('and says what the pilot answered', roomRow({ ...base, vote: { mapName: 'The town', host: false, by: 'K', answer: true } }).note.startsWith('You are going to The town')
+    && roomRow({ ...base, vote: { mapName: 'The town', host: false, by: 'K', answer: false } }).note.startsWith('You are staying here'));
+
+  const kite = bot('Kite Runner', 311);
+  const room = await hostRoom(kite, {
+    name: 'Movers', way: 'freestyle', map: 'bardwell', mapName: "Bardwell's house", scale: 50,
+  });
+  const page = await open('Pad Guest');
+  try {
+    await joinByCode(page, room.code);
+    await page.until(`${T} && window.__together().inRoom`, 20000);
+    await flying(page);
+    await page.until(`${T} && window.__together().pilots === 2`, 10000);
+    await page.evaluate(PAD_ON);
+    const youId = (await state(page)).you;
+
+    kite.s.link.mapVote('city', 'The town', 50);
+    const told = await pass(page.until(SEES('Pause, then Room, to follow', '#tg .tg-vote'), 10000));
+    check('a pilot on a pad is asked across the middle and told to pause, then Room', told,
+      await page.evaluate("(document.querySelector('#tg .tg-vote') || {}).textContent || ''"));
+
+    /* Paused, as it says. */
+    await page.tap('Escape');
+    await page.until("window.__ui.screen === 'paused'", 10000);
+    check('the question steps aside for the pause menu', await pass(page.until(`!${splashUp}`, 3000)));
+    const covered = await page.evaluate(COVERED);
+    check('nothing of the room\'s covers a row of the pause menu', covered.length === 0, covered.join(', '));
+    const row = await roomRowOf(page);
+    check('the Room row says a vote is on, the map and the host', row && row.value === 'Vote: The town' && row.note.includes('Kite Runner'), JSON.stringify(row));
+
+    /* In the air again with no answer: the question is back. */
+    await page.evaluate("(() => { window.__ui.act('resume'); return 1; })()");
+    await flying(page, 10000);
+    check('back in the air unanswered, the question comes back', await pass(page.until(splashUp, 5000)));
+
+    await page.tap('Escape');
+    await page.until("window.__ui.screen === 'paused'", 10000);
+    check('a click on the Room row reaches the row', await clickRoomRow(page) && await pass(sheetIs(page, 'room', 5000)), JSON.stringify(await state(page)));
+    check('the room\'s page has Go to the new map', await page.evaluate(SEES('Go to The town', '#tg .tg-menu')));
+    await pressKey(page, 'vote-go');
+    check('Go is heard by the room', await until(() => kite.s.link.vote && kite.s.link.vote.go.includes(youId), 5000), JSON.stringify(kite.s.link.vote));
+    /* Everybody has answered, so the board ends the vote and moves both. */
+    check('the host and the page are sent on', await until(() => Boolean(kite.s.link.moved), 8000));
+    check('the page loads the host\'s new map', await pass(page.until(`window.__map && window.__map().ready && location.search.includes('map=city') && ${T} && window.__together().map === 'city'`, 120000)),
+      JSON.stringify(await state(page).catch(() => null)));
+    check('and is back in the same room', await pass(page.until(`${T} && window.__together().inRoom && window.__together().code === ${JSON.stringify(room.code)}`, 60000)),
+      JSON.stringify(await state(page).catch(() => null)));
+    endChecks(page);
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.stack || e.message}`);
+  } finally {
+    kite.s.leave();
+    await close(page);
+  }
+}
+
 try {
   if (wanted('pair')) { await freshBoard(); await scenePair(); }
   if (wanted('shelf')) { await freshBoard(); await sceneShelf(); }
   if (wanted('bots')) { await freshBoard(); await sceneBots(); }
   if (wanted('dfpop')) { await freshBoard(); await sceneDfPop(); }
+  if (wanted('votepad')) { await freshBoard(); await sceneVotePad(); }
   if (wanted('deploy')) { await freshBoard(); await sceneDeploy(); }
 } catch (e) {
   failures += 1;

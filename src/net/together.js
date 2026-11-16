@@ -520,6 +520,10 @@ export function createTogether(shell) {
   let voteEnds = 0;
   let voteTimer = 0;
   let lastVote = null;
+  /* Whether the shell had a menu of its own up at the last frame, so the
+   * question across the middle steps aside when one opens and comes back
+   * when the pilot is in the air again (menuUp, bug-0bead284). */
+  let menuWasUp = false;
   /* Pilots muted for this visit: the board never knows. */
   const muted = new Set();
   const reported = new Set();
@@ -1131,6 +1135,7 @@ export function createTogether(shell) {
     }
     shell.roomInfo({
       code: r.code, name: r.name, n: session.link.pilots.size, host: isHost(), race: RoomRace.racing(r.way), freestyle: r.way === 'freestyle',
+      vote: voteForShell(),
       ribbon: r.game === 'ribbon' ? {
         phase: ribbonNow ? ribbonNow.state.phase : 'pit',
         length: ribbonNow ? ribbonNow.state.length : 'normal',
@@ -4207,6 +4212,45 @@ export function createTogether(shell) {
     return Math.max(0, voteEnds - performance.now());
   }
 
+  /*
+   * WHETHER THE SHELL HAS A MENU OF ITS OWN ON SCREEN, which the panels
+   * across the middle (the host's move and the host's swap) must never sit
+   * over. bug-0bead284, 2026-11-15, a guest flying a pad: "The info is
+   * overlapping with the pause menu. not able to switch with the host".
+   * The question told a pad "Pause, then Room, to follow", and the pause
+   * it sent them to opened UNDER it: the panel is in this layer, over the
+   * shell's screens, and covered the menu from the Room row down, so the
+   * one row it named was half hidden and a click on it landed on the
+   * panel. Watching another pilot and the overview pause the flight too,
+   * but they put the menu away, so a panel may stay over them.
+   */
+  function menuUp() {
+    return !shell.flying() && !watching && !overviewing;
+  }
+
+  /* The question back over the flight, when the pilot comes out of a menu
+   * with the vote still on and not yet answered. The host's tally is a
+   * banner and is not asked again. */
+  function voteBackInAir(now) {
+    const v = currentVote();
+    if (v && !isHost()) {
+      voteHeard({ vote: v }, now);
+    }
+  }
+
+  /* What the pause menu's Room row says while a vote is on, so a pilot who
+   * paused, as the question tells a pad to, finds it there. */
+  function voteForShell() {
+    const v = currentVote();
+    if (!v) {
+      return null;
+    }
+    const host = pilot(v.host);
+    return {
+      mapName: v.mapName, host: isHost(), by: host ? host.handle : 'The host', answer: isHost() ? null : myAnswer(v),
+    };
+  }
+
   /* Change map, from the room's page: the picker on the room's own shelf,
    * with the flight left paused under it, and the map picked comes back to
    * openHost with move set. */
@@ -4248,6 +4292,7 @@ export function createTogether(shell) {
     }
     session.link.answerVote(go);
     hideVoteSplash();
+    infoForShell();
     sound('select');
     banner(me().avatar, go ? 'hello' : 'calm', go ? `You're going to ${v.mapName}` : 'You are staying here',
       go ? 'When the vote ends, the new map loads.' : 'The others who stay keep flying with you.', go ? 'mint' : '', { ms: 2600 });
@@ -4267,6 +4312,7 @@ export function createTogether(shell) {
       voteEnds = now + Math.max(0, Math.min(VOTE_MS, left));
     }
     refresh('room');
+    infoForShell();
     const ms = voteLeftMs();
     if (ms < 500) {
       return;
@@ -4286,6 +4332,13 @@ export function createTogether(shell) {
       return;
     }
     if (!voteBox.hidden && voteBox.dataset.key === key) {
+      return;
+    }
+    /* Over a menu the question waits: the pause menu's Room row says a
+     * vote is on (voteForShell), and the panel comes back in the air
+     * (voteBackInAir). */
+    if (menuUp()) {
+      hideVoteSplash();
       return;
     }
     showVoteSplash(v, host, by, ms, key);
@@ -4341,6 +4394,7 @@ export function createTogether(shell) {
     lastVote = null;
     voteKey = '';
     refresh('room');
+    infoForShell();
     if (data.end === 'split') {
       const n = data.went || 0;
       toast(`${n === 1 ? 'One pilot' : `${n} pilots`} went to ${was ? was.mapName : 'the new map'}. This room carries on here.`);
@@ -6134,6 +6188,17 @@ export function createTogether(shell) {
     }
     watchTick(now);
     overviewTick(now);
+    /* The panels across the middle step aside while the shell has a menu
+     * up, and the move's question comes back when the pilot is in the air
+     * again with it unanswered (menuUp). Two booleans a frame. */
+    const menu = menuUp();
+    if (menu) {
+      if (!voteBox.hidden) hideVoteSplash();
+      if (!swapBox.hidden) hideSwapSplash();
+    } else if (menuWasUp) {
+      voteBackInAir(now);
+    }
+    menuWasUp = menu;
     let screen = 'other';
     if (shell.flying()) screen = 'flight';
     else if (shell.paused()) screen = 'paused';

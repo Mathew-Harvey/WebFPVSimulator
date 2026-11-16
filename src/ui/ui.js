@@ -4951,6 +4951,27 @@ function onlyCraftItem(s) {
  * A ribbon cutting room's pause rows: the host starts a round and sets the
  * ribbons' length between rounds; everybody else is told who starts one.
  */
+/*
+ * THE PAUSE MENU'S ROOM ROW, which is also where a pilot answers the host's
+ * move to another map. The question across the middle tells a pad "Pause,
+ * then Room, to follow", and it steps aside while this menu is up
+ * (menuUp in src/net/together.js, bug-0bead284), so the row says a vote
+ * is on, and what this pilot has said, and the room's page it opens has
+ * Go and Stay. Exported for the check.
+ */
+export function roomRow(info) {
+  const v = info.vote;
+  const usual = info.race ? 'The race, the pilots, talking, inviting and the room\'s settings.' : 'The pilots, talking, inviting and the room\'s settings.';
+  if (!v) {
+    return { label: 'Room', value: `${info.code} · ${info.n} ${info.n === 1 ? 'pilot' : 'pilots'}`, action: 'room-sheet', note: usual };
+  }
+  let note = `${v.by} is moving the room to ${v.mapName}. Open the room to follow or stay. Say nothing and you stay.`;
+  if (v.host) note = `You are moving the room to ${v.mapName}. Open the room to see who is coming, or call it off.`;
+  else if (v.answer === true) note = `You are going to ${v.mapName} when the vote ends. Open the room to change your mind.`;
+  else if (v.answer === false) note = `You are staying here. Open the room to change your mind.`;
+  return { label: 'Room', value: `Vote: ${v.mapName}`, action: 'room-sheet', note };
+}
+
 const RIBBON_LENGTH_NAMES = { short: 'Short', normal: 'Normal', long: 'Long' };
 function ribbonRoomItems(info) {
   const rb = info.ribbon;
@@ -12196,12 +12217,7 @@ export class Ui {
         ...infectedRoomItems(r),
         ...driftRoomItems(r),
         ...ballRoomItems(r),
-        {
-          label: 'Room',
-          value: `${r.code} · ${r.n} ${r.n === 1 ? 'pilot' : 'pilots'}`,
-          action: 'room-sheet',
-          note: r.race ? 'The race, the pilots, talking, inviting and the room\'s settings.' : 'The pilots, talking, inviting and the room\'s settings.',
-        },
+        roomRow(r),
         { label: 'Does it feel wrong?', section: true },
         /* The room's quad, as pictures. See quadSwapItem. */
         ...(this.quadSwapItem() ? [this.quadSwapItem()] : []),

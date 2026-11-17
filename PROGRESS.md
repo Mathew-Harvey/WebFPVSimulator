@@ -76424,3 +76424,8 @@ The owner, 16 November 2026 23:31Z (17 November, 7:31 AM Perth), on draft PR 278
 
 - The first warehouse probe measured the ticket's position as plan metres; the layout's parts are in world metres, and the second probe used the report's numbers as they are.
 - The first 3D probe's tap step called the page helper's `tap`, which presses a key, not a point on the screen; the mouse half was already covered by `check:threedrow`'s two clicks, so it was dropped rather than rebuilt.
+
+### The board closed, by the standing rule of 2026-11-07
+
+- Read again before closing: 16 open, none filed since the triage began; 0 in progress. Closed with the run's token through `POST /board/api/bugs/:id`, status and resolution: 16 updates, 16 answered 200, all `wontfix` because nothing was fixed. bug-a18678bc names the Powerloop as the freestyle licence's gate by design and the crosshair and an easier first trick as feature requests for the owner; bug-8dfe6ad8 names 3D mode turned on by its two presses; bug-d7ca4edd the crash onto a crate top; bug-cb13a622 the gamepad's sprung throttle; the other 6 feel notes and 8 tune reports no code defect, tune numbers kept in the Tunes panel. Afterwards the board lists 0 open and 0 in progress.
+- Nothing went to main: there was no fix, and this entry is on the branch for the owner to take with the next merge.

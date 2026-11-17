@@ -28,11 +28,13 @@
 import { buildMap as buildBuilt } from '../built/index.js';
 import { warmPrograms } from '../../render/warm.js';
 import {
-  warehouseLayout, signSpots, hallLoop, CARD_LENS,
+  warehouseLayout, signSpots, hallLoop, CARD_LENS, FRAME,
 } from './warehouse.js';
 import { warehouseDocument } from './yard.js';
 import { INK_COLOR } from '../../render/comic.js';
 import { makeThomas } from './thomasdraw.js';
+import { thomasSolid } from './thomas.js';
+import { MOVER_SLOTS } from '../../game/plantworld.js';
 
 const CHUNK = 'extra';
 
@@ -91,6 +93,16 @@ export async function buildMap(shell, onProgress, options) {
   const thomas = makeThomas(shell.camera, () => (shell.quad ? shell.quad.position : null));
   map.scene.add(thomas.group);
   await warmPrograms(shell.renderer, map.scene, shell.camera, map.post.rtScene);
+  /* And solid (the owner, 18 November 2026: "also make him solid, so he is
+   * a collision"): his two boxes as the shell's moving solids, in the top
+   * mover slots, where a windmill's sails would go; the shop has no
+   * windmill, no train and no traffic, so nothing else wants them. Every hit
+   * the shell hears on them is a sorry. */
+  if (map.sails) {
+    throw new Error('warehouse: a windmill in the shop would want Thomas\'s mover slots');
+  }
+  map.sails = thomasSolid(FRAME, MOVER_SLOTS - 2);
+  map.sails.hit = () => thomas.hit();
   const anim = map.updateAnim;
   map.updateAnim = (step) => {
     anim(step);

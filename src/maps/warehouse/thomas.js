@@ -13,8 +13,18 @@
  * starts: six spots (STOPS) joined by straight walks that keep a person's
  * width clear of every bench, cart, column and pallet under head height,
  * and never cross the start pad, so a pilot sitting on it is not walked
- * through. Every so often he walks to the next. He is not solid and the
- * craft flies through him.
+ * through. Every so often he walks to the next.
+ *
+ * HE IS SOLID, since the owner's word of 18 November 2026: "Make Thomas
+ * say sorry every time you hit him, also make him solid, so he is a
+ * collision". Two boxes, his body and his head (THOMAS_BOXES), walk with
+ * him, seated in the physics module every step by the shell the way a
+ * windmill's sails are (thomasSolid below, pushSails in src/main.js), from
+ * the same clock the drawing uses, so the Thomas you see is the Thomas you
+ * hit. Everything that reaches the physics (the table's times, thomasSpot
+ * and thomasSolid) is arithmetic, a square root and a round, which every
+ * engine does to the bit; JS's sine and arc tangent stay on the drawing's
+ * side (scripts/thomas-check.js holds both).
  *
  * THE LINES are Thomas's to pick (THOMAS_LINES below). These are the
  * stand ins sent to the owner on 16 November 2026, kept because nobody has
@@ -25,7 +35,8 @@
  * (../heads/man.js), written again here the way Heads' were written again
  * from Nick Burns', so the shop does not load Heads' house.
  *
- * Render only. Nothing here reaches the physics or the plant.
+ * Where he stands is the physics' (thomasSpot, thomasSolid). How he is
+ * bent, where he looks and what he says are render only.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -148,9 +159,20 @@ function generator(seed) {
 }
 
 const yawOf = (dx, dy) => Math.atan2(dx, -dy);
-const turnMs = (a, b) => {
-  const d = Math.abs(b - a) % (2 * Math.PI);
-  return Math.round(Math.max(TURN_MIN_MS, (Math.min(d, 2 * Math.PI - d) / TURN_RATE) * 1000));
+/*
+ * How long a turn from facing (ax, ay) to facing (bx, by) takes. The table's
+ * times decide where he is, which the physics reads, so this is arithmetic
+ * and a square root only: the chord between the two headings on a unit
+ * circle and its angle from the first terms of 2 asin(c / 2), a little short
+ * of the true angle past a right angle, which only makes an about turn a
+ * touch brisk.
+ */
+const turnMs = (ax, ay, bx, by) => {
+  const c = (ax * bx + ay * by) / Math.sqrt((ax * ax + ay * ay) * (bx * bx + by * by));
+  const h = Math.sqrt(Math.max(0, 2 - 2 * c)) / 2;
+  const h2 = h * h;
+  const angle = 2 * h * (1 + h2 * (1 / 6 + h2 * (3 / 40 + h2 * (5 / 112))));
+  return Math.round(Math.max(TURN_MIN_MS, (angle / TURN_RATE) * 1000));
 };
 
 const PHASES = [];
@@ -175,12 +197,14 @@ let PERIOD = 0;
     const d = STOPS[to];
     const dx = d.at[0] - s.at[0];
     const dy = d.at[1] - s.at[1];
-    const len = Math.hypot(dx, dy);
+    const len = Math.sqrt(dx * dx + dy * dy);
     const heading = yawOf(dx, dy);
     const arrive = yawOf(d.face[0], d.face[1]);
-    push('turn', turnMs(yaw, heading), { at: s.at, yaw0: yaw, yaw: heading });
-    push('walk', Math.round((len / SPEED) * 1000), { from: s.at, to: d.at, len, yaw: heading });
-    push('turn', turnMs(heading, arrive), { at: d.at, yaw0: heading, yaw: arrive });
+    push('turn', turnMs(s.face[0], s.face[1], dx, dy), { at: s.at, yaw0: yaw, yaw: heading });
+    push('walk', Math.round((len / SPEED) * 1000), {
+      from: s.at, to: d.at, len, yaw: heading, vx: (dx / len) * SPEED, vy: (dy / len) * SPEED,
+    });
+    push('turn', turnMs(dx, dy, d.face[0], d.face[1]), { at: d.at, yaw0: heading, yaw: arrive });
     at = to;
   }
   PERIOD = t;
@@ -188,6 +212,111 @@ let PERIOD = 0;
 
 export const THOMAS_PERIOD_MS = PERIOD;
 export const THOMAS_PHASES = PHASES;
+
+/*
+ * Where he stands at time T (ms on his clock) and how fast he is going,
+ * plan metres and metres a second, into out { x, y, vx, vy }, and the phase.
+ * The physics reads this through thomasSolid, so it is arithmetic only.
+ */
+export function thomasSpot(T, out) {
+  const t = ((T % PERIOD) + PERIOD) % PERIOD;
+  const ph = find(PHASES, t);
+  if (ph.kind === 'walk') {
+    const f = clamp((((t - ph.t0) / 1000) * SPEED) / ph.len, 0, 1);
+    out.x = ph.from[0] + (ph.to[0] - ph.from[0]) * f;
+    out.y = ph.from[1] + (ph.to[1] - ph.from[1]) * f;
+    out.vx = f < 1 ? ph.vx : 0;
+    out.vy = f < 1 ? ph.vy : 0;
+  } else {
+    out.x = ph.at[0];
+    out.y = ph.at[1];
+    out.vx = 0;
+    out.vy = 0;
+  }
+  return ph;
+}
+
+/*
+ * HIS SOLID, plan metres over his spot: a box for his body from the floor
+ * to his shoulders, wide enough for his arms at his sides whichever way he
+ * faces, and one for his neck and head to the top of his hair, 1.98 m (his head is
+ * drawn about a third bigger than life, as Heads' is, so a quad across the
+ * shop can read his face). Square in plan, so his turning never changes
+ * them. `half` is half the side, y0 and y1 the bottom and top.
+ */
+export const THOMAS_BOXES = [
+  { half: 0.25, y0: THOMAS_FLOOR, y1: 1.55 },
+  { half: 0.16, y0: 1.5, y1: 1.98 },
+];
+/* What a box is written as: centre, half extents and velocity, Three.js
+ * world metres, as src/game/plantworld.js setMover takes them. */
+export const THOMAS_BOX_DOUBLES = 9;
+
+/*
+ * Thomas as the shell's moving solids, in the shape src/props/windmill.js
+ * sailsOf gives a windmill's sails, which src/main.js already seats every
+ * step (pushSails) and asks for the lens's near plane (fpvNear):
+ *
+ *   slots, base, doubles   his two mover slots, from `base`
+ *   seat(step, x, y, z, out)
+ *                          his boxes at `step` of the lap clock into `out`,
+ *                          in Three.js world metres through `frame` (the
+ *                          shop's FRAME: world x = OX + S x, z = OZ - S y,
+ *                          y = S h); the craft's place is not needed.
+ *                          Returns 2. Allocates nothing.
+ *   gapAt(x, y, z, reach, step)
+ *                          how far a world point is from him at `step`, or
+ *                          `reach` when further
+ *   hit(k)                 set by the drawing: the shell calls it when the
+ *                          frame's hardest contact was his box k
+ */
+export function thomasSolid(frame, base) {
+  const { OX, OZ, S } = frame;
+  const spot = { x: 0, y: 0, vx: 0, vy: 0 };
+  function seat(step, cx, cy, cz, out) {
+    thomasSpot(step, spot);
+    const X = OX + S * spot.x;
+    const Z = OZ - S * spot.y;
+    for (let k = 0; k < THOMAS_BOXES.length; k += 1) {
+      const b = THOMAS_BOXES[k];
+      const o = k * THOMAS_BOX_DOUBLES;
+      out[o] = X;
+      out[o + 1] = S * 0.5 * (b.y0 + b.y1);
+      out[o + 2] = Z;
+      out[o + 3] = S * b.half;
+      out[o + 4] = S * 0.5 * (b.y1 - b.y0);
+      out[o + 5] = S * b.half;
+      out[o + 6] = S * spot.vx;
+      out[o + 7] = 0;
+      out[o + 8] = -S * spot.vy;
+    }
+    return THOMAS_BOXES.length;
+  }
+  function gapAt(x, y, z, reach, step) {
+    thomasSpot(step, spot);
+    const X = OX + S * spot.x;
+    const Z = OZ - S * spot.y;
+    let best = reach;
+    for (const b of THOMAS_BOXES) {
+      const ex = Math.max(0, Math.abs(x - X) - S * b.half);
+      const ez = Math.max(0, Math.abs(z - Z) - S * b.half);
+      const ey = Math.max(0, S * b.y0 - y, y - S * b.y1);
+      const d = Math.sqrt(ex * ex + ey * ey + ez * ez);
+      if (d < best) {
+        best = d;
+      }
+    }
+    return best;
+  }
+  return {
+    slots: THOMAS_BOXES.length,
+    base,
+    doubles: THOMAS_BOX_DOUBLES,
+    seat,
+    gapAt,
+    hit: null,
+  };
+}
 
 function find(list, t) {
   let lo = 0;
@@ -249,7 +378,7 @@ function toward(J, b, k, x, y, z) {
 /* What thomasAt fills, so a frame allocates nothing. */
 export function thomasPose() {
   return {
-    x: 0, y: 0, floor: THOMAS_FLOOR, yaw: 0, pelvisH: 0, headH: 0,
+    x: 0, y: 0, vx: 0, vy: 0, floor: THOMAS_FLOOR, yaw: 0, pelvisH: 0, headH: 0,
     J: new Float64Array(NB * 3),
     state: 'stand', walk: 0, stride: 0, look: 0, wave: 0,
   };
@@ -263,7 +392,8 @@ export function thomasPose() {
  */
 export function thomasAt(T, eye, gest, both, out) {
   const t = ((T % PERIOD) + PERIOD) % PERIOD;
-  const ph = find(PHASES, t);
+  /* His place is the physics' own (thomasSpot), so he is drawn where he is hit. */
+  const ph = thomasSpot(T, out);
   const age = t - ph.t0;
   const u = (t - ph.t0) / (ph.t1 - ph.t0);
   const J = out.J;
@@ -272,17 +402,12 @@ export function thomasAt(T, eye, gest, both, out) {
   switch (ph.kind) {
     case 'walk': {
       const d = (age / 1000) * SPEED;
-      const f = clamp(d / ph.len, 0, 1);
-      out.x = ph.from[0] + (ph.to[0] - ph.from[0]) * f;
-      out.y = ph.from[1] + (ph.to[1] - ph.from[1]) * f;
       out.yaw = ph.yaw;
       walk = Math.min(1, age / EASE_MS, (ph.t1 - t) / EASE_MS);
       theta = (2 * Math.PI * d) / STRIDE;
       break;
     }
     case 'turn': {
-      out.x = ph.at[0];
-      out.y = ph.at[1];
       out.yaw = turnTo(ph.yaw0, ph.yaw, ease(u));
       /* A shuffle on the spot while he turns. */
       walk = 0.3 * Math.sin(Math.PI * u);
@@ -290,8 +415,6 @@ export function thomasAt(T, eye, gest, both, out) {
       break;
     }
     default: {
-      out.x = ph.at[0];
-      out.y = ph.at[1];
       out.yaw = ph.yaw;
     }
   }

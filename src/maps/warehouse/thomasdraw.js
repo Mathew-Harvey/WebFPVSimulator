@@ -502,6 +502,12 @@ const FILLS = ['#ffd45c', INKS.mint, INKS.sky, INKS.bail];
 const LOOKS = [FACE.laugh, FACE.shout, FACE.surprised];
 const SAYS = THOMAS_LINES.map((l, i) => ({ ...l, fill: FILLS[i % FILLS.length], face: LOOKS[i % LOOKS.length] }));
 
+/* Two contacts with him further apart than this on his clock are two hits,
+ * and each gets its own sorry; a scrape along him is one. */
+const HIT_REARM_MS = 400;
+/* What he says when he is hit: always sorry, the two ways he says it. */
+const SORRIES = SAYS.filter((l) => l.text.startsWith('Sorry'));
+
 /* Real metres: how close the craft is when he shouts, and how far it must
  * go before he can again; and how long a shout is held, ms. */
 const NEAR_R = 3.2;
@@ -519,10 +525,11 @@ const NEAR_SKIN = 12;
  * handed, stats() is for the harness. `craftAt` answers where the drawn
  * craft is, in the world, or null.
  *
- * HIS CLOCK is the title's, the run's or the finish's, as the shell hands
- * it: his own adds up its forward steps and lets a step back or a leap of
- * more than a second go by as nothing, so a new run never moves him and a
- * pause holds him. A harness can hold him at a time of its own with
+ * HIS CLOCK is the step the shell hands updateAnim, as it is: the title's
+ * on the title, and in a flight the lap clock, which is the clock his solid
+ * is seated at (./thomas.js thomasSolid), so the Thomas drawn is the Thomas
+ * hit. A new run therefore finds him at his bench, where his day starts.
+ * A harness can hold him at a time of its own with
  * `group.userData.holdMs` and stand in for the craft with
  * `group.userData.craftAt`, a world { x, y, z } (scripts/ only).
  */
@@ -579,7 +586,6 @@ export function makeThomas(camera, craftAt = () => null) {
   const top = new THREE.Vector3();
   const right = new THREE.Vector3();
   let clock = 0;
-  let last = null;
   let skins = 0;
   let face = FACE.smile;
   /* What he is shouting, how long ago, and which he shouts next. */
@@ -588,6 +594,12 @@ export function makeThomas(camera, craftAt = () => null) {
   let nextLine = 0;
   let armed = true;
   let shouts = 0;
+  /* Hits: one heard since the last update, the clock of the last contact,
+   * the next sorry, and how many he has said. */
+  let hitHeard = false;
+  let touchAt = -Infinity;
+  let nextSorry = 0;
+  let sorries = 0;
 
   /* Every vertex by its bone's matrix, which is all the skinning there is. */
   function skin() {
@@ -660,22 +672,41 @@ export function makeThomas(camera, craftAt = () => null) {
     }
   }
 
+  /* The shell's word that the craft has just hit him (./thomas.js
+   * thomasSolid's hit, called from src/main.js): heard at the next update. */
+  function hit() {
+    hitHeard = true;
+  }
+
+  /* Every hit a sorry, at once, over whatever he was shouting. */
+  function sorry() {
+    if (!hitHeard) {
+      return;
+    }
+    hitHeard = false;
+    if (!(clock - touchAt <= HIT_REARM_MS && clock >= touchAt)) {
+      say = SORRIES[nextSorry];
+      nextSorry = (nextSorry + 1) % SORRIES.length;
+      sayAge = 0;
+      armed = false;
+      shouts += 1;
+      sorries += 1;
+    }
+    touchAt = clock;
+  }
+
   function update(step) {
     const hold = group.userData.holdMs;
-    let d = 0;
-    if (last !== null) {
-      const dd = step - last;
-      if (dd > 0 && dd <= 1000) {
-        d = dd;
-      }
-    }
-    last = step;
-    clock = typeof hold === 'number' ? hold : clock + d;
+    const now = typeof hold === 'number' ? hold : step;
+    const dd = now - clock;
+    const d = dd > 0 && dd <= 1000 ? dd : 0;
+    clock = now;
     const cam = camera.position;
     eye.x = (cam.x - OX) / S;
     eye.y = (OZ - cam.z) / S;
     eye.h = cam.y / S;
     answer(d);
+    sorry();
     const gest = say ? Math.min(1, sayAge / 260) * (1 - Math.min(1, Math.max(0, (sayAge - SHOUT_MS + 450) / 450))) : 0;
     thomasAt(clock, eye, gest, say ? say.both : false, pose);
     thomasBones(pose, M);
@@ -737,6 +768,7 @@ export function makeThomas(camera, craftAt = () => null) {
   return {
     group,
     update,
+    hit,
     stats: () => ({
       clockMs: clock,
       state: pose.state,
@@ -744,6 +776,7 @@ export function makeThomas(camera, craftAt = () => null) {
       yaw: Math.round(pose.yaw * 1000) / 1000,
       line: say ? say.text : null,
       shouts,
+      sorries,
       face,
       looking: pose.look > 0,
       waving: pose.wave > 0,

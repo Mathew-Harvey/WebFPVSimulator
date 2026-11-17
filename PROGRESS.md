@@ -76397,3 +76397,30 @@ Calls / triangles. He stands at the bench in the first two views and is out of t
 - The first walking pictures never caught him walking: the headless High renderer runs the title clock about ten times slower than the wall, so the wait ran out first. Taken on Low.
 
 The owner, 16 November 2026 23:31Z (17 November, 7:31 AM Perth), on draft PR 278 after its latency rise was stated: "Push to main". Fast forwarded onto main a04f83c; his word accepts the rise.
+
+## 2026-11-17: Thomas wears a red flanno (draft PR)
+
+The owner, 17 November 2026 02:54Z: "Let's dress Thomas in a red flanno".
+
+### What changed
+
+- `assets/warehouse/thomas-manga.webp`: the thread's `pack.py` now paints a red and black buffalo check, three periods by three of 96 px, at (256, 210) of the atlas, and no longer packs the sheet's picture of him standing in his hoodie, whose chest was the only part drawn from it. 76394 to 72158 bytes. The hoodie packer is kept beside it as `pack-hoodie.py` in `/mnt/project-files/tcmore-warehouse/thomas/scripts/`.
+- `src/maps/warehouse/thomasdraw.js`: his body and sleeves are the check, wrapped by the angle round each part, each triangle painted from the tile's middle period shifted by whole periods to where it sits (`plaidAt`), so a triangle never reaches the tile's edge and none is stretched across the back seam. The shirt is open over a black tee: the two columns of triangles either side of straight ahead are the tee's. The hood is gone; the shoulders slope in to the neck so a quad above him sees cloth and not into him, and a collar stands round the neck, open at the front. Shoulder and elbow joints wear the check too. `Build.loft`'s `pick` is also given the triangle's middle, and `Build.ellipsoid` passes a `pick` through.
+- NOTICE: the atlas entry says what it now holds.
+
+### What went wrong
+
+- First picture: the tee strip came out as a zigzag, one triangle of each quad in and the other out. The strip was chosen by the middle's angle under 0.35 rad, but his body is about 1.5 times wider than deep, so the second triangle of each front column measures 22 to 25 degrees. 0.5 rad takes both and none of the next column (39 degrees and up).
+- The shoulder and elbow balls were flat red and read as pads. They wear the check now.
+
+### Checks run on this tree
+
+- `node scripts/warehouse-check.js`: all passed (the sheet 72158 of 120000 bytes).
+- `lint:preload` 2 of 2.
+- `node scripts/memory-check.js --map=warehouse`: the same one problem as main (the sunny palette through Your map's cars), nothing new.
+- Pictures from the real shell on High: front, quarter, side, back, from above, his face, and shouting "Sorry!".
+- Not run: `npm run verify` (nothing in physics, the plant, the ABI or the build). Not flown.
+
+### Latency
+
+No rise in what the GPU draws: still one draw call, 2788 to 2792 triangles (the hood's out, the shoulder slope and collar in). The CPU skinning goes from 3956 to 5628 vertices, because a triangle painted from the check has corners of its own; it runs only while he is in view or within 12 m, and by Heads' measured 50 microseconds for 3.5k vertices it is about 80 microseconds a frame then, an estimate, not measured here. The sheet is 4 kB smaller.

@@ -8,7 +8,9 @@
  * six faces straight on at one framing (laughing, frowning, shouting,
  * talking, surprised, a calm smile), his left side, the back and the top of
  * his head, and him standing and walking in a black hoodie and black
- * trousers. It came as one picture, not cut into pieces; the thread's
+ * trousers. The owner, 17 November 2026: "Let's dress Thomas in a red
+ * flanno", so he wears a red and black buffalo check flannel shirt instead,
+ * open over a black tee. It came as one picture, not cut into pieces; the thread's
  * pack.py cuts it, turns his hair and beard to the ginger of Thomas's photo,
  * and puts the parts used into one atlas, assets/warehouse/thomas-manga.webp
  * (NOTICE), printing the head's outline tables below.
@@ -22,9 +24,10 @@
  * face's outline there and as deep as his side's, each triangle
  * painted from the face, his side or the back of his head by the way it
  * faces; the face changes by moving the front's texture coordinates along
- * the row of faces. THE BODY is the hoodie: its front from the sheet, the
- * strings and the pocket, a hood bunched round his neck, and the rest the
- * sheet's black. ONE MESH, every vertex on one bone and skinned on the CPU,
+ * the row of faces. THE BODY is the flannel shirt: the check is a tile pack.py
+ * paints into the atlas, wrapped round his body and his sleeves by the
+ * angle round each part, and a strip down his front is the black tee under
+ * the open shirt. ONE MESH, every vertex on one bone and skinned on the CPU,
  * so he is one draw call, and the balloon is one more only while he shouts.
  *
  * HOW BIG. The shop is drawn S times its plan metres (./warehouse.js FRAME),
@@ -80,13 +83,14 @@ const SIDE_AXIS = 100;
 const BACK = [1310, 0];
 const BACK_TOP = 4;
 const BACK_MID = 93;
-/* Him standing, facing us: the middle of the hoodie, its shoulders' row and
- * its hem's, and how many px of the sheet a metre of him is. */
-const BODY = [0, 210];
-const BODY_MID = 88;
-const BODY_SHOULDER = 100;
-const BODY_HEM = 252;
-const BODY_PX = 262;
+/* The flannel's buffalo check: three periods by three, each PLAID_PX px of
+ * the atlas and PLAID_M metres of shirt (a red square and a black one each
+ * way), top left at PLAID. A triangle is painted from the middle period,
+ * shifted by whole periods to where it sits, so its corners stay inside
+ * the tile. */
+const PLAID = [256, 210];
+const PLAID_PX = 96;
+const PLAID_M = 0.15;
 const WHITE = [180, 210, 64, 64];
 
 /* Real metres of a head from crown to chin, and the px that is in a face
@@ -138,7 +142,8 @@ function lerpRows(table, r) {
 }
 
 const SKIN = '#e6baa7';
-const HOODIE = '#2f2f31';
+const SHIRT = '#a8222a';
+const TEE = '#262628';
 const TROUSERS = '#2c2c2e';
 const SHOE = '#313131';
 const SOLE = '#d7cfc8';
@@ -150,6 +155,24 @@ const WHITE_UV = uvAt(WHITE[0] + WHITE[2] / 2, WHITE[1] + WHITE[3] / 2);
 const headFront = (x, y) => uvAt(FACE_MID + x / K, FACE_TOP + (HEAD_TOP_Y - y) / K);
 const headSide = (x, y, z) => uvAt(SIDE[0] + SIDE_AXIS - z / KS, SIDE[1] + SIDE_TOP + (HEAD_TOP_Y - y) / KS);
 const headBack = (x, y) => uvAt(BACK[0] + BACK_MID - x / KS, BACK[1] + BACK_TOP + (HEAD_TOP_Y - y) / KS);
+
+/* The check for one triangle whose middle is (cx, cy, cz), on a part whose
+ * upright axis is at (ox, oz) and whose girth is about r: round the part is
+ * the angle times r, up it is y. Each corner is measured from the middle's
+ * angle the short way round, so a triangle across the back seam is not
+ * stretched round the whole body. */
+function plaidAt(cx, cy, cz, r, ox = 0, oz = 0) {
+  const ac = Math.atan2(cx - ox, cz - oz);
+  const ku = Math.floor((ac * r) / PLAID_M);
+  const kv = Math.floor(cy / PLAID_M);
+  return (x, y, z) => {
+    let d = Math.atan2(x - ox, z - oz) - ac;
+    d -= 2 * Math.PI * Math.round(d / (2 * Math.PI));
+    const u = (ac + d) * r - (ku - 1) * PLAID_M;
+    const v = y - (kv - 1) * PLAID_M;
+    return uvAt(PLAID[0] + (u / PLAID_M) * PLAID_PX, PLAID[1] + 3 * PLAID_PX - (v / PLAID_M) * PLAID_PX);
+  };
+}
 
 /* ------------------------------------------------------------------ */
 /* The model                                                           */
@@ -186,8 +209,8 @@ class Build {
    * { y, rx, rz, cx, cz, c } with c its colour, `n` points round. Painted
    * one of two ways. `map(x, y, z)` gives a vertex its place on the sheet
    * (or null for its ring's colour), shared by every triangle that meets
-   * there: for a picture that wraps without a seam. `pick(nx, ny, nz)` gives
-   * each triangle, by the way it faces, a map of its own or null, and the
+   * there: for a picture that wraps without a seam. `pick(nx, ny, nz, cx,
+   * cy, cz)` gives each triangle, by the way it faces and where its middle is, a map of its own or null, and the
    * triangle then has its own three vertices, so two pictures meet at an
    * edge and neither is smeared across the other; `track` collects the
    * vertices `pick` sent to `front`, so the face can be changed.
@@ -248,7 +271,7 @@ class Build {
       const e2 = [C[0] - A[0], C[1] - A[1], C[2] - A[2]];
       const f = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
       const fl = Math.hypot(f[0], f[1], f[2]) || 1;
-      const how = pick(f[0] / fl, f[1] / fl, f[2] / fl);
+      const how = pick(f[0] / fl, f[1] / fl, f[2] / fl, (A[0] + B[0] + C[0]) / 3, (A[1] + B[1] + C[1]) / 3, (A[2] + B[2] + C[2]) / 3);
       for (const [i, j] of tri) {
         const p = P[i][j];
         const k = this.vertex(bone, p, NN[i][j], how ? how(p[0], p[1], p[2]) : null, rings[i].c);
@@ -262,14 +285,14 @@ class Build {
 
   /* An ellipsoid between two polar angles from its top (0 is the top, PI the
    * bottom), `lat` rings. */
-  ellipsoid(bone, c, r, colour, { from = Math.PI, to = 0, lat = 6, n = 12 } = {}) {
+  ellipsoid(bone, c, r, colour, { from = Math.PI, to = 0, lat = 6, n = 12, pick = null } = {}) {
     const rings = [];
     for (let k = 0; k <= lat; k += 1) {
       const f = from + ((to - from) * k) / lat;
       const s = Math.max(Math.sin(f), 0.0012);
       rings.push({ y: c[1] + r[1] * Math.cos(f), rx: r[0] * s, rz: r[2] * s, cx: c[0], cz: c[2], c: colour });
     }
-    this.loft(bone, rings, { n });
+    this.loft(bone, rings, { n, pick });
   }
 }
 
@@ -277,7 +300,8 @@ class Build {
 export function thomasModel() {
   const B = new Build(WHITE_UV);
   const skin = rgb(SKIN);
-  const hoodie = rgb(HOODIE);
+  const shirt = rgb(SHIRT);
+  const tee = rgb(TEE);
   const trousers = rgb(TROUSERS);
   const shoe = rgb(SHOE);
   const sole = rgb(SOLE);
@@ -286,21 +310,27 @@ export function thomasModel() {
   B.loft(BONE.pelvis, [
     { y: -0.16, rx: 0.15, rz: 0.1, c: trousers }, { y: -0.04, rx: 0.168, rz: 0.11, c: trousers }, { y: 0.07, rx: 0.155, rz: 0.104, c: trousers },
   ]);
-  /* The hoodie: its front is the sheet's, the strings and the pocket; its
-   * back and sides are its black. It hangs to the hips. */
-  const chest = (x, y) => uvAt(BODY[0] + BODY_MID + x * BODY_PX, BODY[1] + BODY_SHOULDER + Math.max(0, (0.5 - y) * BODY_PX));
+  /* The flannel shirt, open down the front over the black tee: the
+   * triangles either side of straight ahead are the tee's (0.5 rad of
+   * the middle's angle: the body is wider than deep, so the two columns either
+   * side of the front measure up to 25 degrees and the next starts at 39) (the
+   * rings' colour), the rest the check. It hangs to the hips and its
+   * shoulders slope in to his neck, so a quad above him sees cloth and not
+   * into him. */
+  const flannel = (r) => (nx, ny, nz, cx, cy, cz) => plaidAt(cx, cy, cz, r);
+  const shirtFront = flannel(0.16);
   B.loft(BONE.spine, [
-    { y: -0.14, rx: 0.19, rz: 0.125, c: hoodie }, { y: -0.06, rx: 0.196, rz: 0.13, c: hoodie }, { y: 0.06, rx: 0.186, rz: 0.12, c: hoodie },
-    { y: 0.16, rx: 0.184, rz: 0.118, c: hoodie }, { y: 0.26, rx: 0.192, rz: 0.12, c: hoodie }, { y: 0.36, rx: 0.2, rz: 0.122, c: hoodie },
-    { y: 0.42, rx: 0.205, rz: 0.118, c: hoodie }, { y: 0.465, rx: 0.185, rz: 0.108, c: hoodie }, { y: 0.5, rx: 0.13, rz: 0.09, c: hoodie },
-  ], { n: 16, pick: (nx, ny, nz) => (nz > 0.45 ? chest : null) });
+    { y: -0.14, rx: 0.19, rz: 0.125, c: tee }, { y: -0.06, rx: 0.196, rz: 0.13, c: tee }, { y: 0.06, rx: 0.186, rz: 0.12, c: tee },
+    { y: 0.16, rx: 0.184, rz: 0.118, c: tee }, { y: 0.26, rx: 0.192, rz: 0.12, c: tee }, { y: 0.36, rx: 0.2, rz: 0.122, c: tee },
+    { y: 0.42, rx: 0.205, rz: 0.118, c: tee }, { y: 0.465, rx: 0.185, rz: 0.108, c: tee }, { y: 0.5, rx: 0.13, rz: 0.09, c: tee },
+    { y: 0.525, rx: 0.075, rz: 0.066, c: tee },
+  ], { n: 16, pick: (nx, ny, nz, cx, cy, cz) => (Math.abs(Math.atan2(cx, cz)) < 0.5 && cy < 0.49 ? null : shirtFront(nx, ny, nz, cx, cy, cz)) });
   B.loft(BONE.spine, [{ y: 0.46, rx: 0.06, rz: 0.06, c: skin }, { y: 0.56, rx: 0.055, rz: 0.055, c: skin }]);
-  /* The hood, bunched round his neck and fuller behind it, as every view
-   * of the sheet has it. */
+  /* The collar, standing round his neck and open at the front. */
   B.loft(BONE.spine, [
-    { y: 0.42, rx: 0.16, rz: 0.12, cz: -0.01, c: hoodie }, { y: 0.49, rx: 0.15, rz: 0.13, cz: -0.025, c: hoodie },
-    { y: 0.55, rx: 0.115, rz: 0.12, cz: -0.045, c: hoodie }, { y: 0.575, rx: 0.08, rz: 0.08, cz: -0.06, c: hoodie },
-  ], { n: 14 });
+    { y: 0.47, rx: 0.118, rz: 0.098, cz: -0.006, c: tee }, { y: 0.515, rx: 0.1, rz: 0.088, cz: -0.008, c: tee },
+    { y: 0.55, rx: 0.088, rz: 0.08, cz: -0.012, c: tee },
+  ], { n: 14, pick: (nx, ny, nz, cx, cy, cz) => (Math.abs(Math.atan2(cx, cz + 0.01)) < 0.45 ? null : plaidAt(cx, cy, cz, 0.1, 0, -0.01)) });
 
   /* The head, ring by row of the sheet, painted from the front, his side or
    * behind by the way each triangle faces. */
@@ -335,16 +365,16 @@ export function thomasModel() {
   for (const s of [1, -1]) {
     const arm = s > 0 ? BONE.armL : BONE.armR;
     const fore = s > 0 ? BONE.foreL : BONE.foreR;
-    /* Long black sleeves, a cuff, and his hand. */
+    /* Long flannel sleeves, a cuff, and his hand. */
     B.loft(arm, [
-      { y: -0.3, rx: 0.06, rz: 0.06, c: hoodie }, { y: -0.12, rx: 0.07, rz: 0.07, c: hoodie }, { y: 0.03, rx: 0.07, rz: 0.07, c: hoodie },
-    ]);
-    B.ellipsoid(arm, [0, 0, 0], [0.072, 0.072, 0.072], hoodie, { lat: 4 });
-    B.ellipsoid(fore, [0, 0, 0], [0.058, 0.058, 0.058], hoodie, { lat: 4 });
+      { y: -0.3, rx: 0.06, rz: 0.06, c: shirt }, { y: -0.12, rx: 0.07, rz: 0.07, c: shirt }, { y: 0.03, rx: 0.07, rz: 0.07, c: shirt },
+    ], { pick: flannel(0.07) });
+    B.ellipsoid(arm, [0, 0, 0], [0.072, 0.072, 0.072], shirt, { lat: 4, pick: flannel(0.07) });
+    B.ellipsoid(fore, [0, 0, 0], [0.058, 0.058, 0.058], shirt, { lat: 4, pick: flannel(0.055) });
     B.loft(fore, [
-      { y: -0.29, rx: 0.046, rz: 0.048, c: hoodie }, { y: -0.25, rx: 0.05, rz: 0.052, c: hoodie }, { y: -0.17, rx: 0.052, rz: 0.054, c: hoodie },
-      { y: -0.02, rx: 0.058, rz: 0.058, c: hoodie },
-    ]);
+      { y: -0.29, rx: 0.046, rz: 0.048, c: shirt }, { y: -0.25, rx: 0.05, rz: 0.052, c: shirt }, { y: -0.17, rx: 0.052, rz: 0.054, c: shirt },
+      { y: -0.02, rx: 0.058, rz: 0.058, c: shirt },
+    ], { pick: flannel(0.055) });
     B.ellipsoid(fore, [0, -0.34, 0.012], [0.034, 0.052, 0.022], skin, { lat: 4 });
   }
   for (const s of [1, -1]) {

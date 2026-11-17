@@ -282,9 +282,11 @@ not extend to it.
 `thomas-manga.webp` is packed from a manga sheet of Thomas More that the
 owner made with Grok and gave on 2026-11-17, one picture on a grey ground,
 cut into pieces by colour: six of his faces, his left side, the back of his
-head and him standing in a black hoodie, in one 1536 by 768 atlas, each
-piece's background filled from its edge, the hair and beard turned toward
-the ginger of his photo. The packing script is the thread's, not this
+head, in one 1536 by 768 atlas, each piece's background filled from its
+edge, the hair and beard turned toward the ginger of his photo. Since
+2026-11-17 ("Let's dress Thomas in a red flanno") the atlas also holds a
+red and black check the packing script paints for his flannel shirt, and
+no longer holds the sheet's picture of him standing in a black hoodie. The packing script is the thread's, not this
 repository's. It is in this repository only so that src/maps/warehouse/ can
 draw him in his shop. The project's GPLv3 grant does not extend to it.
 

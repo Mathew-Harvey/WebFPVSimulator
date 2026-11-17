@@ -60,7 +60,7 @@ function tagged(base, params) {
 }
 
 /* Stripe tip link: one-off, USD $5 suggested, payer can change the amount */
-export const TIP_URL = 'https://donate.stripe.com/7sY4gzaAC2Eu3aOews8so0g';
+export const TIP_URL = 'https://donate.stripe.com/6oU6oHcIKdj85iW0FC8so0s';
 
 
 /* The last time the prompt was shown. A record only: nothing gates on it. */

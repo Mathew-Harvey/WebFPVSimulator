@@ -41,7 +41,7 @@ export const PATREON_URL = 'https://www.patreon.com/cw/webfpv/membership';
  * prompt's Patreon button opens (Patreon tier id 29846312). */
 export const COFFEE_TIER_URL = 'https://www.patreon.com/checkout/webfpv?rid=29846312';
 
-export const TIP_URL = 'https://donate.stripe.com/7sY4gzaAC2Eu3aOews8so0g';
+export const TIP_URL = 'https://donate.stripe.com/6oU6oHcIKdj85iW0FC8so0s';
 
 export const PATREON_NOTE = 'Support WebFPV on Patreon. Keep the lights on, $3. Hosting + runway, $8. Build the sim, $20. Your sign in the sim, $25. USD a month.';
 

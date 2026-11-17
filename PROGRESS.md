@@ -76424,3 +76424,5 @@ The owner, 17 November 2026 02:54Z: "Let's dress Thomas in a red flanno".
 ### Latency
 
 No rise in what the GPU draws: still one draw call, 2788 to 2792 triangles (the hood's out, the shoulder slope and collar in). The CPU skinning goes from 3956 to 5628 vertices, because a triangle painted from the check has corners of its own; it runs only while he is in view or within 12 m, and by Heads' measured 50 microseconds for 3.5k vertices it is about 80 microseconds a frame then, an estimate, not measured here. The sheet is 4 kB smaller.
+
+The owner, 17 November 2026 03:03Z, on draft PR 279: "Push to main". Fast forwarded onto main d2a2855.

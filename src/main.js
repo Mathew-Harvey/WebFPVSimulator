@@ -13085,6 +13085,11 @@ export async function boot({ loading, bootStart, mapId }) {
       const kind = idx >= 0 ? kindOf(view.colliders, idx) : (idx <= -2 ? moverKind(-2 - idx) : 'none');
       obsImpulseKind = kind;
       lastHitKind = kind;
+      /* A map's own moving solid that wants to hear when it is hit: Thomas
+       * in his shop says sorry (src/maps/warehouse/thomas.js thomasSolid). */
+      if (idx <= -2 && sails && sails.hit && -2 - idx >= sails.base) {
+        sails.hit(-2 - idx - sails.base);
+      }
       lastClosing = rep[1];
       /* The report's normal is the physics frame's, Z up, so [6] is how much
        * of it points up: a craft resting on the top of something. */

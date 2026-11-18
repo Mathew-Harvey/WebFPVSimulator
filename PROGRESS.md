@@ -76458,3 +76458,35 @@ The owner, 17 November 2026 02:54Z: "Let's dress Thomas in a red flanno".
 No rise in what the GPU draws: still one draw call, 2788 to 2792 triangles (the hood's out, the shoulder slope and collar in). The CPU skinning goes from 3956 to 5628 vertices, because a triangle painted from the check has corners of its own; it runs only while he is in view or within 12 m, and by Heads' measured 50 microseconds for 3.5k vertices it is about 80 microseconds a frame then, an estimate, not measured here. The sheet is 4 kB smaller.
 
 The owner, 17 November 2026 03:03Z, on draft PR 279: "Push to main". Fast forwarded onto main d2a2855.
+
+## 2026-11-18: Thomas is solid and says sorry every time he is hit (draft PR)
+
+The owner, 17 November 2026 23:29Z (18 November, Perth): "Make Thomas say sorry every time you hit him, also make him solid , so he is a collision".
+
+### What changed
+
+- `src/maps/warehouse/thomas.js`: `THOMAS_BOXES`, two boxes over his spot: his body from the floor to 1.55 m, 0.5 m square (his arms at his sides whichever way he faces), and his neck and head from 1.5 to 1.98 m, 0.32 m square. `thomasSolid(FRAME, base)` hands them to the shell in the shape a windmill's sails already have (`src/props/windmill.js` sailsOf: slots, base, doubles, seat, gapAt), so `src/main.js` pushSails seats them in the physics module every step and fpvNear keeps the lens off him, with no new path into the plant. His two mover slots are the top two (62, 63), the sails' slots: the shop has no windmill, no train and no traffic, and `index.js` throws if one ever arrives.
+- `thomasSpot(T)`: where he stands and how fast he walks, the one source for the drawing and the solid, so the Thomas drawn is the Thomas hit to the bit.
+- DETERMINISM. What the physics reads of him has to be the same bits in every engine (CLAUDE.md). His day's table used `Math.hypot` for a walk's length and `Math.atan2` through the turn times; both are out of the times now: a square root for the length, and a turn's time from the chord between the two headings and the first terms of 2 asin(c / 2), all arithmetic. His day is 584706 ms where it was 586379, the same walks a touch brisker in the turns. The yaw he is drawn facing still comes from `Math.atan2`, which only the drawing reads.
+- `src/maps/warehouse/thomasdraw.js`: his clock is now the step the shell hands updateAnim, as it is (the lap clock in a flight, the clock his solid is seated at), where it used to add up its own forward steps; so a new run finds him at his bench. `hit()` is the shell's word that the craft hit him: every hit is a sorry at once, over whatever he was shouting, "Sorry!" and "Sorry, eh?" in turn; contacts closer than 400 ms on his clock are one hit, so a scrape along him is one sorry and not sixty. `__map().thomas.sorries` counts them.
+- `src/main.js`: where a frame's hardest contact is read, a contact with a mover in the map's sails slots calls `sails.hit(k)` if the map gave one. A windmill gives none.
+- `scripts/thomas-check.js`, `npm run check:thomas`: what the physics reads of him uses no engine dependent maths (sine, cosine, arc tangent, hypot, power and the rest, read from the source); his day is the pinned table; drawn where solid to the bit every 97 ms of his day; his head and hips inside his boxes all day; seat() the same bits wherever the craft is and its velocity his walk's; and in the real module, seated as main.js seats him, a craft hovering in his path is hit by him at the step the drawn boxes reach it (0.171 m from the CG, the craft's reach 0.23 m), reported on his slot, never inside him, the same to the bit twice, untouched when he is never seated, and untouched 1.5 m beside his path. Shown to fail: `Math.hypot` put back in the table fails the first and the pin; seat() seating nothing fails the hit.
+
+### Self verify
+
+The real shell in headless Chromium on High, the scratch rig `hit.mjs`: in flight, the craft put into his chest three times with the sim clock run on between; three sorries ("Sorry!", "Sorry, eh?", "Sorry!"), the balloon up each time, no page error.
+
+### Checks run on this tree
+
+- `npm run check:thomas`: all passed.
+- `node scripts/warehouse-check.js`: all passed (his walks still 0.734 m from any solid at the least, so his body box, 0.25 m from his middle, never meets the furniture).
+- `lint:preload` 2 of 2 (`gen-preload` wrote nothing new), `check:props`: passed.
+- `memory-check --map=warehouse`: the one problem main has (the sunny palette), nothing new.
+- `lint:shell`: fails on the gate's cards (career and builder cards not drawn), and fails the same way on main 901e847 in a clean worktree. Not this change.
+- Not run: `npm run verify`. The physics model, the plant, the module ABI and the build are unchanged: he goes in through the movers the sails already use. Not flown by a person.
+
+### Latency
+
+The GPU: nothing. The CPU: his two boxes seated every physics step and the plant testing them, measured in Node with the real module, 60000 steps, three runs: a step 1.69 to 1.85 microseconds bare and 2.16 to 2.63 with him, of which seat() and the two setMover calls are 0.33 to 0.36. About half a microsecond a step, about 8 microseconds a frame at 60 frames a second, and only on his map.
+
+The owner, 18 November 2026 00:38Z, on draft PR 281: "Push to main". Fast forwarded onto main 36b0dc2.

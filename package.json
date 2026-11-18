@@ -79,6 +79,7 @@
     "check:timerpace": "node scripts/timerpace-check.js",
     "check:bounce": "node scripts/bounce-check.js",
     "check:stall": "node scripts/stall-check.js",
+    "check:pollclock": "node scripts/pollclock-check.js",
     "check:takeoff": "node scripts/takeoff-check.js",
     "check:longflight": "node scripts/longflight-check.js",
     "check:tune": "node scripts/tune-check.js",

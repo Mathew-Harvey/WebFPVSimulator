@@ -3049,6 +3049,109 @@ section('the dogfight gun and missile bind to a radio switch or button (QA 2026-
   check('and let go when it is off', g.im.gunHeld() === false);
 }
 
+/*
+ * bug-e464f141, a keyboard pilot's tune report from the town: the flight's
+ * pitch travel read -1.14, past the end of a stick no key can pass. poll()
+ * has two callers, the 2 ms timer with performance.now() and the frame, and
+ * the frame handed in the display loop's timestamp, which is when the frame
+ * began. A timer poll since then is later than that, so the frame's poll
+ * arrived in the past (a third of them, by up to 17 ms, in the real shell
+ * under the display's loop), and every rate in the keyboard ran backwards
+ * for one poll. The released key here is that report: full stick, let go,
+ * one timer poll, then the frame's poll 15 ms before it, which on the base
+ * read -1.117. The browser half, the frame's own clock, is
+ * scripts/pollclock-check.js.
+ */
+section('a poll stamped before the last one runs no clock backwards: bug-e464f141');
+{
+  /* Every rig on the same clock, so two of them compare to the last bit. */
+  const mk = () => {
+    const rig = new Rig(null);
+    rig.t = 1000;
+    rig.im.lastWall = 1000;
+    rig.im.flying = true;
+    return rig;
+  };
+  /* The frame's poll, stamped `ms` before the timer's last one. */
+  const stale = (rig, ms) => rig.im.poll(rig.t - ms);
+  const fine = (rig, ms) => {
+    for (let e = 0; e < ms; e += 2) {
+      rig.step(2);
+    }
+  };
+
+  let rig = mk();
+  rig.im.keys.add('ArrowUp');
+  fine(rig, 1300);
+  const full = rig.im.channels.pitch;
+  rig.im.keys.delete('ArrowUp');
+  rig.step(2);
+  const after = rig.im.channels.pitch;
+  stale(rig, 15);
+  check('the pitch key held to the stop reads full stick', full === -1, String(full));
+  check('let go, then a poll stamped 15 ms before the last: the stick does not spring outward',
+    rig.im.channels.pitch === after && after > -1, `${after} then ${rig.im.channels.pitch}`);
+  const tr = rig.im.flightReport().travel.pitch;
+  check('and the flight\'s record of it never reads past full stick', tr[0] >= -1, JSON.stringify(tr));
+  const q = rig.im.queue;
+  const last = q[q.length - 1];
+  const prev = q[q.length - 2];
+  check('every sample in the queue is stamped no earlier than the one ahead of it, and after its own prevWall',
+    q.every((s, i) => i === 0 || s.wallT >= q[i - 1].wallT) && last.prevWall <= last.wallT,
+    `${prev && prev.wallT} then ${last && last.wallT}`);
+  rig.run(400);
+  check('and it still springs all the way back to centre', rig.im.channels.pitch === 0, String(rig.im.channels.pitch));
+
+  rig = mk();
+  rig.im.keys.add('ArrowRight');
+  fine(rig, 600);
+  const ramp = rig.im.channels.roll;
+  stale(rig, 15);
+  check('a key held half way up its ramp does not step back on a stale poll',
+    rig.im.channels.roll === ramp, `${ramp} then ${rig.im.channels.roll}`);
+
+  /* Nothing counted twice and nothing lost: a hold with a stale poll after
+   * every eighth timer poll ends where the same hold without them ends. */
+  const a = mk();
+  const b = mk();
+  a.im.keys.add('ArrowRight');
+  b.im.keys.add('ArrowRight');
+  for (let i = 1; i <= 450; i += 1) {
+    a.step(2);
+    b.step(2);
+    if (i % 8 === 0) {
+      stale(b, 12);
+    }
+  }
+  check('a hold read through stale polls ends exactly where the same hold without them ends',
+    a.im.channels.roll === b.im.channels.roll, `${a.im.channels.roll} and ${b.im.channels.roll}`);
+
+  rig = mk();
+  rig.im.keys.add('KeyW');
+  fine(rig, 1300);
+  rig.im.keys.delete('KeyW');
+  fine(rig, 20);
+  const falling = rig.im.channels.throttle;
+  stale(rig, 15);
+  check('the keyboard throttle springing down to hover does not spring back up on a stale poll',
+    falling < 1 && falling > rig.im.kbHover && rig.im.channels.throttle === falling,
+    `${falling} then ${rig.im.channels.throttle}`);
+
+  /* The thumb sticks' springs take the same dt. */
+  rig = new Rig(null);
+  const dts = [];
+  rig.im.attachTouch({
+    active: () => true,
+    sample(dt) { dts.push(dt); return { roll: 0, pitch: 0, yaw: 0, throttle: 0 }; },
+    reset() {},
+    setStickMode() {},
+  });
+  fine(rig, 40);
+  stale(rig, 15);
+  check('the thumb sticks are never handed a negative time', dts.length > 10 && dts.every((d) => d >= 0),
+    String(Math.min(...dts)));
+}
+
 console.log(failed ?`\n${failed} failed, ${passed} passed` : `\nall ${passed} passed`);
 for (const f of fails) {
   console.log(`  FAIL ${f}`);

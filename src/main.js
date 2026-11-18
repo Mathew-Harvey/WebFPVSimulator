@@ -12290,7 +12290,10 @@ export async function boot({ loading, bootStart, mapId }) {
      * measured rather than what the pause screen does: see flightRec in
      * input.js. The 2 ms timer's polls between frames read the same flag. */
     input.flying = ui.screen === 'flight' && mode === 'flight';
-    input.poll(nowWall);
+    /* On the timer's clock, read now, and not nowWall: under the display's
+     * loop nowWall is when the frame began, and a timer poll since then
+     * made it the past (bug-e464f141, see the head of poll() in input.js). */
+    input.poll(performance.now());
     /*
      * The radio's restart switch, bug-a25bc2dd: see noteRestartSwitch in
      * input.js. Taken on every frame, so a flip made in a menu is spent

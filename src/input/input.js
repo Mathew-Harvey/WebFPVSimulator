@@ -4965,7 +4965,25 @@ export class InputManager {
 
   /* Called once per animation frame. Emits one timestamped sample when
    * anything changed, plus a heartbeat sample every 100 ms. */
-  poll(nowWall) {
+  poll(wallIn) {
+    /*
+     * THIS CLOCK ONLY RUNS FORWARD, bug-e464f141: a keyboard pilot's report
+     * whose pitch travel read -1.14, past the end of a stick a key cannot
+     * pass. Two callers poll here, the 2 ms timer with performance.now()
+     * and the frame, and the frame used to hand in the display loop's
+     * timestamp, which is when the frame began, not when it ran. A timer
+     * poll in between is later than that, so in the real shell a third of
+     * the frame's polls arrived up to 17 ms before the last one, and every
+     * rate below ran backwards for one poll: a released key's spring
+     * pushed the stick outward (full stick and a 15 ms step back is
+     * -1.117), a held key's ramp stepped back, the keyboard throttle
+     * sprang away from hover, the thumb sticks' springs did the same, and
+     * the sample went into the queue stamped before the one ahead of it.
+     * The frame now polls with performance.now() (src/main.js), and a
+     * stamp before the last poll is read as no time at all, so the next
+     * poll counts the whole stretch and nothing is counted twice or lost.
+     */
+    const nowWall = wallIn < this.lastWall ? this.lastWall : wallIn;
     /* When the poll before this one ran: the start of the stretch in which
      * whatever this poll finds new actually happened. See prevWall on the
      * sample below. */
@@ -5116,7 +5134,8 @@ export class InputManager {
    * setInterval and a busy frame delays it, which is exactly why every sample
    * is timestamped rather than assumed to be on a grid. Calling poll() from
    * the frame as well is harmless: dtMs is measured off lastWall, so the
-   * keyboard integration cannot be double counted.
+   * keyboard integration cannot be double counted, and poll() never lets
+   * that clock run backwards (see the head of poll(), bug-e464f141).
    *
    * `alsoEach` rides the same tick, after the sticks: main.js hangs the GPU
    * guard's fence poll here (see src/render/gpugate.js) rather than start a

@@ -76456,3 +76456,5 @@ The real shell in headless Chromium on High, the scratch rig `hit.mjs`: in fligh
 ### Latency
 
 The GPU: nothing. The CPU: his two boxes seated every physics step and the plant testing them, measured in Node with the real module, 60000 steps, three runs: a step 1.69 to 1.85 microseconds bare and 2.16 to 2.63 with him, of which seat() and the two setMover calls are 0.33 to 0.36. About half a microsecond a step, about 8 microseconds a frame at 60 frames a second, and only on his map.
+
+The owner, 18 November 2026 00:38Z, on draft PR 281: "Push to main". Fast forwarded onto main 36b0dc2.

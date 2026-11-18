@@ -76544,3 +76544,10 @@ Everything below was run twice: on the fix over 36b0dc2, and again on the merged
 ### The board closed, by the standing rule of 2026-11-07
 
 - Read again before closing (00:55Z): 20 open, none filed since the triage began; 0 in progress. Closed with the run's token through `POST /board/api/bugs/:id`, status and resolution: 20 updates, 20 answered 200, all `wontfix`, because the fix is not on main. bug-e464f141's resolution says root cause found, fixed in efffd1a on the branch, to be marked fixed when it reaches main; bug-ab40bf32 a copy request for the owner; bug-5ad98853 a feature request; the 17 feel and tune notes no code defect, the seven flown on the keyboard on the display loop saying the stale poll was live in their flights, and tune numbers kept in the Tunes panel. Afterwards the board lists 0 open and 0 in progress.
+
+### To main, on the owner's word
+
+- The owner, 2026-11-18, on the run's report: "Push to main". Main had not moved from 4b64108, fetched just before: pushed 2026-11-18 01:10:59Z, 4b64108 to ca2a7c2, a fast forward, nothing forced. The tree pushed is the merged tree every check above ran on, with only PROGRESS.md after it.
+- Live check: by 01:12:30Z https://webfpv.org/sim/ served this tree's src/input/input.js (d1041b8c15cb71c2) and src/main.js (1a1556633a0340c5) byte for byte, page Last-Modified 01:11:56Z, deploy stamp `toobbw`. A fresh headless profile booted https://webfpv.org/sim/ and https://webfpv.org/sim/?loop=raf with no page error and no console error, and on the second flew the field with every stick poll watched: 0 of 104 polls in 6 s were handed a stamp before the last poll's (the base in the same rig: 37 of 105). That is the clock, not a flight: the keyboard's feel is the pilots' to try.
+- bug-e464f141 set to `fixed` (01:13Z, answered 200), naming efffd1a and main ca2a7c2. The board lists 0 open and 0 in progress.
+- No verification scale was picked beyond the push word; it goes out not flown by a person.

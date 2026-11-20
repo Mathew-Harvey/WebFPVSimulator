@@ -7061,6 +7061,53 @@
         .loading-sweep { animation: none; opacity: 0; }
       }
 
+      /* THE REVIEW (src/review/panel.js): the newest lap against the ghost
+         it chased, section by section, over the pause menu. Green where the
+         pilot gained on the ghost, red where they lost; the dialog's panel
+         and ink otherwise. */
+      .review {
+        position: fixed; inset: 0; z-index: 2147483000;
+        display: flex; align-items: center; justify-content: center;
+        background: rgba(12, 18, 14, 0.72);
+        font-family: var(--ui-font); color: var(--cream);
+      }
+      .review-card {
+        width: min(640px, 94vw); max-height: 88vh; box-sizing: border-box;
+        display: flex; flex-direction: column; gap: 10px;
+        padding: 18px 20px 16px;
+        background: var(--panel); border-radius: 4px;
+        box-shadow: inset 0 0 0 1px rgba(232, 168, 184, 0.35), 0 18px 40px rgba(0, 0, 0, 0.55);
+      }
+      .review-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+      .review-heading { margin: 0; font-size: 22px; color: var(--cream); }
+      .review-title { color: var(--slate); font-size: 14px; }
+      .review-close {
+        margin-left: auto; padding: 5px 14px; cursor: pointer;
+        font: inherit; font-size: 14px; color: var(--cream);
+        background: #121a14; border: 1px solid rgba(244, 236, 214, 0.25); border-radius: 4px;
+      }
+      .review-close:hover { border-color: var(--sakura); }
+      .review-why { color: var(--slate); font-size: 14px; }
+      .review-scroll { overflow-y: auto; min-height: 0; }
+      .review-table { width: 100%; border-collapse: collapse; font-size: 15px; font-variant-numeric: tabular-nums; }
+      .review-table th {
+        text-align: right; padding: 4px 8px; font-weight: 400;
+        font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--slate);
+      }
+      .review-table th:first-child, .review-table td:first-child { text-align: left; }
+      .review-table td { text-align: right; padding: 6px 8px; white-space: nowrap; }
+      .review-row { cursor: pointer; }
+      .review-row.selected { background: rgba(232, 168, 184, 0.12); box-shadow: inset 3px 0 0 var(--sakura); }
+      .review-total td { border-top: 1px solid rgba(244, 236, 214, 0.2); font-weight: 600; }
+      .review-delta { font-weight: 600; }
+      .review-delta.gained { color: var(--mint); }
+      .review-delta.lost { color: #ff6b5e; }
+      .review-legend { color: var(--slate); font-size: 12px; }
+      @media (max-width: 520px) {
+        .review-card { padding: 14px 12px; }
+        .review-table { font-size: 13px; }
+        .review-table td, .review-table th { padding: 5px 4px; }
+      }
       .name-dialog {
         position: absolute; inset: 0; z-index: 8;
         display: flex; align-items: center; justify-content: center;

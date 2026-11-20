@@ -89,6 +89,8 @@ import { buildPropView } from './render/propview.js';
 import { warmPrograms } from './render/warm.js';
 import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './share/ghostdata.js';
 import { TRACE_STEP_MS, TraceBook, TraceRecorder } from './review/trace.js';
+import { ReviewPanel } from './review/panel.js';
+import { chasedLabel, deltaText } from './review/splits.js';
 import { uploadWorld, setWorldFrame, setMover, setBoxHeight, kindOf, setVehicleClock, readVehicles, makeVehiclePoses, moverVelocityInPlant, vehicleSurfaceInPlant } from './game/plantworld.js';
 import { Chase, CHASE_EVERY, pays } from './game/chase.js';
 import { sincos } from './props/trig.js';
@@ -4132,6 +4134,19 @@ export async function boot({ loading, bootStart, mapId }) {
   const reviewPos = new THREE.Vector3();
   const reviewQuat = new THREE.Quaternion();
   let reviewLast = null;
+  /*
+   * THE REVIEW (src/review/panel.js): the newest lap against the ghost it
+   * chased, section by section, over the pause menu. reviewChased holds,
+   * for each lap cut and not yet made into a trace, the lap the gate gaps
+   * were read against on it (gapLap: the chased ghost, or with Ghost off
+   * the session's best, unseen), paired with its trace by the lap time.
+   * reviewLastRef is that lap for reviewLast. Made once a lap, never per
+   * frame or per step, and dropped with the course.
+   */
+  const reviewChased = [];
+  let reviewLastRef = null;
+  const reviewPanel = new ReviewPanel();
+  ui.overlay = reviewPanel;
   const ghostRig = buildGhostCraft();
   /*
    * Session lived, like the craft. It is parented into whichever scene
@@ -4604,6 +4619,9 @@ export async function boot({ loading, bootStart, mapId }) {
     ghostRecorder.abort();
     reviewTrace.abort();
     reviewLast = null;
+    reviewLastRef = null;
+    reviewChased.length = 0;
+    reviewPanel.close();
     ghostLap = null;
     gapLap = null;
     ghostChased = null;
@@ -4627,6 +4645,7 @@ export async function boot({ loading, bootStart, mapId }) {
       return;
     }
     syncGhostRow();
+    syncReviewRow();
     const listing = ghostListing();
     if (!listing || race.freestyle) {
       return;
@@ -4677,7 +4696,8 @@ export async function boot({ loading, bootStart, mapId }) {
      * been flown, so it is collected here a few frames later. */
     reviewCollect(reviewTrace.takeDone());
     if (lapDone) {
-      reviewTrace.cut(lapStartBefore, race.lastLapMs, race.lastSplits, {
+      /* What this lap chased, read before the re-arm below swaps it. */
+      const cutOk = reviewTrace.cut(lapStartBefore, race.lastLapMs, race.lastSplits, {
         course: ghostCourseKey(),
         craft: runAirframe,
         /* The room's multiple of life size, what the OSD divides a speed
@@ -4686,6 +4706,12 @@ export async function boot({ loading, bootStart, mapId }) {
         /* The camera's uptilt in degrees, for the replay's goggle view. */
         cameraAngle: camTilt,
       }, WORLD_SCALE);
+      if (cutOk) {
+        reviewChased.push({ durationMs: race.lastLapMs, ghost: gapLap });
+        if (reviewChased.length > 8) {
+          reviewChased.shift();
+        }
+      }
     }
     if (race.lapStartMs != null && race.lapStartMs !== lapStartBefore) {
       reviewTrace.lapBegan(race.lapStartMs);
@@ -7903,6 +7929,7 @@ export async function boot({ loading, bootStart, mapId }) {
   let goatsDoneFor = null;
   /* The pause menu's Let the goats out (src/ui/ui.js): the herd back on the
    * street, and the finish free to be called again. */
+  ui.onReview = () => openReview();
   ui.onGoatsOut = () => {
     if (view && view.goatGame) {
       view.goatGame.restart();
@@ -11733,7 +11760,57 @@ export async function boot({ loading, bootStart, mapId }) {
     for (const lap of laps) {
       reviewBook.keep(lap.meta.course, lap);
       reviewLast = lap;
+      const at = reviewChased.findIndex((c) => c.durationMs === lap.durationMs);
+      reviewLastRef = at >= 0 ? reviewChased[at].ghost : null;
+      if (at >= 0) {
+        reviewChased.splice(0, at + 1);
+      }
     }
+    syncReviewRow();
+  }
+
+  /* The Review row on the pause menu, with what it will show. None until a
+   * lap has been flown on this track, so the pause menu is no longer than
+   * it was until there is something to review, and none where there is no
+   * race: freestyle has no gates to time. */
+  function syncReviewRow() {
+    if (!race || race.freestyle || !reviewLast) {
+      ui.setReviewRow(null);
+      return;
+    }
+    const ref = reviewLastRef;
+    const lapWords = `Your last lap, ${formatTime(reviewLast.durationMs)}`;
+    if (!ref) {
+      ui.setReviewRow({ note: `${lapWords}, gate by gate. It chased no ghost, so there is nothing to compare it with yet.` });
+      return;
+    }
+    const d = reviewLast.durationMs - ref.durationMs;
+    ui.setReviewRow({ note: `${lapWords}, against ${reviewRefName(ref)}: ${deltaText(d)} over the lap. Each section gate to gate, green where you gained, red where you lost.` });
+  }
+
+  /* The ghost the newest lap chased, in words: who and their time, the
+   * session's best named the previous best when this lap beat it. */
+  function reviewRefName(ref) {
+    return chasedLabel(ghostLabelFor(ref).replace(/\s+/g, ' '), ref.label === 'Session best', reviewLast.durationMs, ref.durationMs);
+  }
+
+  /* The pause menu's Review row, pressed. */
+  function openReview() {
+    reviewTrace.flush();
+    reviewCollect(reviewTrace.takeDone());
+    if (!reviewLast) {
+      reviewPanel.open({ empty: 'No lap flown on this track yet. Fly one through the finish, pause, and it is here.' });
+      return;
+    }
+    const ref = reviewLastRef;
+    reviewPanel.open({
+      lap: reviewLast,
+      ref: ref ? { splits: ref.splits, durationMs: ref.durationMs } : null,
+      title: ref
+        ? `Lap ${formatTime(reviewLast.durationMs)} against ${reviewRefName(ref)}`
+        : `Lap ${formatTime(reviewLast.durationMs)}`,
+      refName: 'Ghost',
+    });
   }
 
   /*
@@ -16166,6 +16243,13 @@ export async function boot({ loading, bootStart, mapId }) {
       previous: previous ? previous.summary() : null,
     };
   };
+  /* The review panel, so a capture can ASSERT what it shows: open it as
+   * the pause menu's row would, and read it back. Harness only. */
+  window.__reviewOpen = () => {
+    openReview();
+    return reviewPanel.state();
+  };
+  window.__review = () => reviewPanel.state();
   /* One of those laps whole, samples and all, as plain arrays, so a capture
    * can read the trace against the ghost of the same lap. Harness only. */
   window.__reviewTraceLap = (which) => {

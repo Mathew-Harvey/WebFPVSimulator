@@ -8126,6 +8126,27 @@ export class Ui {
   }
 
   /*
+   * THE REVIEW'S ROW on the pause menu, under the Ghost row: the newest lap
+   * against the ghost it chased, section by section (src/review/panel.js,
+   * a panel the shell draws over this menu). The shell sets it with a note
+   * that says what the review will show (syncReviewRow in main.js), or
+   * null where there is no race to review.
+   */
+  setReviewRow(row) {
+    this.reviewRow = row || null;
+    if (this.screen === 'paused') {
+      this.renderMenu();
+    }
+  }
+
+  reviewItems() {
+    if (!this.reviewRow) {
+      return [];
+    }
+    return [{ label: 'Review', action: 'review', note: this.reviewRow.note }];
+  }
+
+  /*
    * THE GOAT MAP'S ROW on the pause menu, as an array to spread in place,
    * when the map is the goat map (`goatsOn`, which goatFrame in main.js
    * keeps). A goat in Heads' garage stays there through every crash and
@@ -12296,6 +12317,7 @@ export class Ui {
         ...(this.changeMapItem() ? [this.changeMapItem()] : []),
         ...(builder ? [builder] : []),
         ...this.ghostItems(),
+        ...this.reviewItems(),
         ...(trouble ? [trouble] : []),
         ...this.goatItems(),
         { label: 'Does it feel wrong?', section: true },
@@ -17860,6 +17882,11 @@ export class Ui {
       this.screenSeq = (this.screenSeq || 0) + 1;
     }
     this.closeDrop();
+    /* A panel the shell drew over the pause menu (this.overlay) goes with
+     * the pause, by whatever route the pilot left it. */
+    if (this.overlay && this.overlay.isOpen && screen !== 'paused') {
+      this.overlay.close();
+    }
     /* A flight is the only thing that moves a mini game's best, and the
      * title is where the panels show them: read again on the next draw. */
     if (screen === 'flight' || screen === 'title') {
@@ -23605,6 +23632,14 @@ export class Ui {
       this.act('resume');
       return;
     }
+    /* The review's row (reviewItems): its panel over this menu, which
+     * stays paused under it. */
+    if (action === 'review') {
+      if (this.onReview) {
+        this.onReview();
+      }
+      return;
+    }
     /* Career. Its card on the gate and its rows in a lesson's
      * pause belong to the career, which main.js routes (onCareer). */
     if (typeof action === 'string' && action.startsWith('career') && this.onCareer) {
@@ -24997,6 +25032,29 @@ export class Ui {
      * not see the held switch as a press when it stops listening.
      */
     if (this.padListening) {
+      this.padPrev = now;
+      return;
+    }
+    /*
+     * A PANEL THE SHELL DREW OVER THE MENU (this.overlay, the review in
+     * src/review/panel.js): while it is open the sticks and buttons are its
+     * keys, as keydowns on the document, which is where it listens. Up and
+     * down move, select and roll right are Enter, back and roll left are
+     * Escape. The menu behind hears nothing.
+     */
+    if (this.overlay && this.overlay.isOpen) {
+      const send = (k) => document.dispatchEvent(new KeyboardEvent('keydown', {
+        key: k, code: k, bubbles: true, cancelable: true,
+      }));
+      if (now.up && !this.padPrev.up) {
+        send('ArrowUp');
+      } else if (now.down && !this.padPrev.down) {
+        send('ArrowDown');
+      } else if ((now.back && !this.padPrev.back) || (now.left && !this.padPrev.left)) {
+        send('Escape');
+      } else if ((now.select && !this.padPrev.select) || (now.right && !this.padPrev.right)) {
+        send('Enter');
+      }
       this.padPrev = now;
       return;
     }

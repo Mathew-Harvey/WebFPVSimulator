@@ -89,6 +89,9 @@ export const TRACKS = [
   rec('hypnotic-arpeggio', 'Hypnotic Arpeggio'),
   rec('gritty-breaks', 'Gritty Breaks'),
   rec('polyrhythmic-build', 'Polyrhythmic Build'),
+  rec('piano-hook', 'Piano Hook'),
+  rec('piano-hook-in-the-rain', 'Piano Hook in the Rain'),
+  rec('shave-and-a-haircut-hoedown', 'Shave and a Haircut Hoedown'),
 ];
 
 /*

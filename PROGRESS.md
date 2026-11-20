@@ -76682,3 +76682,11 @@ Wrong: nothing attempted and undone.
 ### To main
 
 - Pushed as a fast forward from 39c6372b; nothing forced. Flight feel is not verified by any of this: the harness is green but for check 16, and the feel is awaiting a pilot.
+
+## 2026-11-20 | music | Piano Hook, Piano Hook in the Rain and Shave and a Haircut Hoedown join the flight crate
+
+- Ask: the owner, "add these three songs to webfpv web and steam", with his recordings attached (48 kHz stereo mp3, 183 to 192 kbps, 3:07, 3:43 and 4:04). He owns the recordings, as with the others.
+- Done: three `rec(...)` lines appended to TRACKS in src/render/tracks.js (`piano-hook`, `piano-hook-in-the-rain`, `shave-and-a-haircut-hoedown`), so they join the flight rotation and the Music track setting. Encoded one at a time with `node scripts/music.js --src=<dir> --only=<id>`, the script's own settings: Opus 80 kbps WebM 1.93, 2.39 and 2.49 MB, mp3 V7 2.36, 2.69 and 2.91 MB, loudness -15.2, -15.3 and -15.1 LUFS, each inside the script's 0.5 LU gate. All in the range of the other tracks.
+- MUSIC_REV left at 1: new ids are new URLs.
+- Latency and bandwidth: no change to the flight loop. Songs are fetched only when about to be heard (preload none, one shared media element, no decode into memory); music off costs zero bytes. The only change to what is served is six new static files.
+- Checks: `node scripts/music-selftest.js` all passed; `node edge/selftest.js` passed; encode gates passed. Not run: `npm run verify` (no physics, plant, ABI or build change), `shots.js`. Not listened to.

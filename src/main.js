@@ -1678,6 +1678,34 @@ export async function boot({ loading, bootStart, mapId }) {
   let startY = 0;
   let startYaw = 0;
   let startPitch = 0;
+  /*
+   * WHETHER THE PARKED CRAFT IS STILL ON THE STAND IT WAS PUT ON, which is
+   * the only place startPitch is true.
+   *
+   * startPitch is the launch stand's ramp under the start, 28 degrees on a
+   * designed course's pads, and the parked pose is drawn pitched by it so
+   * the arms rest on the foam (see the seating in frameBody). It is a fact
+   * about the START, and it was read as a fact about every landing: the
+   * landing judgement parks the craft wherever it comes down, on grass, on
+   * a deck, on a roof, and the seating drew each of those 28 degrees nose
+   * down, its front sunk in the ground, while the plant had it level, and
+   * launch control staged there seeded the plant at the ramp's pitch on
+   * flat ground. Only a turtle flip and a set down elsewhere zeroed it, by
+   * zeroing the start's own pitch. bug-98fb5e79, "Starting Block Glitch":
+   * every hop off the block in a race lesson landed the pilot on grass
+   * drawn into it, and the next throttle snapped the picture level.
+   *
+   * So resetCraft, which puts the craft at the start, sets this, and the
+   * landing judgement, which parks it wherever it landed, clears it. A
+   * craft that hops and comes back down on the block is parked by the
+   * landing judgement too, so it is drawn as the plant has it, level, as
+   * it is drawn on the frame it leaves the block.
+   */
+  let parkedOnStand = true;
+  /* The pitch the parked craft rests at: the stand's, only on the stand. */
+  function parkedPitch() {
+    return parkedOnStand ? startPitch : 0;
+  }
   /* The Quad Ball team whose end the craft is seated at (ballSeat). */
   let ballSeatTeam = 0;
   /* The cosine and sine of the yaw the plant's frame was last seated at,
@@ -6860,6 +6888,8 @@ export async function boot({ loading, bootStart, mapId }) {
     impactKick.z = 0;
     /* Back on the ground, landed, exactly as at boot. */
     landed = true;
+    /* At the start, so on its stand if it has one (parkedPitch). */
+    parkedOnStand = true;
     takingOff = false;
     launchStaging = false;
     input.forcePadRest = false;
@@ -8812,7 +8842,9 @@ export async function boot({ loading, bootStart, mapId }) {
    * level physics pose and walking the stick walked it off the rails. */
   function enableLaunchStand() {
     const st = readState();
-    const h = startPitch * 0.5;
+    /* The pitch the parked pose was drawn at: the ramp's on the stand, 0 on
+     * the grass a craft has landed on (parkedPitch, bug-98fb5e79). */
+    const h = parkedPitch() * 0.5;
     const code = sim.e.sim_set_launch_stand(
       1, st[1], st[2], st[3],
       Math.cos(h), 0, Math.sin(h), 0,
@@ -12884,6 +12916,9 @@ export async function boot({ loading, bootStart, mapId }) {
       ) {
         sim.rest();
         landed = true;
+        /* Parked where it came down, at the plant's own pose: never the
+         * start's stand pitch (parkedPitch, bug-98fb5e79). */
+        parkedOnStand = false;
         takingOff = false;
         adoptSimClock();
         /* Seated on whatever the plant is resting it on: the street, or the
@@ -13048,11 +13083,13 @@ export async function boot({ loading, bootStart, mapId }) {
        * On a launch stand the rails are pitched, so the parked pose is too:
        * REST_HEIGHT is along the ramp normal, which is why it is scaled by
        * cos(pitch), and a local nose-down rotation puts the arms on the
-       * foam. Crash recovery on grass keeps startPitch at 0 and this
-       * reduces to the old seating. */
-      pCurr.y = groundY + restW() * Math.cos(startPitch);
-      if (startPitch) {
-        qPad.setFromAxisAngle(AXIS_X, -startPitch);
+       * foam. Anywhere else, crash recovery on grass included, the parked
+       * pitch is 0 (parkedPitch, bug-98fb5e79) and this reduces to the old
+       * seating. */
+      const padPitch = parkedPitch();
+      pCurr.y = groundY + restW() * Math.cos(padPitch);
+      if (padPitch) {
+        qPad.setFromAxisAngle(AXIS_X, -padPitch);
         qPrev.multiply(qPad);
       }
     }

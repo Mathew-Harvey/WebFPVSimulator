@@ -76690,3 +76690,4 @@ Wrong: nothing attempted and undone.
 - MUSIC_REV left at 1: new ids are new URLs.
 - Latency and bandwidth: no change to the flight loop. Songs are fetched only when about to be heard (preload none, one shared media element, no decode into memory); music off costs zero bytes. The only change to what is served is six new static files.
 - Checks: `node scripts/music-selftest.js` all passed; `node edge/selftest.js` passed; encode gates passed. Not run: `npm run verify` (no physics, plant, ABI or build change), `shots.js`. Not listened to.
+- The owner, 2026-11-20 12:09Z, on draft PR 282: "push to main on both web and steam ensure steam is ready to go". Main had not moved from 3e8e7a6, so main fast forwards to this branch. No verification scale named; nothing beyond the checks above was run. Not listened to.

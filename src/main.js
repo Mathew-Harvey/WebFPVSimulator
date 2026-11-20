@@ -91,6 +91,7 @@ import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './shar
 import { TRACE_STEP_MS, TraceBook, TraceRecorder } from './review/trace.js';
 import { ReviewPanel } from './review/panel.js';
 import { chasedLabel, deltaText } from './review/splits.js';
+import { lineOfGhost, lineOfTrace, stationsOfRaceGates } from './review/views.js';
 import { uploadWorld, setWorldFrame, setMover, setBoxHeight, kindOf, setVehicleClock, readVehicles, makeVehiclePoses, moverVelocityInPlant, vehicleSurfaceInPlant } from './game/plantworld.js';
 import { Chase, CHASE_EVERY, pays } from './game/chase.js';
 import { sincos } from './props/trig.js';
@@ -11810,6 +11811,15 @@ export async function boot({ loading, bootStart, mapId }) {
         ? `Lap ${formatTime(reviewLast.durationMs)} against ${reviewRefName(ref)}`
         : `Lap ${formatTime(reviewLast.durationMs)}`,
       refName: 'Ghost',
+      /* The section picked, from above and from the side: this lap's
+       * trace and the ghost's own poses over the race's gates, in the
+       * scene frame both are stored in. */
+      views: {
+        stations: stationsOfRaceGates(race.gates || []),
+        lapLine: lineOfTrace(reviewLast),
+        refLine: ref ? lineOfGhost(ref) : null,
+        lifeScale: reviewLast.meta.roomScale || 1,
+      },
     });
   }
 

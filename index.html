@@ -7087,7 +7087,20 @@
         background: #121a14; border: 1px solid rgba(244, 236, 214, 0.25); border-radius: 4px;
       }
       .review-close:hover { border-color: var(--sakura); }
+      .review-card.wide { width: min(1120px, 96vw); }
       .review-why { color: var(--slate); font-size: 14px; }
+      /* The table and, beside it, the section picked seen from above and
+         from the side (src/review/views.js). Side by side while there is
+         room for both, the views under the table where there is not. */
+      .review-body { display: flex; gap: 16px; flex-wrap: wrap; min-height: 0; overflow-y: auto; }
+      .review-left { flex: 1 1 360px; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+      .review-views { flex: 1 1 400px; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+      .review-top, .review-side { width: 100%; background: #101216; border-radius: 4px; }
+      .review-top { aspect-ratio: 16 / 9; }
+      .review-side { aspect-ratio: 8 / 3; }
+      .review-key { margin-right: 14px; white-space: nowrap; }
+      .review-swatch { display: inline-block; width: 18px; border-top: 3px solid; vertical-align: middle; margin-right: 5px; }
+      .review-swatch.dashed { border-top-style: dashed; }
       .review-scroll { overflow-y: auto; min-height: 0; }
       .review-table { width: 100%; border-collapse: collapse; font-size: 15px; font-variant-numeric: tabular-nums; }
       .review-table th {

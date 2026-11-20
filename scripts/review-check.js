@@ -193,6 +193,28 @@ try {
   const shown = await page.evaluate("(() => { const r = document.querySelector('#review .review-total .review-delta'); return r ? getComputedStyle(r).color : ''; })()");
   const colour = { lost: 'rgb(255, 107, 94)', gained: 'rgb(125, 255, 180)' }[tone];
   check(`${tone === 'lost' ? 'red' : 'green'} on screen`, shown === colour, shown);
+  /* The section beside the table, from above and from the side: both
+   * lines drawn through it, and the gate seen edge on from the side. Then
+   * the pixels, so a line drawn off the picture cannot pass: amber for
+   * yours and blue for the ghost's, on both canvases. */
+  const d = s.drawn;
+  check('the section is drawn from above with both lines', Boolean(d) && d.top.lap > 10 && d.top.ref > 3, JSON.stringify(d));
+  check('and from the side, with the gate', Boolean(d) && d.side.lap > 10 && d.side.ref > 3 && d.side.gates >= 1, JSON.stringify(d));
+  const inks = await page.evaluate(`(() => {
+    const count = (sel) => {
+      const cv = document.querySelector(sel);
+      const px = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+      let amber = 0; let blue = 0;
+      for (let i = 0; i < px.length; i += 4) {
+        const [r, g, b] = [px[i], px[i + 1], px[i + 2]];
+        if (r > 230 && g > 150 && g < 200 && b < 100) amber += 1;
+        if (r < 160 && g > 190 && b > 230) blue += 1;
+      }
+      return { amber, blue, w: cv.width, h: cv.height };
+    };
+    return { top: count('#review .review-top'), side: count('#review .review-side') };
+  })()`);
+  check('your line and the ghost\'s are on both pictures', inks.top.amber > 50 && inks.top.blue > 50 && inks.side.amber > 50 && inks.side.blue > 50, JSON.stringify(inks));
 
   if (SHOTS) {
     mkdirSync(SHOTS, { recursive: true });

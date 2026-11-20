@@ -5,8 +5,12 @@
  * difference, green where you gained and red where you lost. The numbers are
  * src/review/splits.js's.
  *
- * DRAWN ONCE, when it opens. Nothing here runs per frame or per physics
- * step, and nothing is made until the pilot opens it.
+ * BESIDE THE TABLE, the section picked in it seen from above and from the
+ * side: your line and the ghost's through it, over the gates
+ * (src/review/views.js). Picking another section draws them again.
+ *
+ * DRAWN WHEN IT OPENS OR A SECTION IS PICKED. Nothing here runs per frame
+ * or per physics step, and nothing is made until the pilot opens it.
  *
  * KEYS. Up and down move between sections, Escape or Backspace closes. It
  * listens on the document in the capture phase, so the pause menu behind
@@ -33,6 +37,7 @@
  */
 
 import { compareSplits, deltaText, seconds } from './splits.js';
+import { VIEW_COLOURS, drawSide, drawTop, pathOf } from './views.js';
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -55,6 +60,7 @@ export class ReviewPanel {
     this.rows = [];
     this.selected = 0;
     this.onKey = null;
+    this.drawn = null;
   }
 
   get isOpen() {
@@ -62,11 +68,15 @@ export class ReviewPanel {
   }
 
   /*
-   * open({ lap, ref, title, refName }) or open({ empty })
+   * open({ lap, ref, title, refName, views }) or open({ empty })
    *   lap      { splits, durationMs } of the lap flown
    *   ref      { splits, durationMs } of the ghost it chased, or null
    *   title    one line under the heading: the lap and what it chased
    *   refName  the ghost column's heading
+   *   views    optional, for the views beside the table:
+   *            { stations, lapLine, refLine, lifeScale }, the stations from
+   *            stationsOfRaceGates and the two lines from lineOfTrace and
+   *            lineOfGhost (refLine null with no ghost)
    *   empty    instead of all of that, a sentence: there is no lap yet
    */
   open(data) {
@@ -97,11 +107,22 @@ export class ReviewPanel {
       card.append(el('div', 'review-why', r.why));
     }
     this.rows = [];
+    this.top = null;
+    this.side = null;
+    this.drawn = null;
     if (!data.empty) {
-      card.append(this.table(data, r));
-    }
-    if (data.ref) {
-      card.append(el('div', 'review-legend', 'Green: faster than the ghost there. Red: slower.'));
+      const body = el('div', 'review-body');
+      const left = el('div', 'review-left');
+      left.append(this.table(data, r));
+      if (data.ref) {
+        left.append(el('div', 'review-legend', 'Green: faster than the ghost there. Red: slower.'));
+      }
+      body.append(left);
+      if (data.views && r.sections.length && data.views.stations.length) {
+        body.append(this.viewsColumn(data));
+        card.classList.add('wide');
+      }
+      card.append(body);
     }
 
     document.body.append(root);
@@ -159,6 +180,48 @@ export class ReviewPanel {
     return scroll;
   }
 
+  /* The two views and their key, drawn by drawViews. */
+  viewsColumn(data) {
+    const col = el('div', 'review-views');
+    this.top = el('canvas', 'review-top');
+    this.side = el('canvas', 'review-side');
+    const legend = el('div', 'review-legend');
+    const key = (colour, dashed, words) => {
+      const s = el('span', 'review-key');
+      const swatch = el('span', `review-swatch${dashed ? ' dashed' : ''}`);
+      swatch.style.borderColor = colour;
+      s.append(swatch, document.createTextNode(words));
+      legend.append(s);
+    };
+    key(VIEW_COLOURS.lap, false, 'your line');
+    if (data.views.refLine) {
+      key(VIEW_COLOURS.ref, true, 'the ghost');
+    }
+    this.viewNote = el('div', 'review-legend');
+    col.append(this.top, this.side, legend, this.viewNote);
+    return col;
+  }
+
+  /* Section k from above and from the side. Its lap times are the lap's
+   * splits either side of it, and the ghost's its own splits, when its
+   * sections line up with the lap's. */
+  drawViews(k) {
+    const v = this.data.views;
+    const lapEnds = [0, ...this.data.lap.splits];
+    const n = v.stations.length;
+    const ends = [k % n, (k + 1) % n];
+    const mine = pathOf(v.lapLine, lapEnds[k], lapEnds[k + 1]);
+    let ref = [];
+    if (v.refLine && this.result.matched) {
+      const refEnds = [0, ...this.data.ref.splits];
+      ref = pathOf(v.refLine, refEnds[k], refEnds[k + 1]);
+    }
+    const args = { stations: v.stations, ends, mine, ref, lifeScale: v.lifeScale || 1 };
+    this.drawn = { section: k, top: drawTop(this.top, args), side: drawSide(this.side, args) };
+    const from = ends[0] === 0 ? 'the start' : `gate ${ends[0]}`;
+    this.viewNote.textContent = `${this.result.sections[k].name}. Top: from above. Below: from the side, looking across the travel through ${from}, height up the picture. A dot marks where each line starts.`;
+  }
+
   select(k) {
     if (!this.rows.length) {
       return;
@@ -168,6 +231,9 @@ export class ReviewPanel {
     const tr = this.rows[k];
     if (tr.scrollIntoView) {
       tr.scrollIntoView({ block: 'nearest' });
+    }
+    if (this.top) {
+      this.drawViews(k);
     }
   }
 
@@ -199,6 +265,7 @@ export class ReviewPanel {
       head: head ? cells(head) : [],
       rows: this.rows.map((tr) => ({ cells: cells(tr), tone: tone(tr) })),
       total: total ? { cells: cells(total), tone: tone(total) } : null,
+      drawn: this.drawn,
     };
   }
 }

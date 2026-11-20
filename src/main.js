@@ -88,6 +88,7 @@ import { buildGhostCraft } from './render/ghostcraft.js';
 import { buildPropView } from './render/propview.js';
 import { warmPrograms } from './render/warm.js';
 import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './share/ghostdata.js';
+import { TRACE_STEP_MS, TraceBook, TraceRecorder } from './review/trace.js';
 import { uploadWorld, setWorldFrame, setMover, setBoxHeight, kindOf, setVehicleClock, readVehicles, makeVehiclePoses, moverVelocityInPlant, vehicleSurfaceInPlant } from './game/plantworld.js';
 import { Chase, CHASE_EVERY, pays } from './game/chase.js';
 import { sincos } from './props/trig.js';
@@ -4116,6 +4117,21 @@ export async function boot({ loading, bootStart, mapId }) {
    */
   const ghostRecorder = new GhostRecorder();
   const ghostBook = new GhostBook();
+  /*
+   * THE REVIEW'S LAP TRACE (src/review/trace.js): the lap a ghost records,
+   * a hundred times a second, with the sticks and the plant's own numbers
+   * in it, for the review's replay. Fed at the same places the ghost
+   * recorder is, on from the first frame, downstream of the physics.
+   * reviewBook keeps this session's best and previous trace per course, so
+   * a session ghost can be replayed from its trace; reviewLast is the
+   * newest lap's.
+   */
+  const reviewTrace = new TraceRecorder();
+  reviewTrace.setEnabled(true);
+  const reviewBook = new TraceBook();
+  const reviewPos = new THREE.Vector3();
+  const reviewQuat = new THREE.Quaternion();
+  let reviewLast = null;
   const ghostRig = buildGhostCraft();
   /*
    * Session lived, like the craft. It is parented into whichever scene
@@ -4586,6 +4602,8 @@ export async function boot({ loading, bootStart, mapId }) {
    */
   function ghostCourseChanged() {
     ghostRecorder.abort();
+    reviewTrace.abort();
+    reviewLast = null;
     ghostLap = null;
     gapLap = null;
     ghostChased = null;
@@ -4655,6 +4673,23 @@ export async function boot({ loading, bootStart, mapId }) {
       return;
     }
     const lapDone = race.laps.length > lapsBefore;
+    /* A trace is made a fifth of a second after its lap, when its tail has
+     * been flown, so it is collected here a few frames later. */
+    reviewCollect(reviewTrace.takeDone());
+    if (lapDone) {
+      reviewTrace.cut(lapStartBefore, race.lastLapMs, race.lastSplits, {
+        course: ghostCourseKey(),
+        craft: runAirframe,
+        /* The room's multiple of life size, what the OSD divides a speed
+         * by (hudLifeScale), so a speed reads as the pilot saw it. */
+        roomScale: view ? hudLifeScale() : null,
+        /* The camera's uptilt in degrees, for the replay's goggle view. */
+        cameraAngle: camTilt,
+      }, WORLD_SCALE);
+    }
+    if (race.lapStartMs != null && race.lapStartMs !== lapStartBefore) {
+      reviewTrace.lapBegan(race.lapStartMs);
+    }
     /*
      * The gap, read at the gate just crossed, BEFORE any re-arm below:
      * your split against the split of the ghost you were actually chasing
@@ -6937,6 +6972,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * The seed pose is stale for the same reason. */
     if (at) {
       ghostRecorder.cutHere();
+      reviewTrace.markCut();
     }
     ghostPrev.valid = false;
     groundHasPrev = false;
@@ -7187,6 +7223,7 @@ export async function boot({ loading, bootStart, mapId }) {
     /* The lap being recorded and the gap read against it are gone with the
      * lap: the next one records from its own first crossing. */
     ghostRecorder.abort();
+    reviewTrace.abort();
     ghostGap = null;
     return true;
   }
@@ -8298,6 +8335,7 @@ export async function boot({ loading, bootStart, mapId }) {
     /* A fresh run records from its own first crossing. The session book
      * keeps what earlier runs flew; only the in-flight recording dies. */
     ghostRecorder.abort();
+    reviewTrace.abort();
     ghostGap = null;
     ghostChased = null;
     ghostRig.setPresence(0);
@@ -11671,6 +11709,33 @@ export async function boot({ loading, bootStart, mapId }) {
     return out;
   }
 
+  /* One sample for the review's trace. The pose goes to the scene the way
+   * the trick detector's does, through frame.js and the spawn, so nothing
+   * new crosses the frame boundary; the state block and the sticks go as
+   * they are. */
+  function reviewPush(ms, st) {
+    poseFromState(st, reviewPos);
+    simQuatToThree(st[7], st[8], st[9], st[10], reviewQuat);
+    reviewQuat.premultiply(qSpawn);
+    reviewTrace.push(
+      ms, reviewPos.x, reviewPos.y, reviewPos.z,
+      reviewQuat.x, reviewQuat.y, reviewQuat.z, reviewQuat.w,
+      st, rcHeld,
+    );
+  }
+
+  /* The traces made since the last call, into the book; the newest is the
+   * lap the review shows. */
+  function reviewCollect(laps) {
+    if (!laps) {
+      return;
+    }
+    for (const lap of laps) {
+      reviewBook.keep(lap.meta.course, lap);
+      reviewLast = lap;
+    }
+  }
+
   /*
    * One axis of the slope, from the two one sided differences either side
    * of the craft, limited so a STEP cannot be read as a RAMP.
@@ -12812,6 +12877,11 @@ export async function boot({ loading, bootStart, mapId }) {
               if (i === steps - 2) {
                 statePrev = stNow;
               }
+            }
+            /* The review's trace takes this step as it finally stands, on
+             * every tenth millisecond of the simulation's own clock. */
+            if ((simTimeMs + i + 1) % TRACE_STEP_MS === 0) {
+              reviewPush(simTimeMs + i + 1, stNow);
             }
           }
           if (steps === 1) {
@@ -16077,6 +16147,35 @@ export async function boot({ loading, bootStart, mapId }) {
     const key = ghostCourseKey();
     const lap = which === 'previous' ? ghostBook.previous(key) : ghostBook.best(key);
     return lap ? ghostToBase64(encodeGhost(lap)) : null;
+  };
+  /* The review's trace, so a capture can ASSERT one was made: how many
+   * samples the recorder holds, and the newest, best and previous lap of
+   * this course in brief. */
+  window.__reviewTrace = () => {
+    reviewTrace.flush();
+    reviewCollect(reviewTrace.takeDone());
+    const key = ghostCourseKey();
+    const best = reviewBook.best(key);
+    const previous = reviewBook.previous(key);
+    return {
+      on: reviewTrace.on,
+      course: key,
+      held: reviewTrace.count,
+      last: reviewLast ? reviewLast.summary() : null,
+      best: best ? best.summary() : null,
+      previous: previous ? previous.summary() : null,
+    };
+  };
+  /* One of those laps whole, samples and all, as plain arrays, so a capture
+   * can read the trace against the ghost of the same lap. Harness only. */
+  window.__reviewTraceLap = (which) => {
+    window.__reviewTrace();
+    const key = ghostCourseKey();
+    const lap = which === 'last' ? reviewLast : which === 'previous' ? reviewBook.previous(key) : reviewBook.best(key);
+    return lap ? {
+      durationMs: lap.durationMs, lead: lap.lead, count: lap.count, splits: lap.splits,
+      cuts: lap.cuts, meta: lap.meta, data: Array.from(lap.data),
+    } : null;
   };
   /*
    * Replay mode: advance the replay clock by a fixed amount for

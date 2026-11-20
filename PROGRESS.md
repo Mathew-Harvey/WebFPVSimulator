@@ -76652,3 +76652,33 @@ All on the fix (f7f040b1, the tree pushed), and on the base where they failed.
 - Read again before closing (00:41Z): 21 open, 0 in progress. The one filed after the triage began, bug-c9d76137 (tune, the Realistic five inch on the built map at Weight 140, Motor power 80, the keyboard, 00:16Z), was read first: gravity 1.4 and hover 40.6 are bug-7158710d's figures for the same sliders, and its words ("The quad felt about right") are a feel note, no defect.
 - Closed with the run's token through `POST /board/api/bugs/:id`, status and resolution: 21 updates, 21 answered 200. bug-98fb5e79 `fixed`, naming f7f040b1 and main 0ce3fc61, live on `torz5h`, with the level pose on the block itself put to the owner; the other 20 `wontfix`: bug-4c555b36 a lead (stuck twice, what in not said), bug-06858ff4 a feel note with its key to screen lead, the rest feel and tune notes with no code defect, tune numbers kept in the Tunes panel. Afterwards the board lists 0 open and 0 in progress.
 - No verification scale was picked by the owner; it goes out not flown by a person.
+
+## 2026-11-20 | release | The module built here and verify with every row able to run, on the owner's word
+
+- Ask: the owner, 2026-11-20, on the bug board run's report: "Fire up the asm and test properly, if it's fixed push to main". Read as: install the toolchain, build the WASM module, run the whole harness with check 1 able to run, rerun the fix's own checks, and push to main if the fix holds. The fix (f7f040b1, bug-98fb5e79) was already on main as 0ce3fc61 by the standing rule of 2026-11-10; this push is the record of the test.
+- Toolchain: emsdk 3.1.61 installed at /opt/emsdk (the version every earlier build here used), and `vendor/betaflight` checked out at its pinned 77d01ba (4.5.1).
+
+### RUN LOG
+
+```
+### 2026-11-20 | release | after the bug board run
+Changed: no code. The tree is main 39c6372b (the start block pitch fix and its records).
+Build: npm run build:wasm exit 0; dist/sim.wasm rebuilt byte for byte as committed (7a2760f2bbe21aea); git diff --stat vendor/betaflight empty; working tree clean.
+Verify: 18 of 19 passing. 1 build-clean PASS (build exit 0, vendor diff empty, abi 1, init OK); 2 determinism-repeat cbcf8c24bde7 twice; 3 cross-host node and chrome cbcf8c24bde7; 4 frame-independence 1 distinct hash across 4 rates; 5 hover 0.2793; 6 punch-out 80.0 m; 7 terminal 31.0 m/s; 8 motor step 26 ms; 9 rate tracking 672.1 against 670 deg/s; 10 yaw coupling -0.10 deg; 11 battery sag 11.18 percent; 12 diff passthrough 1.2456 against 1.2537; 13 console clean; 14 audio bed 2.56 s in 2.56 s; 15 world scale 1.0000; 17 world golden 36 of 36 bit identical; 18 crash pacing 48 of 48; 19 crash bounce 20 of 20. Failing: 16 map-isolation, "MAP_MODULE_COUNT says 70 city modules, the browser fetched 64" (0 with the field selected, which is the isolation itself, passes).
+Wrong: nothing attempted and undone.
+```
+
+- Every measured value is the one the earlier verify runs of this turn's run gave on the fix and on the base (no emcc then, check 1 SKIP), row for row; the determinism hash did not move, which is right for a change upstream of the recorded RC frames.
+- Node checks on the built module: `lint:catalog` ok, `lint:fc` 33 of 33 traces clean, `contact:selftest` all passed, `check:plant` all passed, `lint:presets` 4 of 4 clean.
+- The fix's own and what it touches, rerun on 39c6372b with the built module: `check:standpitch` 8 of 8, `check:takeoff` all pass, `check:careerland` 11 of 11, `check:retry` 0 failed, `check:crash` 0 guards failed.
+
+### OPEN QUESTIONS: check 16, map-isolation
+
+- It fails on main before this run's fix (66 fetched there, 64 here), and the fix touches no map. Two causes, measured with a scratch probe on a cold load in headless Chromium:
+  - The harness's count is capped. `tests/verify.js` collects `performance.getEntriesByType('resource')` without `performance.setResourceTimingBufferSize`, so the browser keeps 250 entries; boot takes 182, and the city's modules that land after the 250th are not seen. With the default buffer: 250 entries, 64 city modules seen. With the buffer raised: 268 entries, 73 city modules, all of them `.js`. This is the 2026-11-07 run's finding, still true.
+  - The typed count is stale. `MAP_MODULE_COUNT.city` in src/main.js says 70 and a cold city load fetches 73 modules, so even an uncapped harness would fail this row by 3. It is the loading bar's weight, nothing more.
+- Not changed here: the harness is under `tests/`, which this project's verify rules keep read only, and raising the count alone would leave the row failing on the cap. The owner's call: let the harness enlarge the buffer (or count with a PerformanceObserver), and set `MAP_MODULE_COUNT.city` to the measured 73.
+
+### To main
+
+- Pushed as a fast forward from 39c6372b; nothing forced. Flight feel is not verified by any of this: the harness is green but for check 16, and the feel is awaiting a pilot.

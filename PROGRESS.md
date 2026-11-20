@@ -76640,3 +76640,15 @@ All on the fix (f7f040b1, the tree pushed), and on the base where they failed.
 - The first landing probe let the craft down where it took off, straight back onto the block, so it measured the stand; it moves the craft over the grass first now.
 - The first forward pitch probe pitched back: `__stick`'s pitch is positive for back.
 - The chase camera put the quad behind the HUD at 640 by 360; a harness camera beside it took the picture.
+
+### To main, by the standing rule of 2026-11-10
+
+- Every condition held before the push: the defect reproduced on the base in the real shell (`check:standpitch` 3 failed on 0a97f7c, the grass landing drawn at 27.97 degrees); the fix changes the cause (the start's ramp pitch read on every landing), not the symptom; the new check fails on the base and passes on the fix and is an npm script; every check for what the change touches passes on the tree pushed, or fails the same on main (`lint:shell`, verify's check 16); nothing changes the physics model's shape, the module ABI or the build (`dist/sim.wasm` is main's file). Production served main 0a97f7c byte for byte (src/main.js 1a1556633a0340c5, src/art/startblock.js 8de7035f997be106), so the minify step is not in effect, and main had not moved, so it was a fast forward.
+- Pushed 2026-11-20 00:38:27Z, 0a97f7c to 0ce3fc61, nothing forced. The tree pushed is the tree every check above ran on, with only this entry's later lines after it.
+- Live check: by 00:40:07Z https://webfpv.org/sim/ served this tree's src/main.js (8793d7f34bc8cf51), page Last-Modified 00:39:17Z, deploy stamp `torz5h`. A fresh headless profile booted it with no page error and no console error, flew lesson 7-2 off the block and landed it on the grass: on the block drawn at 28 degrees, on the grass drawn at 0.03 with the plant at 0.03.
+
+### The board closed, by the standing rule of 2026-11-07
+
+- Read again before closing (00:41Z): 21 open, 0 in progress. The one filed after the triage began, bug-c9d76137 (tune, the Realistic five inch on the built map at Weight 140, Motor power 80, the keyboard, 00:16Z), was read first: gravity 1.4 and hover 40.6 are bug-7158710d's figures for the same sliders, and its words ("The quad felt about right") are a feel note, no defect.
+- Closed with the run's token through `POST /board/api/bugs/:id`, status and resolution: 21 updates, 21 answered 200. bug-98fb5e79 `fixed`, naming f7f040b1 and main 0ce3fc61, live on `torz5h`, with the level pose on the block itself put to the owner; the other 20 `wontfix`: bug-4c555b36 a lead (stuck twice, what in not said), bug-06858ff4 a feel note with its key to screen lead, the rest feel and tune notes with no code defect, tune numbers kept in the Tunes panel. Afterwards the board lists 0 open and 0 in progress.
+- No verification scale was picked by the owner; it goes out not flown by a person.

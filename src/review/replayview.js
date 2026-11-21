@@ -11,7 +11,9 @@
  *
  * THE CAMERA rides behind the quad it follows, on the watching camera's own
  * rig (src/render/watchcam.js), so it keeps off the walls and a flip does
- * not swing it; F or the bar's button follows the other.
+ * not swing it; F or the bar's button follows the other. It starts there,
+ * with no flight in, and a seek, a step or a change of quad is a cut: the
+ * picture is the section, from its first moment.
  *
  * KEYS. Space or Enter plays and pauses, Left and Right (Up and Down on a
  * radio) step a tenth of a second, F follows the other quad, Escape or
@@ -142,7 +144,7 @@ export class ReviewReplay {
     this.scrub.step = '10';
     this.scrub.addEventListener('input', () => this.act('seek', Number(this.scrub.value)));
     this.clock = el('div', 'review-replay-clock', '');
-    this.followBtn = el('button', 'review-replay-btn', '');
+    this.followBtn = el('button', 'review-replay-btn review-replay-follow', '');
     this.followBtn.type = 'button';
     this.followBtn.addEventListener('click', () => this.act('follow'));
     if (!data.refLine) {
@@ -191,11 +193,14 @@ export class ReviewReplay {
     } else if (what === 'seek') {
       this.head.playing = false;
       this.head.seek(arg);
+      this.cam.free(null);
     } else if (what === 'step') {
       this.head.playing = false;
       this.head.seek(this.head.t + STEP_MS * (arg < 0 ? -1 : 1));
+      this.cam.free(null);
     } else if (what === 'follow' && this.data.refLine) {
       this.follow = this.follow === 'you' ? 'ghost' : 'you';
+      this.cam.free(null);
     } else if (what === 'back') {
       this.close('back');
     }
@@ -253,7 +258,7 @@ export class ReviewReplay {
     const p = this.follow === 'ghost' && ghost ? ghost : you;
     Object.assign(this.pose, { px: p.x, py: p.y, pz: p.z, qx: p.q[0], qy: p.q[1], qz: p.q[2], qw: p.q[3] });
     if (!this.started) {
-      this.cam.go(camera, nowWall);
+      this.cam.ride();
       this.started = true;
     }
     this.cam.size = this.data.size || 1;

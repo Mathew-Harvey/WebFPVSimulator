@@ -88,7 +88,7 @@ import { buildGhostCraft } from './render/ghostcraft.js';
 import { buildPropView } from './render/propview.js';
 import { warmPrograms } from './render/warm.js';
 import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './share/ghostdata.js';
-import { TRACE_STEP_MS, TraceBook, TraceRecorder } from './review/trace.js';
+import { TRACE_RATE_HZ, TRACE_STEP_MS, TraceBook, TraceLap, TraceRecorder } from './review/trace.js';
 import { ReviewPanel } from './review/panel.js';
 import { chasedLabel, deltaText, sectionName } from './review/splits.js';
 import { lineOfGhost, lineOfTrace, localOf, pathOf, stationsOfRaceGates, throughPlane } from './review/views.js';
@@ -11878,7 +11878,7 @@ export async function boot({ loading, bootStart, mapId }) {
       }
       reviewPanel.close();
       introMs = -1;
-      document.documentElement.classList.add('tg-watching');
+      document.documentElement.classList.add('tg-watching', 'tg-replay');
       /* A room's race line is the live flight's guide; over a replay it is
        * clutter. Off while the replay is open, as the pilot's setting has
        * it again after. */
@@ -11895,7 +11895,7 @@ export async function boot({ loading, bootStart, mapId }) {
         scale: 1 / WORLD_SCALE,
         size: simLenToWorld(1),
         onClose: (how) => {
-          document.documentElement.classList.remove('tg-watching');
+          document.documentElement.classList.remove('tg-watching', 'tg-replay');
           applyRaceLine(ui.settings);
           ui.overlay = reviewPanel;
           if (how === 'back' && mode === 'paused' && ui.screen === 'paused') {
@@ -16363,6 +16363,33 @@ export async function boot({ loading, bootStart, mapId }) {
     return reviewPanel.state();
   };
   window.__review = () => reviewPanel.state();
+  /* A lap and the ghost it chased, handed in whole as plain arrays (the
+   * shapes __reviewTraceLap and a decoded ghost have), so a capture can
+   * review and replay a lap flown elsewhere, in the Node rig, on a track
+   * the page cannot fly through itself. Harness only. */
+  window.__reviewLoad = ({ lap, ghost }) => {
+    reviewLast = new TraceLap({
+      rateHz: TRACE_RATE_HZ,
+      durationMs: lap.durationMs,
+      splits: lap.splits.slice(),
+      cuts: [],
+      lead: lap.lead,
+      count: lap.count,
+      data: Float32Array.from(lap.data),
+      worldScale: 1,
+      meta: { course: ghostCourseKey(), ...(lap.meta || {}) },
+    });
+    reviewLastRef = ghost ? new GhostLap({
+      rateHz: ghost.rateHz,
+      durationMs: ghost.durationMs,
+      count: ghost.count,
+      splits: ghost.splits.slice(),
+      pos: Float32Array.from(ghost.pos),
+      quat: Float32Array.from(ghost.quat),
+    }, { label: 'Session best' }) : null;
+    syncReviewRow();
+    return reviewLast.summary();
+  };
   /* The replay, so a capture can open one and ASSERT what it shows:
    * __reviewReplay('open', k) opens section k as the review's button would
    * (a promise); any other word is the replay's own act ('play', 'seek',

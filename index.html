@@ -7123,7 +7123,10 @@
       }
       /* THE REPLAY (src/review/replayview.js): a bar along the foot of the
          picture while the two holograms replay a section; the pause menu
-         and the OSD are hidden under it (tg-watching). */
+         and the OSD are hidden under it (tg-watching), and the music and
+         the feedback chip with them (tg-replay), so the picture is the
+         room and the two quads. */
+      .tg-replay .music-dock, .tg-replay .bug-chip { visibility: hidden !important; }
       .review-replay {
         position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%);
         z-index: 2147483000; width: min(880px, calc(100vw - 32px)); box-sizing: border-box;
@@ -7147,6 +7150,8 @@
       }
       .review-replay-btn:hover { border-color: var(--sakura); }
       .review-replay-btn[hidden] { display: none; }
+      /* As wide for the ghost as for you, so the scrub keeps its length when F is pressed. */
+      .review-replay-follow { min-width: 11em; }
       @media (max-width: 520px) {
         .review-replay-row { flex-wrap: wrap; }
         .review-replay-scrub { flex-basis: 100%; order: -1; }

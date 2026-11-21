@@ -204,6 +204,14 @@ export class WatchCam {
     this.seeded = false;
   }
 
+  /* Straight behind the quad on the next frame, with no flight there:
+   * the review's replay (src/review/replayview.js), where the picture is
+   * the section and a flight in would play over its start. */
+  ride() {
+    this.phase = PHASE_RIDING;
+    this.seeded = false;
+  }
+
   /* Back to the goggles. */
   leave(camera, nowMs) {
     if (this.phase === PHASE_OFF) {

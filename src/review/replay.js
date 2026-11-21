@@ -20,7 +20,8 @@
  *
  * SIDE BY SIDE. Your goggles and the ghost's, two pictures at once:
  * splitPanes lays them out and gogglePose puts each camera where the
- * quad's own lens was.
+ * quad's own lens was. THE ORBIT: orbitDir and orbitFit place a camera
+ * round the pair.
  *
  * This file is part of WebFPVSimulator.
  *
@@ -200,4 +201,23 @@ export function gogglePose(pose, lens, size, tiltRad) {
     pos: [pose.x + off[0], pose.y + off[1], pose.z + off[2]],
     q: qMul(pose.q, [Math.sin(h), 0, 0, Math.cos(h)]),
   };
+}
+
+/*
+ * THE ORBIT. The camera round the pair, at heading (radians about the up
+ * axis, 0 looking north, -z) and tilt (radians above level): the way from
+ * the middle of the pair to the camera, a unit vector.
+ */
+export function orbitDir(heading, tilt) {
+  const c = Math.cos(tilt);
+  return [Math.sin(heading) * c, Math.sin(tilt), Math.cos(heading) * c];
+}
+
+/* How far the orbit stands from the middle of two quads apart metres
+ * apart, scene metres, so both are in a picture fovDeg tall with margin
+ * plant metres round them, and never nearer than near plant metres:
+ * size scene metres to a plant metre. The pilot's zoom multiplies it. */
+export function orbitFit(apart, size, fovDeg, near = 1.5, margin = 0.5) {
+  const half = (fovDeg * Math.PI) / 360;
+  return Math.max(near * size, (apart / 2 + margin * size) / Math.tan(half));
 }

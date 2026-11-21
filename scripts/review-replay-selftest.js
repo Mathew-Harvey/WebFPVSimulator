@@ -19,7 +19,7 @@
  */
 
 import {
-  LEAD_MS, MAX_FRAME_MS, Playhead, TAIL_MS, gogglePose, poseAt, sectionTimeline, slerp, splitPanes,
+  LEAD_MS, MAX_FRAME_MS, Playhead, TAIL_MS, gogglePose, orbitDir, orbitFit, poseAt, sectionTimeline, slerp, splitPanes,
 } from '../src/review/replay.js';
 
 let failures = 0;
@@ -119,6 +119,18 @@ console.log('side by side');
   /* The look, -z turned by q: its height is 2 (w x - y z). */
   const lookY = 2 * (up.q[3] * up.q[0] - up.q[1] * up.q[2]);
   check('uptilt turns the look up by the tilt', near(lookY, Math.sin(t), 1e-12), String(lookY));
+}
+
+console.log('the orbit');
+{
+  const d0 = orbitDir(0, 0);
+  check('heading 0, level: the camera south of the pair, looking north', near(d0[0], 0) && near(d0[1], 0) && near(d0[2], 1));
+  const d1 = orbitDir(Math.PI / 2, Math.PI / 4);
+  check('a quarter turn and half way up: east and above, a unit', near(d1[0], Math.SQRT1_2, 1e-12) && near(d1[1], Math.SQRT1_2, 1e-12) && near(Math.hypot(...d1), 1, 1e-12));
+  check('two quads together: the nearest it comes, in plant metres', near(orbitFit(0, 2, 70), 1.5 * 2));
+  const far = orbitFit(20, 1, 70);
+  check('two quads far apart: far enough back that both are in the picture', near(far, (10 + 0.5) / Math.tan(35 * Math.PI / 180), 1e-12));
+  check('and further for further apart', orbitFit(30, 1, 70) > far);
 }
 
 console.log(failures ? `\n${failures} FAILED` : '\nall passed');

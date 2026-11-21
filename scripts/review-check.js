@@ -354,6 +354,28 @@ try {
   await page.sleep(300);
   const chase = await page.evaluate("(() => ({ s: window.__reviewReplay(), tags: [...document.querySelectorAll('.review-replay-pane')].filter((t) => !t.hidden).length }))()");
   check('V again: the chase camera back, the names put away', chase.s.view === 'chase' && chase.tags === 0 && chase.s.camera === 'riding', JSON.stringify({ view: chase.s.view, tags: chase.tags, camera: chase.s.camera }));
+  /* The orbit: C from the chase. */
+  await page.tap('KeyC');
+  await page.sleep(300);
+  const orb = await page.evaluate("(() => ({ s: window.__reviewReplay(), surface: !document.querySelector('.review-replay-surface').hidden, follow: !document.querySelector('.review-replay-follow').hidden }))()");
+  check('C to the orbit: round the pair, its drag surface on, no follow button', orb.s.view === 'orbit' && orb.s.orbit && orb.s.orbit.dist > 0 && orb.surface && !orb.follow, JSON.stringify({ view: orb.s.view, orbit: orb.s.orbit, surface: orb.surface, follow: orb.follow }));
+  const turned = await page.evaluate("window.__reviewReplay('turn', [120, 40])");
+  check('a drag turns and tilts it', Math.abs(turned.orbit.heading - (orb.s.orbit.heading - 120 * 0.006)) < 1e-9 && turned.orbit.tilt > orb.s.orbit.tilt, JSON.stringify({ was: orb.s.orbit, now: turned.orbit }));
+  await page.evaluate("window.__reviewReplay('zoom', 3)");
+  await page.sleep(300);
+  const zin = (await page.evaluate('window.__reviewReplay()')).orbit;
+  check('the wheel comes in', zin.zoom < 1 && zin.dist < orb.s.orbit.dist, JSON.stringify({ was: orb.s.orbit.dist, now: zin.dist, zoom: zin.zoom }));
+  if (SHOTS) {
+    const shot = await page.cdp.send('Page.captureScreenshot', { format: 'png' }, page.sessionId);
+    writeFileSync(join(SHOTS, 'replay-orbit.png'), Buffer.from(shot.data, 'base64'));
+    console.log(`  (picture: ${join(SHOTS, 'replay-orbit.png')})`);
+  }
+  await page.tap('KeyC');
+  await page.sleep(200);
+  check('C again: side by side', (await page.evaluate('window.__reviewReplay()')).view === 'split');
+  await page.tap('KeyC');
+  await page.sleep(200);
+  check('and C again: the chase', (await page.evaluate('window.__reviewReplay()')).view === 'chase');
   await page.tap('Escape');
   const back = await page.evaluate("(() => ({ replay: window.__reviewReplay().open, review: window.__review(), watching: document.documentElement.classList.contains('tg-watching'), screen: window.__ui.screen }))()");
   check('Escape goes back to the review on the same section, the menu back', back.replay === false && back.review.open === true && back.review.selected === 0 && back.watching === false && back.screen === 'paused', JSON.stringify({ ...back, review: back.review.open }));

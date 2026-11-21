@@ -22,6 +22,13 @@
  * moment of the section. main.js draws the two (drawSplit); the choice is
  * kept from one replay to the next.
  *
+ * THE ORBIT (C, or the bar's View button, which goes Chase, Orbit, Side
+ * by side): a camera round the middle of the pair, far enough back to
+ * have both in the picture (orbitFit in replay.js). Drag on the room to
+ * turn round them and tilt; the wheel or a pinch comes in and goes out.
+ * It keeps off the walls as the chase does: walked in from where it wants
+ * to stand until it is clear of the nearest solid, and above the floor.
+ *
  * THE LINES. Each lap's line through the section, drawn in the room in its
  * colour as a thin see through tube, from the replay's start to its end on
  * that lap's own clock, so where the two went apart is there to see from
@@ -29,9 +36,9 @@
  * bar's button shows and hides them.
  *
  * KEYS. Space or Enter plays and pauses, Left and Right (Up and Down on a
- * radio) step a tenth of a second, F follows the other quad, V switches
- * between the chase and side by side, L shows or hides the lines, Escape
- * or Backspace goes back to the review. On the document, in the capture phase, as the review's are; a
+ * radio) step a tenth of a second, F follows the other quad, C goes to the
+ * next view, V switches side by side on and off, L shows or hides the
+ * lines, Escape or Backspace goes back to the review. On the document, in the capture phase, as the review's are; a
  * radio reaches them through Ui.overlay.
  *
  * Runs on the wall clock, as the watching camera does, because the plant is
@@ -57,8 +64,8 @@ import * as THREE from 'three';
 
 import { buildGhostCraft } from '../render/ghostcraft.js';
 import { CAMERA_MOUNT_FORWARD, CAMERA_MOUNT_UP } from '../render/lens.js';
-import { WatchCam } from '../render/watchcam.js';
-import { Playhead, gogglePose, poseAt, sectionTimeline, splitPanes } from './replay.js';
+import { CHASE_FOV, WatchCam } from '../render/watchcam.js';
+import { Playhead, gogglePose, orbitDir, orbitFit, poseAt, sectionTimeline, splitPanes } from './replay.js';
 import { deltaText, seconds } from './splits.js';
 
 const YOU_COLOUR = 0xffb340;
@@ -77,6 +84,25 @@ const PATH_RADIUS = 0.012;
 const PATH_SEGMENT_MS = 20;
 const PATH_RADIAL = 5;
 const PATH_OPACITY = 0.55;
+
+/* The orbit: tilt when it starts and its limits (radians above level),
+ * radians turned a pixel dragged, the wheel's step, the pilot's zoom's
+ * limits, and how it keeps off solids, in plant metres as the chase's
+ * (src/render/watchcam.js): nearest it comes, its walk out, the clearance
+ * it wants, how fast it eases back out, and its height over the floor. */
+const ORBIT_TILT = 0.45;
+const ORBIT_TILT_MIN = -0.2;
+const ORBIT_TILT_MAX = 1.5;
+const ORBIT_PER_PX = 0.006;
+const ORBIT_ZOOM_STEP = 0.88;
+const ORBIT_ZOOM_MIN = 0.15;
+const ORBIT_ZOOM_MAX = 6;
+const ORBIT_MIN = 0.3;
+const ORBIT_WALK = 0.1;
+const ORBIT_CLEAR = 0.16;
+const ORBIT_OUT_MS = 450;
+const ORBIT_FLOOR = 0.15;
+const VIEW_WORDS = { chase: 'View: Chase', orbit: 'View: Orbit', split: 'View: Side by side' };
 
 /* A line as a curve on its own clock: u from 0 to 1 is a to b ms, so the
  * tube's segments are even in time. */
@@ -120,9 +146,13 @@ export class ReviewReplay {
     this.root = null;
     this.onKey = null;
     this.pose = { px: 0, py: 0, pz: 0, qx: 0, qy: 0, qz: 0, qw: 1, cut: false };
-    /* Side by side or the chase, kept from one replay to the next. */
-    this.split = false;
+    /* The view, chase, orbit or side by side, kept from one replay to the
+     * next, and the one to go back to when V turns side by side off. */
+    this.mode = 'chase';
+    this.lastMode = 'chase';
     this.goggles = null;
+    this.orbit = { heading: 0, tilt: ORBIT_TILT, zoom: 1, boom: 0, dist: 0, fresh: true };
+    this.look = new THREE.Vector3();
     /* The lines in the room, made when a replay opens and freed when it
      * closes; shown or not, kept from one replay to the next. */
     this.paths = null;
@@ -169,7 +199,12 @@ export class ReviewReplay {
 
   /* Side by side now: chosen, and a ghost to show beside you. */
   get splitOn() {
-    return this.on && this.split && Boolean(this.data.refLine);
+    return this.on && this.mode === 'split' && Boolean(this.data.refLine);
+  }
+
+  /* The views this replay has: side by side only with a ghost. */
+  modes() {
+    return this.data && this.data.refLine ? ['chase', 'orbit', 'split'] : ['chase', 'orbit'];
   }
 
   get isOpen() {
@@ -258,7 +293,6 @@ export class ReviewReplay {
     this.viewBtn.addEventListener('click', () => this.act('view'));
     if (!data.refLine) {
       this.followBtn.hidden = true;
-      this.viewBtn.hidden = true;
     }
     const back = el('button', 'review-replay-btn', 'Back');
     back.type = 'button';
@@ -267,7 +301,11 @@ export class ReviewReplay {
     root.append(head, row);
     /* The side by side pictures' names, over their top left corners. */
     this.paneTags = [el('div', 'review-replay-pane review-replay-you', 'You'), el('div', 'review-replay-pane review-replay-ghost', 'Ghost')];
-    document.body.append(root, ...this.paneTags);
+    /* Under the bar, over the room while the orbit is on: a drag turns,
+     * the wheel and a pinch zoom. */
+    this.surface = el('div', 'review-replay-surface');
+    this.listenSurface(this.surface);
+    document.body.append(this.surface, root, ...this.paneTags);
     this.root = root;
     this.onKey = (e) => {
       if (!this.on) {
@@ -293,6 +331,9 @@ export class ReviewReplay {
       } else if (k === 'v' || k === 'V') {
         e.preventDefault();
         this.act('view');
+      } else if (k === 'c' || k === 'C') {
+        e.preventDefault();
+        this.act('camera');
       } else if (k === 'l' || k === 'L') {
         e.preventDefault();
         this.act('lines');
@@ -322,12 +363,95 @@ export class ReviewReplay {
     } else if (what === 'lines') {
       this.showPaths = !this.showPaths;
     } else if (what === 'view' && this.data.refLine) {
-      this.split = !this.split;
-      this.cam.free(null);
+      /* V: side by side on, or off to the view before it. */
+      if (this.mode === 'split') {
+        this.setMode(this.lastMode);
+      } else {
+        this.setMode('split');
+      }
+    } else if (what === 'camera') {
+      const order = this.modes();
+      this.setMode(order[(order.indexOf(this.mode) + 1) % order.length]);
+    } else if (what === 'turn' && Array.isArray(arg)) {
+      this.turn(arg[0], arg[1]);
+    } else if (what === 'zoom') {
+      this.zoomBy(Number(arg) || 0);
     } else if (what === 'back') {
       this.close('back');
     }
     this.write();
+  }
+
+  setMode(mode) {
+    if (!this.modes().includes(mode)) {
+      mode = 'chase';
+    }
+    if (mode === this.mode) {
+      return;
+    }
+    if (mode === 'split') {
+      this.lastMode = this.mode;
+    }
+    if (mode === 'orbit') {
+      this.orbit.fresh = true;
+    }
+    this.mode = mode;
+    this.started = false;
+    this.cam.free(null);
+  }
+
+  /* The orbit turned and tilted by a drag of dx, dy pixels. */
+  turn(dx, dy) {
+    const o = this.orbit;
+    o.heading -= dx * ORBIT_PER_PX;
+    o.tilt = Math.max(ORBIT_TILT_MIN, Math.min(ORBIT_TILT_MAX, o.tilt + dy * ORBIT_PER_PX));
+  }
+
+  /* steps > 0 comes in, < 0 goes out. */
+  zoomBy(steps) {
+    const o = this.orbit;
+    o.zoom = Math.max(ORBIT_ZOOM_MIN, Math.min(ORBIT_ZOOM_MAX, o.zoom * ORBIT_ZOOM_STEP ** steps));
+  }
+
+  listenSurface(surface) {
+    const down = new Map();
+    let pinch = 0;
+    const spread = () => {
+      const [a, b] = [...down.values()];
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    };
+    surface.addEventListener('pointerdown', (e) => {
+      down.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      surface.setPointerCapture(e.pointerId);
+      pinch = down.size === 2 ? spread() : 0;
+    });
+    surface.addEventListener('pointermove', (e) => {
+      const was = down.get(e.pointerId);
+      if (!was) {
+        return;
+      }
+      const now = { x: e.clientX, y: e.clientY };
+      down.set(e.pointerId, now);
+      if (down.size === 2) {
+        const d = spread();
+        if (pinch > 0 && d > 0) {
+          this.orbit.zoom = Math.max(ORBIT_ZOOM_MIN, Math.min(ORBIT_ZOOM_MAX, this.orbit.zoom * (pinch / d)));
+        }
+        pinch = d;
+      } else {
+        this.turn(now.x - was.x, now.y - was.y);
+      }
+    });
+    const up = (e) => {
+      down.delete(e.pointerId);
+      pinch = 0;
+    };
+    surface.addEventListener('pointerup', up);
+    surface.addEventListener('pointercancel', up);
+    surface.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      this.zoomBy(e.deltaY < 0 ? 1 : -1);
+    }, { passive: false });
   }
 
   /* The bar's words and controls, from the playhead. */
@@ -344,12 +468,13 @@ export class ReviewReplay {
     const into = t - tl.you[0];
     this.clock.textContent = into < 0 ? `${seconds(-into)} s before` : `${seconds(into)} s in`;
     this.followBtn.textContent = this.follow === 'you' ? 'Following you' : 'Following the ghost';
-    this.viewBtn.textContent = this.split ? 'Chase view' : 'Side by side';
+    this.viewBtn.textContent = VIEW_WORDS[this.mode];
     this.linesBtn.setAttribute('aria-pressed', String(this.showPaths));
     const split = this.splitOn;
     if (this.data.refLine) {
-      this.followBtn.hidden = split;
+      this.followBtn.hidden = this.mode !== 'chase';
     }
+    this.surface.hidden = this.mode !== 'orbit';
     const panes = this.panes(window.innerWidth, window.innerHeight);
     this.paneTags.forEach((tag, i) => {
       tag.hidden = !split;
@@ -408,7 +533,9 @@ export class ReviewReplay {
       this.goggles = { you: gogglePose(you, LENS, size, tilt), ghost: gogglePose(ghost, LENS, size, tilt) };
       camera.position.set(...this.goggles.you.pos);
       camera.quaternion.set(...this.goggles.you.q);
-      this.started = false;
+    } else if (this.mode === 'orbit') {
+      this.goggles = null;
+      this.orbitFrame(camera, you, ghost, world, dt);
     } else {
       this.goggles = null;
       const p = this.follow === 'ghost' && ghost ? ghost : you;
@@ -422,6 +549,62 @@ export class ReviewReplay {
     }
     if (was !== this.head.playing || this.head.playing) {
       this.write();
+    }
+  }
+
+  /*
+   * The orbit's camera this frame: round the middle of the pair (you
+   * alone with no ghost), as far back as fits both times the pilot's zoom,
+   * walked in to keep clear of solids and held above the floor, looking at
+   * the middle. It starts behind where the camera was looking.
+   */
+  orbitFrame(camera, you, ghost, world, dt) {
+    const o = this.orbit;
+    const size = this.data.size || 1;
+    if (o.fresh) {
+      this.look.set(0, 0, -1).applyQuaternion(camera.quaternion);
+      if (Math.hypot(this.look.x, this.look.z) > 0.05) {
+        o.heading = Math.atan2(-this.look.x, -this.look.z);
+      }
+      o.tilt = ORBIT_TILT;
+      o.zoom = 1;
+      o.boom = 0;
+    }
+    const m = ghost
+      ? [(you.x + ghost.x) / 2, (you.y + ghost.y) / 2, (you.z + ghost.z) / 2]
+      : [you.x, you.y, you.z];
+    const apart = ghost ? Math.hypot(you.x - ghost.x, you.y - ghost.y, you.z - ghost.z) : 0;
+    const want = orbitFit(apart, size, CHASE_FOV) * o.zoom;
+    const dir = orbitDir(o.heading, o.tilt);
+    const min = ORBIT_MIN * size;
+    let reach = Math.max(min, want);
+    if (world && world.gap) {
+      const step = ORBIT_WALK * size;
+      for (let s = min; s <= want; s += step) {
+        if (world.gap(m[0] + dir[0] * s, m[1] + dir[1] * s, m[2] + dir[2] * s) < ORBIT_CLEAR * size) {
+          reach = Math.max(min, s - step);
+          break;
+        }
+      }
+    }
+    if (o.fresh || reach < o.boom) {
+      o.boom = reach;
+    } else {
+      o.boom += (reach - o.boom) * (1 - Math.exp(-Math.max(0, dt) / ORBIT_OUT_MS));
+    }
+    o.fresh = false;
+    o.dist = o.boom;
+    camera.position.set(m[0] + dir[0] * o.boom, m[1] + dir[1] * o.boom, m[2] + dir[2] * o.boom);
+    if (world && world.floor) {
+      const floor = world.floor(camera.position.x, camera.position.z, camera.position.y) + ORBIT_FLOOR * size;
+      if (camera.position.y < floor) {
+        camera.position.y = floor;
+      }
+    }
+    camera.lookAt(m[0], m[1], m[2]);
+    if (Math.abs(camera.fov - CHASE_FOV) > 0.01) {
+      camera.fov = CHASE_FOV;
+      camera.updateProjectionMatrix();
     }
   }
 
@@ -478,6 +661,7 @@ export class ReviewReplay {
       for (const tag of this.paneTags) {
         tag.remove();
       }
+      this.surface.remove();
     }
     this.goggles = null;
     if (this.rigs) {
@@ -509,7 +693,8 @@ export class ReviewReplay {
       ghost: this.tl.ghost,
       playing: this.head.playing,
       follow: this.follow,
-      view: this.splitOn ? 'split' : 'chase',
+      view: this.splitOn ? 'split' : this.mode === 'orbit' ? 'orbit' : 'chase',
+      orbit: this.mode === 'orbit' ? { ...this.orbit, size: this.data.size || 1 } : null,
       lines: this.paths ? {
         you: Boolean(this.paths.you && this.paths.you.visible && this.paths.you.parent),
         ghost: Boolean(this.paths.ghost && this.paths.ghost.visible && this.paths.ghost.parent),

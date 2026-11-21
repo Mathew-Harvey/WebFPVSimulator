@@ -7152,7 +7152,12 @@
       .review-replay-btn[hidden] { display: none; }
       /* As wide for the ghost as for you, so the scrub keeps its length when F is pressed. */
       .review-replay-follow { min-width: 11em; }
-      .review-replay-view { min-width: 8.5em; }
+      .review-replay-view { min-width: 11.5em; }
+      /* The orbit's: over the room, under the bar, while the orbit is on. */
+      .review-replay-surface {
+        position: fixed; inset: 0; z-index: 2147482999; touch-action: none; cursor: grab;
+      }
+      .review-replay-surface[hidden] { display: none; }
       .review-replay-btn[aria-pressed="false"] { opacity: 0.55; }
       /* Side by side: each picture's name over its top left corner. */
       .review-replay-pane {

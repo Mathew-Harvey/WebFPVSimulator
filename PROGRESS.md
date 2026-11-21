@@ -76698,3 +76698,4 @@ Wrong: nothing attempted and undone.
 - Done: the export dialog's View picker (from PR 252) gains "Isometric": the plan's way round seen from one corner at the classic isometric drop (`view: 'iso'` in stage.js, ISO_AZIMUTH, ISO_ELEVATION). The existing views (Like the plan, still the default, Behind the start, Three quarter) are unchanged, so "as the camera is now" is still there. Same perspective lens as every view, narrow, so it is isometric in angle and not an orthographic projection. `scripts/trackgif.js --view iso` too.
 - Latency: no change to the flight loop or input path; builder export only.
 - Checks: `node --check` on both files; `npm run gif:selftest` 81 passed; a 4 frame render with `trackgif.js --view iso` and `--view plan` on a stored track, iso looked at. Not run: `npm run verify`, `shots.js`.
+- The owner, 2026-11-21 02:36Z, on draft PR 283: "push to main". No verification scale named; nothing beyond the checks above was run. Not flown.

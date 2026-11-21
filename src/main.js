@@ -91,7 +91,7 @@ import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './shar
 import { TRACE_STEP_MS, TraceBook, TraceRecorder } from './review/trace.js';
 import { ReviewPanel } from './review/panel.js';
 import { chasedLabel, deltaText } from './review/splits.js';
-import { lineOfGhost, lineOfTrace, stationsOfRaceGates } from './review/views.js';
+import { lineOfGhost, lineOfTrace, localOf, pathOf, stationsOfRaceGates, throughPlane } from './review/views.js';
 import { uploadWorld, setWorldFrame, setMover, setBoxHeight, kindOf, setVehicleClock, readVehicles, makeVehiclePoses, moverVelocityInPlant, vehicleSurfaceInPlant } from './game/plantworld.js';
 import { Chase, CHASE_EVERY, pays } from './game/chase.js';
 import { sincos } from './props/trig.js';
@@ -16260,6 +16260,42 @@ export async function boot({ loading, bootStart, mapId }) {
     return reviewPanel.state();
   };
   window.__review = () => reviewPanel.state();
+  /*
+   * Where the newest lap and its ghost went through each gate, in that
+   * gate's own frame as the race scores a pass (localOf,
+   * src/review/views.js): x across the opening, y up it, z along the way
+   * it is flown, scene metres from its centre. `you` and `ghost` are where
+   * each line crossed the opening's plane after its split (throughPlane),
+   * which is where the views draw a section to and from: z = 0, and |x|
+   * and |y| inside `half` for a line through the opening. `credited` is the
+   * z the race credited the pass at, the split: up to its pass depth short
+   * of the plane. So a capture can assert the views put every line through
+   * its gate, and a pilot can read it from the console. Harness only.
+   */
+  window.__reviewAlign = () => {
+    if (!reviewLast || !race) {
+      return null;
+    }
+    const stations = stationsOfRaceGates(race.gates || []);
+    const n = stations.length;
+    const at = (line, ms) => pathOf(line, ms, ms)[0];
+    const mine = lineOfTrace(reviewLast);
+    const ref = reviewLastRef && reviewLastRef.splits.length === reviewLast.splits.length ? reviewLastRef : null;
+    const theirs = ref ? lineOfGhost(ref) : null;
+    const r = (o) => ({ x: Math.round(o.x * 1000) / 1000, y: Math.round(o.y * 1000) / 1000, z: Math.round(o.z * 1000) / 1000 });
+    const through = (line, st, ms) => r(localOf(st, at(line, throughPlane(line, st, ms))));
+    return reviewLast.splits.map((ms, k) => {
+      const st = stations[(k + 1) % n];
+      return {
+        gate: (k + 1) % n,
+        half: [st.clearW / 2, st.clearH / 2],
+        you: through(mine, st, ms),
+        credited: r(localOf(st, at(mine, ms))).z,
+        ghost: theirs ? through(theirs, st, ref.splits[k]) : null,
+        ghostCredited: theirs ? r(localOf(st, at(theirs, ref.splits[k]))).z : null,
+      };
+    });
+  };
   /* One of those laps whole, samples and all, as plain arrays, so a capture
    * can read the trace against the ghost of the same lap. Harness only. */
   window.__reviewTraceLap = (which) => {

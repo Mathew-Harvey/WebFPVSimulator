@@ -37,7 +37,7 @@
  */
 
 import { compareSplits, deltaText, seconds } from './splits.js';
-import { VIEW_COLOURS, drawSide, drawTop, pathOf } from './views.js';
+import { VIEW_COLOURS, drawSide, drawTop, pathOf, throughPlane } from './views.js';
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -202,24 +202,27 @@ export class ReviewPanel {
     return col;
   }
 
-  /* Section k from above and from the side. Its lap times are the lap's
-   * splits either side of it, and the ghost's its own splits, when its
-   * sections line up with the lap's. */
+  /* Section k from above and from the side. Each line is drawn from where
+   * it went through the section's first opening to where it went through
+   * its last (throughPlane), found from the splits either side of it: the
+   * lap's own, and the ghost's own when its sections line up with the
+   * lap's. */
   drawViews(k) {
     const v = this.data.views;
-    const lapEnds = [0, ...this.data.lap.splits];
     const n = v.stations.length;
     const ends = [k % n, (k + 1) % n];
-    const mine = pathOf(v.lapLine, lapEnds[k], lapEnds[k + 1]);
+    const span = (line, splits) => {
+      const at = [0, ...splits];
+      return pathOf(line, throughPlane(line, v.stations[ends[0]], at[k]), throughPlane(line, v.stations[ends[1]], at[k + 1]));
+    };
+    const mine = span(v.lapLine, this.data.lap.splits);
     let ref = [];
     if (v.refLine && this.result.matched) {
-      const refEnds = [0, ...this.data.ref.splits];
-      ref = pathOf(v.refLine, refEnds[k], refEnds[k + 1]);
+      ref = span(v.refLine, this.data.ref.splits);
     }
     const args = { stations: v.stations, ends, mine, ref, lifeScale: v.lifeScale || 1 };
     this.drawn = { section: k, top: drawTop(this.top, args), side: drawSide(this.side, args) };
-    const from = ends[0] === 0 ? 'the start' : `gate ${ends[0]}`;
-    this.viewNote.textContent = `${this.result.sections[k].name}. Top: from above. Below: from the side, looking across the travel through ${from}, height up the picture. A dot marks where each line starts.`;
+    this.viewNote.textContent = `${this.result.sections[k].name}. Top: from above. Below: from the side, looking across the section, start on the left, height up the picture. A dot marks where each line starts.`;
   }
 
   select(k) {

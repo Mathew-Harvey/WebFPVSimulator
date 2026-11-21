@@ -220,7 +220,41 @@ try {
     };
     return { top: count('#review .review-top'), side: count('#review .review-side') };
   })()`);
-  check('your line and the ghost\'s are on both pictures', inks.top.amber > 50 && inks.top.blue > 50 && inks.side.amber > 50 && inks.side.blue > 50, JSON.stringify(inks));
+  /* Your line is drawn over the ghost's, so where the harness flies both
+   * laps along one path the blue is mostly under the amber (one run left
+   * 49 blue pixels on a picture, another 457). So the ink asserted is
+   * yours, and the ghost's line is asserted by where it fell: some blue
+   * showing, and every point of it inside the picture. */
+  const within = (b) => Boolean(b && b.box) && b.box.x0 >= 0 && b.box.x1 <= b.w && b.box.y0 >= 0 && b.box.y1 <= b.h && b.box.x1 - b.box.x0 + b.box.y1 - b.box.y0 > 10;
+  const fell = (v) => ({ box: v.boxes.ref, w: v.boxes.w, h: v.boxes.h });
+  check('your line is on both pictures', inks.top.amber > 50 && inks.side.amber > 50, JSON.stringify(inks));
+  check('and the ghost\'s, inside both pictures and showing', within(fell(d.top)) && within(fell(d.side)) && inks.top.blue > 0 && inks.side.blue > 0, JSON.stringify({ top: d.top.boxes, side: d.side.boxes, inks }));
+  /*
+   * THE LINES GO THROUGH THEIR GATES, in the gate's own frame as the race
+   * scores a pass (window.__reviewAlign). The views draw each opening from
+   * the same frame, so a line that is at the opening's plane and inside its
+   * edges at its split is drawn through it. Your trace is the physics state
+   * a hundred times a second: within 5 cm of the plane. The ghost is the
+   * drawn pose thirty times a second: within 15 cm.
+   */
+  const align = await page.evaluate('window.__reviewAlign()');
+  const inside = (o, half) => Math.abs(o.z) <= 0.01 && Math.abs(o.x) <= half[0] && Math.abs(o.y) <= half[1];
+  check('your line is drawn through every gate of the lap, inside its opening', Array.isArray(align) && align.length >= 1 && align.every((a) => inside(a.you, a.half)), JSON.stringify(align));
+  /* The ghost's recording stops at its finish, where the race credited
+   * it, so at the finish it has no plane to reach and its line ends where
+   * it was credited; at every other gate it goes through. This track's one
+   * gate is the finish, so here it is the finish's rule that is asserted;
+   * the plane itself is proven in Node (review-views-selftest). The ghost
+   * is the drawn pose resampled thirty times a second, so where it stood
+   * at the credit is known to a frame's travel, not to the millimetre: one
+   * run read -0.536 m against the box's -0.5. So 15 cm, as for a ghost. */
+  check('and so is the ghost\'s, except at the finish, where its recording ends at the credit',
+    Array.isArray(align) && align.every((a) => a.ghost && (inside(a.ghost, a.half)
+      || (a.gate === 0 && a.ghost.z === a.ghostCredited && a.ghostCredited >= -0.65 && a.ghostCredited <= 0.15))), JSON.stringify(align));
+  /* The race credits the pass on entering its box, half a metre in front
+   * of the opening on this full size track, so the split is there and not
+   * at the opening: the reason the views look for the plane. */
+  check('where the race credited it, in front of the opening by up to its pass depth', Array.isArray(align) && align.every((a) => a.credited <= 0.01 && a.credited >= -0.51), JSON.stringify(align.map((a) => a.credited)));
 
   if (SHOTS) {
     mkdirSync(SHOTS, { recursive: true });
@@ -251,7 +285,8 @@ try {
    */
   const synth = await page.evaluate(`(async () => {
     const { ReviewPanel } = await import('/src/review/panel.js');
-    const st = (x, y, z, yaw, clearH = 0.6) => ({ x, y, z, yaw, clearW: 0.6, clearH, virtual: false });
+    const { stationOf } = await import('/src/review/views.js');
+    const st = (x, y, z, heading, clearH = 0.6) => stationOf({ x, y, z, heading, clearW: 0.6, clearH });
     const stations = [
       st(3, 0.5, 0, 0),
       st(0, 0.5, 0, 0),
@@ -271,7 +306,9 @@ try {
         /* Up on the way out and down on the way back, so from the side
          * it is a loop and not one line flown out and back on itself. */
         y.push(0.5 + lift * Math.sin(a) ** 2 * (1 + Math.cos(a)) * 0.6);
-        z.push(-1.2 * Math.sin(a) * r);
+        /* Out further than across, so the side view, which looks across
+         * the way the lines spread furthest, looks across this loop. */
+        z.push(-1.8 * Math.sin(a) * r);
       }
       return { t, x, y, z };
     };
@@ -285,37 +322,42 @@ try {
     const d = panel.state().drawn;
     const cv = document.querySelector('#review .review-side');
     const px = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
-    let lo = Infinity; let hi = -Infinity;
+    let lo = Infinity; let hi = -Infinity; let left = Infinity; let right = -Infinity;
     for (let y = 0; y < cv.height; y += 1) {
       for (let x = 0; x < cv.width; x += 1) {
         const i = (y * cv.width + x) * 4;
-        if (px[i] > 230 && px[i + 1] > 150 && px[i + 1] < 200 && px[i + 2] < 100) { lo = Math.min(lo, y); hi = Math.max(hi, y); }
+        if (px[i] > 230 && px[i + 1] > 150 && px[i + 1] < 200 && px[i + 2] < 100) { lo = Math.min(lo, y); hi = Math.max(hi, y); left = Math.min(left, x); right = Math.max(right, x); }
       }
     }
     const overlaps = (rects) => !rects || rects.some((r, i) => rects.some((s, j) => j > i && r.x < s.x + s.w && s.x < r.x + r.w && r.y < s.y + s.h && s.y < r.y + r.h));
-    /* Bays that touch in the room, one bar straight above another in the
-     * picture: the gap left between them in pixels, and whether the pixel
-     * in the middle of it is the ground and not a bar. A bar is [bottom,
-     * top] in canvas pixels, y down. */
+    /* Bays that touch in the room, one outline straight above another in
+     * the picture: the gap left between them in pixels, and whether the
+     * pixel in the middle of it is the ground and not an outline. Outlines
+     * are quads in canvas pixels, y down. */
     let gap = null; let gapDark = null;
-    const bars = d.side.bars || [];
-    for (const A of bars) {
-      for (const B of bars) {
-        const g = A[1][1] - B[0][1];
-        const mid = (A[1][1] + B[0][1]) / 2;
+    const box = (q) => ({ x0: Math.min(...q.map((p) => p[0])), x1: Math.max(...q.map((p) => p[0])), y0: Math.min(...q.map((p) => p[1])), y1: Math.max(...q.map((p) => p[1])) });
+    const outlines = (d.side.outlines || []).map((o) => box(o.quad));
+    for (const A of outlines) {
+      for (const B of outlines) {
+        /* B above A: A's top less B's bottom. */
+        const g = A.y0 - B.y1;
+        const mid = (A.y0 + B.y1) / 2;
+        const x = (Math.max(A.x0, B.x0) + Math.min(A.x1, B.x1)) / 2;
         /* Only a gap inside the picture: the bays above the frame are drawn
          * clipped, and their gaps have no pixel to read. */
-        if (A === B || Math.abs(A[0][0] - B[0][0]) > 1 || !(g >= 0 && g < 30) || (gap !== null && g >= gap) || !(mid >= 0 && mid < cv.height)) {
+        if (A === B || Math.max(A.x0, B.x0) > Math.min(A.x1, B.x1) + 1 || !(g >= 0 && g < 30) || (gap !== null && g >= gap) || !(mid >= 0 && mid < cv.height)) {
           continue;
         }
         gap = g;
-        const i = (Math.round((A[1][1] + B[0][1]) / 2) * cv.width + Math.round(A[0][0])) * 4;
+        const i = (Math.round(mid) * cv.width + Math.round(x)) * 4;
         gapDark = px[i] < 60 && px[i + 1] < 60 && px[i + 2] < 60;
       }
     }
     const out = {
       sideGates: d.side.gates, sideLabels: d.side.labels, topLabels: d.top.labels,
-      lineShare: (hi - lo) / cv.height,
+      /* How much of the picture your line spans, its wider way: a picture
+       * framed on the lines fills its width or its height with them. */
+      lineShare: Math.max((hi - lo) / cv.height, (right - left) / cv.width),
       overlapTop: overlaps(d.top.rects), overlapSide: overlaps(d.side.rects),
       stackGap: gap, stackGapDark: gapDark,
     };
@@ -329,7 +371,7 @@ try {
   }
   await page.evaluate('(() => { window.__builtPanel.close(); return 1; })()');
   check('the side view leaves out the gate across the room and keeps the stack', synth.sideGates === 5, JSON.stringify(synth));
-  check('so the lines fill a good part of its height, not a few pixels', synth.lineShare > 0.2, `${(synth.lineShare * 100).toFixed(0)}% of the picture`);
+  check('so your line spans a good part of the picture, not a few pixels', synth.lineShare > 0.4, `${(synth.lineShare * 100).toFixed(0)}% of the picture its wider way`);
   check('no label is printed over another, from above or from the side', !synth.overlapTop && !synth.overlapSide && synth.topLabels >= 2 && synth.sideLabels >= 2, JSON.stringify(synth));
   check('bays stacked one on another are separate bars, with the ground between them', synth.stackGap >= 6 && synth.stackGapDark === true, `${synth.stackGap === null ? 'no gap' : `${synth.stackGap.toFixed(1)} px`}, ground between: ${synth.stackGapDark}`);
 

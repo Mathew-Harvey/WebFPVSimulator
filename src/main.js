@@ -7934,6 +7934,7 @@ export async function boot({ loading, bootStart, mapId }) {
   /* The pause menu's Let the goats out (src/ui/ui.js): the herd back on the
    * street, and the finish free to be called again. */
   ui.onReview = () => openReview();
+  ui.onReplayLap = () => openReplay('lap');
   ui.onGoatsOut = () => {
     if (view && view.goatGame) {
       view.goatGame.restart();
@@ -11785,11 +11786,17 @@ export async function boot({ loading, bootStart, mapId }) {
     const ref = reviewLastRef;
     const lapWords = `Your last lap, ${formatTime(reviewLast.durationMs)}`;
     if (!ref) {
-      ui.setReviewRow({ note: `${lapWords}, gate by gate. It chased no ghost, so there is nothing to compare it with yet.` });
+      ui.setReviewRow({
+        note: `${lapWords}, gate by gate. It chased no ghost, so there is nothing to compare it with yet.`,
+        replay: `${lapWords}, flown again in the room, start to finish.`,
+      });
       return;
     }
     const d = reviewLast.durationMs - ref.durationMs;
-    ui.setReviewRow({ note: `${lapWords}, against ${reviewRefName(ref)}: ${deltaText(d)} over the lap. Each section gate to gate, green where you gained, red where you lost.` });
+    ui.setReviewRow({
+      note: `${lapWords}, against ${reviewRefName(ref)}: ${deltaText(d)} over the lap. Each section gate to gate, green where you gained, red where you lost.`,
+      replay: `${lapWords} and ${reviewRefName(ref)}, flown again together in the room, start to finish.`,
+    });
   }
 
   /* The ghost the newest lap chased, in words: who and their time, the
@@ -11854,6 +11861,8 @@ export async function boot({ loading, bootStart, mapId }) {
     return reviewReplayLoading;
   }
 
+  /* k: a section of the newest lap, from the review; or 'lap', the whole
+   * lap, from the pause menu's Replay row. */
   function openReplay(k) {
     if (!reviewLast || !race || mode !== 'paused' || ui.screen !== 'paused') {
       return Promise.resolve(false);
@@ -11862,16 +11871,18 @@ export async function boot({ loading, bootStart, mapId }) {
     const ref = reviewLastRef && reviewLastRef.splits.length === lap.splits.length ? reviewLastRef : null;
     const stations = stationsOfRaceGates(race.gates || []);
     const n = stations.length;
-    if (!n || k < 0 || k >= lap.splits.length) {
+    const whole = k === 'lap';
+    if (!n || (!whole && !(k >= 0 && k < lap.splits.length))) {
       return Promise.resolve(false);
     }
-    const ends = [k % n, (k + 1) % n];
-    /* When each line went through the section's first and last openings,
-     * as the review's views draw it (throughPlane). */
-    const span = (line, splits) => {
-      const at = [0, ...splits];
-      return [throughPlane(line, stations[ends[0]], at[k]), throughPlane(line, stations[ends[1]], at[k + 1])];
-    };
+    /* The openings it runs between: the section's two, or the start to
+     * the finish. i counts openings along the lap, station i % n. */
+    const i0 = whole ? 0 : k;
+    const i1 = whole ? lap.splits.length : k + 1;
+    /* When a line went through opening i, as the review's views draw it
+     * (throughPlane), from its split. */
+    const through = (line, splits, i) => throughPlane(line, stations[i % n], i ? splits[i - 1] : 0);
+    const span = (line, splits) => [through(line, splits, i0), through(line, splits, i1)];
     const lapLine = lineOfTrace(lap);
     const refLine = ref ? lineOfGhost(ref) : null;
     /* The ghost's sticks, where it was a lap of this session and its
@@ -11881,7 +11892,11 @@ export async function boot({ loading, bootStart, mapId }) {
     const course = lap.meta.course;
     const refTrace = ref ? [reviewBook.best(course), reviewBook.previous(course), reviewBook.replaced(course)]
       .find((tr) => tr && tr !== lap && Math.abs(tr.durationMs - ref.durationMs) < 1) : null;
-    const gateWord = (i, last) => (i === 0 ? (last ? 'Finish' : 'Start') : `Gate ${i}`);
+    const gateWord = (i) => (i % n !== 0 ? `Gate ${i % n}` : i === 0 ? 'Start' : 'Finish');
+    const marks = [];
+    for (let i = i0; i <= i1; i += 1) {
+      marks.push({ ms: through(lapLine, lap.splits, i), name: gateWord(i) });
+    }
     return reviewReplayReady().then((rp) => {
       if (reviewLast !== lap || mode !== 'paused' || ui.screen !== 'paused') {
         return false;
@@ -11901,8 +11916,8 @@ export async function boot({ loading, bootStart, mapId }) {
         refLine,
         you: span(lapLine, lap.splits),
         ghost: refLine ? span(refLine, ref.splits) : null,
-        title: sectionName(k, lap.splits.length),
-        marks: [gateWord(ends[0], false), gateWord(ends[1], true)],
+        title: whole ? 'The whole lap' : sectionName(k, lap.splits.length),
+        marks,
         lapTrace: lap,
         refTrace: refTrace || null,
         scale: 1 / WORLD_SCALE,
@@ -11913,7 +11928,9 @@ export async function boot({ loading, bootStart, mapId }) {
           document.documentElement.classList.remove('tg-watching', 'tg-replay');
           applyRaceLine(ui.settings);
           ui.overlay = reviewPanel;
-          if (how === 'back' && mode === 'paused' && ui.screen === 'paused') {
+          /* Back to where it was opened from: a section to the review on
+           * that section, the whole lap to the pause menu. */
+          if (!whole && how === 'back' && mode === 'paused' && ui.screen === 'paused') {
             openReview();
             reviewPanel.select(k);
           }
@@ -16458,7 +16475,7 @@ export async function boot({ loading, bootStart, mapId }) {
    * 'step', 'follow', 'back'). Returns its state. Harness only. */
   window.__reviewReplay = (what, arg) => {
     if (what === 'open') {
-      return openReplay(Number(arg) || 0).then(() => (reviewReplay ? reviewReplay.state() : { open: false }));
+      return openReplay(arg === 'lap' ? 'lap' : Number(arg) || 0).then(() => (reviewReplay ? reviewReplay.state() : { open: false }));
     }
     if (reviewReplay && what) {
       reviewReplay.act(what, arg);

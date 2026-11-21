@@ -32,7 +32,10 @@
  * THE ORBIT (C, or the bar's View button, which goes Chase, Orbit, Side
  * by side): a camera round the middle of the pair, far enough back to
  * have both in the picture (orbitFit in replay.js). Drag on the room to
- * turn round them and tilt; the wheel or a pinch comes in and goes out.
+ * turn round them and tilt; the wheel or a pinch comes in and goes out. A
+ * drag, the wheel or a pinch in the chase goes to the orbit, from where the
+ * chase was looking (the contributor dragged the chase and nothing
+ * turned).
  * It keeps off the walls as the chase does: walked in from where it wants
  * to stand until it is clear of the nearest solid, and above the floor.
  *
@@ -42,9 +45,10 @@
  * any camera. A quad's own line is left out of its own goggles. P (the
  * paths, as on the coach branch) or the bar's button shows and hides them.
  *
- * THE TIMELINE, the bar's, as the coach branch's: the section's stretch
- * of time with the two gates where your line went through them, where the
- * ghost reached the last one (blue), and the playhead. Drag on it or on
+ * THE TIMELINE, the bar's, as the coach branch's: the replay's stretch
+ * of time with each gate where your line went through it (the section's
+ * two, or every gate of the whole lap from the pause menu's Replay row),
+ * where the ghost reached the last one (blue), and the playhead. Drag on it or on
  * the lanes to scrub; the wheel over either zooms them about the pointer
  * (zoomView in replay.js), the stretch shown turning over like a page to
  * keep the playhead on it, a strip along the foot saying where it is.
@@ -265,7 +269,9 @@ export class ReviewReplay {
    *   you, ghost        [a, b]: when each line went through the section's
    *                     first and last openings (throughPlane); ghost null
    *   title             the section's name
-   *   marks             the names of its first and last gate, for the bar
+   *   marks             [{ ms, name }]: when your line went through each
+   *                     gate it runs between, and the gate's name, for the
+   *                     bar
    *   lapTrace          your lap's trace, for its sticks; refTrace the
    *                     ghost's, or null when it was not kept
    *   scale             the holograms' scale, as the shell's ghost's
@@ -469,6 +475,8 @@ export class ReviewReplay {
     }
     if (mode === 'orbit') {
       this.orbit.fresh = true;
+      this.orbit.tilt = ORBIT_TILT;
+      this.orbit.zoom = 1;
     }
     this.mode = mode;
     this.started = false;
@@ -506,6 +514,14 @@ export class ReviewReplay {
         return;
       }
       const now = { x: e.clientX, y: e.clientY };
+      /* In the chase, a drag past a few pixels goes to the orbit. */
+      if (this.mode === 'chase') {
+        if (Math.hypot(now.x - was.x, now.y - was.y) < 4) {
+          return;
+        }
+        this.setMode('orbit');
+        this.write();
+      }
       down.set(e.pointerId, now);
       if (down.size === 2) {
         const d = spread();
@@ -525,8 +541,22 @@ export class ReviewReplay {
     surface.addEventListener('pointercancel', up);
     surface.addEventListener('wheel', (e) => {
       e.preventDefault();
+      if (this.mode === 'chase') {
+        this.setMode('orbit');
+      }
       this.zoomBy(e.deltaY < 0 ? 1 : -1);
+      this.write();
     }, { passive: false });
+  }
+
+  /* The gates on the timeline, [{ ms, name }]: as opened, or the replay's
+   * two ends unnamed. */
+  marks() {
+    const m = this.data.marks;
+    if (Array.isArray(m) && m.length && typeof m[0] === 'object') {
+      return m;
+    }
+    return [{ ms: this.tl.you[0], name: '' }, { ms: this.tl.you[1], name: '' }];
   }
 
   /* The stretch of the timeline shown, [a, b] ms. */
@@ -592,18 +622,25 @@ export class ReviewReplay {
     }
     g.font = `${11 * dpr}px system-ui, sans-serif`;
     g.textBaseline = 'top';
-    const marks = this.data.marks || ['', ''];
-    [tl.you[0], tl.you[1]].forEach((ms, i) => {
+    /* Each gate's mark, named where there is room: a name that would run
+     * into the one before is left off (a whole lap in a narrow bar). */
+    let freeX = -Infinity;
+    const marks = this.marks();
+    marks.forEach(({ ms, name }, i) => {
       const x = X(ms);
       if (x < -dpr || x > w + dpr) {
         return;
       }
       g.fillStyle = 'rgba(155,227,155,0.75)';
       g.fillRect(x - dpr / 2, 0, dpr, h);
-      g.fillStyle = GATE_CSS;
-      const name = marks[i] || '';
       const tw = g.measureText(name).width;
-      g.fillText(name, i ? Math.max(2 * dpr, x - tw - 3 * dpr) : Math.min(w - tw - 2 * dpr, x + 3 * dpr), 3 * dpr);
+      const last = i === marks.length - 1 && marks.length > 1;
+      const tx = last ? Math.max(2 * dpr, x - tw - 3 * dpr) : Math.min(w - tw - 2 * dpr, x + 3 * dpr);
+      if (tx >= freeX) {
+        g.fillStyle = GATE_CSS;
+        g.fillText(name, tx, 3 * dpr);
+        freeX = tx + tw + 6 * dpr;
+      }
     });
     if (this.data.refLine && Number.isFinite(tl.ghostMs)) {
       g.fillStyle = GHOST_CSS;
@@ -668,7 +705,7 @@ export class ReviewReplay {
     const pad = 3 * dpr;
     const { tl, data } = this;
     g.fillStyle = 'rgba(155,227,155,0.3)';
-    for (const ms of tl.you) {
+    for (const { ms } of this.marks()) {
       g.fillRect(X(ms) - dpr / 2, 0, dpr, h);
     }
     g.font = `${11 * dpr}px system-ui, sans-serif`;
@@ -750,7 +787,7 @@ export class ReviewReplay {
     if (this.data.refLine) {
       this.followBtn.hidden = this.mode !== 'chase';
     }
-    this.surface.hidden = this.mode !== 'orbit';
+    this.surface.hidden = this.mode === 'split';
     const panes = this.panes(window.innerWidth, window.innerHeight);
     this.paneTags.forEach((tag, i) => {
       tag.hidden = !split;
@@ -847,8 +884,6 @@ export class ReviewReplay {
       if (Math.hypot(this.look.x, this.look.z) > 0.05) {
         o.heading = Math.atan2(-this.look.x, -this.look.z);
       }
-      o.tilt = ORBIT_TILT;
-      o.zoom = 1;
       o.boom = 0;
     }
     const m = ghost
@@ -995,6 +1030,7 @@ export class ReviewReplay {
       playing: this.head.playing,
       follow: this.follow,
       view: this.splitOn ? 'split' : this.mode === 'orbit' ? 'orbit' : 'chase',
+      marks: this.marks().map((m) => m.name),
       rate: this.head.rate,
       loop: this.head.loop,
       shown: this.range(),

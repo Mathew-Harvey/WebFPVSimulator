@@ -8130,7 +8130,8 @@ export class Ui {
    * against the ghost it chased, section by section (src/review/panel.js,
    * a panel the shell draws over this menu). The shell sets it with a note
    * that says what the review will show (syncReviewRow in main.js), or
-   * null where there is no race to review.
+   * null where there is no race to review. Under it the Replay row, the
+   * whole lap flown again (src/review/replayview.js), with its own note.
    */
   setReviewRow(row) {
     this.reviewRow = row || null;
@@ -8143,7 +8144,11 @@ export class Ui {
     if (!this.reviewRow) {
       return [];
     }
-    return [{ label: 'Review', action: 'review', note: this.reviewRow.note }];
+    const rows = [{ label: 'Review', action: 'review', note: this.reviewRow.note }];
+    if (this.reviewRow.replay) {
+      rows.push({ label: 'Replay', action: 'replay-lap', note: this.reviewRow.replay });
+    }
+    return rows;
   }
 
   /*
@@ -23637,6 +23642,12 @@ export class Ui {
     if (action === 'review') {
       if (this.onReview) {
         this.onReview();
+      }
+      return;
+    }
+    if (action === 'replay-lap') {
+      if (this.onReplayLap) {
+        this.onReplayLap();
       }
       return;
     }

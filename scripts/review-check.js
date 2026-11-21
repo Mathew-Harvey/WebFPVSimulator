@@ -415,6 +415,46 @@ try {
   await page.sleep(200);
   check('and the shift is gone once it closes, so flight is not off centre', (await page.evaluate('window.__camGround().shift')) === null, JSON.stringify(await page.evaluate('window.__camGround().shift')));
   await page.tap('Escape');
+  /* The pause menu's Replay row: the whole lap, every gate on the
+   * timeline; a drag on the room in the chase goes to the orbit; back to
+   * the menu, not the review. */
+  const rows = await page.evaluate('window.__ui.reviewItems().map((r) => r.label)');
+  check('the pause menu has Review and, under it, Replay', rows.join() === 'Review,Replay', JSON.stringify(rows));
+  await page.evaluate("(() => { window.__ui.act('replay-lap'); return 1; })()");
+  await page.until('window.__reviewReplay().open', 10000).catch(() => {});
+  await page.sleep(300);
+  const lapRp = await page.evaluate('window.__reviewReplay()');
+  check('Replay plays the whole lap, start to finish, every gate on its timeline', lapRp.open && lapRp.title === 'The whole lap' && lapRp.marks[0] === 'Start' && lapRp.marks[lapRp.marks.length - 1] === 'Finish', JSON.stringify({ open: lapRp.open, title: lapRp.title, marks: lapRp.marks }));
+  {
+    if (lapRp.view !== 'chase') {
+      await page.evaluate("window.__reviewReplay('camera')");
+    }
+    const size = await page.evaluate('[innerWidth, innerHeight]');
+    const x0 = size[0] / 2;
+    const y0 = size[1] * 0.3;
+    const send = (type, x, buttons) => page.cdp.send('Input.dispatchMouseEvent', { type, x, y: y0, button: 'left', buttons, clickCount: 1 }, page.sessionId);
+    await send('mousePressed', x0, 1);
+    for (let i = 1; i <= 8; i += 1) {
+      await send('mouseMoved', x0 + i * 15, 1);
+    }
+    await send('mouseReleased', x0 + 120, 0);
+    await page.sleep(300);
+    const dragged = await page.evaluate('window.__reviewReplay()');
+    check('a mouse drag on the room in the chase goes to the orbit and turns it', dragged.view === 'orbit' && dragged.orbit && Number.isFinite(dragged.orbit.heading), JSON.stringify({ view: dragged.view, orbit: dragged.orbit }));
+    const before = dragged.orbit.heading;
+    await send('mousePressed', x0, 1);
+    for (let i = 1; i <= 8; i += 1) {
+      await send('mouseMoved', x0 + i * 15, 1);
+    }
+    await send('mouseReleased', x0 + 120, 0);
+    await page.sleep(200);
+    const turnedBy = (await page.evaluate('window.__reviewReplay()')).orbit.heading - before;
+    check('and a drag in the orbit turns it by the drag', Math.abs(turnedBy + 120 * 0.006) < 0.02, String(turnedBy));
+  }
+  await page.tap('Escape');
+  await page.sleep(200);
+  const lapBack = await page.evaluate("(() => ({ replay: window.__reviewReplay().open, review: window.__review().open, screen: window.__ui.screen }))()");
+  check('back from the whole lap is the pause menu, not the review', lapBack.replay === false && lapBack.review === false && lapBack.screen === 'paused', JSON.stringify(lapBack));
   await page.evaluate("(() => { window.__ui.act('review'); return 1; })()");
   await page.evaluate("(() => { const ui = window.__ui; ui.onAction('resume', ui.settings); return 1; })()");
   await page.until("window.__ui.screen === 'flight'", 10000).catch(() => {});

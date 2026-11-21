@@ -445,6 +445,12 @@ try {
   const lapRp = await page.evaluate('window.__reviewReplay()');
   check('Replay plays the whole lap, start to finish, every gate on its timeline', lapRp.open && lapRp.title === 'The whole lap' && lapRp.marks[0] === 'Start' && lapRp.marks[lapRp.marks.length - 1] === 'Finish', JSON.stringify({ open: lapRp.open, title: lapRp.title, marks: lapRp.marks }));
   {
+    /* The whole lap starts before the ghost's first pose: its tube must
+     * still have width (it had none, and drew nothing). */
+    const li = lapRp.lineInfo;
+    check('both lines of the whole lap are tubes with width, and the ghost line too', li && li.you && li.ghost && li.you.across > 1e-4 && li.ghost.across > 1e-4, JSON.stringify({ you: li && li.you && li.you.across, ghost: li && li.ghost && li.ghost.across }));
+  }
+  {
     if (lapRp.view !== 'chase') {
       await page.evaluate("window.__reviewReplay('camera')");
     }

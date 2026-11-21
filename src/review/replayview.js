@@ -208,12 +208,22 @@ export class ReviewReplay {
   }
 
   /* Each line through the replay's stretch of its own clock, as a tube in
-   * its colour. */
+   * its colour, held to the stretch the line has: a tube run on past its
+   * line's first or last pose has the same point twice over, no way along
+   * at its start, and three's tube then has no width anywhere. The whole
+   * lap starts LEAD_MS before the start gate and the ghost's poses at the
+   * gate, so its line was in the room and drew nothing (the contributor's
+   * "still no ghost line round the ghost"). */
   buildPaths() {
     this.freePaths();
     const size = this.data.size || 1;
-    const make = (line, a, b, colour) => {
-      if (!line || !(b > a)) {
+    const make = (line, from, to, colour) => {
+      if (!line || !line.t.length) {
+        return null;
+      }
+      const a = Math.max(from, line.t[0]);
+      const b = Math.min(to, line.t[line.t.length - 1]);
+      if (!(b > a)) {
         return null;
       }
       const segments = Math.max(2, Math.ceil((b - a) / PATH_SEGMENT_MS));
@@ -1108,7 +1118,12 @@ export class ReviewReplay {
         }
         m.geometry.computeBoundingBox();
         const b = m.geometry.boundingBox;
+        /* How wide the tube is halfway along, across its ring. */
+        const pos = m.geometry.attributes.position;
+        const ring = Math.floor(m.userData.segments / 2) * (PATH_RADIAL + 1);
+        const across = Math.hypot(...['getX', 'getY', 'getZ'].map((g) => pos[g](ring) - pos[g](ring + Math.floor(PATH_RADIAL / 2))));
         return [k, {
+          across,
           colour: m.material.color.getHex(), segments: m.userData.segments, drawn: m.userData.drawn || null,
           box: [b.min.toArray(), b.max.toArray()], parent: Boolean(m.parent), visible: m.visible,
         }];

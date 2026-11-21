@@ -7129,7 +7129,7 @@
       .tg-replay .music-dock, .tg-replay .bug-chip { visibility: hidden !important; }
       .review-replay {
         position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%);
-        z-index: 2147483000; width: min(880px, calc(100vw - 32px)); box-sizing: border-box;
+        z-index: 2147483000; width: min(1400px, calc(100vw - 32px)); box-sizing: border-box;
         display: flex; flex-direction: column; gap: 6px; padding: 10px 12px;
         font-family: var(--ui-font); color: var(--cream);
         background: rgba(26, 36, 28, 0.92); border-radius: 4px;
@@ -7150,7 +7150,7 @@
       .review-replay-lanes { height: 72px; }
       .review-replay-lanes[hidden], .review-replay-note[hidden] { display: none; }
       .review-replay-note { font-size: 12px; color: var(--slate); }
-      .review-replay-clock { min-width: 6em; text-align: right; font-size: 14px; font-variant-numeric: tabular-nums; color: var(--slate); }
+      .review-replay-clock { min-width: 10em; text-align: right; font-size: 14px; font-variant-numeric: tabular-nums; color: var(--slate); }
       .review-replay-btn {
         padding: 4px 10px; cursor: pointer; white-space: nowrap;
         font: inherit; font-size: 14px; color: var(--cream);
@@ -7162,6 +7162,7 @@
       .review-replay-follow { min-width: 9.5em; }
       .review-replay-rate { min-width: 3.5em; }
       .review-replay-view { min-width: 7.5em; }
+      .review-replay-align { min-width: 6em; }
       /* The orbit's: over the room, under the bar, while the orbit is on. */
       .review-replay-surface {
         position: fixed; inset: 0; z-index: 2147482999; touch-action: none; cursor: grab;

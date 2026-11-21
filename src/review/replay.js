@@ -21,8 +21,8 @@
  * SIDE BY SIDE. Your goggles and the ghost's, two pictures at once:
  * splitPanes lays them out and gogglePose puts each camera where the
  * quad's own lens was. THE ORBIT: orbitDir places a camera round a quad.
- * THE LINES: how much of each is drawn (pathWindow, tubeRange). THE
- * TIMELINE: the playhead's speed and loop, the
+ * THE LINES: how much of each is drawn (pathWindow, tubeRange). THE LINE
+ * UP: by time, or by place (placeMap, ghostAtPlace). THE TIMELINE: the playhead's speed and loop, the
  * stretch of it shown (zoomView, followView), and each lap's sticks
  * (sticksOf, sticksAt).
  *
@@ -348,4 +348,156 @@ export function tubeRange(span, segments, lo, hi) {
   const j0 = Math.floor(at(lo));
   const j1 = Math.ceil(at(hi));
   return j1 > j0 ? [j0, j1] : [j0, j0];
+}
+
+/*
+ * THE LINE UP, as the coach branch's. By time (sectionTimeline's ghostAt),
+ * the ghost at the same time from the gate, so the gap opens and closes as
+ * it did. By place, the ghost where it was at the same point of the line,
+ * so side by side the two goggles look at the same stretch of the course,
+ * and the time between them is what each lost or gained getting there.
+ *
+ * The same point is the coach branch's matching (its compare.js
+ * matchByPlace): each stretch gate to gate on its own, your line sampled
+ * and matched onto the ghost's by a dynamic time warp pinned at both
+ * gates, so the match only goes forward and never jumps to where the line
+ * crosses itself. pairs: [[lA, lB], [rA, rB]] per stretch, your times and
+ * the ghost's at its two gates. Samples every PLACE_STEP_MS, wider on a
+ * long stretch so the warp is never more than PLACE_CELLS cells.
+ * { lapMs, refMs }, both rising.
+ */
+export const ALIGNS = ['time', 'place'];
+export const PLACE_STEP_MS = 10;
+const PLACE_CELLS = 4e6;
+
+/* Positions of a line every step ms from a to b (b itself last), walking
+ * the line once. */
+function sampled(line, a, b, step) {
+  const out = [];
+  const { t } = line;
+  let i = 0;
+  for (let k = 0; ; k += 1) {
+    const ms = Math.min(b, a + k * step);
+    while (i + 1 < t.length && t[i + 1] <= ms) {
+      i += 1;
+    }
+    const j = Math.min(i + 1, t.length - 1);
+    const u = t[j] > t[i] ? Math.max(0, Math.min(1, (ms - t[i]) / (t[j] - t[i]))) : 0;
+    const mix = (v) => v[i] + (v[j] - v[i]) * u;
+    out.push({ ms, p: [mix(line.x), mix(line.y), mix(line.z)] });
+    if (ms >= b) {
+      return out;
+    }
+  }
+}
+
+/* The warp: for each of a's points, the first of b's it is matched to. */
+function warp(a, b) {
+  const n = a.length;
+  const m = b.length;
+  const cost = new Float64Array(n * m);
+  const from = new Uint8Array(n * m);
+  for (let i = 0; i < n; i += 1) {
+    const p = a[i].p;
+    for (let j = 0; j < m; j += 1) {
+      const q = b[j].p;
+      const here = Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+      if (i === 0 && j === 0) {
+        cost[0] = here;
+        continue;
+      }
+      let best = Infinity;
+      let way = 0;
+      if (i > 0 && j > 0 && cost[(i - 1) * m + j - 1] < best) {
+        best = cost[(i - 1) * m + j - 1];
+        way = 0;
+      }
+      if (i > 0 && cost[(i - 1) * m + j] < best) {
+        best = cost[(i - 1) * m + j];
+        way = 1;
+      }
+      if (j > 0 && cost[i * m + j - 1] < best) {
+        best = cost[i * m + j - 1];
+        way = 2;
+      }
+      cost[i * m + j] = best + here;
+      from[i * m + j] = way;
+    }
+  }
+  const match = new Int32Array(n).fill(-1);
+  let i = n - 1;
+  let j = m - 1;
+  for (;;) {
+    if (match[i] < 0 || j < match[i]) {
+      match[i] = j;
+    }
+    if (i === 0 && j === 0) {
+      return match;
+    }
+    const way = from[i * m + j];
+    if (i === 0) {
+      j -= 1;
+    } else if (j === 0) {
+      i -= 1;
+    } else if (way === 0) {
+      i -= 1;
+      j -= 1;
+    } else if (way === 1) {
+      i -= 1;
+    } else {
+      j -= 1;
+    }
+  }
+}
+
+export function placeMap(lapLine, refLine, pairs) {
+  const lapMs = [];
+  const refMs = [];
+  for (const [[lA, lB], [rA, rB]] of pairs) {
+    if (!(lB > lA) || !(rB > rA)) {
+      continue;
+    }
+    const step = Math.max(PLACE_STEP_MS, Math.ceil(Math.max(lB - lA, rB - rA) / Math.sqrt(PLACE_CELLS)));
+    const mine = sampled(lapLine, lA, lB, step);
+    const theirs = sampled(refLine, rA, rB, step);
+    const match = warp(mine, theirs);
+    mine.forEach((q, i) => {
+      if (lapMs.length && q.ms <= lapMs[lapMs.length - 1]) {
+        return;
+      }
+      const r = i === mine.length - 1 ? rB : theirs[match[i]].ms;
+      lapMs.push(q.ms);
+      refMs.push(refMs.length ? Math.max(r, refMs[refMs.length - 1]) : r);
+    });
+  }
+  return { lapMs, refMs };
+}
+
+/* The ghost's time at the same place as your lap time t: between the
+ * map's points on a straight line; before its first and after its last,
+ * the same time on from there, as by time. */
+export function ghostAtPlace(map, t) {
+  const { lapMs, refMs } = map;
+  const n = lapMs.length;
+  if (!n) {
+    return NaN;
+  }
+  if (t <= lapMs[0]) {
+    return refMs[0] + (t - lapMs[0]);
+  }
+  if (t >= lapMs[n - 1]) {
+    return refMs[n - 1] + (t - lapMs[n - 1]);
+  }
+  let lo = 0;
+  let hi = n - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (lapMs[mid] <= t) {
+      lo = mid;
+    } else {
+      hi = mid;
+    }
+  }
+  const u = (t - lapMs[lo]) / (lapMs[hi] - lapMs[lo]);
+  return refMs[lo] + (refMs[hi] - refMs[lo]) * u;
 }

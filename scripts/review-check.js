@@ -392,6 +392,27 @@ try {
       console.log(`  (picture: ${join(SHOTS, 'replay-split.png')})`);
     }
   }
+  {
+    /* A in side by side: by place, the ghost where it was at the same
+     * point of your line, so nearer you than by time; the time between
+     * the two printed, red where you got there later; A again, by time. */
+    const mid = (split.s.you[0] + split.s.you[1]) / 2;
+    await page.evaluate(`window.__reviewReplay('seek', ${mid})`);
+    await page.sleep(200);
+    const apart = (st) => Math.hypot(...st.youAt.map((v, i) => v - st.ghostAt[i]));
+    const byTime = await page.evaluate('window.__reviewReplay()');
+    await page.tap('KeyA');
+    await page.sleep(300);
+    const byPlace = await page.evaluate("(() => ({ s: window.__reviewReplay(), btn: document.querySelector('.review-replay-align').textContent, tone: document.querySelector('.review-replay-gap').className }))()");
+    const sp = byPlace.s;
+    const gapWant = (mid - sp.you[0]) - (sp.ghostT - sp.ghost[0]);
+    check('A in side by side: by place, the ghost at the same point of your line, nearer than by time', sp.align === 'place' && byPlace.btn === 'By place' && sp.view === 'split' && apart(sp) < apart(byTime) && apart(sp) < 0.5 * apart(byTime) + 0.05, JSON.stringify({ align: sp.align, btn: byPlace.btn, byTime: apart(byTime), byPlace: apart(sp), ghostT: [byTime.ghostT, sp.ghostT] }));
+    check('and the time between them there, coloured', sp.gap === deltaText(gapWant) && byPlace.tone.includes(toneOf(gapWant)), JSON.stringify({ gap: sp.gap, want: deltaText(gapWant), tone: byPlace.tone }));
+    await page.tap('KeyA');
+    await page.sleep(200);
+    const back = await page.evaluate('window.__reviewReplay()');
+    check('A again: by time, no gap printed', back.align === 'time' && back.gap === '' && Math.abs(back.ghostT - byTime.ghostT) < 1e-6, JSON.stringify({ align: back.align, gap: back.gap }));
+  }
   await page.tap('KeyV');
   await page.sleep(300);
   const chase = await page.evaluate("(() => ({ s: window.__reviewReplay(), tags: [...document.querySelectorAll('.review-replay-pane')].filter((t) => !t.hidden).length }))()");

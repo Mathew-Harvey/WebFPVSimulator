@@ -98,10 +98,10 @@ import { buildGhostCraft } from '../render/ghostcraft.js';
 import { CAMERA_MOUNT_FORWARD, CAMERA_MOUNT_UP } from '../render/lens.js';
 import { CHASE_FOV, WatchCam } from '../render/watchcam.js';
 import {
-  LANES, PATH_MODES, PLAY_RATES, Playhead, followView, gogglePose, orbitDir, pathWindow, poseAt, sectionTimeline, splitPanes, sticksAt, sticksOf,
-  tubeRange, zoomView,
+  ALIGNS, LANES, PATH_MODES, PLAY_RATES, Playhead, followView, ghostAtPlace, gogglePose, orbitDir, pathWindow, placeMap, poseAt, sectionTimeline,
+  splitPanes, sticksAt, sticksOf, tubeRange, zoomView,
 } from './replay.js';
-import { deltaText, seconds } from './splits.js';
+import { deltaText, seconds, toneOf } from './splits.js';
 
 const YOU_COLOUR = 0xffb340;
 const GHOST_COLOUR = 0x7fd4ff;
@@ -142,6 +142,7 @@ const ORBIT_CLEAR = 0.16;
 const ORBIT_OUT_MS = 450;
 const ORBIT_FLOOR = 0.15;
 const VIEW_WORDS = { chase: 'Chase', orbit: 'Orbit', split: 'Side by side' };
+const ALIGN_WORDS = { time: 'By time', place: 'By place' };
 const YOU_CSS = '#ffb340';
 const GHOST_CSS = '#7fd4ff';
 const GATE_CSS = '#9be39b';
@@ -205,6 +206,35 @@ export class ReviewReplay {
      * next. */
     this.showSticks = true;
     this.rate = 1;
+    /* The line up, by time or by place (A), kept from one replay to the
+     * next; the place map is made for a replay when first wanted. */
+    this.align = 'time';
+    this.places = null;
+  }
+
+  /* The ghost's own clock at your time t: the same time from the gate, or
+   * the same place on the line. */
+  ghostAt(t) {
+    if (this.align === 'place' && this.data.refLine) {
+      if (!this.places) {
+        const marks = this.marks();
+        const gm = this.data.ghostMarks;
+        const pairs = [];
+        if (gm && gm.length === marks.length) {
+          for (let i = 0; i + 1 < marks.length; i += 1) {
+            pairs.push([[marks[i].ms, marks[i + 1].ms], [gm[i], gm[i + 1]]]);
+          }
+        } else {
+          pairs.push([this.tl.you, this.tl.ghost]);
+        }
+        this.places = placeMap(this.data.lapLine, this.data.refLine, pairs);
+      }
+      const g = ghostAtPlace(this.places, t);
+      if (Number.isFinite(g)) {
+        return g;
+      }
+    }
+    return this.tl.ghostAt(t);
   }
 
   /* Each line through the replay's stretch of its own clock, as a tube in
@@ -268,7 +298,7 @@ export class ReviewReplay {
     }
     const each = [
       [this.paths.you, t, k >= 0 ? [marks[k].ms, marks[k + 1].ms] : null],
-      [this.paths.ghost, this.data.refLine ? this.tl.ghostAt(t) : 0,
+      [this.paths.ghost, this.data.refLine ? this.ghostAt(t) : 0,
         k >= 0 && ghostMarks.length === marks.length ? [ghostMarks[k], ghostMarks[k + 1]] : null],
     ];
     for (const [mesh, ms, seg] of each) {
@@ -359,6 +389,7 @@ export class ReviewReplay {
       refSticks: data.refTrace ? sticksOf(data.refTrace) : null,
     };
     this.tl = sectionTimeline(data.you, data.refLine ? data.ghost : null);
+    this.places = null;
     this.head = new Playhead(this.tl.startMs, this.tl.endMs);
     this.head.rate = this.rate;
     this.head.toggle();
@@ -419,13 +450,20 @@ export class ReviewReplay {
     this.viewBtn = el('button', 'review-replay-btn review-replay-view', '');
     this.viewBtn.type = 'button';
     this.viewBtn.addEventListener('click', () => this.act('view'));
+    /* By time or by place, and by place the time between the two at the
+     * same point of the line. */
+    this.alignBtn = btn('review-replay-align', '', 'align');
+    this.gap = el('span', 'review-replay-gap review-delta', '');
+    this.clockText = el('span', '', '');
+    this.clock.append(this.clockText, this.gap);
     if (!data.refLine) {
       this.followBtn.hidden = true;
+      this.alignBtn.hidden = true;
     }
     const back = el('button', 'review-replay-btn', 'Back');
     back.type = 'button';
     back.addEventListener('click', () => this.close('back'));
-    row.append(this.playBtn, this.rateBtn, this.loopBtn, this.clock, this.followBtn, this.viewBtn, this.linesBtn, this.sticksBtn, back);
+    row.append(this.playBtn, this.rateBtn, this.loopBtn, this.clock, this.followBtn, this.viewBtn, this.alignBtn, this.linesBtn, this.sticksBtn, back);
     root.append(head, this.scrub, this.lanes, this.lanesNote, row);
     /* The side by side pictures' names, over their top left corners. */
     this.paneTags = [el('div', 'review-replay-pane review-replay-you', 'You'), el('div', 'review-replay-pane review-replay-ghost', 'Ghost')];
@@ -471,6 +509,9 @@ export class ReviewReplay {
       } else if (k === 's' || k === 'S') {
         e.preventDefault();
         this.act('sticks');
+      } else if (k === 'a' || k === 'A') {
+        e.preventDefault();
+        this.act('align');
       } else if (k === '1' || k === '2' || k === '3') {
         e.preventDefault();
         this.act('rate', PLAY_RATES[Number(k) - 1]);
@@ -510,6 +551,11 @@ export class ReviewReplay {
       this.head.loop = !this.head.loop;
     } else if (what === 'sticks') {
       this.showSticks = !this.showSticks;
+    } else if (what === 'align' && this.data.refLine) {
+      /* The other line up, or the one asked for. */
+      this.align = ALIGNS.includes(arg) ? arg : this.align === 'time' ? 'place' : 'time';
+      this.lanePic = null;
+      this.cam.free(null);
     } else if (what === 'tzoom') {
       const full = [this.tl.startMs, this.tl.endMs];
       this.tview = !arg || arg === 'reset' ? null : zoomView(this.tview, full, arg.at, arg.steps);
@@ -735,7 +781,7 @@ export class ReviewReplay {
     const cv = this.lanes;
     const { w, h, dpr } = this.fit(cv);
     const [a, b] = this.range();
-    const key = `${w}|${h}|${a}|${b}`;
+    const key = `${w}|${h}|${a}|${b}|${this.align}`;
     if (!this.lanePic || this.lanePic.key !== key) {
       this.lanePic = { key, pic: this.paintLanes(w, h, dpr, a, b) };
     }
@@ -746,7 +792,7 @@ export class ReviewReplay {
     g.fillStyle = '#ffffff';
     g.fillRect(X(this.head.t) - dpr, 0, 2 * dpr, h);
     const you = sticksAt(this.data.lapSticks, this.head.t);
-    const ghost = this.data.refLine ? sticksAt(this.data.refSticks, this.tl.ghostAt(this.head.t)) : null;
+    const ghost = this.data.refLine ? sticksAt(this.data.refSticks, this.ghostAt(this.head.t)) : null;
     const laneH = h / LANES.length;
     g.font = `${11 * dpr}px system-ui, sans-serif`;
     g.textBaseline = 'top';
@@ -799,7 +845,7 @@ export class ReviewReplay {
       }
       const lines = [[data.lapSticks, (t) => t, YOU_CSS]];
       if (data.refLine && data.refSticks) {
-        lines.unshift([data.refSticks, (t) => tl.ghostAt(t), GHOST_CSS]);
+        lines.unshift([data.refSticks, (t) => this.ghostAt(t), GHOST_CSS]);
       }
       for (const [sticks, clock, colour] of lines) {
         g.strokeStyle = colour;
@@ -851,7 +897,14 @@ export class ReviewReplay {
       this.drawLanes();
     }
     const into = t - tl.you[0];
-    this.clock.textContent = into < 0 ? `${seconds(-into)} s before` : `${seconds(into)} s in`;
+    this.clockText.textContent = into < 0 ? `${seconds(-into)} s before` : `${seconds(into)} s in`;
+    /* By place: how much later (red) or sooner (green) you got here than
+     * the ghost, each from its own first gate. */
+    const place = this.align === 'place' && this.data.refLine;
+    const gapMs = place ? (t - tl.you[0]) - (this.ghostAt(t) - tl.ghost[0]) : NaN;
+    this.gap.textContent = place ? ` ${deltaText(gapMs)}` : '';
+    this.gap.className = `review-replay-gap review-delta ${place ? toneOf(gapMs) : ''}`;
+    this.alignBtn.textContent = ALIGN_WORDS[this.align];
     const round = this.mode === 'orbit';
     this.followBtn.textContent = this.follow === 'you' ? (round ? 'Round you' : 'Behind you') : (round ? 'Round the ghost' : 'Behind the ghost');
     this.viewBtn.textContent = VIEW_WORDS[this.mode];
@@ -902,7 +955,7 @@ export class ReviewReplay {
     const you = place(this.rigs.you, this.data.lapLine, t);
     let ghost = null;
     if (this.data.refLine) {
-      ghost = place(this.rigs.ghost, this.data.refLine, this.tl.ghostAt(t));
+      ghost = place(this.rigs.ghost, this.data.refLine, this.ghostAt(t));
     } else {
       this.rigs.ghost.setPresence(0);
     }
@@ -1095,6 +1148,9 @@ export class ReviewReplay {
       ghost: this.tl.ghost,
       playing: this.head.playing,
       follow: this.follow,
+      align: this.align,
+      ghostT: this.data.refLine ? this.ghostAt(this.head.t) : null,
+      gap: this.gap ? this.gap.textContent.trim() : '',
       view: this.splitOn ? 'split' : this.mode === 'orbit' ? 'orbit' : 'chase',
       marks: this.marks().map((m) => m.name),
       rate: this.head.rate,

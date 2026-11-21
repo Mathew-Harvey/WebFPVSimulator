@@ -19,7 +19,7 @@
  */
 
 import {
-  LEAD_MS, MAX_FRAME_MS, PLAY_RATES, Playhead, TAIL_MS, ZOOM_MIN_MS, followView, sticksAt, zoomView, gogglePose, NEAR_AHEAD_MS, NEAR_BEHIND_MS, orbitDir, pathWindow, poseAt, tubeRange, sectionTimeline, slerp, splitPanes,
+  ghostAtPlace, placeMap, LEAD_MS, MAX_FRAME_MS, PLAY_RATES, Playhead, TAIL_MS, ZOOM_MIN_MS, followView, sticksAt, zoomView, gogglePose, NEAR_AHEAD_MS, NEAR_BEHIND_MS, orbitDir, pathWindow, poseAt, tubeRange, sectionTimeline, slerp, splitPanes,
 } from '../src/review/replay.js';
 
 let failures = 0;
@@ -165,6 +165,34 @@ console.log('the timeline');
   const mid = sticksAt(st, 5);
   check('sticks between two samples, half way', near(mid.throttle, 0.25) && near(mid.roll, -0.5));
   check('none outside the recording, and none with no sticks', Number.isNaN(sticksAt(st, 30).roll) && Number.isNaN(sticksAt(null, 5).throttle));
+}
+
+console.log('the line up by place');
+{
+  /* One straight line, flown twice: you at a metre a second, the ghost at
+   * two, the ghost's clock starting at 500. At the same place the ghost's
+   * time is half yours from its start. */
+  const flat = (n, ms, at) => {
+    const t = [];
+    const x = [];
+    for (let i = 0; i <= n; i += 1) {
+      t.push(at + i * ms);
+      x.push(i);
+    }
+    const zeros = t.map(() => 0);
+    return { t, x, y: zeros, z: zeros, qx: zeros, qy: zeros, qz: zeros, qw: t.map(() => 1) };
+  };
+  const you = flat(10, 1000, 0);
+  const ghost = flat(10, 500, 500);
+  const map = placeMap(you, ghost, [[[0, 10000], [500, 5500]]]);
+  check('pinned at both gates', near(map.lapMs[0], 0) && near(map.refMs[0], 500) && near(map.lapMs[map.lapMs.length - 1], 10000) && near(map.refMs[map.refMs.length - 1], 5500));
+  check('half way along, the ghost half way along on its clock', near(ghostAtPlace(map, 5000), 3000, 10));
+  check('rising, never back', map.refMs.every((r, i) => i === 0 || r >= map.refMs[i - 1]));
+  check('before the first gate and after the last, the same time on, as by time', near(ghostAtPlace(map, -400), 100) && near(ghostAtPlace(map, 10400), 5900));
+  /* Two stretches, each pinned at its own gates. */
+  const two = placeMap(you, ghost, [[[0, 4000], [500, 2500]], [[4000, 10000], [2500, 5500]]]);
+  check('two stretches, the gate between them pinned', near(ghostAtPlace(two, 4000), 2500) && near(ghostAtPlace(two, 7000), 4000, 10));
+  check('no stretches, no map', Number.isNaN(ghostAtPlace(placeMap(you, ghost, []), 100)));
 }
 
 console.log(failures ? `\n${failures} FAILED` : '\nall passed');

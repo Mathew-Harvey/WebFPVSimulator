@@ -19,20 +19,24 @@
  *   2. shell     the body's balls (catrig.js) wrap the drawn cat: every
  *                corner of both models, claws, hackles and whiskers out,
  *                lies inside one, in every posture and through every flight
- *   3. touch     twenty one flights at each yard with each craft that is
- *                flown there: nothing, hovering at seven heights, landing,
- *                laps of the line at five speeds, flown straight at it,
- *                crept into, circled, flown at random, set down on top of
- *                it and dived on. No ball and no corner of the cat ever
- *                nearer the craft's sweep than KEEP, and no NaN
+ *   3. touch     twenty four flights at each yard with each craft that
+ *                is flown there: nothing, hovering at seven heights,
+ *                landing, laps of the line at five speeds, flown straight
+ *                at it, crept into, circled, flown at random, set down on
+ *                top of it, dived on, hung in every gate, hung over the
+ *                start and sat on it, and chased. No ball and no corner of
+ *                the cat ever nearer the craft's sweep than KEEP, no NaN
  *   4. place     through all of it: no ball of it in the opening of a
  *                gate or within GAP of one, none in a post, a pole, a trunk
- *                or a bar, no ball but its tail's in a wall, never sunk in
- *                the ground, never off its lawn, and never asleep in its
- *                bones with the craft near
+ *                or a bar, none in a wall, never sunk in the ground, never
+ *                off its lawn, and never asleep in its bones with the craft
+ *                near
  *   5. moves     everything it was asked to do it does: stalk, the wiggle,
  *                the big eyes, the pounce, the leap, the swat, and the rest
- *                of what a cat does at a thing that flies
+ *                of what a cat does at a thing that flies. And does it
+ *                where the track is: a craft hung in a gate or over the
+ *                start is hunted from as near as the cat may come, and a
+ *                cat that is chased runs
  *   6. rates     the same at 30, 144 and 240 frames a second and at a
  *                frame time that stutters and stalls; with a tiny craft and
  *                a huge one; and out of the picture, where the bones are
@@ -155,11 +159,23 @@ function openingsOf(w) {
     const uz = -Math.sin(gt.heading);
     const lo = gt.position.y + a.centreY - a.clearH / 2;
     const hi = lo + a.clearH;
+    /* The upright NEAREST each edge of the pass. Two gates stood side by
+     * side share a corner, and the next gate's post is within reach of this
+     * one's edge: taking the first found once measured a gate from its
+     * neighbour's post, a hole a hand wider than the hole there is. */
     const stood = [-1, 1].map((s) => {
       const ex = gt.position.x + (s * ux * a.clearW) / 2;
       const ez = gt.position.z + (s * uz * a.clearW) / 2;
-      return posts.find((p) => Math.hypot(p.a[0] - ex, p.a[2] - ez) < 2.5 * p.r + 0.04 * w.S
-        && Math.min(p.a[1], p.b[1]) < lo + 0.1 * w.S && Math.max(p.a[1], p.b[1]) > hi - 0.1 * w.S);
+      let best = null;
+      let bd = 1e9;
+      for (const p of posts) {
+        const d = Math.hypot(p.a[0] - ex, p.a[2] - ez);
+        if (d < bd && d < 2.5 * p.r + 0.04 * w.S && Math.min(p.a[1], p.b[1]) < lo + 0.1 * w.S && Math.max(p.a[1], p.b[1]) > hi - 0.1 * w.S) {
+          bd = d;
+          best = p;
+        }
+      }
+      return best;
     });
     if (!stood[0] || !stood[1]) {
       continue;
@@ -439,6 +455,76 @@ const orbit = ({ life, w }) => {
     return { x: c.x + Math.cos(a) * r, y: w.g + (0.3 + 0.2 * Math.sin(t * 0.9)) * w.S, z: c.z + Math.sin(a) * r };
   };
 };
+/* From one place to the next at a walk of four metres a second and held at
+ * each for `hold` seconds: `places` is ({ life, w, R }) to a list of
+ * [x, height over the lawn, z]. */
+const visit = (places, hold) => (arg) => {
+  const { w } = arg;
+  let list = null;
+  let k = 0;
+  let held = 0;
+  let p = null;
+  return (t, dt) => {
+    if (t < 1) {
+      return null;
+    }
+    list = list || places(arg);
+    const q = list[k % list.length];
+    if (!p) {
+      p = { x: q[0], y: w.g + q[1], z: q[2] };
+    }
+    const dx = q[0] - p.x;
+    const dy = w.g + q[1] - p.y;
+    const dz = q[2] - p.z;
+    const d = Math.hypot(dx, dy, dz);
+    const step = 4 * dt;
+    if (d <= step) {
+      p.x = q[0];
+      p.y = w.g + q[1];
+      p.z = q[2];
+      held += dt;
+      if (held >= hold) {
+        held = 0;
+        k += 1;
+      }
+    } else {
+      p.x += (dx / d) * step;
+      p.y += (dy / d) * step;
+      p.z += (dz / d) * step;
+    }
+    return p;
+  };
+};
+/* Hung in the hole of every gate that stands on the grass, one after the
+ * other, in the middle of the hole: where a pilot lining up a gate hangs,
+ * and ground the cat may not stand on. */
+const inGates = ({ w }) => w.openings.filter((o) => o.y - o.hh < w.g + 0.2 * w.S).map((o) => [o.x, o.y - w.g, o.z]);
+/* Over each place a run is set down: hung over it at the height of a cat's
+ * head, then sat on it, which is where every run begins. */
+const atStart = ({ w, R }) => [w.track.start, ...(w.starts || [])].flatMap((p) => [[p.x, 0.5 * w.S, p.z], [p.x, Math.max(0.19 * R, 0.03), p.z]]);
+/* After the cat wherever it goes, from the middle of the lawn outward, low,
+ * at three speeds: the pilot who drives it to the fence and into the corner
+ * and keeps coming. It is flown as a craft is, which cannot turn on the
+ * spot: it wants to go at the cat and takes a third of a second to be going
+ * that way, so it overshoots a cat that jumps aside and comes round again. */
+const herd = ({ life, w }) => {
+  const c = life.controls;
+  const p = { x: life.lawn.centre.x, y: 0, z: life.lawn.centre.z };
+  const v = { x: 0, z: 0 };
+  return (t, dt) => {
+    const dx = c.x - p.x;
+    const dz = c.z - p.z;
+    const d = Math.max(1e-3, Math.hypot(dx, dz));
+    const sp = [1.2, 2.5, 4][Math.floor(t / 10) % 3] * w.S;
+    const k = 1 - Math.exp(-dt / 0.3);
+    v.x += ((dx / d) * sp - v.x) * k;
+    v.z += ((dz / d) * sp - v.z) * k;
+    p.x += v.x * dt;
+    p.z += v.z * dt;
+    p.y = w.g + (0.3 + 0.2 * Math.sin(t * 1.3)) * w.S;
+    return p;
+  };
+};
 /* Anywhere over the lawn at any height and speed, changing its mind. */
 const erratic = ({ w, rnd }) => {
   const b = w.track.box;
@@ -528,6 +614,9 @@ const FLIGHTS = [
   { name: 'at random', secs: 120, look: 'ahead', make: erratic },
   { name: 'set down on it', secs: 63, look: 'cat', make: appear },
   { name: 'dived on', secs: 60, look: 'cat', make: dive },
+  { name: 'hung in the gates', secs: 125, look: 'cat', make: visit(inGates, 22) },
+  { name: 'at the start', secs: 100, look: 'cat', make: visit(atStart, 23) },
+  { name: 'chased', secs: 90, look: 'cat', make: herd },
 ];
 
 /* What a run of flights found. Lengths are the world's metres. */
@@ -535,17 +624,15 @@ function makeTally() {
   return {
     frames: 0, posed: 0, looks: 0, nan: 0, pushes: 0, nudges: 0, reach: 0, high: 0,
     ball: 1e9, ballAt: '', corner: 1e9, cornerAt: '', out: 0, outAt: '',
-    opening: 1e9, openingAt: '', pipe: 1e9, pipeAt: '', box: 1e9, boxAt: '', tailBox: 1e9,
+    opening: 1e9, openingAt: '', pipe: 1e9, pipeAt: '', box: 1e9, boxAt: '',
     low: 1e9, lowAt: '', offLawn: 0, offBox: 0, asleepNear: 0,
-    moves: {}, time: {}, hash: createHash('sha256'),
+    moves: {}, by: {}, time: {}, hash: createHash('sha256'),
   };
 }
 
 /* The parts of the body by ball, for saying which of them was where: the
  * list in catrig.js runs trunk, neck, head, jaw, ears, whiskers, shoulder
  * blades, tail, legs. */
-const TAIL_FROM = 16;
-const TAIL_TO = 22;
 const PART = (k) => (k <= 5 ? 'its trunk' : k === 6 ? 'its neck' : k <= 9 ? 'its head' : k <= 11 ? 'an ear' : k <= 13 ? 'its whiskers' : k <= 15 ? 'a shoulder' : k <= 22 ? 'its tail' : 'a leg');
 
 /*
@@ -699,10 +786,6 @@ function fly(w, R, flight, T, opt = {}) {
                 T.pipe = q;
                 T.pipeAt = `${where}, ${PART(k)} at a pipe ${mm((2 * wall.r) / S)} thick`;
               }
-            } else if (k >= TAIL_FROM && k <= TAIL_TO) {
-              if (q < T.tailBox) {
-                T.tailBox = q;
-              }
             } else if (q < T.box) {
               T.box = q;
               T.boxAt = `${where}, ${PART(k)}`;
@@ -758,6 +841,7 @@ function fly(w, R, flight, T, opt = {}) {
   for (const [k, v] of Object.entries(st.moves)) {
     T.moves[k] = (T.moves[k] || 0) + v;
   }
+  T.by[flight.name] = st.moves;
   T.pushes += mind.pushes() - pushes0;
   T.nudges += mind.nudges() - nudges0;
   return st;
@@ -766,10 +850,10 @@ function fly(w, R, flight, T, opt = {}) {
 function flyAll(w, R, opt = {}, flights = FLIGHTS) {
   const T = makeTally();
   flights.forEach((f, i) => {
-    const before = { ball: T.ball, corner: T.corner, pushes: T.pushes };
+    const before = { ball: T.ball, corner: T.corner, pushes: T.pushes, nudges: T.nudges };
     fly(w, R, f, T, { ...opt, seed: (opt.seed ?? 7) + i });
     if (VERBOSE) {
-      console.log(`        ${f.name.padEnd(18)} pushes ${String(T.pushes - before.pushes).padStart(3)}  nearest ball ${T.ball < 1e8 ? (T.ball / w.S).toFixed(3) : '  -  '}  corner ${T.corner < 1e8 ? (T.corner / w.S).toFixed(3) : '  -  '} (running least, cat m)`);
+      console.log(`        ${f.name.padEnd(18)} pushes ${String(T.pushes - before.pushes).padStart(4)}  nudges ${String(T.nudges - before.nudges).padStart(3)}  nearest ball ${T.ball < 1e8 ? (T.ball / w.S).toFixed(3) : '  -  '}  corner ${T.corner < 1e8 ? (T.corner / w.S).toFixed(3) : '  -  '} (running least, cat m)  ${Object.entries(T.by[f.name]).filter(([, v]) => v > 0).map(([k, v]) => `${k} ${v}`).join(' ')}`);
     }
   });
   return T;
@@ -860,18 +944,34 @@ for (const w of WORLDS) {
     check('    no NaN', T.nan === 0, `${T.nan}`);
     check('    no ball of it in the opening of a gate, nor within GAP of one', T.opening >= GAP * w.S - 1e-3, `nearest ${cat(w, T.opening)} (${T.openingAt}); GAP is ${GAP}`);
     check('    no ball of it in a post, a pole, a trunk or a bar', T.pipe >= 0, `nearest ${cat(w, T.pipe)} (${T.pipeAt})`);
-    /* A wall is kept off by where the lawn lets the cat stand, half its
-     * width clear, and by nothing else: no wall stands on any of the three
-     * lawns, and the nearest thing to one is past the edge of Bardwell's,
-     * where a tail thrown out behind a cat at the very edge can come to it.
-     * So the body is held to it here and the tail is told, not held. */
-    check('    and none of its body, head or legs in a wall', T.box >= 0, T.box < 1e8 ? `nearest ${cat(w, T.box)} (${T.boxAt}); its tail, which nothing but the lawn keeps off a wall, ${cat(w, T.tailBox)}` : 'none stands within its reach');
+    /* Every box of the collider set near the lawn, the roofs a cat can
+     * stand under as well as the walls it cannot. The lawn keeps where the
+     * cat stands half its width from a wall and the last word keeps the
+     * rest of it out; a roof is kept off by how high the cat may leap. */
+    check('    and none in a wall', T.box >= 0, T.box < 1e8 ? `nearest ${cat(w, T.box)} (${T.boxAt})` : 'none stands within its reach');
     check('    never sunk in the ground', T.low > -0.07 * w.S, `lowest corner ${mm(T.low / w.S)} (${T.lowAt})`);
     check('    never off its lawn', T.offBox === 0 && T.offLawn === 0, `${T.offBox} frames out of it, ${T.offLawn} standing where it may not`);
     check('    no ball further from its spot, or higher, than the last word looks', T.reach <= REACH * w.S && T.high <= CEIL * w.S, `furthest ${cat(w, T.reach)} and highest ${cat(w, T.high)}; it looks ${REACH} and ${CEIL}`);
     check('    never asleep in its bones with the craft near', T.asleepNear === 0, `${T.posed} of ${T.frames} frames posed`);
     const missing = MOVES.filter((k) => !(T.moves[k] > 0));
     check('    every move made', missing.length === 0, missing.length ? `never: ${missing.join(', ')}` : MOVES.map((k) => `${k} ${T.moves[k]}`).join(', '));
+    /* And made where the track is. A craft hung in a gate, or over the
+     * place a run is set down, is over ground the cat may not stand on. The
+     * first cat sat where it was and stared at it. This one comes as near
+     * as it may and goes at it from there: a stalk and a strike for every
+     * gate the craft is hung in, twenty two seconds each. */
+    const strikes = (m) => m.swat + m.pounce + m.leap;
+    const holes = inGates({ w }).length;
+    const gates = T.by['hung in the gates'];
+    check('    a craft hung in a gate is stalked and struck at from as near as the cat may come', gates.stalk >= holes && strikes(gates) >= holes,
+      `${holes} gates on the grass: stalked ${gates.stalk} times, struck at ${strikes(gates)} (${gates.swat} on its hind legs, ${gates.pounce} pounces, ${gates.leap} leaps)`);
+    const start = T.by['at the start'];
+    check('    and so is one hung over the start, and one sat on the start is come to and sniffed', start.stalk >= 2 && strikes(start) >= 1 && start.sniff >= 1,
+      `stalked ${start.stalk} times, struck at ${strikes(start)}, sniffed ${start.sniff}, the slow blink ${start.slowBlink}`);
+    /* And chased, it does what a cat does: after the third fright it is
+     * off across the lawn, and is not pushed along in front of the craft. */
+    const chased = T.by.chased;
+    check('    chased, it runs', chased.flee >= 3, `ran ${chased.flee} times in ${chased.startle} frights`);
     console.log(`          slid off the craft by the last word in ${T.pushes} frames of ${T.frames}, and eased out of a gate or off a post with no craft by in ${T.nudges}`);
     hashes[w.id] = hashes[w.id] || T.hash.digest('hex');
   }
@@ -880,7 +980,7 @@ for (const w of WORLDS) {
 /* 6. rates, sizes, and out of the picture: the hard flights only. */
 console.log('\n6. rates');
 {
-  const HARD = FLIGHTS.filter((f) => ['hover at 0.35', 'hover at 1.3', 'laps at 7 m/s', 'laps at 18 m/s', 'flown at', 'crept into', 'circled', 'at random', 'set down on it', 'dived on'].includes(f.name));
+  const HARD = FLIGHTS.filter((f) => ['hover at 0.35', 'hover at 1.3', 'laps at 7 m/s', 'laps at 18 m/s', 'flown at', 'crept into', 'circled', 'at random', 'set down on it', 'dived on', 'hung in the gates', 'chased'].includes(f.name));
   const w = WORLDS[0];
   const floor = KEEP * w.S - 1e-3;
   for (const [name, opt, R] of [
@@ -889,15 +989,15 @@ console.log('\n6. rates');
     ['a craft of 3 cm', {}, 0.03], ['a craft of 1.2 m', {}, 1.2],
   ]) {
     const T = flyAll(w, R, { ...opt, seed: 23 }, HARD);
-    check(`${name}: never touched, never unwrapped, never in a gate or a post`,
-      T.ball >= floor && T.corner >= floor && T.out < 0.0005 * w.S && T.nan === 0 && T.opening >= GAP * w.S - 1e-3 && T.pipe >= 0,
-      `least ball ${cat(w, T.ball)}, corner ${cat(w, T.corner)}, gate ${(T.opening / w.S).toFixed(3)}, post ${(T.pipe / w.S).toFixed(3)}, ${T.frames} frames, slid ${T.pushes} times`);
+    check(`${name}: never touched, never unwrapped, never in a gate, a post or a wall, never off the lawn`,
+      T.ball >= floor && T.corner >= floor && T.out < 0.0005 * w.S && T.nan === 0 && T.opening >= GAP * w.S - 1e-3 && T.pipe >= 0 && T.box >= 0 && T.offBox === 0,
+      `least ball ${cat(w, T.ball)}, corner ${cat(w, T.corner)}, gate ${(T.opening / w.S).toFixed(3)}, post ${(T.pipe / w.S).toFixed(3)}, wall ${T.box < 1e8 ? (T.box / w.S).toFixed(3) : 'none'}, ${T.frames} frames, slid ${T.pushes} times`);
   }
   for (const v of WORLDS) {
     const T = flyAll(v, CRAFT_WORLD_R, { seen: 'cone', seed: 31 }, HARD);
-    check(`${v.name}, in the picture only when looked at: never touched, never in a gate or a post, bones left alone when far and never when near`,
-      T.ball >= KEEP * v.S - 1e-3 && T.corner >= KEEP * v.S - 1e-3 && T.nan === 0 && T.asleepNear === 0 && T.posed < T.frames && T.opening >= GAP * v.S - 1e-3 && T.pipe >= 0,
-      `least ball ${cat(v, T.ball)}, corner ${cat(v, T.corner)}, gate ${(T.opening / v.S).toFixed(3)}, post ${(T.pipe / v.S).toFixed(3)} (${T.pipeAt}), posed ${T.posed} of ${T.frames} frames`);
+    check(`${v.name}, in the picture only when looked at: never touched, never in a gate, a post or a wall, bones left alone when far and never when near`,
+      T.ball >= KEEP * v.S - 1e-3 && T.corner >= KEEP * v.S - 1e-3 && T.nan === 0 && T.asleepNear === 0 && T.posed < T.frames && T.opening >= GAP * v.S - 1e-3 && T.pipe >= 0 && T.box >= 0 && T.offBox === 0,
+      `least ball ${cat(v, T.ball)}, corner ${cat(v, T.corner)}, gate ${(T.opening / v.S).toFixed(3)}, post ${(T.pipe / v.S).toFixed(3)} (${T.pipeAt}), wall ${T.box < 1e8 ? (T.box / v.S).toFixed(3) : 'none'}, posed ${T.posed} of ${T.frames} frames`);
   }
 }
 

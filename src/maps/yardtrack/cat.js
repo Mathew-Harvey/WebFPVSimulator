@@ -62,7 +62,20 @@
  * a strut, the trunk of a tree and its low branches. The lawn keeps where
  * the cat stands half its width from each, which says nothing of a head
  * put out at one or a tail thrown up under one, so settle() keeps every
- * ball of the body out of those too.
+ * ball of the body out of those too. And a fourth, which the check found:
+ * a wall. A cat running flat out along Bardwell's shed had its whiskers
+ * seven hundredths of a metre into the boards, so every box on the lawn
+ * that is a wall to a cat is in the same sum.
+ *
+ * AND IT HUNTS WHERE THE TRACK IS, which those promises nearly cost it. The
+ * track is mostly gates, and the ground in front of a gate is not the
+ * cat's. So a craft hung in a gate, or over the place a run is set down,
+ * is hunted from as near as the cat may come (planNear): it is stalked to
+ * the edge of its own ground, and it goes up on its hind legs or leaps
+ * there, a paw at full stretch in the air. Only a craft too high for any
+ * leap is sat under and chattered at. And a cat that is flown at three
+ * times in a few seconds stops being hunted about its lawn by the craft:
+ * it bolts for the far side (scares), which is what a cat does.
  *
  * FOR THE LATENCY RULE. One think() is a state's handful of comparisons,
  * the craft's speed by difference, and at most one look at the lawn's
@@ -92,7 +105,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { WAY, WAIT, UNDER, makeLawn } from './catlawn.js';
+import { WAY, WAIT, UNDER, FLAT, makeLawn } from './catlawn.js';
 import { POSTURE, wrapAngle, makeControls, makeRig } from './catrig.js';
 import { MARK, SWIPE, PUFF } from './catmodel.js';
 
@@ -153,6 +166,9 @@ const AIR_SIDE = 0.16;
 /* How far over its keep a craft has to be before a cat on its feet can be
  * under it: lower than that it is in the way, and is walked round. */
 const UNDERPASS = 0.66;
+/* How far from a craft's air, over the ground, a cat that cannot get nearer
+ * will still go up on its hind legs at it, or leap: see planNear. */
+const NEAR_ENOUGH = 1.25;
 
 /* Lengths, written out: Math.hypot is correct to the last bit and, in V8,
  * makes a small array of its arguments every time it is called, which over
@@ -284,6 +300,14 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
   let hissT = 0;
   let washDry = false;
   let asleep = false;
+  /* The craft is hung where no place the cat may stand is near enough to
+   * hunt it from, and where it was when that was found. */
+  let noWay = false;
+  let noWayX = 0;
+  let noWayZ = 0;
+  /* How many frights it has had lately: one is forgotten in eight
+   * seconds. */
+  let scares = 0;
 
   /* The plan a stalk is working to: where to get to (x, z), where a leap
    * from there comes down (lx, lz), and what it is at: the craft's place
@@ -1095,6 +1119,34 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     return ringSpot(ringOf(kind), kind === PL.leap ? 0.2 * S : 0.3 * S, land);
   }
   /*
+   * AS NEAR AS IT MAY. A craft hung in a gate, over the place a run is set
+   * down, or over anything else the cat may not stand on has no room
+   * anywhere on the ring its plan works from. The first cat this file made
+   * then sat where it was and stared, which on a track that is mostly
+   * gates was most of the time. So: the nearest ring out from that one
+   * that does have room, as far out as a cat can still bat or leap at a
+   * thing and look as if it meant it, and the same stalk to it. There is no
+   * pounce from out there, because a pounce has to come down by the craft
+   * and that ground is not the cat's: a pounce becomes the bat. The paw is
+   * stopped short of the craft the way every paw is (reachAt), which from
+   * here is a paw at full stretch in the air.
+   */
+  function planNear(kind) {
+    const k = kind === PL.low || kind === PL.ground ? PL.swat : kind;
+    plan.kind = k;
+    plan.hurry = false;
+    plan.wait = false;
+    plan.down = cr.landT > 0.4;
+    const far = cr.keep + NEAR_ENOUGH * S;
+    for (let r = ringOf(k) + 0.2 * S; r <= far; r += 0.2 * S) {
+      if (ringSpot(r, 0.2 * S, 0)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  const plans = (kind) => planFor(kind) || planNear(kind);
+  /*
    * A place to lie in wait for a craft flying the line, far enough on that
    * the cat is there and set before the craft is. BESIDE the line it comes
    * down no nearer than leaves the craft its air past the cat's nose, and by
@@ -1215,6 +1267,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
   /* WHAT NEXT, with a craft in the yard. */
   function hunt() {
     perch = false;
+    noWay = false;
     if (!prey()) {
       return idle();
     }
@@ -1239,10 +1292,10 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
         return idle();
       }
       if (landVisit === 1) {
-        return planFor(rnd() < 0.6 ? PL.ground : PL.sniff) ? enter(DO.stalk) : sitOut(2);
+        return plans(rnd() < 0.6 ? PL.ground : PL.sniff) ? enter(DO.stalk) : sitOut(2);
       }
       if (!sniffed) {
-        return planFor(PL.sniff) ? enter(DO.stalk) : sitOut(2);
+        return plans(PL.sniff) ? enter(DO.stalk) : sitOut(2);
       }
       /* The slow blink, at a whim, and once for certain before it is
        * bored: a pilot who lands and waits for the cat is owed it. */
@@ -1257,11 +1310,11 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
         return enter(DO.groom);
       }
       if (r < 0.58) {
-        return planFor(PL.ground) ? enter(DO.stalk) : sitOut(2);
+        return plans(PL.ground) ? enter(DO.stalk) : sitOut(2);
       }
       if (r < 0.76) {
         /* A paw put out to it, to see if it is dead. */
-        return planFor(PL.swat) ? enter(DO.stalk) : sitOut(2);
+        return plans(PL.swat) ? enter(DO.stalk) : sitOut(2);
       }
       return sitOut(between(3, 6));
     }
@@ -1318,9 +1371,14 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
         swatRun = 0;
         return sitOut(between(2.2, 4.2));
       }
-      if (planFor(kind) || (kind === PL.low && planFor(PL.swat))) {
+      if (planFor(kind) || (kind === PL.low && planFor(PL.swat)) || planNear(kind)) {
         return enter(DO.stalk);
       }
+      /* Nowhere the cat may stand is near enough to it: looked at, and
+       * chattered at, until it moves. */
+      noWay = true;
+      noWayX = cr.x;
+      noWayZ = cr.z;
       return enter(DO.watch);
     }
     /* Going somewhere, and not round the line: run down if it is low and
@@ -1474,6 +1532,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     enter(DO.startle);
     reflexAt = now;
     moves.startle += 1;
+    scares += 1;
     fear = 1;
     weary += 0.04;
     if (now - bangAt > 2.5 && cr.dh > 1.4 * S) {
@@ -1509,10 +1568,18 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
       }
       return false;
     }
+    /* Running from it already, and it is behind (or the cat has this
+     * moment landed and is getting its feet under it): nothing a cat can
+     * do is faster than what it is doing, and another jump aside is
+     * slower. settle() has the last word as ever. */
+    const running = st === DO.flee && (stT < 0.25 || cr.dx * c.vx + cr.dz * c.vz < 0);
     if (pushedNow) {
       /* It was moved off the craft: carry on that way of its own accord,
        * with a jump if the craft came fast and on its feet if it crept. */
       pushedNow = false;
+      if (running) {
+        return false;
+      }
       if (cr.sp > 0.8 * S) {
         thr.nx = pushX;
         thr.nz = pushZ;
@@ -1550,7 +1617,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
       return true;
     }
     if (th === 2) {
-      if (st === DO.swat && ph === 2) {
+      if ((st === DO.swat && ph === 2) || running) {
         /* Mid bat and it has come on: the bat is the answer, and settle()
          * the rest. */
         return false;
@@ -1819,8 +1886,13 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     if (tiltT > 0) {
       c.tilt = 0.38 * tiltSide * Math.min(1, tiltT / 0.2, (0.9 - tiltT) / 0.2 + 0.2);
     }
-    /* Out of reach: the chatter. */
-    const high = cr.y > 2.0 * S || (cr.hs < 0.7 * S && !lawn.free(cr.x, cr.z));
+    /* Out of reach: the chatter. Too high for any leap, or hung where
+     * hunt() found no place near enough to bat or leap from; once it has
+     * moved off that spot it is looked at afresh. */
+    if (noWay && hyp2(cr.x - noWayX, cr.z - noWayZ) > 0.5 * S) {
+      noWay = false;
+    }
+    const high = cr.y > 2.0 * S || (noWay && cr.hs < 0.7 * S);
     if (high && stT > 0.8) {
       chatterT -= dt;
       if (chatterT < -between(0.6, 1.6)) {
@@ -1877,7 +1949,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
         return hunt();
       }
       if (moved > 0.3 * S && now - plan.made > 0.35) {
-        if (!planFor(k)) {
+        if (!plans(k)) {
           return enter(DO.watch);
         }
         go.on = false;
@@ -2368,6 +2440,15 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
       if (!flying) {
         c.x = hop.bx;
         c.z = hop.bz;
+        if (scares >= 2.5 && cr.on && cr.yard) {
+          /* The third fright in a few seconds. A cat that is flown at and
+           * flown at again does not stand arched to be flown at a fourth
+           * time: it is gone, flat out, to the far side of the lawn. The
+           * first of these cats stood its ground, and a pilot who kept
+           * coming pushed it across the lawn in front of the craft by the
+           * last word alone, half the frames of the chase. */
+          return enter(DO.flee);
+        }
         phase(1);
       }
     } else if (ph === 1) {
@@ -2781,6 +2862,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     }
     fear = Math.max(0, fear - dt * 0.55);
     weary = Math.max(0, weary - dt * 0.045);
+    scares = Math.max(0, scares - dt * 0.125);
     if (cr.jumped && st !== DO.sit && st !== DO.groom && st !== DO.loaf && st !== DO.stretch && st !== DO.wander && !hop.on) {
       /* The craft was put somewhere else. */
       enter(cr.on && cr.yard && cr.dh < 3 * S ? DO.notice : DO.lost);
@@ -2817,14 +2899,15 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
   }
 
   /*
-   * AFTER THE BODY IS POSED. Three promises are kept here, and this is the
+   * AFTER THE BODY IS POSED. Four promises are kept here, and this is the
    * last word on all of them: no ball of the body nearer the craft than
    * its sweep and KEEP of air, no ball of the body in a gate's opening or
-   * within GAP of one, and no ball of the body in a pipe (a post, a bar, a
-   * pole, a trunk, a branch) or within POST of one. If any is broken, the
-   * whole cat is slid over the ground the cheapest of seventeen ways that
-   * clears every ball of everything at once, by choice to somewhere it may
-   * be and by a straight way there.
+   * within GAP of one, no ball of the body in a pipe (a post, a bar, a
+   * pole, a trunk, a branch) or within POST of one, and no ball of the
+   * body in a wall or within POST of one. If any is broken, the whole cat
+   * is slid over the ground the cheapest of seventeen ways that clears
+   * every ball of everything at once, by choice to somewhere it may be and
+   * by a straight way there.
    *
    * Sliding along a way u by s moves a ball at h (from the craft, over the
    * ground) to h + s u, which is clear of the craft's circle at that
@@ -2833,12 +2916,21 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
    * upright, and so is the rectangle a bar lies in, so at a ball's height
    * what the ball may not be over is a line across the ground grown by
    * what is left of the ball's reach at that height: a strip with round
-   * ends, which a straight slide also leaves once and for good. The most
-   * of those far roots over every ball and every thing clears them all,
-   * because none of the shapes bulges inward, and past its own far root a
-   * ball only gets further from such a shape. So a slide that keeps every
-   * promise exists every way the cat could be slid, and the cheapest is
-   * taken.
+   * ends, which a straight slide also leaves once and for good. A wall is
+   * the same strip with a thickness: an oblong on the ground with its
+   * corners rounded by the ball's reach, which is two slabs and four
+   * circles (flatRoot). The most of those far roots over every ball and
+   * every thing clears them all, because none of the shapes bulges inward,
+   * and past its own far root a ball only gets further from such a shape.
+   * So a slide that keeps every promise exists every way the cat could be
+   * slid, and the cheapest is taken.
+   *
+   * What is NOT here is a roof. A cat may stand under the eaves of a shed
+   * or a table, and the way out from under one is as long as the roof is,
+   * which is no slide for a frame. A roof is kept off its back where a
+   * leap is planned instead (roofAt), and anything that begins lower than
+   * a cat on its hind legs is a wall to the lawn (TALL in ./catlawn.js),
+   * so it is never under one of those at all.
    */
   const ways = 16;
   const wayX = new Float64Array(ways + 1);
@@ -2847,19 +2939,20 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     wayX[k] = Math.cos((k * 2 * Math.PI) / ways);
     wayZ[k] = Math.sin((k * 2 * Math.PI) / ways);
   }
-  /* The flats (./catlawn.js: the gates' holes, then the bars, eight numbers
-   * each) and the uprights (posts, eight each). For each one taken into a
-   * frame's sum, every ball is kept in that thing's own terms. For a flat:
-   * how far along it from its middle, how far off it to one side, and the
-   * square of the ball's reach at its height, nothing if it has none. For
-   * an upright: where the ball is from its middle at the ball's own
-   * height, and the square of what must lie between them. */
+  /* The flats (./catlawn.js: the gates' holes, then the bars, then the
+   * walls, FLAT numbers each) and the uprights (posts, eight each). For
+   * each one taken into a frame's sum, every ball is kept in that thing's
+   * own terms. For a flat: how far along it from its middle, how far off
+   * it to one side, and the square of the ball's reach at its height,
+   * nothing if it has none. For an upright: where the ball is from its
+   * middle at the ball's own height, and the square of what must lie
+   * between them. */
   const probeN = rig.probes.length / 4;
   const bodyFar = REACH * S;
   const gapAir = GAP * S;
   const postAir = POST * S;
   const flats = lawn.flats;
-  const flatN = flats.length / 8;
+  const flatN = flats.length / FLAT;
   const flatIn = new Uint8Array(Math.max(1, flatN));
   const flatOf = new Int32Array(Math.max(1, flatN));
   const flatA = new Float64Array(Math.max(1, flatN) * probeN);
@@ -2878,8 +2971,8 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
   let flatsGrown = 0;
   let postsGrown = 0;
   /* What a ball keeps between itself and flat `o`: GAP of air from a hole,
-   * and from a bar its thickness and POST. */
-  const flatPad = (o) => (flats[o + 7] > 0 ? flats[o + 7] + postAir : gapAir);
+   * from a bar its thickness and POST, and POST from a wall. */
+  const flatPad = (o) => (flats[o + 7] > 0 ? flats[o + 7] + postAir : flats[o + 8] > 0 ? postAir : gapAir);
   /* Would a cat whose spot is (x, z), and whose highest ball tops out at
    * `high`, have a ball near enough to flat `o`, or upright `o`, for it to
    * matter. Most of what is on a lawn is over a cat's head most of the
@@ -2894,7 +2987,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     const ma = mx * flats[o + 3] + mz * flats[o + 4];
     const mt = mz * flats[o + 3] - mx * flats[o + 4];
     const lim = bodyFar + pad;
-    return mt < lim && mt > -lim && ma < flats[o + 5] + lim && ma > -flats[o + 5] - lim;
+    return mt < flats[o + 8] + lim && mt > -flats[o + 8] - lim && ma < flats[o + 5] + lim && ma > -flats[o + 5] - lim;
   }
   function postBy(o, x, z, high) {
     if (posts[o + 1] - posts[o + 6] - postAir > high) {
@@ -2913,6 +3006,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     const ax = flats[o + 3];
     const az = flats[o + 4];
     const hw = flats[o + 5];
+    const ht = flats[o + 8];
     const pad = flatPad(o);
     const q = flatsIn * probeN;
     let hit = false;
@@ -2930,7 +3024,8 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
       flatR2[q + i] = r2;
       if (r2 > 0 && !hit) {
         const da = (a < 0 ? -a : a) - hw;
-        hit = t * t + (da > 0 ? da * da : 0) < r2;
+        const db = (t < 0 ? -t : t) - ht;
+        hit = (da > 0 ? da * da : 0) + (db > 0 ? db * db : 0) < r2;
       }
     }
     flatOf[flatsIn] = o;
@@ -2985,44 +3080,23 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     }
     postsGrown = postsIn;
   }
-  /* How far along a way (wa along the flat, wt off it) a ball has to go to
-   * be clear of a flat half `hw` long and to stay clear: nothing if it
-   * never comes to it. The strip's two round ends, then its straight
-   * middle. */
-  function flatRoot(a, t, r2, hw, wa, wt) {
-    let far = 0;
-    let h = a + hw;
-    let b = h * wa + t * wt;
-    let disc = b * b - (h * h + t * t) + r2;
-    if (disc > 0) {
-      const si = -b + Math.sqrt(disc);
-      if (si > far) {
-        far = si;
-      }
-    }
-    h = a - hw;
-    b = h * wa + t * wt;
-    disc = b * b - (h * h + t * t) + r2;
-    if (disc > 0) {
-      const si = -b + Math.sqrt(disc);
-      if (si > far) {
-        far = si;
-      }
-    }
+  /* How far along a way (wa along the flat, wt off it) a straight slide is
+   * inside the rectangle |a| <= ha, |t| <= hb, from a ball at (a, t): where
+   * it leaves it, or nothing if it never comes to it. */
+  function slabRoot(a, t, ha, hb, wa, wt) {
     let lo = -1e18;
     let hi = 1e18;
     if (wa > 1e-9 || wa < -1e-9) {
-      const s1 = (-hw - a) / wa;
-      const s2 = (hw - a) / wa;
+      const s1 = (-ha - a) / wa;
+      const s2 = (ha - a) / wa;
       lo = s1 < s2 ? s1 : s2;
       hi = s1 < s2 ? s2 : s1;
-    } else if (a > hw || a < -hw) {
-      return far;
+    } else if (a > ha || a < -ha) {
+      return 0;
     }
-    const rho = Math.sqrt(r2);
     if (wt > 1e-9 || wt < -1e-9) {
-      const s1 = (-rho - t) / wt;
-      const s2 = (rho - t) / wt;
+      const s1 = (-hb - t) / wt;
+      const s2 = (hb - t) / wt;
       const l2 = s1 < s2 ? s1 : s2;
       const h2 = s1 < s2 ? s2 : s1;
       if (l2 > lo) {
@@ -3031,10 +3105,51 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
       if (h2 < hi) {
         hi = h2;
       }
-    } else if (t > rho || t < -rho) {
-      return far;
+    } else if (t > hb || t < -hb) {
+      return 0;
     }
-    return lo < hi && hi > far ? hi : far;
+    return lo < hi && hi > 0 ? hi : 0;
+  }
+  /* And where it leaves the circle of square radius r2 about a place (h, v)
+   * back from the ball. */
+  function roundRoot(h, v, r2, wa, wt) {
+    const b = h * wa + v * wt;
+    const disc = b * b - (h * h + v * v) + r2;
+    return disc > 0 ? -b + Math.sqrt(disc) : 0;
+  }
+  /* How far along a way a ball has to go to be clear of a flat half `hw`
+   * long and half `ht` thick, and to stay clear: nothing if it never comes
+   * to it. What the ball may not be in is the flat grown by the ball's
+   * reach: for a hole or a bar, which have no thickness, a strip with two
+   * round ends; for a wall, its rectangle with four round corners. Either
+   * way it is round corners and straight middles, and the furthest any of
+   * them is left is where the whole is left. */
+  function flatRoot(a, t, r2, hw, ht, wa, wt) {
+    const rho = Math.sqrt(r2);
+    let far = roundRoot(a + hw, t + ht, r2, wa, wt);
+    let si = roundRoot(a - hw, t + ht, r2, wa, wt);
+    if (si > far) {
+      far = si;
+    }
+    si = slabRoot(a, t, hw, ht + rho, wa, wt);
+    if (si > far) {
+      far = si;
+    }
+    if (ht > 0) {
+      si = roundRoot(a + hw, t - ht, r2, wa, wt);
+      if (si > far) {
+        far = si;
+      }
+      si = roundRoot(a - hw, t - ht, r2, wa, wt);
+      if (si > far) {
+        far = si;
+      }
+      si = slabRoot(a, t, hw + rho, ht, wa, wt);
+      if (si > far) {
+        far = si;
+      }
+    }
+    return far;
   }
   /* The cheapest of the seventeen ways clear of the craft (if it is near)
    * and of every flat and upright taken: which way, and in slideS how far.
@@ -3077,6 +3192,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
         const ax = flats[o + 3];
         const az = flats[o + 4];
         const hw = flats[o + 5];
+        const ht = flats[o + 8];
         const wa = ux * ax + uz * az;
         const wt = uz * ax - ux * az;
         const q = e * n;
@@ -3085,7 +3201,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
           if (r2 <= 0) {
             continue;
           }
-          const si = flatRoot(flatA[q + i], flatT[q + i], r2, hw, wa, wt);
+          const si = flatRoot(flatA[q + i], flatT[q + i], r2, hw, ht, wa, wt);
           if (si > s) {
             s = si;
           }
@@ -3219,8 +3335,8 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     let hit = hitCraft;
     const high = rig.top();
     for (let j = 0; j < flatN; j += 1) {
-      flatIn[j] = flatBy(j * 8, c.x, c.z, high) ? 1 : 0;
-      if (flatIn[j] && takeFlat(j * 8)) {
+      flatIn[j] = flatBy(j * FLAT, c.x, c.z, high) ? 1 : 0;
+      if (flatIn[j] && takeFlat(j * FLAT)) {
         hit = true;
       }
     }
@@ -3254,9 +3370,9 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
       const all = tries === 2;
       let more = false;
       for (let j = 0; j < flatN; j += 1) {
-        if (!flatIn[j] && (all || flatBy(j * 8, tx, tz, high))) {
+        if (!flatIn[j] && (all || flatBy(j * FLAT, tx, tz, high))) {
           flatIn[j] = 1;
-          takeFlat(j * 8);
+          takeFlat(j * FLAT);
           more = true;
         }
       }
@@ -3288,11 +3404,21 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     c.z += dz;
     rig.shift(dx, dz);
     if (hop.on) {
-      /* A leap goes on from where it was put. */
+      /* A leap goes on from where it was put: the whole of it is moved, so
+       * where it was to come down is moved too. If that is no longer ground
+       * the cat may be on by a straight way (a craft that follows a leap
+       * can push it, a frame at a time, as far as the edge of the lawn and
+       * over it), the leap comes down where it has been put instead. */
       hop.ax += dx;
       hop.az += dz;
       hop.bx += dx;
       hop.bz += dz;
+      if (!lawn.sight(c.x, c.z, hop.bx, hop.bz)) {
+        hop.ax = c.x;
+        hop.az = c.z;
+        hop.bx = c.x;
+        hop.bz = c.z;
+      }
     }
     if (!hitCraft) {
       /* Eased out of a gate or off a post with no craft in it: nothing to

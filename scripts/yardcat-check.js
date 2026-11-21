@@ -14,8 +14,9 @@
  * way the graphics card works it out (catmodel.js's skinCat).
  *
  *   1. yards     each yard builds, its cat begins on its own lawn clear of
- *                both places a run is set down, and its gates' openings are
- *                found from their own pipe
+ *                both places a run is set down, its gates' openings are
+ *                found from their own pipe, and a cat set down where it
+ *                may not be walks back onto its lawn
  *   2. shell     the body's balls (catrig.js) wrap the drawn cat: every
  *                corner of both models, claws, hackles and whiskers out,
  *                lies inside one, in every posture and through every flight
@@ -874,6 +875,74 @@ for (const w of WORLDS) {
   check('  it begins clear of where a run is set down', fromStart > 1.5 * w.S, `${(fromStart / w.S).toFixed(2)} cat metres from the nearer start`);
   check('  six gate openings found from their pipe', w.openings.length === 6, w.openings.map((o) => `${o.id} ${(o.hw * 2 / w.S).toFixed(2)} wide at ${((o.y - w.g) / w.S).toFixed(2)}`).join(', '));
   check('  walls to keep out of', w.walls.list.length > 0, `${w.walls.list.length} solids near the lawn`);
+  /* And a cat that finds itself where it may not be goes back to its lawn.
+   * The last word may slide it onto ground that is not its own when there
+   * is nowhere else clear of the craft, and what brings it back is its
+   * own walk (doEscape). The first of these cats walked to within a hand
+   * of the first cell of its lawn, was told that was near enough, and
+   * stood there for good: at 3.5 to the metre "arrived" was a hair further
+   * than half a cell. So: set down in the mouth of every gate on the
+   * grass, on each place on the lawn a run is set down, and off every
+   * eighth cell of the lawn's rim by a hand and by a third of a cat's
+   * metre, the way a slide leaves it, with no craft about. Each has to be
+   * back on its own ground within four seconds and still on it at eight. */
+  {
+    const { lawn, mind } = life;
+    const places = [];
+    for (const o of w.openings.filter((q) => q.y - q.hh < w.g + 0.2 * w.S)) {
+      for (const side of [-1, 1]) {
+        places.push([o.x - o.uz * side * 0.25 * w.S, o.z + o.ux * side * 0.25 * w.S, 'in a gate\'s mouth']);
+      }
+    }
+    /* The map's own start is half a street away at two of the yards, and
+     * is nowhere a slide could leave a cat: only a start on the lawn. */
+    for (const p of [w.track.start, ...(w.starts || [])]) {
+      if (lawn.cellAt(p.x, p.z) >= 0) {
+        places.push([p.x, p.z, 'where a run is set down']);
+      }
+    }
+    const rim = (i, j, nx, nz) => {
+      if (lawn.hard[j * ls.cols + i] === 0) {
+        for (const off of [0.04 * w.S, 0.35 * w.S]) {
+          places.push([lawn.x0 + (i + 0.5) * CELL + nx * (CELL / 2 + off), lawn.z0 + (j + 0.5) * CELL + nz * (CELL / 2 + off), 'off the lawn\'s rim']);
+        }
+      }
+    };
+    for (let i = 3; i < ls.cols; i += 8) {
+      rim(i, 0, 0, -1);
+      rim(i, ls.rows - 1, 0, 1);
+    }
+    for (let j = 3; j < ls.rows; j += 8) {
+      rim(0, j, -1, 0);
+      rim(ls.cols - 1, j, 1, 0);
+    }
+    let lost = 0;
+    let slowest = 0;
+    let where = '';
+    let off = 0;
+    for (const [x, z, what] of places) {
+      mind.force(DOING.indexOf('sit'));
+      mind.put(x, z, 0);
+      if (lawn.free(x, z)) {
+        continue;
+      }
+      off += 1;
+      let home = -1;
+      for (let n = 0; n < 8 * 60; n += 1) {
+        life.frame(1 / 60, null, CRAFT_WORLD_R, null, true);
+        if (home < 0 && lawn.free(c.x, c.z)) {
+          home = (n + 1) / 60;
+        }
+      }
+      if (home < 0 || home > 4 || !lawn.free(c.x, c.z)) {
+        lost += 1;
+        where = where || `${what}, ${x.toFixed(1)}, ${z.toFixed(1)}: ${home < 0 ? 'never back' : `back after ${home.toFixed(1)} s`}, ends at ${c.x.toFixed(1)}, ${c.z.toFixed(1)}`;
+      }
+      slowest = Math.max(slowest, home);
+    }
+    check('  set down where it may not be, it walks back onto its lawn', off >= 12 && lost === 0,
+      `${off} places off its ground, ${lost} not back in four seconds${lost ? ` (${where})` : `, the slowest ${slowest.toFixed(1)} s`}`);
+  }
 }
 
 /* 2. shell: the postures, each dressed every way, both models. */

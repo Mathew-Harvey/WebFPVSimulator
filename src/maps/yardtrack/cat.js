@@ -676,7 +676,13 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     kerb = false;
     if (go.on) {
       const gd = hyp2(go.x - c.x, go.z - c.z);
-      if (gd <= 0.05 * S) {
+      /* There, near enough: unless it is making for grass from ground that
+       * is not its own, when near enough is not there. A cell is a quarter
+       * of a metre and this is a hair more than half of one at three and a
+       * half to the metre, so a cat coming back onto its lawn used to stop
+       * a hand short of the first cell of it, be told it had arrived, and
+       * stand there for good (doEscape). */
+      if (gd <= 0.05 * S && (gd < 0.01 || lawn.free(c.x, c.z) || !lawn.free(go.x, go.z))) {
         go.on = false;
         go.arrived = true;
       } else {
@@ -2802,9 +2808,14 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     }
     if (!go.on) {
       const k = lawn.nearestFree(c.x, c.z);
-      if (k < 0 || stT > 6) {
+      if (k < 0) {
         return st;
       }
+      /* Asked afresh every time it finds itself stopped: a walk that gave
+       * up, or one that was over before it began, is not the end of it
+       * while the cat is still where it may not be. */
+      go.arrived = false;
+      go.failed = false;
       goTo(lawn.cellX(k), lawn.cellZ(k), SLINK);
     }
     return st;

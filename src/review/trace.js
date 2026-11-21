@@ -370,7 +370,8 @@ export class TraceRecorder {
 
 /* This session's traces per course: the best and the previous, the two a
  * ghost book keeps and for the same reason, so a session ghost can be
- * replayed from its trace. Memory only. */
+ * replayed from its trace; and the best a new best replaced, which is the
+ * ghost that new lap chased, so the replay has its sticks. Memory only. */
 export class TraceBook {
   constructor() {
     this.byCourse = new Map();
@@ -382,11 +383,12 @@ export class TraceBook {
     }
     let slot = this.byCourse.get(key);
     if (!slot) {
-      slot = { best: null, previous: null };
+      slot = { best: null, previous: null, replaced: null };
       this.byCourse.set(key, slot);
     }
     slot.previous = lap;
     if (!slot.best || lap.durationMs < slot.best.durationMs) {
+      slot.replaced = slot.best;
       slot.best = lap;
       return { best: true };
     }
@@ -401,5 +403,11 @@ export class TraceBook {
   previous(key) {
     const slot = this.byCourse.get(key);
     return slot ? slot.previous : null;
+  }
+
+  /* The best the current best replaced, or null. */
+  replaced(key) {
+    const slot = this.byCourse.get(key);
+    return slot ? slot.replaced : null;
   }
 }

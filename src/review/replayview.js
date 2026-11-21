@@ -22,6 +22,13 @@
  * moment of the section. main.js draws the two (drawSplit); the choice is
  * kept from one replay to the next.
  *
+ * THE PICTURE ABOVE THE BAR. The bar takes the foot of the screen, so the
+ * chase and the orbit shift the lens up (lift) by half the bar's height:
+ * the middle of the picture, where the quad is, is the middle of the room
+ * left above the bar. A lens shift as the title camera's
+ * (src/render/attract.js), the full frame the camera's aspect by one so
+ * the aspect is kept; main.js clears it once the replay closes.
+ *
  * THE ORBIT (C, or the bar's View button, which goes Chase, Orbit, Side
  * by side): a camera round the middle of the pair, far enough back to
  * have both in the picture (orbitFit in replay.js). Drag on the room to
@@ -32,14 +39,27 @@
  * THE LINES. Each lap's line through the section, drawn in the room in its
  * colour as a thin see through tube, from the replay's start to its end on
  * that lap's own clock, so where the two went apart is there to see from
- * any camera. A quad's own line is left out of its own goggles. L or the
- * bar's button shows and hides them.
+ * any camera. A quad's own line is left out of its own goggles. P (the
+ * paths, as on the coach branch) or the bar's button shows and hides them.
+ *
+ * THE TIMELINE, the bar's, as the coach branch's: the section's stretch
+ * of time with the two gates where your line went through them, where the
+ * ghost reached the last one (blue), and the playhead. Drag on it or on
+ * the lanes to scrub; the wheel over either zooms them about the pointer
+ * (zoomView in replay.js), the stretch shown turning over like a page to
+ * keep the playhead on it, a strip along the foot saying where it is.
+ * Under it the lanes: throttle, roll, pitch and yaw sticks, yours amber
+ * and the ghost's blue where its trace was kept (a lap of this session); a
+ * ghost from the board is poses only and has no sticks to draw. Played at
+ * full, half or a quarter speed (1, 2, 3, or the bar's button), looped
+ * (L) or not.
  *
  * KEYS. Space or Enter plays and pauses, Left and Right (Up and Down on a
- * radio) step a tenth of a second, F follows the other quad, C goes to the
- * next view, V switches side by side on and off, L shows or hides the
- * lines, Escape or Backspace goes back to the review. On the document, in the capture phase, as the review's are; a
- * radio reaches them through Ui.overlay.
+ * radio) step a tenth of a second, 1 2 3 the speed, L loops, F follows the
+ * other quad, C goes to the next view, V switches side by side on and
+ * off, P shows or hides the lines, S the sticks, Escape or Backspace goes
+ * back to the review. On the document, in the capture phase, as the
+ * review's are; a radio reaches them through Ui.overlay.
  *
  * Runs on the wall clock, as the watching camera does, because the plant is
  * paused while it is open.
@@ -65,7 +85,9 @@ import * as THREE from 'three';
 import { buildGhostCraft } from '../render/ghostcraft.js';
 import { CAMERA_MOUNT_FORWARD, CAMERA_MOUNT_UP } from '../render/lens.js';
 import { CHASE_FOV, WatchCam } from '../render/watchcam.js';
-import { Playhead, gogglePose, orbitDir, orbitFit, poseAt, sectionTimeline, splitPanes } from './replay.js';
+import {
+  LANES, PLAY_RATES, Playhead, followView, gogglePose, orbitDir, orbitFit, poseAt, sectionTimeline, splitPanes, sticksAt, sticksOf, zoomView,
+} from './replay.js';
 import { deltaText, seconds } from './splits.js';
 
 const YOU_COLOUR = 0xffb340;
@@ -102,7 +124,12 @@ const ORBIT_WALK = 0.1;
 const ORBIT_CLEAR = 0.16;
 const ORBIT_OUT_MS = 450;
 const ORBIT_FLOOR = 0.15;
-const VIEW_WORDS = { chase: 'View: Chase', orbit: 'View: Orbit', split: 'View: Side by side' };
+const VIEW_WORDS = { chase: 'Chase', orbit: 'Orbit', split: 'Side by side' };
+const YOU_CSS = '#ffb340';
+const GHOST_CSS = '#7fd4ff';
+const GATE_CSS = '#9be39b';
+const LANE_NAMES = { throttle: 'Throttle', roll: 'Roll', pitch: 'Pitch', yaw: 'Yaw' };
+const RATE_WORDS = { 1: '1x', 0.5: '1/2x', 0.25: '1/4x' };
 
 /* A line as a curve on its own clock: u from 0 to 1 is a to b ms, so the
  * tube's segments are even in time. */
@@ -157,6 +184,10 @@ export class ReviewReplay {
      * closes; shown or not, kept from one replay to the next. */
     this.paths = null;
     this.showPaths = true;
+    /* The lanes shown, and the play speed, kept from one replay to the
+     * next. */
+    this.showSticks = true;
+    this.rate = 1;
   }
 
   /* Each line through the replay's stretch of its own clock, as a tube in
@@ -228,11 +259,15 @@ export class ReviewReplay {
   }
 
   /*
-   * open({ lapLine, refLine, you, ghost, title, scale, size, tiltRad, onClose })
+   * open({ lapLine, refLine, you, ghost, title, marks, lapTrace, refTrace,
+   *        scale, size, tiltRad, onClose })
    *   lapLine, refLine  src/review/views.js lines, refLine null with no ghost
    *   you, ghost        [a, b]: when each line went through the section's
    *                     first and last openings (throughPlane); ghost null
    *   title             the section's name
+   *   marks             the names of its first and last gate, for the bar
+   *   lapTrace          your lap's trace, for its sticks; refTrace the
+   *                     ghost's, or null when it was not kept
    *   scale             the holograms' scale, as the shell's ghost's
    *   size              the watching rig's size (src/render/watchcam.js),
    *                     scene metres to a plant metre
@@ -242,10 +277,18 @@ export class ReviewReplay {
   open(data) {
     this.close('shell');
     this.buildRigs();
-    this.data = data;
+    this.data = {
+      ...data,
+      lapSticks: data.lapTrace ? sticksOf(data.lapTrace) : null,
+      refSticks: data.refTrace ? sticksOf(data.refTrace) : null,
+    };
     this.tl = sectionTimeline(data.you, data.refLine ? data.ghost : null);
     this.head = new Playhead(this.tl.startMs, this.tl.endMs);
+    this.head.rate = this.rate;
     this.head.toggle();
+    /* The stretch of the timeline shown, null for the whole. */
+    this.tview = null;
+    this.lanePic = null;
     this.follow = 'you';
     this.lastWall = null;
     this.started = false;
@@ -272,15 +315,24 @@ export class ReviewReplay {
     }
     head.append(times);
     const row = el('div', 'review-replay-row');
-    this.playBtn = el('button', 'review-replay-btn', 'Pause');
-    this.playBtn.type = 'button';
-    this.playBtn.addEventListener('click', () => this.act('play'));
-    this.scrub = el('input', 'review-replay-scrub');
-    this.scrub.type = 'range';
-    this.scrub.min = String(Math.round(tl.startMs));
-    this.scrub.max = String(Math.round(tl.endMs));
-    this.scrub.step = '10';
-    this.scrub.addEventListener('input', () => this.act('seek', Number(this.scrub.value)));
+    const btn = (cls, words, what) => {
+      const b = el('button', `review-replay-btn${cls ? ` ${cls}` : ''}`, words);
+      b.type = 'button';
+      b.addEventListener('click', () => this.act(what));
+      return b;
+    };
+    this.playBtn = btn('', 'Pause', 'play');
+    this.rateBtn = btn('review-replay-rate', '', 'rate');
+    this.loopBtn = btn('', 'Loop', 'loop');
+    this.sticksBtn = btn('', 'Sticks', 'sticks');
+    /* The timeline and the lanes under it: a drag scrubs, the wheel zooms. */
+    this.scrub = el('canvas', 'review-replay-timeline');
+    this.lanes = el('canvas', 'review-replay-lanes');
+    this.lanesNote = el('div', 'review-replay-note', data.refLine && !data.refSticks
+      ? 'The ghost is poses only, no sticks: these are yours.' : '');
+    for (const cv of [this.scrub, this.lanes]) {
+      this.listenTimeline(cv);
+    }
     this.clock = el('div', 'review-replay-clock', '');
     this.followBtn = el('button', 'review-replay-btn review-replay-follow', '');
     this.followBtn.type = 'button';
@@ -297,8 +349,8 @@ export class ReviewReplay {
     const back = el('button', 'review-replay-btn', 'Back');
     back.type = 'button';
     back.addEventListener('click', () => this.close('back'));
-    row.append(this.playBtn, this.scrub, this.clock, this.followBtn, this.viewBtn, this.linesBtn, back);
-    root.append(head, row);
+    row.append(this.playBtn, this.rateBtn, this.loopBtn, this.clock, this.followBtn, this.viewBtn, this.linesBtn, this.sticksBtn, back);
+    root.append(head, this.scrub, this.lanes, this.lanesNote, row);
     /* The side by side pictures' names, over their top left corners. */
     this.paneTags = [el('div', 'review-replay-pane review-replay-you', 'You'), el('div', 'review-replay-pane review-replay-ghost', 'Ghost')];
     /* Under the bar, over the room while the orbit is on: a drag turns,
@@ -334,9 +386,18 @@ export class ReviewReplay {
       } else if (k === 'c' || k === 'C') {
         e.preventDefault();
         this.act('camera');
-      } else if (k === 'l' || k === 'L') {
+      } else if (k === 'p' || k === 'P') {
         e.preventDefault();
         this.act('lines');
+      } else if (k === 'l' || k === 'L') {
+        e.preventDefault();
+        this.act('loop');
+      } else if (k === 's' || k === 'S') {
+        e.preventDefault();
+        this.act('sticks');
+      } else if (k === '1' || k === '2' || k === '3') {
+        e.preventDefault();
+        this.act('rate', PLAY_RATES[Number(k) - 1]);
       }
     };
     document.addEventListener('keydown', this.onKey, true);
@@ -362,6 +423,20 @@ export class ReviewReplay {
       this.cam.free(null);
     } else if (what === 'lines') {
       this.showPaths = !this.showPaths;
+    } else if (what === 'rate') {
+      /* A speed asked for, or the next one round. */
+      const next = PLAY_RATES.includes(arg) ? arg : PLAY_RATES[(PLAY_RATES.indexOf(this.rate) + 1) % PLAY_RATES.length];
+      this.rate = next;
+      this.head.rate = next;
+    } else if (what === 'loop') {
+      this.head.loop = !this.head.loop;
+    } else if (what === 'sticks') {
+      this.showSticks = !this.showSticks;
+    } else if (what === 'tzoom') {
+      const full = [this.tl.startMs, this.tl.endMs];
+      this.tview = !arg || arg === 'reset' ? null : zoomView(this.tview, full, arg.at, arg.steps);
+      this.tview = followView(this.tview, full, this.head.t);
+      this.lanePic = null;
     } else if (what === 'view' && this.data.refLine) {
       /* V: side by side on, or off to the view before it. */
       if (this.mode === 'split') {
@@ -454,6 +529,200 @@ export class ReviewReplay {
     }, { passive: false });
   }
 
+  /* The stretch of the timeline shown, [a, b] ms. */
+  range() {
+    return this.tview || [this.tl.startMs, this.tl.endMs];
+  }
+
+  /* A drag on the timeline or the lanes scrubs; the wheel zooms them about
+   * the time under the pointer. */
+  listenTimeline(cv) {
+    let held = null;
+    const msAt = (e) => {
+      const r = cv.getBoundingClientRect();
+      const [a, b] = this.range();
+      return a + ((e.clientX - r.left) / Math.max(1, r.width)) * (b - a);
+    };
+    cv.addEventListener('pointerdown', (e) => {
+      held = e.pointerId;
+      cv.setPointerCapture(e.pointerId);
+      this.act('seek', msAt(e));
+    });
+    cv.addEventListener('pointermove', (e) => {
+      if (held === e.pointerId) {
+        this.act('seek', msAt(e));
+      }
+    });
+    const up = () => {
+      held = null;
+    };
+    cv.addEventListener('pointerup', up);
+    cv.addEventListener('pointercancel', up);
+    cv.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      this.act('tzoom', { at: msAt(e), steps: e.deltaY < 0 ? 1 : -1 });
+    }, { passive: false });
+  }
+
+  /* A canvas the size it is drawn on the page, in device pixels. */
+  fit(cv) {
+    const dpr = window.devicePixelRatio || 1;
+    const w = Math.max(50, Math.round(cv.clientWidth * dpr));
+    const h = Math.max(10, Math.round(cv.clientHeight * dpr));
+    if (cv.width !== w || cv.height !== h) {
+      cv.width = w;
+      cv.height = h;
+    }
+    return { w, h, dpr };
+  }
+
+  /* The timeline: the section's gates, the ghost's finish, the playhead,
+   * and when zoomed where the stretch shown is in the whole. */
+  drawTimeline() {
+    const cv = this.scrub;
+    const { w, h, dpr } = this.fit(cv);
+    const g = cv.getContext('2d');
+    g.clearRect(0, 0, w, h);
+    const [a, b] = this.range();
+    const X = (ms) => ((ms - a) / Math.max(1, b - a)) * w;
+    const { tl } = this;
+    if (this.head.loop) {
+      g.fillStyle = 'rgba(255,179,64,0.14)';
+      g.fillRect(0, 0, w, h);
+    }
+    g.font = `${11 * dpr}px system-ui, sans-serif`;
+    g.textBaseline = 'top';
+    const marks = this.data.marks || ['', ''];
+    [tl.you[0], tl.you[1]].forEach((ms, i) => {
+      const x = X(ms);
+      if (x < -dpr || x > w + dpr) {
+        return;
+      }
+      g.fillStyle = 'rgba(155,227,155,0.75)';
+      g.fillRect(x - dpr / 2, 0, dpr, h);
+      g.fillStyle = GATE_CSS;
+      const name = marks[i] || '';
+      const tw = g.measureText(name).width;
+      g.fillText(name, i ? Math.max(2 * dpr, x - tw - 3 * dpr) : Math.min(w - tw - 2 * dpr, x + 3 * dpr), 3 * dpr);
+    });
+    if (this.data.refLine && Number.isFinite(tl.ghostMs)) {
+      g.fillStyle = GHOST_CSS;
+      g.fillRect(X(tl.you[0] + tl.ghostMs) - dpr, h * 0.45, 2 * dpr, h * 0.55);
+    }
+    g.fillStyle = '#ffffff';
+    g.fillRect(X(this.head.t) - dpr, 0, 2 * dpr, h);
+    if (this.tview) {
+      const W = (ms) => ((ms - tl.startMs) / Math.max(1, tl.endMs - tl.startMs)) * w;
+      g.fillStyle = 'rgba(255,255,255,0.15)';
+      g.fillRect(0, h - 3 * dpr, w, 3 * dpr);
+      g.fillStyle = 'rgba(255,255,255,0.7)';
+      g.fillRect(W(a), h - 3 * dpr, Math.max(2 * dpr, W(b) - W(a)), 3 * dpr);
+    }
+  }
+
+  /* The lanes: painted once for a size and a stretch, then the playhead
+   * and the values under it each frame. */
+  drawLanes() {
+    const cv = this.lanes;
+    const { w, h, dpr } = this.fit(cv);
+    const [a, b] = this.range();
+    const key = `${w}|${h}|${a}|${b}`;
+    if (!this.lanePic || this.lanePic.key !== key) {
+      this.lanePic = { key, pic: this.paintLanes(w, h, dpr, a, b) };
+    }
+    const g = cv.getContext('2d');
+    g.clearRect(0, 0, w, h);
+    g.drawImage(this.lanePic.pic, 0, 0);
+    const X = (ms) => ((ms - a) / Math.max(1, b - a)) * w;
+    g.fillStyle = '#ffffff';
+    g.fillRect(X(this.head.t) - dpr, 0, 2 * dpr, h);
+    const you = sticksAt(this.data.lapSticks, this.head.t);
+    const ghost = this.data.refLine ? sticksAt(this.data.refSticks, this.tl.ghostAt(this.head.t)) : null;
+    const laneH = h / LANES.length;
+    g.font = `${11 * dpr}px system-ui, sans-serif`;
+    g.textBaseline = 'top';
+    LANES.forEach((k, i) => {
+      const fmt = (v) => (!Number.isFinite(v) ? '' : k === 'throttle' ? `${Math.round(v * 100)}%` : `${v >= 0 ? '+' : ''}${v.toFixed(2)}`);
+      const parts = [[fmt(you[k]), YOU_CSS], [ghost ? fmt(ghost[k]) : '', GHOST_CSS]].filter((p) => p[0]);
+      let x = w - 4 * dpr;
+      const y = i * laneH + 2 * dpr;
+      for (let j = parts.length - 1; j >= 0; j -= 1) {
+        const tw = g.measureText(parts[j][0]).width;
+        x -= tw;
+        g.fillStyle = 'rgba(16,18,22,0.8)';
+        g.fillRect(x - 3 * dpr, y - dpr, tw + 6 * dpr, 13 * dpr);
+        g.fillStyle = parts[j][1];
+        g.fillText(parts[j][0], x, y);
+        x -= 8 * dpr;
+      }
+    });
+  }
+
+  paintLanes(w, h, dpr, a, b) {
+    const pic = document.createElement('canvas');
+    pic.width = w;
+    pic.height = h;
+    const g = pic.getContext('2d');
+    const X = (ms) => ((ms - a) / Math.max(1, b - a)) * w;
+    const laneH = h / LANES.length;
+    const pad = 3 * dpr;
+    const { tl, data } = this;
+    g.fillStyle = 'rgba(155,227,155,0.3)';
+    for (const ms of tl.you) {
+      g.fillRect(X(ms) - dpr / 2, 0, dpr, h);
+    }
+    g.font = `${11 * dpr}px system-ui, sans-serif`;
+    g.textBaseline = 'top';
+    const n = Math.max(2, Math.min(w, 1200));
+    LANES.forEach((k, i) => {
+      const top = i * laneH;
+      const mid = top + laneH / 2;
+      const yOf = k === 'throttle'
+        ? (v) => top + laneH - pad - Math.max(0, Math.min(1, v)) * (laneH - 2 * pad)
+        : (v) => mid - Math.max(-1, Math.min(1, v)) * (laneH / 2 - pad);
+      if (i) {
+        g.fillStyle = 'rgba(255,255,255,0.12)';
+        g.fillRect(0, top, w, dpr);
+      }
+      if (k !== 'throttle') {
+        g.fillStyle = 'rgba(255,255,255,0.07)';
+        g.fillRect(0, mid, w, dpr);
+      }
+      const lines = [[data.lapSticks, (t) => t, YOU_CSS]];
+      if (data.refLine && data.refSticks) {
+        lines.unshift([data.refSticks, (t) => tl.ghostAt(t), GHOST_CSS]);
+      }
+      for (const [sticks, clock, colour] of lines) {
+        g.strokeStyle = colour;
+        g.lineWidth = 1.5 * dpr;
+        g.beginPath();
+        let open = false;
+        for (let j = 0; j < n; j += 1) {
+          const t = a + ((b - a) * j) / (n - 1);
+          const v = sticksAt(sticks, clock(t))[k];
+          if (!Number.isFinite(v)) {
+            open = false;
+            continue;
+          }
+          const px = (j / (n - 1)) * w;
+          if (open) {
+            g.lineTo(px, yOf(v));
+          } else {
+            g.moveTo(px, yOf(v));
+          }
+          open = true;
+        }
+        g.stroke();
+      }
+      const name = LANE_NAMES[k];
+      g.fillStyle = 'rgba(16,18,22,0.8)';
+      g.fillRect(2 * dpr, top + 2 * dpr, g.measureText(name).width + 6 * dpr, 13 * dpr);
+      g.fillStyle = '#c8c8c8';
+      g.fillText(name, 5 * dpr, top + 3 * dpr);
+    });
+    return pic;
+  }
+
   /* The bar's words and controls, from the playhead. */
   write() {
     if (!this.root) {
@@ -462,12 +731,19 @@ export class ReviewReplay {
     const { tl } = this;
     const t = this.head.t;
     this.playBtn.textContent = this.head.playing ? 'Pause' : 'Play';
-    if (document.activeElement !== this.scrub) {
-      this.scrub.value = String(Math.round(t));
+    this.rateBtn.textContent = RATE_WORDS[this.rate] || `${this.rate}x`;
+    this.loopBtn.setAttribute('aria-pressed', String(this.head.loop));
+    this.sticksBtn.setAttribute('aria-pressed', String(this.showSticks));
+    this.lanes.hidden = !this.showSticks;
+    this.lanesNote.hidden = !this.showSticks || !this.lanesNote.textContent;
+    this.tview = followView(this.tview, [tl.startMs, tl.endMs], t);
+    this.drawTimeline();
+    if (this.showSticks) {
+      this.drawLanes();
     }
     const into = t - tl.you[0];
     this.clock.textContent = into < 0 ? `${seconds(-into)} s before` : `${seconds(into)} s in`;
-    this.followBtn.textContent = this.follow === 'you' ? 'Following you' : 'Following the ghost';
+    this.followBtn.textContent = this.follow === 'you' ? 'Behind you' : 'Behind the ghost';
     this.viewBtn.textContent = VIEW_WORDS[this.mode];
     this.linesBtn.setAttribute('aria-pressed', String(this.showPaths));
     const split = this.splitOn;
@@ -533,9 +809,13 @@ export class ReviewReplay {
       this.goggles = { you: gogglePose(you, LENS, size, tilt), ghost: gogglePose(ghost, LENS, size, tilt) };
       camera.position.set(...this.goggles.you.pos);
       camera.quaternion.set(...this.goggles.you.q);
+      if (camera.view && camera.view.enabled) {
+        camera.clearViewOffset();
+      }
     } else if (this.mode === 'orbit') {
       this.goggles = null;
       this.orbitFrame(camera, you, ghost, world, dt);
+      this.lift(camera);
     } else {
       this.goggles = null;
       const p = this.follow === 'ghost' && ghost ? ghost : you;
@@ -546,6 +826,7 @@ export class ReviewReplay {
       }
       this.cam.size = this.data.size || 1;
       this.cam.frame(camera, this.pose, nowWall, world, home);
+      this.lift(camera);
     }
     if (was !== this.head.playing || this.head.playing) {
       this.write();
@@ -606,6 +887,26 @@ export class ReviewReplay {
       camera.fov = CHASE_FOV;
       camera.updateProjectionMatrix();
     }
+  }
+
+  /* The lens shifted up by half the bar's height, as a share of the
+   * screen's, so the picture's middle is the middle of the room above it. */
+  lift(camera) {
+    const h = window.innerHeight;
+    const top = this.root ? this.root.getBoundingClientRect().top : h;
+    const oy = Math.max(0, Math.min(0.4, (h - top) / (2 * Math.max(1, h))));
+    const aspect = camera.aspect;
+    const view = camera.view;
+    if (oy < 0.005) {
+      if (view && view.enabled) {
+        camera.clearViewOffset();
+      }
+      return;
+    }
+    if (view && view.enabled && view.fullWidth === aspect && Math.abs(view.offsetY - oy) < 1e-4) {
+      return;
+    }
+    camera.setViewOffset(aspect, 1, 0, oy, aspect, 1);
   }
 
   /* The two pictures on a screen w by h CSS pixels, in the room above the
@@ -694,6 +995,14 @@ export class ReviewReplay {
       playing: this.head.playing,
       follow: this.follow,
       view: this.splitOn ? 'split' : this.mode === 'orbit' ? 'orbit' : 'chase',
+      rate: this.head.rate,
+      loop: this.head.loop,
+      shown: this.range(),
+      sticks: this.showSticks ? {
+        you: Boolean(this.data.lapSticks),
+        ghost: Boolean(this.data.refLine && this.data.refSticks),
+        drawn: Boolean(this.lanePic),
+      } : null,
       orbit: this.mode === 'orbit' ? { ...this.orbit, size: this.data.size || 1 } : null,
       lines: this.paths ? {
         you: Boolean(this.paths.you && this.paths.you.visible && this.paths.you.parent),

@@ -11874,6 +11874,14 @@ export async function boot({ loading, bootStart, mapId }) {
     };
     const lapLine = lineOfTrace(lap);
     const refLine = ref ? lineOfGhost(ref) : null;
+    /* The ghost's sticks, where it was a lap of this session and its
+     * trace was kept: the book's lap of the same time (a ghost keeps it to
+     * the millisecond, src/game/ghost.js finish). A board ghost is poses
+     * only. */
+    const course = lap.meta.course;
+    const refTrace = ref ? [reviewBook.best(course), reviewBook.previous(course), reviewBook.replaced(course)]
+      .find((tr) => tr && tr !== lap && Math.abs(tr.durationMs - ref.durationMs) < 1) : null;
+    const gateWord = (i, last) => (i === 0 ? (last ? 'Finish' : 'Start') : `Gate ${i}`);
     return reviewReplayReady().then((rp) => {
       if (reviewLast !== lap || mode !== 'paused' || ui.screen !== 'paused') {
         return false;
@@ -11894,6 +11902,9 @@ export async function boot({ loading, bootStart, mapId }) {
         you: span(lapLine, lap.splits),
         ghost: refLine ? span(refLine, ref.splits) : null,
         title: sectionName(k, lap.splits.length),
+        marks: [gateWord(ends[0], false), gateWord(ends[1], true)],
+        lapTrace: lap,
+        refTrace: refTrace || null,
         scale: 1 / WORLD_SCALE,
         size: simLenToWorld(1),
         /* Side by side, the goggles as this lap flew them. */
@@ -14203,8 +14214,11 @@ export async function boot({ loading, bootStart, mapId }) {
      * way and for the same reason; this is the other half of it, in one
      * place because every branch that is not the attract camera wants the
      * offset gone. Cheap: a property read on the frames it is already off.
+     * The review's replay shifts it too, to keep its picture above its bar
+     * (src/review/replayview.js lift), and is let off while open; the first
+     * frame after it closes clears it here like any other.
      */
-    if (!(mode === 'title' && !camOverride)
+    if (!(mode === 'title' && !camOverride) && !(reviewReplay && reviewReplay.on && !camOverride)
         && shell.camera.view && shell.camera.view.enabled) {
       shell.camera.clearViewOffset();
     }

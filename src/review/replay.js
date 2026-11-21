@@ -21,7 +21,9 @@
  * SIDE BY SIDE. Your goggles and the ghost's, two pictures at once:
  * splitPanes lays them out and gogglePose puts each camera where the
  * quad's own lens was. THE ORBIT: orbitDir and orbitFit place a camera
- * round the pair.
+ * round the pair. THE TIMELINE: the playhead's speed and loop, the
+ * stretch of it shown (zoomView, followView), and each lap's sticks
+ * (sticksOf, sticksAt).
  *
  * This file is part of WebFPVSimulator.
  *
@@ -38,6 +40,8 @@
  * You should have received a copy of the GNU General Public License
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
+
+import { F } from './trace.js';
 
 /* Before the section's first gate and after the later of the two finishes,
  * so each quad is seen coming in and going out. */
@@ -109,15 +113,20 @@ export function sectionTimeline(you, ghost) {
   };
 }
 
-/* The playhead: t from startMs to endMs, moved by the wall time handed to
- * advance() while it plays, stopping at the end. Play at the end starts it
+/* The playhead: t from startMs to endMs, moved by rate times the wall
+ * time handed to advance() while it plays, stopping at the end, or with
+ * loop on going round again from the start. Play at the end starts it
  * again from the start. */
+export const PLAY_RATES = [1, 0.5, 0.25];
+
 export class Playhead {
   constructor(startMs, endMs) {
     this.startMs = startMs;
     this.endMs = Math.max(startMs, endMs);
     this.t = startMs;
     this.playing = false;
+    this.rate = 1;
+    this.loop = false;
   }
 
   seek(ms) {
@@ -139,10 +148,14 @@ export class Playhead {
     if (!this.playing) {
       return;
     }
-    this.t += Math.min(MAX_FRAME_MS, Math.max(0, wallMs));
+    this.t += Math.min(MAX_FRAME_MS, Math.max(0, wallMs)) * this.rate;
     if (this.t >= this.endMs) {
-      this.t = this.endMs;
-      this.playing = false;
+      if (this.loop && this.endMs > this.startMs) {
+        this.t = this.startMs + ((this.t - this.startMs) % (this.endMs - this.startMs));
+      } else {
+        this.t = this.endMs;
+        this.playing = false;
+      }
     }
   }
 }
@@ -220,4 +233,95 @@ export function orbitDir(heading, tilt) {
 export function orbitFit(apart, size, fovDeg, near = 1.5, margin = 0.5) {
   const half = (fovDeg * Math.PI) / 360;
   return Math.max(near * size, (apart / 2 + margin * size) / Math.tan(half));
+}
+
+/*
+ * THE TIMELINE ZOOMED, as the coach branch's: the stretch [a, b] ms of the
+ * whole [s, e] the bar and the lanes show. A wheel notch takes it to
+ * ZOOM_STEP of itself (in) or back (out), never under ZOOM_MIN_MS, about
+ * the time under the pointer, which stays where it was on the bar. At the
+ * whole it is the whole again: null.
+ */
+export const ZOOM_STEP = 0.8;
+export const ZOOM_MIN_MS = 500;
+
+export function zoomView(view, full, atMs, steps) {
+  const [s, e] = full;
+  const whole = e - s;
+  const [a, b] = view || full;
+  const span = b - a;
+  const next = Math.max(Math.min(ZOOM_MIN_MS, whole), Math.min(whole, span * ZOOM_STEP ** steps));
+  if (!(whole > 0) || next >= whole - 1e-6) {
+    return null;
+  }
+  const at = Math.max(a, Math.min(b, atMs));
+  const u = span > 0 ? (at - a) / span : 0.5;
+  const a2 = Math.max(s, Math.min(e - next, at - u * next));
+  return [a2, a2 + next];
+}
+
+/* The stretch moved to keep the playhead on it: when t runs off one end
+ * it turns over like a page, t a fifth of the way in, so play reads on
+ * without the bar sliding under it every frame. Null stays null. */
+export function followView(view, full, t) {
+  if (!view) {
+    return null;
+  }
+  const [s, e] = full;
+  const [a, b] = view;
+  const span = b - a;
+  let a2 = a;
+  if (t > b) {
+    a2 = t - span * 0.2;
+  } else if (t < a) {
+    a2 = t - span * 0.8;
+  }
+  a2 = Math.max(s, Math.min(e - span, a2));
+  return a2 === a ? view : [a2, a2 + span];
+}
+
+/* A trace's sticks (src/review/trace.js): { t, throttle, roll, pitch, yaw },
+ * throttle 0 to 1 and the others -1 to 1, as the radio gave them. */
+export const LANES = ['throttle', 'roll', 'pitch', 'yaw'];
+
+export function sticksOf(trace) {
+  const n = trace.count;
+  const out = { t: new Float64Array(n) };
+  const field = { throttle: F.THROTTLE, roll: F.ROLL, pitch: F.PITCH, yaw: F.YAW };
+  for (const k of LANES) {
+    out[k] = new Float32Array(n);
+  }
+  for (let i = 0; i < n; i += 1) {
+    out.t[i] = trace.at(i, F.T);
+    for (const k of LANES) {
+      out[k][i] = trace.at(i, field[k]);
+    }
+  }
+  return out;
+}
+
+/* The sticks at ms, between the two samples either side; NaN outside the
+ * recording, or with none (null). */
+export function sticksAt(sticks, ms) {
+  const none = { throttle: NaN, roll: NaN, pitch: NaN, yaw: NaN };
+  const n = sticks ? sticks.t.length : 0;
+  if (!n || !(ms >= sticks.t[0]) || !(ms <= sticks.t[n - 1])) {
+    return none;
+  }
+  let lo = 0;
+  let hi = n - 1;
+  while (hi - lo > 1) {
+    const m = (lo + hi) >> 1;
+    if (sticks.t[m] <= ms) {
+      lo = m;
+    } else {
+      hi = m;
+    }
+  }
+  const u = sticks.t[hi] > sticks.t[lo] ? (ms - sticks.t[lo]) / (sticks.t[hi] - sticks.t[lo]) : 0;
+  const out = {};
+  for (const k of LANES) {
+    out[k] = sticks[k][lo] + (sticks[k][hi] - sticks[k][lo]) * u;
+  }
+  return out;
 }

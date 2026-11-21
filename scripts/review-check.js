@@ -287,13 +287,44 @@ try {
   const hidden = await page.evaluate("(() => ({ review: window.__review().open, watching: document.documentElement.classList.contains('tg-watching'), bar: !!document.querySelector('#review-replay') }))()");
   check('over the pause: the review put away, the menu hidden, the bar shown', hidden.review === false && hidden.watching === true && hidden.bar === true, JSON.stringify(hidden));
   check('both lines drawn in the room', rp.lines && rp.lines.you === true && rp.lines.ghost === true, JSON.stringify(rp.lines));
-  await page.tap('KeyL');
+  await page.tap('KeyP');
   await page.sleep(200);
   const noLines = (await page.evaluate('window.__reviewReplay()')).lines;
-  await page.tap('KeyL');
+  await page.tap('KeyP');
   await page.sleep(200);
   const linesBack = (await page.evaluate('window.__reviewReplay()')).lines;
-  check('L hides them and shows them again', noLines && !noLines.you && !noLines.ghost && linesBack.you && linesBack.ghost, JSON.stringify({ noLines, linesBack }));
+  check('P hides them and shows them again', noLines && !noLines.you && !noLines.ghost && linesBack.you && linesBack.ghost, JSON.stringify({ noLines, linesBack }));
+  /* The timeline: the lanes with both laps' sticks, speed, loop, zoom, and
+   * a click on it scrubs. */
+  const tlState = await page.evaluate('window.__reviewReplay()');
+  check('the timeline\'s lanes draw your sticks and the ghost\'s (a lap of this session)', tlState.sticks && tlState.sticks.you && tlState.sticks.ghost && tlState.sticks.drawn, JSON.stringify(tlState.sticks));
+  await page.tap('Digit2');
+  const half = await page.evaluate('window.__reviewReplay()');
+  await page.tap('Digit1');
+  check('2 plays at half speed, 1 at full', half.rate === 0.5 && (await page.evaluate('window.__reviewReplay()')).rate === 1, String(half.rate));
+  await page.tap('KeyL');
+  const looped = await page.evaluate('window.__reviewReplay()');
+  await page.tap('KeyL');
+  check('L loops the section and stops looping it', looped.loop === true && (await page.evaluate('window.__reviewReplay()')).loop === false);
+  const zoomed = await page.evaluate("(() => { const s = window.__reviewReplay(); return window.__reviewReplay('tzoom', { at: s.t, steps: 3 }); })()");
+  const wholeMs = tlState.endMs - tlState.startMs;
+  check('the wheel zooms the timeline about the playhead, which stays on it', zoomed.shown[1] - zoomed.shown[0] < wholeMs * 0.6 && zoomed.t >= zoomed.shown[0] && zoomed.t <= zoomed.shown[1], JSON.stringify({ shown: zoomed.shown, t: zoomed.t, wholeMs }));
+  const unzoomed = await page.evaluate("window.__reviewReplay('tzoom', 'reset')");
+  check('and back to the whole section', unzoomed.shown[0] === tlState.startMs && unzoomed.shown[1] === tlState.endMs);
+  {
+    const box = await page.evaluate("(() => { const r = document.querySelector('.review-replay-timeline').getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; })()");
+    const x = box.x + box.w * 0.75;
+    const y = box.y + box.h / 2;
+    for (const type of ['mousePressed', 'mouseReleased']) {
+      await page.cdp.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 }, page.sessionId);
+    }
+    await page.sleep(100);
+    const clicked = await page.evaluate('window.__reviewReplay()');
+    const want = tlState.startMs + 0.75 * wholeMs;
+    check('a click three quarters along the timeline puts the playhead there, paused', Math.abs(clicked.t - want) < wholeMs * 0.03 && clicked.playing === false, `${clicked.t} for ${want}`);
+    await page.evaluate("window.__reviewReplay('seek', window.__reviewReplay().startMs)");
+    await page.evaluate("window.__reviewReplay('play')");
+  }
   await page.sleep(800);
   const later = await page.evaluate('window.__reviewReplay()');
   const moved = (a, b) => Array.isArray(a) && Array.isArray(b) && Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) > 0.05;
@@ -376,9 +407,13 @@ try {
   await page.tap('KeyC');
   await page.sleep(200);
   check('and C again: the chase', (await page.evaluate('window.__reviewReplay()')).view === 'chase');
+  const shifted = await page.evaluate('window.__camGround().shift');
+  check('the replay lifts its picture above the bar with a lens shift', shifted && shifted.y > 0.05, JSON.stringify(shifted));
   await page.tap('Escape');
   const back = await page.evaluate("(() => ({ replay: window.__reviewReplay().open, review: window.__review(), watching: document.documentElement.classList.contains('tg-watching'), screen: window.__ui.screen }))()");
   check('Escape goes back to the review on the same section, the menu back', back.replay === false && back.review.open === true && back.review.selected === 0 && back.watching === false && back.screen === 'paused', JSON.stringify({ ...back, review: back.review.open }));
+  await page.sleep(200);
+  check('and the shift is gone once it closes, so flight is not off centre', (await page.evaluate('window.__camGround().shift')) === null, JSON.stringify(await page.evaluate('window.__camGround().shift')));
   await page.tap('Escape');
   await page.evaluate("(() => { window.__ui.act('review'); return 1; })()");
   await page.evaluate("(() => { const ui = window.__ui; ui.onAction('resume', ui.settings); return 1; })()");

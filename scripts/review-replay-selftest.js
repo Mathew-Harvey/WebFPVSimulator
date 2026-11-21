@@ -19,7 +19,7 @@
  */
 
 import {
-  LEAD_MS, MAX_FRAME_MS, Playhead, TAIL_MS, gogglePose, orbitDir, orbitFit, poseAt, sectionTimeline, slerp, splitPanes,
+  LEAD_MS, MAX_FRAME_MS, PLAY_RATES, Playhead, TAIL_MS, ZOOM_MIN_MS, followView, sticksAt, zoomView, gogglePose, orbitDir, orbitFit, poseAt, sectionTimeline, slerp, splitPanes,
 } from '../src/review/replay.js';
 
 let failures = 0;
@@ -131,6 +131,33 @@ console.log('the orbit');
   const far = orbitFit(20, 1, 70);
   check('two quads far apart: far enough back that both are in the picture', near(far, (10 + 0.5) / Math.tan(35 * Math.PI / 180), 1e-12));
   check('and further for further apart', orbitFit(30, 1, 70) > far);
+}
+
+console.log('the timeline');
+{
+  const p = new Playhead(0, 1000);
+  p.rate = 0.25;
+  p.toggle();
+  p.advance(80);
+  check('a quarter speed moves a quarter of the wall time', near(p.t, 20));
+  p.rate = 1;
+  p.loop = true;
+  p.seek(950);
+  p.advance(100);
+  check('looped, past the end it goes round from the start and plays on', near(p.t, 50) && p.playing);
+  check('the speeds: full, half, a quarter', PLAY_RATES.join() === '1,0.5,0.25');
+  const z = zoomView(null, [0, 4000], 1000, 1);
+  check('a notch in: four fifths of the whole, about the time under the pointer', near(z[1] - z[0], 3200) && near(z[0], 1000 - 0.25 * 3200));
+  const deep = zoomView([0, 4000], [0, 4000], 2000, 30);
+  check('never under the shortest stretch', near(deep[1] - deep[0], ZOOM_MIN_MS));
+  check('out past the whole is the whole again', zoomView(z, [0, 4000], 1000, -5) === null);
+  const turned = followView([0, 1000], [0, 4000], 1200);
+  check('the playhead off the end turns the page, a fifth in', near(turned[0], 1000) && near(turned[1], 2000));
+  check('whole stays whole', followView(null, [0, 4000], 1200) === null);
+  const st = { t: [0, 10, 20], throttle: [0, 0.5, 1], roll: [-1, 0, 1], pitch: [0, 0, 0], yaw: [0, 0, 0] };
+  const mid = sticksAt(st, 5);
+  check('sticks between two samples, half way', near(mid.throttle, 0.25) && near(mid.roll, -0.5));
+  check('none outside the recording, and none with no sticks', Number.isNaN(sticksAt(st, 30).roll) && Number.isNaN(sticksAt(null, 5).throttle));
 }
 
 console.log(failures ? `\n${failures} FAILED` : '\nall passed');

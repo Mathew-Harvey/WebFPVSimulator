@@ -7130,7 +7130,7 @@
       .review-replay {
         position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%);
         z-index: 2147483000; width: min(880px, calc(100vw - 32px)); box-sizing: border-box;
-        display: flex; flex-direction: column; gap: 8px; padding: 12px 14px;
+        display: flex; flex-direction: column; gap: 6px; padding: 10px 12px;
         font-family: var(--ui-font); color: var(--cream);
         background: rgba(26, 36, 28, 0.92); border-radius: 4px;
         box-shadow: inset 0 0 0 1px rgba(232, 168, 184, 0.35), 0 12px 30px rgba(0, 0, 0, 0.5);
@@ -7140,19 +7140,28 @@
       .review-replay-times { color: var(--slate); font-size: 14px; font-variant-numeric: tabular-nums; }
       .review-replay-you { color: #ffb340; font-weight: 600; }
       .review-replay-ghost { color: #7fd4ff; font-weight: 600; }
-      .review-replay-row { display: flex; gap: 10px; align-items: center; }
-      .review-replay-scrub { flex: 1; min-width: 80px; accent-color: #ffb340; }
+      .review-replay-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+      /* The timeline and the stick lanes under it, drawn on canvases. */
+      .review-replay-timeline, .review-replay-lanes {
+        display: block; width: 100%; border-radius: 4px; background: #101216;
+        cursor: pointer; touch-action: none;
+      }
+      .review-replay-timeline { height: 24px; }
+      .review-replay-lanes { height: 72px; }
+      .review-replay-lanes[hidden], .review-replay-note[hidden] { display: none; }
+      .review-replay-note { font-size: 12px; color: var(--slate); }
       .review-replay-clock { min-width: 6em; text-align: right; font-size: 14px; font-variant-numeric: tabular-nums; color: var(--slate); }
       .review-replay-btn {
-        padding: 5px 12px; cursor: pointer; white-space: nowrap;
+        padding: 4px 10px; cursor: pointer; white-space: nowrap;
         font: inherit; font-size: 14px; color: var(--cream);
         background: #121a14; border: 1px solid rgba(244, 236, 214, 0.25); border-radius: 4px;
       }
       .review-replay-btn:hover { border-color: var(--sakura); }
       .review-replay-btn[hidden] { display: none; }
-      /* As wide for the ghost as for you, so the scrub keeps its length when F is pressed. */
-      .review-replay-follow { min-width: 11em; }
-      .review-replay-view { min-width: 11.5em; }
+      /* As wide for the ghost as for you, so the bar keeps its shape when F is pressed. */
+      .review-replay-follow { min-width: 9.5em; }
+      .review-replay-rate { min-width: 3.5em; }
+      .review-replay-view { min-width: 7.5em; }
       /* The orbit's: over the room, under the bar, while the orbit is on. */
       .review-replay-surface {
         position: fixed; inset: 0; z-index: 2147482999; touch-action: none; cursor: grab;
@@ -7166,8 +7175,7 @@
       }
       .review-replay-pane[hidden] { display: none; }
       @media (max-width: 520px) {
-        .review-replay-row { flex-wrap: wrap; }
-        .review-replay-scrub { flex-basis: 100%; order: -1; }
+        .review-replay-lanes { height: 64px; }
       }
       @media (max-width: 520px) {
         .review-card { padding: 14px 12px; }

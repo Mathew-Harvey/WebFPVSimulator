@@ -207,6 +207,8 @@ console.log('the book');
   check('the first lap is the best', book.keep('k', lapOf(9000)).best === true);
   check('a slower lap is the previous and not the best', book.keep('k', lapOf(9500)).best === false && book.best('k').durationMs === 9000 && book.previous('k').durationMs === 9500);
   check('a faster lap takes the best', book.keep('k', lapOf(8000)).best === true && book.best('k').durationMs === 8000);
+  check('and the best it replaced is kept, the ghost that lap chased', book.replaced('k').durationMs === 9000);
+  check('a slower lap after leaves it', book.keep('k', lapOf(8500)).best === false && book.replaced('k').durationMs === 9000);
   check('another course has nothing', book.best('other') === null && book.previous('other') === null);
 }
 

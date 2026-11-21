@@ -55,6 +55,7 @@ import { floorQuads } from '../yardtrack/yardtrack.js';
 import { floorMesh } from '../yardtrack/floor.js';
 import { houseDocument } from './yard.js';
 import { makeNick } from './nickdraw.js';
+import { addYardCat } from '../yardtrack/catdraw.js';
 import { placeStickers, placeHallPicture, stickerMesh, STICKER_URL, STICKER_CROP, STICKER_WORD } from './stickers.js';
 import { placeSupporters, seesRoom } from './supporters.js';
 import { stfKey } from '../built/egg.js';
@@ -400,6 +401,10 @@ export async function buildMap(shell, onProgress, options) {
     },
   );
   map.scene.add(nick.group);
+  /* The yard's black cat (../yardtrack/cat.js), which hunts whatever is
+   * flown round the yard track and never touches it: one mesh, in the scene
+   * before the programs are warmed so its own is linked beside the rest. */
+  const cat = addYardCat(map, shell, L.parts);
   /* Nick's NB sticker round the house (./stickers.js): one mesh, shown
    * when its texture has come, and each one a sticker the shell looks for
    * and calls out every time it is framed, under the house's key. The
@@ -466,11 +471,15 @@ export async function buildMap(shell, onProgress, options) {
   map.updateAnim = (step) => {
     anim(step);
     nick.update(step);
+    if (cat) {
+      cat.update(step);
+    }
     showSigns();
   };
+  map.yardCat = cat;
   /* Drawn near first: see nearFirstSort in src/main.js. */
   map.nearFirst = true;
   const stats = map.stats;
-  map.stats = () => ({ ...stats(), nick: nick.stats() });
+  map.stats = () => ({ ...stats(), nick: nick.stats(), ...(cat ? { cat: cat.stats() } : {}) });
   return map;
 }

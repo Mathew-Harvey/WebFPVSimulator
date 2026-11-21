@@ -17124,6 +17124,11 @@ export async function boot({ loading, bootStart, mapId }) {
    * and its own check: every goat's plan point and mode, and the herd
    * itself, so a capture can put a goat where it needs one. Harness only. */
   window.__goats = () => (view && view.goatGame ? { goats: view.goatGame.goats(), herd: view.goatGame.herd } : null);
+  /* The yard's cat (src/maps/yardtrack/catdraw.js) on the three maps that
+   * have one, for scripts/shots.js and its own check: the mind, the body
+   * and the mesh, so a capture can put the cat where it needs it and ask
+   * what it is doing. Harness only. */
+  window.__yardCat = () => (view && view.yardCat ? view.yardCat : null);
   /* The declared departure from MultiGP's published obstacle dimensions, so
    * check 15 can assert the threshold file and the course agree about how big
    * a gate is rather than each believing its own copy. Harness only. */

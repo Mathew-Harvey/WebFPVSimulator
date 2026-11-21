@@ -53,6 +53,7 @@ import {
 import { placeStickers, paintSticker, STICKER_WORD, GOAT_STICKER } from './stickers.js';
 import { stickerMesh } from '../stickermesh.js';
 import { makeGoats, STICKER_GOAT } from './goats.js';
+import { addYardCat } from '../yardtrack/catdraw.js';
 import { partnerSignReady } from '../../art/partnermark.js';
 import { paintMaterial } from '../../art/stf.js';
 import { stfKey } from '../built/egg.js';
@@ -286,6 +287,10 @@ export async function buildMap(shell, onProgress, options) {
     },
   );
   map.scene.add(goats.group);
+  /* The yard's black cat (../yardtrack/cat.js), which hunts whatever is
+   * flown round the yard track and never touches it: one mesh, in the scene
+   * before the programs are warmed so its own is linked beside the rest. */
+  const cat = addYardCat(map, shell, L.parts);
   await warmPrograms(shell.renderer, map.scene, shell.camera, map.post.rtScene);
   const anim = map.updateAnim;
   const flank = new THREE.Vector3();
@@ -293,6 +298,9 @@ export async function buildMap(shell, onProgress, options) {
   map.updateAnim = (step) => {
     anim(step);
     goats.update(step);
+    if (cat) {
+      cat.update(step);
+    }
     /* The sticker on the goat's flank that faces the camera, 0.17 m out from
      * its middle, and gone while the goat is. */
     const g = goats.pose(STICKER_GOAT);
@@ -324,6 +332,7 @@ export async function buildMap(shell, onProgress, options) {
     ridePos.needsUpdate = true;
   };
   const stats = map.stats;
-  map.stats = () => ({ ...stats(), goats: goats.stats() });
+  map.yardCat = cat;
+  map.stats = () => ({ ...stats(), goats: goats.stats(), ...(cat ? { cat: cat.stats() } : {}) });
   return map;
 }

@@ -140,6 +140,12 @@ function headingSinCos(a, out) {
  * piece has lost (`meshSides`, in its own frame) are left out the same way.
  * `r` is the pipe's radius in the course's metres, which the layout is
  * worked in, and `rw` in the world's, which the parts are.
+ *
+ * Returns the holes the pipe leaves, in the same frame and the course's
+ * metres: { y, hw, hh }, a hole's middle height and its half sizes, one for
+ * each opening that kept an upright either side of it. They are what the
+ * yard's cat is kept out of (./cat.js), so they come from the pipe that is
+ * built and not from where a lap is scored.
  */
 function gatePipes(P, m, s, put, r, rw) {
   const d = s.dims;
@@ -201,6 +207,13 @@ function gatePipes(P, m, s, put, r, rw) {
       P.cap(m, put(-len / 2, y, 0), put(len / 2, y, 0), rw, { kind: 'gate', seg: 8, name: 'yard gate' });
     }
   });
+  const holes = [];
+  for (let k = 0; k < stack; k += 1) {
+    if (stretchBuilt(-1, k) && stretchBuilt(1, k)) {
+      holes.push({ y: sill(k) + d.clearH / 2, hw: d.clearW / 2, hh: d.clearH / 2 });
+    }
+  }
+  return holes;
 }
 
 /*
@@ -221,6 +234,9 @@ function gatePipes(P, m, s, put, r, rw) {
  *            top the height over which it is too
  *   ask      { x0, x1, z0, z1 }: the landing zone, world rectangle
  *   logos    { x, z, yaw, w, d } the two ground logo pieces' rectangles
+ *   openings { id, x, y, z, ux, uz, hw, hh }: every hole with pipe either
+ *            side of it, in the world: its middle, the unit way across it
+ *            over the ground, and its half width and half height
  */
 export function yardTrack(spot) {
   const F = framer(spot);
@@ -241,6 +257,7 @@ export function yardTrack(spot) {
     }
   }
   const startEl = course.stations.find((st) => !st.virtual).elementId;
+  const openings = [];
   for (const s of course.structures) {
     if ((s.type === 'gate' || s.type === 'doubleStack') && !s.unbuilt) {
       const yaw = (firstYaw.has(s.id) ? firstYaw.get(s.id) : s.yaw) + F.turn;
@@ -249,7 +266,10 @@ export function yardTrack(spot) {
       const base = F.y(s.baseY);
       const k = F.k;
       const put = (lx, ly, lz) => [cx + k * lx * sc.c + k * lz * sc.s, base + k * ly, cz - k * lx * sc.s + k * lz * sc.c];
-      gatePipes(P, s.id === startEl ? spot.start : spot.pipe, s, put, r / k, r);
+      for (const h of gatePipes(P, s.id === startEl ? spot.start : spot.pipe, s, put, r / k, r)) {
+        const [x, y, z] = put(0, h.y, 0);
+        openings.push({ id: s.id, x, y, z, ux: sc.c, uz: -sc.s, hw: k * h.hw, hh: k * h.hh });
+      }
     } else if (s.type === 'pole') {
       const [x, z] = F.at(s.x, s.z);
       P.cap(spot.pipe, [x, F.y(s.baseY), z], [x, F.y(s.baseY + s.dims.height), z], F.k * s.dims.poleRadius, { kind: 'pole', seg: 8, name: 'yard pole' });
@@ -365,6 +385,7 @@ export function yardTrack(spot) {
     y: spot.y ?? 0,
     ask: askZone(x0, x1, z0, z1, sx, sz, logos, pad),
     logos,
+    openings,
     /* The racing line the room's guide is fitted through, in the yard, for
      * the check to fly, and the box everything above stands in. */
     line,

@@ -8,7 +8,9 @@
  *   one mesh     body, face, whiskers, claws, ground shadow and the comic
  *                marks over its head are one set of triangles in one
  *                material, so wherever the cat is in view the frame gains
- *                one draw call, and where it is not, none
+ *                one draw call, and where it is not, none (a map's first
+ *                frame aside, which draws it on purpose under the loading
+ *                screen: makeCat, THE FIRST PICTURE)
  *   no download  the coat is arithmetic, the face is painted by the
  *                graphics card from where a corner is on the head, and the
  *                marks are a few flat shapes: zero bytes beyond this code
@@ -426,6 +428,9 @@ export function makeCatBody({
  * promises 256; an old WebGL 1 card may have 128, and a program that asks
  * for more does not link. */
 const NEED_UNIFORMS = BONES * 3 + 64;
+/* What three calls after drawing the cat once it has been drawn before:
+ * nothing (./makeCat, THE FIRST PICTURE). */
+const drawnAlready = () => {};
 /* World metres to a cat's: how near the camera is before the cat is posed
  * whether or not it is in the picture, for a turn faster than the
  * camera's matrix. */
@@ -486,6 +491,23 @@ export function makeCat({
     scale: S, ground, lite, sun, rig: life.rig, controls: life.controls, face: life.face, marks: life.marks,
   });
   const mesh = body.mesh;
+  /* THE FIRST PICTURE. three sends a mesh's corners to the graphics card
+   * the first time it draws it, and a driver may finish a program the first
+   * time it is used. The cat is behind the pilot as often as not when a map
+   * comes up, so left to the frustum its first draw was whenever the pilot
+   * first looked its way: 157 KB of corners handed over in the middle of a
+   * flight at Nick's, counted in the page (PROGRESS.md's entry). A map's
+   * first frame is drawn under the loading screen, so the cat is in that
+   * one wherever the camera looks, and from the moment it has been drawn
+   * with its own material it is the frustum's to leave out. One draw call
+   * in a frame nobody sees, against an upload in one somebody does. */
+  mesh.frustumCulled = false;
+  mesh.onAfterRender = (renderer, scene, cam, geometry, material) => {
+    if (material === mesh.material) {
+      mesh.frustumCulled = true;
+      mesh.onAfterRender = drawnAlready;
+    }
+  };
   const c = life.controls;
   const eye = { x: 0, y: 0, z: 0, fx: 0, fy: 0, fz: -1 };
   const frustum = new THREE.Frustum();

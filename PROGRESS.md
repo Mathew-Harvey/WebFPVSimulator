@@ -76691,3 +76691,10 @@ Wrong: nothing attempted and undone.
 - Latency and bandwidth: no change to the flight loop. Songs are fetched only when about to be heard (preload none, one shared media element, no decode into memory); music off costs zero bytes. The only change to what is served is six new static files.
 - Checks: `node scripts/music-selftest.js` all passed; `node edge/selftest.js` passed; encode gates passed. Not run: `npm run verify` (no physics, plant, ABI or build change), `shots.js`. Not listened to.
 - The owner, 2026-11-20 12:09Z, on draft PR 282: "push to main on both web and steam ensure steam is ready to go". Main had not moved from 3e8e7a6, so main fast forwards to this branch. No verification scale named; nothing beyond the checks above was run. Not listened to.
+
+## 2026-11-21 | track builder | Isometric view in the GIF export
+
+- Ask: the owner, "in the track export gif feature add 2 options - isometric view or as the camera is now view".
+- Done: the export dialog's View picker (from PR 252) gains "Isometric": the plan's way round seen from one corner at the classic isometric drop (`view: 'iso'` in stage.js, ISO_AZIMUTH, ISO_ELEVATION). The existing views (Like the plan, still the default, Behind the start, Three quarter) are unchanged, so "as the camera is now" is still there. Same perspective lens as every view, narrow, so it is isometric in angle and not an orthographic projection. `scripts/trackgif.js --view iso` too.
+- Latency: no change to the flight loop or input path; builder export only.
+- Checks: `node --check` on both files; `npm run gif:selftest` 81 passed; a 4 frame render with `trackgif.js --view iso` and `--view plan` on a stored track, iso looked at. Not run: `npm run verify`, `shots.js`.

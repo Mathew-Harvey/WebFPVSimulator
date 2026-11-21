@@ -672,6 +672,7 @@ const ANIMATION_SETTINGS = [
 const ANIMATION_VIEWS = [
   { id: 'plan', label: 'Like the plan', note: 'From the bottom edge of the plan, looking up it, so the track is the way round you built it.' },
   { id: 'start', label: 'Behind the start', note: 'From behind the start, looking down the first leg, the way the pilots on the line see it.' },
+  { id: 'iso', label: 'Isometric', note: 'From one corner of the plan at the classic isometric angle, so the whole track lies open and the way round is the one you built.' },
   { id: 'auto', label: 'Three quarter', note: 'From the side of the track\'s longest direction, which fits the most track in the picture.' },
 ];
 

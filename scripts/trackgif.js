@@ -73,7 +73,8 @@ function usage() {
   console.log('                     vertical field of view in degrees, instead of framing');
   console.log('                     the track. For laying an export over a reference picture.');
   console.log('  --view <v>         where the camera stands when --camera is not given: plan (from');
-  console.log('                     the bottom edge of the plan), start (behind the start) or');
+  console.log('                     the bottom edge of the plan), iso (isometric, from a corner),');
+  console.log('                     start (behind the start) or');
   console.log('                     auto (three quarter, the default here). The builder\'s dialog');
   console.log('                     defaults to plan.');
   console.log('  --field            on the race field rather than the black stage.');

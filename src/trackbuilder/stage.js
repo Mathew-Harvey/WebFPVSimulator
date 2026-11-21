@@ -155,6 +155,10 @@ const ROOM_ELEVATION = 28 * (Math.PI / 180);
  * have to stand apart on it as they do on the page; behind the start is lower, a pilot's eye up a step. */
 const PLAN_ELEVATION = 55 * (Math.PI / 180);
 const START_ELEVATION = 30 * (Math.PI / 180);
+/* The isometric view: the plan's way round turned an eighth, and the classic isometric drop, atan(1/sqrt 2). The lens
+ * is still the one perspective lens every view uses, narrow enough that parallel lines stay near parallel. */
+const ISO_AZIMUTH = -Math.PI / 4;
+const ISO_ELEVATION = Math.atan(1 / Math.SQRT2);
 const ROOM_WALL_SHRINK = 1.2;
 const ROOM_FIT_MARGIN = 1.1;
 const ROOM_WALL_SHOWN = 2.7;
@@ -1145,7 +1149,7 @@ export function buildStage(THREE, doc, path, {
    * where they drew the course from. 'plan' stands at the bottom edge of the builder's plan looking up it, higher,
    * so the GIF has the track the way round the author built it: what is on the left of the plan is on the left of
    * the picture. 'start' stands behind the start, looking down the first leg, the way the pilots on the line see
-   * it. The board's cards and the bundle ask for nothing and get 'auto', so no picture already made changes.
+   * it. 'iso' is the isometric view: the plan's way round seen from one corner at the classic isometric angle. The board's cards and the bundle ask for nothing and get 'auto', so no picture already made changes.
    */
   view = 'auto',
 } = {}) {
@@ -1737,6 +1741,10 @@ export function buildStage(THREE, doc, path, {
     /* The plan has the document's y up the screen, so its bottom edge is towards minus y: azimuth minus a quarter. */
     azimuth = -Math.PI / 2;
     elevation = PLAN_ELEVATION;
+  } else if (view === 'iso') {
+    /* From a corner of the plan, down at the classic isometric angle, so the track is the way round it was built. */
+    azimuth = ISO_AZIMUTH;
+    elevation = ISO_ELEVATION;
   } else if (view === 'start' && path.knots.length) {
     /* Facing down the first leg: from the start pads to the first pass, or along the first pass when there are none. */
     const first = path.knots[0];

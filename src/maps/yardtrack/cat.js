@@ -97,11 +97,9 @@ export const KEEP = 0.15;
 /* The cat's own sizes, in its metres, measured off the rig: how high each
  * posture reaches, and how far ahead of its spot its nose is. */
 const FLAT_TOP = 0.2;
-const REAR_TOP = 0.56;
 const AIR_TOP = 0.52;
 const UP_TOP = 0.6;
 const NOSE = 0.35;
-const HALF = 0.12;
 /* How fast it goes, its metres a second: the creep of a stalk, a walk, the
  * low trot between two stops, and flat out. */
 const CREEP = 0.3;
@@ -122,6 +120,9 @@ const AM = { leap: 0, swat: 1, under: 2 };
 const AIR_FRONT = 0.38;
 const AIR_BACK = 0.6;
 const AIR_SIDE = 0.16;
+/* How far over its keep a craft has to be before a cat on its feet can be
+ * under it: lower than that it is in the way, and is walked round. */
+const UNDERPASS = 0.66;
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -183,7 +184,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, sp: 0, hs: 0,
     dx: 0, dz: 0, dh: 9e9,
     yard: false, down: false, landT: 0, hoverT: 0, awayT: 0, li: -1, lineT: 0, lineLook: 0,
-    jumped: false, tookOff: false, eyeOn: false, eye: false, efx: 0, efz: 0,
+    jumped: false, tookOff: false, eyeOn: false, eye: false, efx: 0, efz: 0, closing: 0,
   };
   /* Where the cat stands when nothing has put it anywhere: a place to rest
    * near the middle of its lawn. */
@@ -218,7 +219,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
   const moves = {
     stalk: 0, freeze: 0, wiggle: 0, bigEyes: 0, pounce: 0, leap: 0, swat: 0, bat: 0, chatter: 0, startle: 0, duck: 0,
     backoff: 0, sniff: 0, tap: 0, groom: 0, slowBlink: 0, sleep: 0, stretch: 0, yawn: 0, chase: 0, ambush: 0, tilt: 0,
-    flee: 0,
+    flee: 0, lieInWait: 0, hiss: 0,
   };
   let pushes = 0;
   let pushedNow = false;
@@ -239,6 +240,9 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
   let perch = false;
   let bored = false;
   let batted = false;
+  let letCome = false;
+  let hissed = false;
+  let hissT = 0;
   let washDry = false;
   let asleep = false;
 
@@ -247,7 +251,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
    * when the plan was made, or the point of the line watched (cx, cz, and
    * for the line its index and its height). */
   const plan = {
-    kind: PL.none, sub: 0, x: 0, z: 0, lx: 0, lz: 0, at: -1, cx: 0, cz: 0, h: 0, made: 0, hurry: false,
+    kind: PL.none, sub: 0, x: 0, z: 0, lx: 0, lz: 0, at: -1, cx: 0, cz: 0, h: 0, made: 0, hurry: false, wait: false,
   };
   const lineStep = L.n > 0 ? L.length / L.n : 1;
   /* A leap: from, to, how high, how long, how far through. */
@@ -464,7 +468,9 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
       cr.tookOff = true;
     }
     cr.landT = cr.down ? cr.landT + dt : 0;
-    cr.hoverT = !cr.down && cr.sp < 0.45 * S ? cr.hoverT + dt : 0;
+    /* Hanging about: still, or drifting no faster than a cat trots. */
+    cr.hoverT = !cr.down && cr.sp < 0.8 * S ? cr.hoverT + dt : 0;
+    cr.closing = cr.dh > 1e-3 ? -(cr.vx * cr.dx + cr.vz * cr.dz) / cr.dh : 0;
     if (!cr.down && landVisit > 0 && cr.y > 0.3 * S) {
       landVisit = 0;
       sniffed = false;
@@ -539,6 +545,64 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     return false;
   }
 
+  /*
+   * ROUND THE CRAFT AND NOT THROUGH IT. A craft low enough to be in the way
+   * and slow enough to be walked round is walked round: if the way the cat
+   * is headed passes inside the craft's air and the cat's own width, it is
+   * turned to pass along the edge of that, on the side it was already
+   * going. Where it is going may itself be near the craft (a place to bat
+   * from): then it is left alone, for that was planned by its own rule.
+   */
+  let roundSide = 0;
+  let roundT = 0;
+  function round(to, dt) {
+    roundT -= dt;
+    if (!cr.on || cr.sp > 1.6 * S || cr.y > cr.keep + UNDERPASS * S) {
+      return to;
+    }
+    const ring = cr.keep + 0.36 * S;
+    const rx = cr.x + cr.vx * 0.2 - c.x;
+    const rz = cr.z + cr.vz * 0.2 - c.z;
+    const rd = Math.hypot(rx, rz);
+    if (Math.hypot(go.x - cr.x, go.z - cr.z) < ring + 0.02 * S) {
+      /* Where it was going is in the craft's lap, which nothing plans: as
+       * far as the edge of it and no further. */
+      if (rd < ring + 0.1 * S) {
+        go.on = false;
+        go.failed = true;
+      }
+      return to;
+    }
+    if (rd > ring + 1.6 * S || rd < 1e-3) {
+      return to;
+    }
+    const bearing = Math.atan2(-rz, rx);
+    const da = wrapAngle(to - bearing);
+    /* The half angle the ring takes up, seen from here; inside it, out
+     * along it and a little away. */
+    const half = rd > ring ? Math.asin(ring / rd) : Math.PI / 2 + 0.7 * (1 - rd / ring);
+    if (Math.abs(da) >= half) {
+      return to;
+    }
+    /* And only if the way there goes into the ring before it gets there. */
+    if (rd > ring) {
+      const along = rd * Math.cos(da);
+      const perp = rd * Math.sin(da);
+      if (Math.hypot(go.wx - c.x, go.wz - c.z) < along - Math.sqrt(Math.max(0, ring * ring - perp * perp))) {
+        return to;
+      }
+    }
+    if (roundT <= 0 || roundSide === 0) {
+      roundSide = da >= 0 ? 1 : -1;
+      /* Not the side that is a wall. */
+      const a = bearing + roundSide * half;
+      if (!lawn.free(c.x + Math.cos(a) * 0.5 * S, c.z - Math.sin(a) * 0.5 * S)) {
+        roundSide = -roundSide;
+      }
+    }
+    roundT = 0.6;
+    return wrapAngle(bearing + roundSide * half);
+  }
   /* GOING. Toward where it was told, round what is in the way, turning no
    * faster than a cat can at that speed and stopping where it meant to. */
   function travel(dt) {
@@ -568,7 +632,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
           }
         }
         if (go.on && go.has) {
-          to = yawTo(go.wx, go.wz);
+          to = round(yawTo(go.wx, go.wz), dt);
           const off = Math.abs(wrapAngle(to - c.yaw));
           want = go.speed * S;
           if (off > 1.3) {
@@ -869,6 +933,23 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     }
     return enter(DO.wander);
   }
+  /* Is a place in the lap of a craft that is low enough to be in the way. */
+  const lap = (x, z) => cr.on && cr.y < cr.keep + UNDERPASS * S && Math.hypot(x - cr.x, z - cr.z) < cr.keep + 0.7 * S;
+  /* The nearest place it may stop that is not in the craft's lap: a cell
+   * of the lawn, or -1. */
+  function clearSpot(room) {
+    let k = lawn.nearestFree(c.x, c.z, room);
+    if (k >= 0 && lap(lawn.cellX(k), lawn.cellZ(k))) {
+      /* From further out from it, then. */
+      const d = Math.max(1e-3, cr.dh);
+      const out = cr.keep + 1.3 * S;
+      k = lawn.nearestFree(cr.x - (cr.dx / d) * out, cr.z - (cr.dz / d) * out, room);
+      if (k >= 0 && lap(lawn.cellX(k), lawn.cellZ(k))) {
+        k = -1;
+      }
+    }
+    return k;
+  }
   /* Sat watching it, between two tries: but never sat where it is flown. */
   function sitOut(seconds) {
     dur = seconds;
@@ -892,7 +973,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
 
   /* A place on a ring round the craft's spot on the lawn to work from: the
    * nearest that has room, and by choice one the pilot can see. */
-  function ringSpot(radius, room) {
+  function ringSpot(radius, room, land) {
     let best = -1;
     let bs = 1e18;
     const a0 = Math.atan2(c.z - cr.z, c.x - cr.x);
@@ -902,6 +983,14 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
       const z = cr.z + Math.sin(a) * radius;
       if (!lawn.free(x, z) || lawn.roomAt(x, z) < room) {
         continue;
+      }
+      if (land > 0) {
+        /* A run up is no use if the pounce from it has nowhere to land. */
+        const lx = cr.x + Math.cos(a) * land;
+        const lz = cr.z + Math.sin(a) * land;
+        if (!lawn.free(lx, lz) || lawn.roomAt(lx, lz) < 0.1 * S || !lawn.sight(x, z, lx, lz)) {
+          continue;
+        }
       }
       let s = Math.hypot(x - c.x, z - c.z);
       if (!lawn.sight(c.x, c.z, x, z)) {
@@ -937,7 +1026,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     if (kind === PL.swat) {
       /* Under a craft that is over its head it can stand close; one at the
        * height of its head is kept at the length of its nose. */
-      return cr.y < cr.keep + 0.5 * S ? cr.keep + (NOSE + 0.07) * S : cr.keep + 0.25 * S;
+      return cr.y < cr.keep + UNDERPASS * S ? cr.keep + (NOSE + 0.07) * S : cr.keep + 0.25 * S;
     }
     if (kind === PL.leap) {
       return cr.keep + (AIR_FRONT + 0.14) * S;
@@ -951,10 +1040,9 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
   function planFor(kind) {
     plan.kind = kind;
     plan.hurry = false;
-    if (!ringSpot(ringOf(kind), kind === PL.leap ? 0.2 * S : 0.3 * S)) {
-      return false;
-    }
-    return true;
+    plan.wait = false;
+    const land = kind === PL.low || kind === PL.ground ? cr.keep + (NOSE + 0.1) * S : 0;
+    return ringSpot(ringOf(kind), kind === PL.leap ? 0.2 * S : 0.3 * S, land);
   }
   /*
    * A place to lie in wait for a craft flying the line, far enough on that
@@ -996,6 +1084,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     const wx = lawn.waitX[best];
     const wz = lawn.waitZ[best];
     plan.kind = PL.ambush;
+    plan.wait = false;
     plan.at = at;
     plan.cx = L.x[at];
     plan.cz = L.z[at];
@@ -1121,12 +1210,37 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
       }
       return sitOut(between(3, 6));
     }
+    if (cr.lineT > 0.4 && cr.sp >= 0.45 * S && pickWait()) {
+      return enter(DO.stalk);
+    }
     if (cr.hoverT > 0.35) {
       /* Hanging in the air: by how high. Low is pounced at or batted from
        * all fours, higher is stood up to and batted, higher still is leapt
        * at, and out of reach is only looked at. */
       if (cr.y > 2.0 * S) {
         return enter(DO.watch);
+      }
+      /* Coming this way, low and slow, and still a pounce or two off: the
+       * cat lets it come. Down where it stands, the wiggle building as it
+       * nears, and out at it when it is in reach. Once a visit: after that
+       * it goes and gets it. */
+      if (!letCome && cr.closing > 0.15 * S && cr.y < 0.95 * S && cr.dh > cr.keep + 1.2 * S && cr.dh < cr.keep + 4.6 * S
+        && lawn.stay(c.x, c.z, 0.2 * S)) {
+        letCome = true;
+        plan.kind = PL.low;
+        plan.hurry = false;
+        plan.wait = true;
+        plan.x = c.x;
+        plan.z = c.z;
+        plan.cx = cr.x;
+        plan.cz = cr.z;
+        plan.made = now;
+        lastKind = PL.none;
+        sameRun = 0;
+        swatRun = 0;
+        wiggled = false;
+        moves.lieInWait += 1;
+        return enter(DO.crouch);
       }
       let kind = PL.leap;
       if (cr.y < 0.42 * S) {
@@ -1149,10 +1263,10 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
         swatRun = 0;
         return sitOut(between(2.2, 4.2));
       }
-      return planFor(kind) ? enter(DO.stalk) : enter(DO.watch);
-    }
-    if (cr.lineT > 0.4 && pickWait()) {
-      return enter(DO.stalk);
+      if (planFor(kind) || (kind === PL.low && planFor(PL.swat))) {
+        return enter(DO.stalk);
+      }
+      return enter(DO.watch);
     }
     /* Going somewhere, and not round the line: run down if it is low and
      * slow and near enough to be worth it, else watched. */
@@ -1212,6 +1326,13 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
       return 0;
     }
     thr.late = bt;
+    if (cr.hs > 0.5 * S) {
+      /* Going somewhere: what matters is which side of its way the cat is
+       * on, not how far along it. */
+      const al = (bx * cr.vx + bz * cr.vz) / (cr.hs * cr.hs);
+      bx -= cr.vx * al;
+      bz -= cr.vz * al;
+    }
     const oh = Math.hypot(bx, bz);
     if (oh > 0.02 * S) {
       thr.nx = bx / oh;
@@ -1226,7 +1347,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     }
     const set = st === DO.crouch || st === DO.pounce || st === DO.leap || st === DO.swat || st === DO.sniff;
     if (cr.sp >= 1.0 * S) {
-      if (bt > 0.03 && best < (set ? -0.03 * S : 0.12 * S)) {
+      if (bt > 0.03 && best < (set ? 0 : 0.12 * S)) {
         return by >= cr.keep + (FLAT_TOP + 0.07) * S ? 1 : 2;
       }
       return 0;
@@ -1254,10 +1375,27 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
         continue;
       }
       let near = 3 * S;
-      for (let i = 0; i <= 5; i += 1) {
-        predict(i * 0.14);
+      if (cr.hs > 0.5 * S && !(cr.li >= 0 && cr.lineT > 0.25)) {
+        /* Going straight: how far to the side of its way, all the way on. */
+        const rx = x - cr.x;
+        const rz = z - cr.z;
+        const al = (rx * cr.vx + rz * cr.vz) / cr.hs;
+        near = Math.min(near, al > -0.3 * S ? Math.abs(rx * cr.vz - rz * cr.vx) / cr.hs : Math.hypot(rx, rz));
+      } else {
+        for (let i = 0; i <= 8; i += 1) {
+          predict(i * 0.14);
+          if (pr.y < 1.6 * S) {
+            near = Math.min(near, Math.hypot(pr.x - x, pr.z - z));
+          }
+        }
+      }
+      /* And how near it comes to the cat on the way there: a jump across
+       * its bows is no jump out of its way. */
+      const T = k & 1 ? 0.404 : 0.326;
+      for (let i = 1; i <= 4; i += 1) {
+        predict((T * i) / 4);
         if (pr.y < 1.6 * S) {
-          near = Math.min(near, Math.hypot(pr.x - x, pr.z - z));
+          near = Math.min(near, Math.hypot(pr.x - lerp(c.x, x, i / 4), pr.z - lerp(c.z, z, i / 4)) + 0.2 * S);
         }
       }
       /* How far the craft will pass is what counts, up to plenty; then the
@@ -1295,7 +1433,25 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
   }
   /* True if it dropped what it was doing for the craft. */
   function reflex() {
-    if (hop.on || st === DO.startle || st === DO.escape) {
+    if (hop.on || st === DO.escape) {
+      return false;
+    }
+    if (st === DO.startle) {
+      /* Frightened already, and it is still coming: down, or off again. */
+      if (ph === 0 || now - reflexAt < 0.3) {
+        return false;
+      }
+      pushedNow = false;
+      const again = threat();
+      if (again === 1) {
+        moves.duck += 1;
+        enter(DO.duck);
+        return true;
+      }
+      if (again === 2) {
+        startle();
+        return true;
+      }
       return false;
     }
     if (pushedNow) {
@@ -1507,7 +1663,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
         const r = Math.floor(rnd() * lawn.rests);
         const d = Math.hypot(lawn.restX[r] - c.x, lawn.restZ[r] - c.z);
         const s = Math.abs(d - 1.4 * S);
-        if (s < bs && d > 0.5 * S) {
+        if (s < bs && d > 0.5 * S && !lap(lawn.restX[r], lawn.restZ[r])) {
           bs = s;
           best = r;
         }
@@ -1557,7 +1713,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     /* Off the lane first: nobody watches from where it is flown. */
     if (!lawn.stay(c.x, c.z, 0.2 * S) && !go.failed) {
       if (!go.on && !go.arrived) {
-        const k = lawn.nearestFree(c.x, c.z, 0.3 * S);
+        const k = clearSpot(0.3 * S);
         if (k >= 0) {
           goTo(lawn.cellX(k), lawn.cellZ(k), SLINK);
         }
@@ -1771,12 +1927,25 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
       }
     } else {
       turnTo(yawTo(cr.x, cr.z));
-      build = smooth((stT - 0.2) / 0.6);
       const landed = cr.landT > 0.4;
-      if ((k === PL.ground) !== landed || cr.sp > 1.3 * S || cr.dh > cr.keep + 3.2 * S) {
+      /* How far off a pounce can start from and still come down by it. */
+      const reach = cr.keep + (NOSE + 0.1) * S + 1.5 * S;
+      let ready = stT > crouchFor;
+      if (plan.wait) {
+        /* Letting it come: set as it nears, and off when it is in reach. If
+         * it stops coming, or turns away, the cat goes to it instead. */
+        build = smooth((reach + 1.6 * S - cr.dh) / (1.4 * S)) * smooth(stT / 0.5);
+        ready = cr.dh < reach && stT > 0.7;
+        if (!ready && (stT > 7 || (cr.closing < 0.05 * S && stT > 1.2))) {
+          return hunt();
+        }
+      } else {
+        build = smooth((stT - 0.2) / 0.6);
+      }
+      if ((k === PL.ground) !== landed || cr.sp > 1.3 * S || cr.dh > cr.keep + (plan.wait ? 5.2 : 3.2) * S) {
         return hunt();
       }
-      if (stT > crouchFor && aimed(yawTo(cr.x, cr.z), 0.35)) {
+      if (ready && aimed(yawTo(cr.x, cr.z), 0.35)) {
         if (k === PL.leap) {
           /* Straight up in front of it, as high as it is: paws in the
            * pilot's face, and a cat's length short of touching. */
@@ -2129,7 +2298,20 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
         const d = Math.max(1e-3, cr.dh);
         const away = cr.dh < cr.keep + 1.4 * S ? 0.5 * S : 0.15 * S;
         const side = yawTo(cr.x, cr.z) + (wrapAngle(yawTo(cr.x, cr.z) - c.yaw) > 0 ? -1.2 : 1.2);
-        sidle(dt, -(cr.dx / d) * away, -(cr.dz / d) * away, side);
+        /* From the craft, or if it is going somewhere, from its way. */
+        let ux = -cr.dx / d;
+        let uz = -cr.dz / d;
+        if (cr.hs > 0.5 * S) {
+          const al = (ux * cr.vx + uz * cr.vz) / (cr.hs * cr.hs);
+          const lx = ux - cr.vx * al;
+          const lz = uz - cr.vz * al;
+          const ll = Math.hypot(lx, lz);
+          if (ll > 0.05) {
+            ux = lx / ll;
+            uz = lz / ll;
+          }
+        }
+        sidle(dt, ux * away, uz * away, side);
       }
       if (phT > 0.9) {
         phase(2);
@@ -2158,17 +2340,48 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     }
     return st;
   }
-  /* Flat to the ground while it goes over. */
-  function doDuck() {
+  /* Is the craft over the cat, or about to be, low enough that a cat on
+   * its feet would have its head in the craft's air. */
+  function overhead() {
+    if (!cr.on) {
+      return false;
+    }
+    const lim = cr.keep + 0.75 * S;
+    const m = cr.sp > 0.2 * S ? 6 : 0;
+    for (let k = 0; k <= m; k += 1) {
+      predict(k * 0.08);
+      if (pr.y < cr.keep + 0.8 * S && Math.hypot(pr.x - c.x, pr.z - c.z) < lim) {
+        return true;
+      }
+    }
+    return false;
+  }
+  /* Flat to the ground while it goes over, and not up again into it: the
+   * cat stays down for as long as the craft is over it or about to be. One
+   * that stops there and hangs over it is crawled out from under, belly to
+   * the grass. */
+  function doDuck(dt) {
     pose(POSTURE.flat, 0.045);
     ears = 2;
     unblinking = true;
     pupilT = 0.95;
-    c.vx = 0;
-    c.vz = 0;
     vel = 0;
     if (cr.on) {
       eyes(1);
+    }
+    let crawl = false;
+    if (overhead()) {
+      phT = 0;
+      crawl = cr.sp < 1.0 * S && stT > 0.9;
+    }
+    if (crawl) {
+      const d = cr.dh;
+      const ux = d > 0.05 * S ? -cr.dx / d : -Math.cos(c.yaw);
+      const uz = d > 0.05 * S ? -cr.dz / d : Math.sin(c.yaw);
+      sidle(dt, ux * 0.7 * S, uz * 0.7 * S, c.yaw);
+    } else {
+      c.vx = 0;
+      c.vz = 0;
     }
     /* phT is put back to nothing every frame the craft is still coming. */
     if (phT > 0.22) {
@@ -2214,6 +2427,20 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     }
     const sp = (cr.dh < room ? 1.3 : 0) * S;
     const moved = sidle(dt, ux * sp, uz * sp, yawTo(cr.x, cr.z));
+    /* Pressed for long enough, it says so: mouth wide, ears flat, once. */
+    if (stT > 0.5 && cr.dh < room && !hissed) {
+      hissed = true;
+      hissT = 0.7;
+      moves.hiss += 1;
+      mark(MARK.vein, 0.9);
+    }
+    if (hissT > 0) {
+      hissT -= dt;
+      c.jaw = 0.55 * Math.min(1, hissT / 0.12, (0.7 - hissT) / 0.08 + 0.2);
+      ears = 2;
+      squintT = 0.5;
+      fear = Math.max(fear, 0.6);
+    }
     if (cr.dh >= room && phT > 0.3) {
       dur = between(0.6, 1.2);
       return cr.yard ? enter(DO.watch) : idle();
@@ -2241,6 +2468,8 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     if (stT === 0) {
       moves.flee += 1;
       batted = false;
+      hissed = false;
+      hissT = 0;
       /* The best of a handful of places to rest: far from the craft, not
        * past it, and not the other end of the world. */
       let best = -1;
@@ -2249,9 +2478,10 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
         const r = Math.floor(rnd() * lawn.rests);
         const fromCraft = cr.on ? Math.hypot(lawn.restX[r] - cr.x, lawn.restZ[r] - cr.z) : 9 * S;
         const fromCat = Math.hypot(lawn.restX[r] - c.x, lawn.restZ[r] - c.z);
-        /* Not a place the way to which is through the craft. */
-        const through = cr.on && (lawn.restX[r] - c.x) * cr.dx + (lawn.restZ[r] - c.z) * cr.dz > 0.3 * fromCat * cr.dh ? 3 * S : 0;
-        const sc = Math.min(fromCraft, 6 * S) - 0.25 * fromCat - through;
+        /* Not a place the way to which is through the craft, or past it. */
+        const cos = cr.on && fromCat > 1e-3 && cr.dh > 1e-3
+          ? ((lawn.restX[r] - c.x) * cr.dx + (lawn.restZ[r] - c.z) * cr.dz) / (fromCat * cr.dh) : -1;
+        const sc = Math.min(fromCraft, 6 * S) - 0.25 * fromCat - Math.max(0, cos + 0.25) * 8 * S;
         if (sc > bs) {
           bs = sc;
           best = r;
@@ -2464,6 +2694,9 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     if (bored && (!cr.on || !cr.down)) {
       /* It moved. */
       bored = false;
+    }
+    if (letCome && (!cr.on || cr.dh > cr.keep + 6 * S || cr.sp > 1.6 * S)) {
+      letCome = false;
     }
     fear = Math.max(0, fear - dt * 0.55);
     weary = Math.max(0, weary - dt * 0.045);
@@ -2679,7 +2912,6 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
         doing: DOING[st], phase: ph, pushes, weary, fear, misses, moves: { ...moves }, done, x: c.x, z: c.z, yaw: c.yaw,
       };
     },
-    dbg: () => ({ go: { ...go }, vel, kerb, frozen, freezeGap, faceOn }),
     doing: () => st,
     pushes: () => pushes,
     air: () => hop.on,

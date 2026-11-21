@@ -1,7 +1,7 @@
 /*
  * yardtrack.js: a RaceGOW track standing in a house map's yard, timed. The
  * owner's ask of 2026-10-24: the board's RaceGOW6 track (./course.js, Track 3
- * then, Track 4 since 2026-11-07)
+ * then, Track 4 from 2026-11-07, Track 5 from 2026-11-21)
  * "functional (with timer callout and gates etc) placed in heads front yard,
  * in nicks back yard and in josh bardwells yard near the wood chopping shed
  * out the back ... with logos on the floor of sponsors, i should be able to
@@ -131,45 +131,76 @@ function headingSinCos(a, out) {
 }
 
 /*
- * One RaceGOW gate's pipe as parts, in its own frame (x across the hole, y
- * up, z along travel) handed through `put` into the world. The same
- * members scene.js's micro obstacle() builds and makes solid, at one level:
- * this track has no stacked gate, and one that does is refused rather than
- * drawn wrong. `r` is the pipe's radius in the course's metres, which the
- * layout is worked in, and `rw` in the world's, which the parts are.
+ * One RaceGOW gate's, or stack's, pipe as parts, in its own frame (x across
+ * the hole, y up, z along travel) handed through `put` into the world. The
+ * same members scene.js's micro obstacle() builds and makes solid: an upright
+ * either side in runs of the openings that keep their stretch, a foot under
+ * the lowest (none on a floating gate, whose uprights begin at its sill), and
+ * a member over every opening plus one under a raised lowest. The sides a
+ * piece has lost (`meshSides`, in its own frame) are left out the same way.
+ * `r` is the pipe's radius in the course's metres, which the layout is
+ * worked in, and `rw` in the world's, which the parts are.
  */
 function gatePipes(P, m, s, put, r, rw) {
   const d = s.dims;
-  if ((d.stack ?? 1) !== 1) {
-    throw new Error(`yardtrack: ${s.id} is a stack, and the yard builds single gates`);
+  const stack = d.stack ?? 1;
+  if (d.openings) {
+    throw new Error(`yardtrack: ${s.id} is a stack sized opening by opening, which the yard does not build`);
+  }
+  if (stack > 1 && !(d.levelPitch > 0)) {
+    throw new Error(`yardtrack: ${s.id} is a stack with no level pitch`);
   }
   const sides = s.meshSides || null;
-  const built = (k) => !sides || Boolean(sides[k]);
+  const postBuilt = (sx) => !sides || Boolean(sides[sx < 0 ? 'xNeg' : 'xPos']);
+  const stretchBuilt = (sx, k) => postBuilt(sx)
+    && (!sides?.stretches || Boolean(sides.stretches[k]?.[sx < 0 ? 'xNeg' : 'xPos'] ?? true));
+  const sill = (k) => d.sillH + k * (d.levelPitch ?? 0);
   const upX = d.clearW / 2 + r;
-  const top = d.sillH + d.clearH;
-  const upTop = top + 2 * r;
+  const upTop = sill(stack - 1) + d.clearH + 2 * r;
+  const floating = s.floating === true && d.sillH > 0;
+  const lo = (k) => (k === 0 ? (floating ? d.sillH - r : 0) : sill(k - 1) + d.clearH + r);
+  const hi = (k) => (k === stack - 1 ? upTop : sill(k) + d.clearH + r);
   for (const sx of [-1, 1]) {
-    if (!built(sx < 0 ? 'xNeg' : 'xPos')) {
+    if (!postBuilt(sx)) {
       continue;
     }
-    /* A floating gate hangs on its pole with no legs to the floor: its
-     * uprights frame the opening only, and it has no foot (isFloating in
-     * src/trackbuilder/elements.js; stage.js draws it the same way). */
-    const legFrom = s.floating ? d.sillH - r : 0;
-    P.cap(m, put(sx * upX, legFrom, 0), put(sx * upX, upTop, 0), rw, { kind: 'gate', seg: 8, name: 'yard gate' });
-    if (!s.floating) {
-      /* The stub foot lying flat, in line with travel: one pipe thick, four
-       * long, as in every photograph of one. */
-      P.cap(m, put(sx * upX, r * 0.8, -r * 2), put(sx * upX, r * 0.8, r * 2), rw, { kind: 'obstacle', seg: 6, name: 'yard gate foot' });
+    /* Runs of openings that keep their stretch, one pipe each. */
+    const runs = [];
+    for (let k = 0; k < stack; k += 1) {
+      if (!stretchBuilt(sx, k)) {
+        continue;
+      }
+      const run = runs[runs.length - 1];
+      if (run && run.to === k - 1) {
+        run.to = k;
+      } else {
+        runs.push({ from: k, to: k });
+      }
     }
+    for (const run of runs) {
+      P.cap(m, put(sx * upX, lo(run.from), 0), put(sx * upX, hi(run.to), 0), rw, { kind: 'gate', seg: 8, name: 'yard gate' });
+    }
+    if (!stretchBuilt(sx, 0) || floating) {
+      continue;
+    }
+    /* The stub foot lying flat, in line with travel: one pipe thick, four
+     * long, as in every photograph of one. */
+    P.cap(m, put(sx * upX, r * 0.8, -r * 2), put(sx * upX, r * 0.8, r * 2), rw, { kind: 'obstacle', seg: 6, name: 'yard gate foot' });
   }
   const len = d.clearW + 4 * r;
-  if (built('top')) {
-    P.cap(m, put(-len / 2, top + r, 0), put(len / 2, top + r, 0), rw, { kind: 'gate', seg: 8, name: 'yard gate' });
+  const members = [];
+  for (let k = 0; k < stack; k += 1) {
+    members.push(sill(k) + d.clearH + r);
   }
-  if (d.sillH > 0 && built('bottom')) {
-    P.cap(m, put(-len / 2, d.sillH - r, 0), put(len / 2, d.sillH - r, 0), rw, { kind: 'gate', seg: 8, name: 'yard gate' });
+  if (d.sillH > 0) {
+    members.push(d.sillH - r);
   }
+  members.forEach((y, i) => {
+    const built = !sides || (i === stack - 1 ? Boolean(sides.top) : (i === stack ? Boolean(sides.bottom) : true));
+    if (built) {
+      P.cap(m, put(-len / 2, y, 0), put(len / 2, y, 0), rw, { kind: 'gate', seg: 8, name: 'yard gate' });
+    }
+  });
 }
 
 /*
@@ -211,7 +242,7 @@ export function yardTrack(spot) {
   }
   const startEl = course.stations.find((st) => !st.virtual).elementId;
   for (const s of course.structures) {
-    if (s.type === 'gate' && !s.unbuilt) {
+    if ((s.type === 'gate' || s.type === 'doubleStack') && !s.unbuilt) {
       const yaw = (firstYaw.has(s.id) ? firstYaw.get(s.id) : s.yaw) + F.turn;
       headingSinCos(yaw, sc);
       const [cx, cz] = F.at(s.x, s.z);
@@ -384,7 +415,7 @@ export { leftTrack, inAskZone } from '../../game/yardrace.js';
 
 /*
  * THE TRACK'S OWN FLOOR LOGOS, the two its author published with it on the
- * board: Neo's UV Creations on the larger ground logo piece and RaceGOW6 on
+ * board: Average Jane & Joe's on one ground logo piece and RaceGOW6 on
  * the smaller one. The pictures are the board's own, saved as WebP
  * (assets/yardtrack/, NOTICE), fetched only by the three maps that stand
  * the track.
@@ -396,7 +427,7 @@ export { leftTrack, inAskZone } from '../../game/yardrace.js';
  */
 export const FLOOR_MARKS = [
   {
-    key: 'neos', url: new URL('../../../assets/yardtrack/neos.webp', import.meta.url).href, aspect: 402 / 180,
+    key: 'averagejane', url: new URL('../../../assets/yardtrack/averagejane.webp', import.meta.url).href, aspect: 304 / 180,
   },
   {
     key: 'racegow6', url: new URL('../../../assets/yardtrack/racegow6.webp', import.meta.url).href, aspect: 384 / 241,

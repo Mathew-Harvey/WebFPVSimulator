@@ -1,6 +1,6 @@
 /*
  * yardtrack-check.js: the yard track (src/maps/yardtrack/), RaceGOW6 Track
- * 4 in Heads' front yard, Nick Burns' back yard and out the back of Joshua
+ * 5 in Heads' front yard, Nick Burns' back yard and out the back of Joshua
  * Bardwell's, proved in plain Node to stand clear of each place and to time
  * a lap the way the shell times it (src/game/yardrace.js).
  *
@@ -11,7 +11,7 @@
  *                through the race: every station in order, three laps
  *   3. leave     flying out of reach resets the race; a disarmed race (a
  *                five inch at Bardwell's) scores nothing
- *   4. floor     Neo's UV Creations and RaceGOW6 inside the board's two ground
+ *   4. floor     Average Jane & Joe's and RaceGOW6 inside the board's two ground
  *                logo pieces, apart, flat on the grass, at their own shape
  *   5. zone      Bardwell's landing zone holds the track and not the
  *                map's own start
@@ -135,7 +135,7 @@ for (const M of MAPS) {
   }
   check('nothing of the place in the track\'s way', hits.size === 0, [...hits].slice(0, 6).join(', ') || `${probes.length} probes`);
   /* A floating gate hangs on its pole: no foot, and nothing of it down at the grass (the owner, 2026-11-07, seeing legs under Track 4's hung gates). */
-  const gatesBuilt = courseFromDocument(courseDocument()).structures.filter((q) => q.type === 'gate' && !q.unbuilt);
+  const gatesBuilt = courseFromDocument(courseDocument()).structures.filter((q) => (q.type === 'gate' || q.type === 'doubleStack') && !q.unbuilt);
   const standing = gatesBuilt.filter((q) => !q.floating).length;
   const feetDrawn = t.parts.filter((p) => p.name === 'yard gate foot').length;
   check('only gates that stand have feet', feetDrawn === standing * 2, `${feetDrawn} feet, ${standing} standing gates, ${gatesBuilt.length - standing} floating`);

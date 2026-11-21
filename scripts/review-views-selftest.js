@@ -25,7 +25,7 @@ import { F, TRACE_FIELDS, TraceLap } from '../src/review/trace.js';
 import { gateAcross, gateUp, travelAxis } from '../src/game/race.js';
 import {
   anchorIn, labelCandidates, lineOfGhost, lineOfTrace, localOf, openingCorners, pathOf, placeLabel,
-  scaleMetres, sectionGates, shrinkQuad, sideFrame, sideOf, stationOf, stationsOfRaceGates, throughPlane,
+  scaleMetres, sectionGates, shrinkQuad, sideBar, sideFrame, sideOf, stationOf, stationsOfRaceGates, throughPlane,
 } from '../src/review/views.js';
 
 let failures = 0;
@@ -157,6 +157,21 @@ console.log('a view draws the section\'s two gates and no other');
   check('from the side an upright gate seen along its travel is an upright bar', near(Math.max(...us) - Math.min(...us), 0, 1e-9) && near(Math.max(...vs) - Math.min(...vs), 1));
   const [flat] = sectionGates([stationOf({ x: 0, y: 2, z: -2, pitch: Math.PI / 2, clearW: 2, clearH: 1 })], [0], (p) => sideOf([p], along)[0]);
   check('and a dive gate a level bar at its height', flat.quad.every((q) => near(q[1], 2, 1e-9)));
+
+  /* From the side every gate is a bar (sideBar), even one seen face on. */
+  const faceSt = stationOf({ x: 3, y: 1, z: -2, heading: Math.PI / 2, clearW: 2, clearH: 1 });
+  const face = sideBar(sectionGates([faceSt], [0], (p) => sideOf([p], along)[0])[0].quad, faceSt);
+  const fu = face.map((q) => q[0]);
+  const fv = face.map((q) => q[1]);
+  check('a gate seen face on from the side is an upright bar, not its box', near(Math.max(...fu) - Math.min(...fu), 0, 1e-9) && near(Math.max(...fv) - Math.min(...fv), 1), JSON.stringify(face));
+  check('standing at the middle of where it falls, with no line to place it', near(fu[0], 2, 1e-9));
+  const placed = sideBar(sectionGates([faceSt], [0], (p) => sideOf([p], along)[0])[0].quad, faceSt, 1.4);
+  check('or where your line went through it', near(placed[0][0], 1.4, 1e-9));
+  const kept = sideBar(sectionGates([faceSt], [0], (p) => sideOf([p], along)[0])[0].quad, faceSt, 9);
+  check('kept inside the opening\'s width', near(kept[0][0], 3, 1e-9), JSON.stringify(kept));
+  const diveSt = stationOf({ x: 0, y: 2, z: -2, pitch: Math.PI / 2, clearW: 2, clearH: 1 });
+  const dive = sideBar(sectionGates([diveSt], [0], (p) => sideOf([p], along)[0])[0].quad, diveSt);
+  check('a dive gate is a level bar the length it spans', dive.every((q) => near(q[1], 2, 1e-9)) && near(Math.max(...dive.map((q) => q[0])) - Math.min(...dive.map((q) => q[0])), 1, 1e-9), JSON.stringify(dive));
 }
 
 console.log('a gap between outlines that touch');

@@ -12,9 +12,10 @@
  * rectangle the race tests a pass against (Race.local in
  * src/game/race.js): centred centreY above the station, its sides along
  * the station's own across and up axes (ax, ay), which a dive gate's tilt
- * turns. Both views draw that rectangle's outline as it falls on the
- * picture: a bar where it is seen edge on, a rectangle where it is seen
- * face on or flat from above. The first cut drew every opening upright
+ * turns. From above, that rectangle's outline as it falls: a bar for an
+ * upright gate, the whole opening for a dive gate lying flat. From the
+ * side, a bar (sideBar): upright for a gate flown across the ground, level
+ * for a dive gate. The first cut drew every opening upright
  * from its heading alone, so a tilted gate stood where the race does not
  * score it and a line through it looked to miss (the contributor's 15 gate
  * track, 2026-11-21: "sometimes looks odd? unaligned?").
@@ -263,6 +264,34 @@ export function sideOf(points, frame) {
  */
 export function sectionGates(stations, ends, project) {
   return [...new Set(ends)].map((i) => ({ list: [i], quad: openingCorners(stations[i]).map(project) }));
+}
+
+/*
+ * A gate from the side as a bar, not its outline: a gate flown across the
+ * ground stands as an upright bar the height of its opening at the middle
+ * of where it falls, and a dive gate, flown up or down through, lies as a
+ * level bar the length it spans. Its outline seen face on was a box that
+ * filled the picture and dwarfed the lines in it (the contributor's
+ * pictures, 2026-11-21, "why gate has so much different sized"); the view
+ * from above already says where across the opening a line went. An
+ * upright bar stands where your line went through the gate (`atU`, along
+ * the picture), kept inside the opening's width, so the line meets it: at
+ * the middle, a gate seen face on stood up to half its width from the end
+ * of the line through it. Returned as a quad whose corners pair up, so it
+ * is drawn like any outline.
+ */
+export function sideBar(quad, st, atU = null) {
+  const us = quad.map((q) => q[0]);
+  const vs = quad.map((q) => q[1]);
+  const lo = Math.min(...vs);
+  const hi = Math.max(...vs);
+  if (Math.abs(st.az.y) < 0.7) {
+    const mid = us.reduce((s, x) => s + x, 0) / us.length;
+    const u = atU === null ? mid : Math.max(Math.min(...us), Math.min(Math.max(...us), atU));
+    return [[u, lo], [u, lo], [u, hi], [u, hi]];
+  }
+  const v = (lo + hi) / 2;
+  return [[Math.min(...us), v], [Math.min(...us), v], [Math.max(...us), v], [Math.max(...us), v]];
 }
 
 /* A scale bar's length in OSD metres: the first of these that is at least
@@ -543,7 +572,17 @@ export function drawSide(cv, { stations, ends, mine, ref, lifeScale = 1 }) {
   if (!pts.length) {
     return { lap: 0, ref: 0, gates: 0, outlines: [], labels: 0, rects: [] };
   }
-  const gates = sectionGates(stations, ends, (p) => sideOf([p], frame)[0]);
+  /* Your line starts where it went through the first gate and ends where
+   * it went through the second (throughPlane), so its ends say where along
+   * the picture each bar stands. */
+  const through = (i) => {
+    if (!a.length) {
+      return null;
+    }
+    return i === ends[0] ? a[0][0] : a[a.length - 1][0];
+  };
+  const gates = sectionGates(stations, ends, (p) => sideOf([p], frame)[0])
+    .map((g) => ({ ...g, quad: sideBar(g.quad, stations[g.list[0]], through(g.list[0])) }));
   const box = [...pts, ...gates.flatMap((q) => q.quad)];
   const us = box.map((p) => p[0]);
   const vs = box.map((p) => p[1]);

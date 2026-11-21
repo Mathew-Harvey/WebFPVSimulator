@@ -77,6 +77,8 @@ export class ReviewPanel {
    *            { stations, lapLine, refLine, lifeScale }, the stations from
    *            stationsOfRaceGates and the two lines from lineOfTrace and
    *            lineOfGhost (refLine null with no ghost)
+   *   onReplay optional (k): replay section k in the room; a button
+   *            under the views and Enter on a row call it
    *   empty    instead of all of that, a sentence: there is no lap yet
    */
   open(data) {
@@ -142,6 +144,10 @@ export class ReviewPanel {
         if (n) {
           this.select((this.selected + (e.key === 'ArrowDown' ? 1 : n - 1)) % n);
         }
+      } else if (e.key === 'Enter' && this.data.onReplay && this.rows.length) {
+        /* The section picked, replayed (src/review/replayview.js). */
+        e.preventDefault();
+        this.data.onReplay(this.selected);
       }
     };
     document.addEventListener('keydown', this.onKey, true);
@@ -199,6 +205,13 @@ export class ReviewPanel {
     }
     this.viewNote = el('div', 'review-legend');
     col.append(this.top, this.side, legend, this.viewNote);
+    if (data.onReplay) {
+      /* The section picked, replayed in the room: the button, or Enter. */
+      const replay = el('button', 'review-replay-open', 'Replay this section');
+      replay.type = 'button';
+      replay.addEventListener('click', () => data.onReplay(this.selected));
+      col.append(replay);
+    }
     return col;
   }
 

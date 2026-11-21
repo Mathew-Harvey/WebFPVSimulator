@@ -7116,6 +7116,41 @@
       .review-delta.gained { color: var(--mint); }
       .review-delta.lost { color: #ff6b5e; }
       .review-legend { color: var(--slate); font-size: 12px; }
+      .review-replay-open {
+        align-self: flex-start; padding: 5px 14px; cursor: pointer;
+        font: inherit; font-size: 14px; color: var(--deep);
+        background: var(--mint); border: 0; border-radius: 4px;
+      }
+      /* THE REPLAY (src/review/replayview.js): a bar along the foot of the
+         picture while the two holograms replay a section; the pause menu
+         and the OSD are hidden under it (tg-watching). */
+      .review-replay {
+        position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%);
+        z-index: 2147483000; width: min(880px, calc(100vw - 32px)); box-sizing: border-box;
+        display: flex; flex-direction: column; gap: 8px; padding: 12px 14px;
+        font-family: var(--ui-font); color: var(--cream);
+        background: rgba(26, 36, 28, 0.92); border-radius: 4px;
+        box-shadow: inset 0 0 0 1px rgba(232, 168, 184, 0.35), 0 12px 30px rgba(0, 0, 0, 0.5);
+      }
+      .review-replay-head { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+      .review-replay-title { font-weight: 600; font-size: 16px; }
+      .review-replay-times { color: var(--slate); font-size: 14px; font-variant-numeric: tabular-nums; }
+      .review-replay-you { color: #ffb340; font-weight: 600; }
+      .review-replay-ghost { color: #7fd4ff; font-weight: 600; }
+      .review-replay-row { display: flex; gap: 10px; align-items: center; }
+      .review-replay-scrub { flex: 1; min-width: 80px; accent-color: #ffb340; }
+      .review-replay-clock { min-width: 6em; text-align: right; font-size: 14px; font-variant-numeric: tabular-nums; color: var(--slate); }
+      .review-replay-btn {
+        padding: 5px 12px; cursor: pointer; white-space: nowrap;
+        font: inherit; font-size: 14px; color: var(--cream);
+        background: #121a14; border: 1px solid rgba(244, 236, 214, 0.25); border-radius: 4px;
+      }
+      .review-replay-btn:hover { border-color: var(--sakura); }
+      .review-replay-btn[hidden] { display: none; }
+      @media (max-width: 520px) {
+        .review-replay-row { flex-wrap: wrap; }
+        .review-replay-scrub { flex-basis: 100%; order: -1; }
+      }
       @media (max-width: 520px) {
         .review-card { padding: 14px 12px; }
         .review-table { font-size: 13px; }

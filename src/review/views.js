@@ -63,30 +63,38 @@ export const VIEW_COLOURS = {
 };
 
 /* ------------------------------------------------------------------ *
- * the inputs, made one shape: { t, x, y, z }, ms from the lap's start and
- * scene positions
+ * the inputs, made one shape: { t, x, y, z, qx, qy, qz, qw }, ms from the
+ * lap's start, scene positions and the scene attitude (the replay turns
+ * its quads by it; the views use the positions)
  * ------------------------------------------------------------------ */
+
+function emptyLine(n) {
+  const a = () => new Float64Array(n);
+  return { t: a(), x: a(), y: a(), z: a(), qx: a(), qy: a(), qz: a(), qw: a() };
+}
 
 /* A trace (src/review/trace.js). */
 export function lineOfTrace(trace) {
   const n = trace.count;
-  const t = new Float64Array(n); const x = new Float64Array(n); const y = new Float64Array(n); const z = new Float64Array(n);
+  const l = emptyLine(n);
   for (let i = 0; i < n; i += 1) {
-    t[i] = trace.at(i, F.T);
-    x[i] = trace.at(i, F.PX); y[i] = trace.at(i, F.PY); z[i] = trace.at(i, F.PZ);
+    l.t[i] = trace.at(i, F.T);
+    l.x[i] = trace.at(i, F.PX); l.y[i] = trace.at(i, F.PY); l.z[i] = trace.at(i, F.PZ);
+    l.qx[i] = trace.at(i, F.QX); l.qy[i] = trace.at(i, F.QY); l.qz[i] = trace.at(i, F.QZ); l.qw[i] = trace.at(i, F.QW);
   }
-  return { t, x, y, z };
+  return l;
 }
 
 /* A ghost (src/game/ghost.js): a pose on a grid from the lap's start. */
 export function lineOfGhost(ghost) {
   const n = ghost.count;
-  const t = new Float64Array(n); const x = new Float64Array(n); const y = new Float64Array(n); const z = new Float64Array(n);
+  const l = emptyLine(n);
   for (let i = 0; i < n; i += 1) {
-    t[i] = (i * 1000) / ghost.rateHz;
-    x[i] = ghost.pos[i * 3]; y[i] = ghost.pos[i * 3 + 1]; z[i] = ghost.pos[i * 3 + 2];
+    l.t[i] = (i * 1000) / ghost.rateHz;
+    l.x[i] = ghost.pos[i * 3]; l.y[i] = ghost.pos[i * 3 + 1]; l.z[i] = ghost.pos[i * 3 + 2];
+    l.qx[i] = ghost.quat[i * 4]; l.qy[i] = ghost.quat[i * 4 + 1]; l.qz[i] = ghost.quat[i * 4 + 2]; l.qw[i] = ghost.quat[i * 4 + 3];
   }
-  return { t, x, y, z };
+  return l;
 }
 
 /*

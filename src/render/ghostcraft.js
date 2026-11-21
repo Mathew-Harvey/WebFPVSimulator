@@ -45,7 +45,13 @@ const BODY_OPACITY = 0.40;
 const DISC_OPACITY = 0.10;
 const LABEL_OPACITY = 0.88;
 
-export function buildGhostCraft() {
+/* opts.colour: the hologram's colour, mint unless asked (the review's
+ * replay, src/review/replayview.js, draws your lap and the ghost in the
+ * colours the review draws their lines in); opts.tagColour the name
+ * tag's. */
+export function buildGhostCraft(opts = {}) {
+  const tint = opts.colour ?? GHOST_MINT;
+  const tagInk = opts.tagColour ?? '#7dffb4';
   const craft = buildHeroCraft({
     name: 'ghost-craft',
     lite: true,
@@ -55,14 +61,14 @@ export function buildGhostCraft() {
   const { group } = craft;
 
   const bodyMat = new THREE.MeshBasicMaterial({
-    color: GHOST_MINT,
+    color: tint,
     transparent: true,
     opacity: BODY_OPACITY,
     depthWrite: false,
     fog: true,
   });
   const discMat = new THREE.MeshBasicMaterial({
-    color: GHOST_MINT,
+    color: tint,
     transparent: true,
     opacity: DISC_OPACITY,
     depthWrite: false,
@@ -209,7 +215,7 @@ export function buildGhostCraft() {
        * and over the cream field markings alike. */
       ctx.fillStyle = 'rgba(12, 18, 14, 0.85)';
       ctx.fillText(next, tagCanvas.width / 2 + 3, tagCanvas.height / 2 + 3);
-      ctx.fillStyle = '#7dffb4';
+      ctx.fillStyle = tagInk;
       ctx.fillText(next, tagCanvas.width / 2, tagCanvas.height / 2);
     }
     tag.visible = Boolean(next);

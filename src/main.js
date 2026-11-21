@@ -90,7 +90,7 @@ import { warmPrograms } from './render/warm.js';
 import { decodeGhost, encodeGhost, ghostFromBase64, ghostToBase64 } from './share/ghostdata.js';
 import { TRACE_STEP_MS, TraceBook, TraceRecorder } from './review/trace.js';
 import { ReviewPanel } from './review/panel.js';
-import { chasedLabel, deltaText } from './review/splits.js';
+import { chasedLabel, deltaText, sectionName } from './review/splits.js';
 import { lineOfGhost, lineOfTrace, localOf, pathOf, stationsOfRaceGates, throughPlane } from './review/views.js';
 import { uploadWorld, setWorldFrame, setMover, setBoxHeight, kindOf, setVehicleClock, readVehicles, makeVehiclePoses, moverVelocityInPlant, vehicleSurfaceInPlant } from './game/plantworld.js';
 import { Chase, CHASE_EVERY, pays } from './game/chase.js';
@@ -4623,6 +4623,9 @@ export async function boot({ loading, bootStart, mapId }) {
     reviewLastRef = null;
     reviewChased.length = 0;
     reviewPanel.close();
+    if (reviewReplay) {
+      reviewReplay.close();
+    }
     ghostLap = null;
     gapLap = null;
     ghostChased = null;
@@ -11820,7 +11823,105 @@ export async function boot({ loading, bootStart, mapId }) {
         refLine: ref ? lineOfGhost(ref) : null,
         lifeScale: reviewLast.meta.roomScale || 1,
       },
+      onReplay: (k) => openReplay(k),
     });
+  }
+
+  /*
+   * THE REPLAY (src/review/replayview.js): section k of the newest lap and
+   * of the ghost it chased, replayed in the room as two holograms, over the
+   * pause with the menu and the OSD hidden as the watching camera hides
+   * them. Back (Esc) returns to the review on the same section. Loaded the
+   * first time it is opened; null until then.
+   */
+  let reviewReplay = null;
+  let reviewReplayLoading = null;
+  function reviewReplayReady() {
+    if (reviewReplay) {
+      return Promise.resolve(reviewReplay);
+    }
+    if (!reviewReplayLoading) {
+      reviewReplayLoading = import('./review/replayview.js').then(({ ReviewReplay }) => {
+        reviewReplay = new ReviewReplay({ keep: (g) => shell.keepAcrossMaps(g) });
+        return reviewReplay;
+      }).catch((e) => {
+        reviewReplayLoading = null;
+        throw e;
+      });
+    }
+    return reviewReplayLoading;
+  }
+
+  function openReplay(k) {
+    if (!reviewLast || !race || mode !== 'paused' || ui.screen !== 'paused') {
+      return Promise.resolve(false);
+    }
+    const lap = reviewLast;
+    const ref = reviewLastRef && reviewLastRef.splits.length === lap.splits.length ? reviewLastRef : null;
+    const stations = stationsOfRaceGates(race.gates || []);
+    const n = stations.length;
+    if (!n || k < 0 || k >= lap.splits.length) {
+      return Promise.resolve(false);
+    }
+    const ends = [k % n, (k + 1) % n];
+    /* When each line went through the section's first and last openings,
+     * as the review's views draw it (throughPlane). */
+    const span = (line, splits) => {
+      const at = [0, ...splits];
+      return [throughPlane(line, stations[ends[0]], at[k]), throughPlane(line, stations[ends[1]], at[k + 1])];
+    };
+    const lapLine = lineOfTrace(lap);
+    const refLine = ref ? lineOfGhost(ref) : null;
+    return reviewReplayReady().then((rp) => {
+      if (reviewLast !== lap || mode !== 'paused' || ui.screen !== 'paused') {
+        return false;
+      }
+      reviewPanel.close();
+      introMs = -1;
+      document.documentElement.classList.add('tg-watching');
+      /* A room's race line is the live flight's guide; over a replay it is
+       * clutter. Off while the replay is open, as the pilot's setting has
+       * it again after. */
+      if (view && view.setRaceLine) {
+        view.setRaceLine(false);
+      }
+      ui.overlay = rp;
+      rp.open({
+        lapLine,
+        refLine,
+        you: span(lapLine, lap.splits),
+        ghost: refLine ? span(refLine, ref.splits) : null,
+        title: sectionName(k, lap.splits.length),
+        scale: 1 / WORLD_SCALE,
+        size: simLenToWorld(1),
+        onClose: (how) => {
+          document.documentElement.classList.remove('tg-watching');
+          applyRaceLine(ui.settings);
+          ui.overlay = reviewPanel;
+          if (how === 'back' && mode === 'paused' && ui.screen === 'paused') {
+            openReview();
+            reviewPanel.select(k);
+          }
+        },
+      });
+      return true;
+    }, (e) => {
+      notice = { text: `Could not open the replay.\n${e.message ?? e}`, untilMs: performance.now() + 5000 };
+      return false;
+    });
+  }
+
+  /* Once a frame while the replay is open, in the camera chain: the two
+   * holograms, the camera, and the session's own craft and ghosts out of
+   * the way. */
+  function reviewReplayFrame(nowWall) {
+    shell.camera.up.set(0, 1, 0);
+    watchHome.fov = fpvFov(ui.settings.cameraFov, shell.camera.aspect);
+    reviewReplay.frame(nowWall, shell.camera, shell.quad.parent, watchWorld, watchHome);
+    shell.quad.visible = false;
+    ghostRig.setPresence(0);
+    parkGhostExtras();
+    setCameraNear(fpvNear(shell.camera.position));
   }
 
   /*
@@ -13841,6 +13942,8 @@ export async function boot({ loading, bootStart, mapId }) {
         shell.camera.fov = fov;
         shell.camera.updateProjectionMatrix();
       }
+    } else if (reviewReplay && reviewReplay.on && !camOverride) {
+      reviewReplayFrame(nowWall);
     } else if (watchCam && watchCam.on && !camOverride) {
       watchFrame(nowWall);
     } else if (introMs >= 0 && (mode === 'flight' || mode === 'paused') && !camOverride) {
@@ -14151,7 +14254,7 @@ export async function boot({ loading, bootStart, mapId }) {
       /* Watching another pilot, the shadows and the grass's wind go with
        * the camera riding behind them: at the parked quad they would end
        * in a hard edge a field away from the quad on screen. */
-      const focus = camOverride || (watchCam && watchCam.on)
+      const focus = camOverride || (watchCam && watchCam.on) || (reviewReplay && reviewReplay.on)
         ? shell.camera.position
         : (mode === 'title' ? shell.quad.position : pCurr);
       view.updateShadowFocus(focus);
@@ -16260,6 +16363,19 @@ export async function boot({ loading, bootStart, mapId }) {
     return reviewPanel.state();
   };
   window.__review = () => reviewPanel.state();
+  /* The replay, so a capture can open one and ASSERT what it shows:
+   * __reviewReplay('open', k) opens section k as the review's button would
+   * (a promise); any other word is the replay's own act ('play', 'seek',
+   * 'step', 'follow', 'back'). Returns its state. Harness only. */
+  window.__reviewReplay = (what, arg) => {
+    if (what === 'open') {
+      return openReplay(Number(arg) || 0).then(() => (reviewReplay ? reviewReplay.state() : { open: false }));
+    }
+    if (reviewReplay && what) {
+      reviewReplay.act(what, arg);
+    }
+    return reviewReplay ? reviewReplay.state() : { open: false };
+  };
   /*
    * Where the newest lap and its ghost went through each gate, in that
    * gate's own frame as the race scores a pass (localOf,

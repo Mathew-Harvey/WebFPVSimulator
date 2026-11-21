@@ -267,6 +267,42 @@ try {
   check('down is the panel\'s, not the menu\'s', (await page.evaluate('window.__ui.cursor')) === cursorBefore && (await page.evaluate('window.__review().open')) === true);
   await page.tap('Escape');
   check('Escape closes it and leaves the pause menu up', (await page.evaluate('window.__review().open')) === false && (await page.evaluate('window.__ui.screen')) === 'paused');
+
+  /*
+   * THE REPLAY of the section, from the review: the two holograms in the
+   * room on one timeline, over the pause with the menu hidden, and back to
+   * the review on the same section. The lap and its ghost are this run's
+   * two laps, so both holograms must stand somewhere and move as it plays.
+   */
+  await page.evaluate("(() => { window.__ui.act('review'); return 1; })()");
+  const button = await page.evaluate("(() => { const b = document.querySelector('#review .review-replay-open'); return b ? b.textContent : ''; })()");
+  check('the review has a button to replay the section', button === 'Replay this section', button);
+  /* Read a moment after it opens: the holograms are placed by its first
+   * frame, not by the call that opens it. */
+  await page.evaluate("window.__reviewReplay('open', 0)");
+  await page.sleep(200);
+  const rp = await page.evaluate('window.__reviewReplay()');
+  check('it opens the section\'s replay, playing, both holograms in the room', rp.open === true && rp.playing === true && Array.isArray(rp.youAt) && Array.isArray(rp.ghostAt), JSON.stringify(rp));
+  const hidden = await page.evaluate("(() => ({ review: window.__review().open, watching: document.documentElement.classList.contains('tg-watching'), bar: !!document.querySelector('#review-replay') }))()");
+  check('over the pause: the review put away, the menu hidden, the bar shown', hidden.review === false && hidden.watching === true && hidden.bar === true, JSON.stringify(hidden));
+  await page.sleep(800);
+  const later = await page.evaluate('window.__reviewReplay()');
+  const moved = (a, b) => Array.isArray(a) && Array.isArray(b) && Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) > 0.05;
+  check('playing, the playhead moves and both holograms with it', later.t > rp.t + 200 && moved(later.youAt, rp.youAt) && moved(later.ghostAt, rp.ghostAt), `${rp.t} to ${later.t}; ${JSON.stringify(later)}; fault ${JSON.stringify(await page.evaluate('window.__frameFault || null'))}`);
+  if (SHOTS) {
+    const shot = await page.cdp.send('Page.captureScreenshot', { format: 'png' }, page.sessionId);
+    writeFileSync(join(SHOTS, 'replay.png'), Buffer.from(shot.data, 'base64'));
+    console.log(`  (picture: ${join(SHOTS, 'replay.png')})`);
+  }
+  const followed = await page.evaluate("window.__reviewReplay('follow')");
+  check('the camera follows the ghost when asked', followed.follow === 'ghost');
+  const paused = await page.evaluate("window.__reviewReplay('play')");
+  const stepped = await page.evaluate("window.__reviewReplay('step', -1)");
+  check('play pauses it, and a step moves it a tenth of a second', paused.playing === false && Math.abs(stepped.t - (paused.t - 100)) < 1e-6, `${paused.t} to ${stepped.t}`);
+  await page.tap('Escape');
+  const back = await page.evaluate("(() => ({ replay: window.__reviewReplay().open, review: window.__review(), watching: document.documentElement.classList.contains('tg-watching'), screen: window.__ui.screen }))()");
+  check('Escape goes back to the review on the same section, the menu back', back.replay === false && back.review.open === true && back.review.selected === 0 && back.watching === false && back.screen === 'paused', JSON.stringify({ ...back, review: back.review.open }));
+  await page.tap('Escape');
   await page.evaluate("(() => { window.__ui.act('review'); return 1; })()");
   await page.evaluate("(() => { const ui = window.__ui; ui.onAction('resume', ui.settings); return 1; })()");
   await page.until("window.__ui.screen === 'flight'", 10000).catch(() => {});

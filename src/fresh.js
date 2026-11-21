@@ -653,6 +653,8 @@
     'src/render/watchcam.js',
     'src/render/whoopcraft.js',
     'src/review/panel.js',
+    'src/review/replay.js',
+    'src/review/replayview.js',
     'src/review/splits.js',
     'src/review/trace.js',
     'src/review/views.js',

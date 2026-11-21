@@ -54,9 +54,10 @@ console.log('the lines');
   const trace = new TraceLap({ rateHz: 100, durationMs: 20, splits: [20], cuts: [], lead: 2, count, data, worldScale: 1, meta: {} });
   const line = lineOfTrace(trace);
   check('a trace gives its times and positions', line.t[0] === -20 && line.t[4] === 20 && line.x[3] === 3 && line.y[3] === 6 && line.z[3] === 9);
-  const ghost = { rateHz: 30, count: 3, pos: new Float32Array([0, 0, 0, 1, 1, 1, 2, 2, 2]) };
+  const ghost = { rateHz: 30, count: 3, pos: new Float32Array([0, 0, 0, 1, 1, 1, 2, 2, 2]), quat: new Float32Array([0, 0, 0, 1, 0, 0, 0.6, 0.8, 0, 0, 0, 1]) };
   const g = lineOfGhost(ghost);
   check('a ghost gives its grid of times and its positions', near(g.t[1], 1000 / 30) && g.x[2] === 2 && g.z[1] === 1);
+  check('and its attitude', near(g.qz[1], 0.6, 1e-6) && near(g.qw[1], 0.8, 1e-6) && g.qw[0] === 1);
 }
 
 console.log('a path through a section');

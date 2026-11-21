@@ -136,10 +136,16 @@ export function sideOf(points, axis) {
   return points.map((p) => [(p[0] - axis.ox) * axis.x + (p[2] - axis.oz) * axis.z, p[1]]);
 }
 
+/* How far to the side of the axis a scene point stands, scene metres: the
+ * depth the side view looks through. */
+export function lateralOf(p, axis) {
+  return (p[0] - axis.ox) * axis.z - (p[2] - axis.oz) * axis.x;
+}
+
 /* The openings seen edge on from the side, those flown within 45 degrees
- * of the axis either way: where each stands along it, and its bottom and
- * top. Bays stacked one above another are separate bars, which is the
- * point of the view. */
+ * of the axis either way: where each stands along it, its bottom and top,
+ * how far to the side it stands (lat) and its half width. Bays stacked one
+ * above another are separate bars, which is the point of the view. */
 export function sideGates(stations, axis) {
   const out = [];
   stations.forEach((st, i) => {
@@ -151,8 +157,68 @@ export function sideGates(stations, axis) {
       return;
     }
     const [[along, y]] = sideOf([[st.x, st.y, st.z]], axis);
-    out.push({ i, along, lo: y - st.clearH / 2, hi: y + st.clearH / 2 });
+    const lat = lateralOf([st.x, st.y, st.z], axis);
+    out.push({ i, along, lo: y - st.clearH / 2, hi: y + st.clearH / 2, lat, halfW: st.clearW / 2 });
   });
+  return out;
+}
+
+/*
+ * The gates the side view draws: the section's own two, and the others the
+ * lines pass near. Seen from the side, a gate across the room at the same
+ * distance along the travel stands in the same place as one the lines fly
+ * through; drawn, it framed the picture round its height and squashed the
+ * lines to a few pixels (the contributor's 15 gate track, 2026-11-20). So
+ * a gate is near when it stands within one opening's width to the side of
+ * the lines' own sideways reach, and within a tenth of their length along
+ * the travel. `points` are the lines' scene points.
+ */
+export function nearSideGates(gates, points, axis, ends) {
+  if (!points.length) {
+    return gates.filter((q) => ends.includes(q.i));
+  }
+  let l0 = Infinity; let l1 = -Infinity; let u0 = Infinity; let u1 = -Infinity;
+  for (const p of points) {
+    const l = lateralOf(p, axis);
+    const [[u]] = sideOf([p], axis);
+    l0 = Math.min(l0, l); l1 = Math.max(l1, l); u0 = Math.min(u0, u); u1 = Math.max(u1, u);
+  }
+  const reach = Math.max(u1 - u0, 1) * 0.1;
+  return gates.filter((q) => {
+    if (ends.includes(q.i)) {
+      return true;
+    }
+    const along = q.along >= u0 - reach && q.along <= u1 + reach;
+    const aside = Math.max(0, l0 - q.lat, q.lat - l1) <= 2 * q.halfW;
+    return along && aside;
+  });
+}
+
+/*
+ * Where a label goes: the first of `cands` (rects { x, y, w, h }, in
+ * order of preference) that is inside `bounds`, overlaps none of `taken`
+ * and covers none of `points` ([x, y] pixels, the lines), each with `pad`
+ * round it. When none is free, the first inside the bounds, so a label is
+ * never lost. The rect chosen is added to `taken`.
+ */
+export function placeLabel(cands, taken, points, bounds, pad = 2) {
+  const inside = (r) => r.x >= bounds.x && r.y >= bounds.y && r.x + r.w <= bounds.x + bounds.w && r.y + r.h <= bounds.y + bounds.h;
+  const hits = (r, s) => r.x - pad < s.x + s.w && s.x - pad < r.x + r.w && r.y - pad < s.y + s.h && s.y - pad < r.y + r.h;
+  const covers = (r) => points.some(([x, y]) => x > r.x - pad && x < r.x + r.w + pad && y > r.y - pad && y < r.y + r.h + pad);
+  const fits = cands.filter(inside);
+  const best = fits.find((r) => !taken.some((s) => hits(r, s)) && !covers(r)) || fits[0] || cands[0];
+  taken.push(best);
+  return best;
+}
+
+/* Candidate rects for a label of width tw and height th beside an anchor:
+ * right of it, then left, then each moved up and down a line at a time. */
+export function labelCandidates(ax, ay, tw, th, gap) {
+  const out = [];
+  for (const dy of [0, -1, 1, -2, 2, -3, 3]) {
+    const y = ay - th / 2 + dy * (th + gap);
+    out.push({ x: ax + gap, y, w: tw, h: th }, { x: ax - gap - tw, y, w: tw, h: th });
+  }
   return out;
 }
 
@@ -220,6 +286,46 @@ function strokeLine(g, list, P, colour, dash, dpr) {
   g.fill();
 }
 
+/* Every pixel a line passes through, near enough: the points and the
+ * middles between them, so a label can keep off a long straight stretch
+ * as well as off a sample. */
+function linePixels(lists, P) {
+  const out = [];
+  for (const list of lists) {
+    let prev = null;
+    for (const p of list) {
+      const q = P(p);
+      if (prev) {
+        const n = Math.ceil(Math.hypot(q[0] - prev[0], q[1] - prev[1]) / 6);
+        for (let s = 1; s < n; s += 1) {
+          out.push([prev[0] + ((q[0] - prev[0]) * s) / n, prev[1] + ((q[1] - prev[1]) * s) / n]);
+        }
+      }
+      out.push(q);
+      prev = q;
+    }
+  }
+  return out;
+}
+
+/* Pixels along a straight bar from p to q, for a label to keep off. */
+function barPixels(p, q) {
+  const n = Math.max(1, Math.ceil(Math.hypot(q[0] - p[0], q[1] - p[1]) / 6));
+  const out = [];
+  for (let s = 0; s <= n; s += 1) {
+    out.push([p[0] + ((q[0] - p[0]) * s) / n, p[1] + ((q[1] - p[1]) * s) / n]);
+  }
+  return out;
+}
+
+/* A label written where placeLabel puts it, beside the anchor (ax, ay). */
+function writeLabel(g, text, ax, ay, taken, pixels, w, h, dpr) {
+  const tw = g.measureText(text).width;
+  const th = 12 * dpr;
+  const r = placeLabel(labelCandidates(ax, ay, tw, th, 6 * dpr), taken, pixels, { x: 2 * dpr, y: 2 * dpr, w: w - 4 * dpr, h: h - 4 * dpr }, 2 * dpr);
+  g.fillText(text, r.x, r.y + th - 2 * dpr);
+}
+
 function scaleBar(g, w, h, dpr, metres, len, inset) {
   /* On its own backing, so a gate standing in the strip cannot run through
    * it. */
@@ -274,12 +380,14 @@ export function drawTop(cv, { stations, ends, mine, ref, lifeScale = 1 }) {
    * axis, the section's two ends bright and drawn last, over the others. */
   const lit = new Set(ends);
   const order = stations.map((_, i) => i).sort((p, q) => Number(lit.has(p)) - Number(lit.has(q)));
+  const bars = [];
   for (const i of order) {
     const st = stations[i];
     const ax = Math.cos(st.yaw) * (st.clearW / 2);
     const az = -Math.sin(st.yaw) * (st.clearW / 2);
     const p = P([st.x - ax, st.z - az]);
     const q = P([st.x + ax, st.z + az]);
+    bars.push(...barPixels(p, q));
     g.strokeStyle = lit.has(i) ? VIEW_COLOURS.gate : VIEW_COLOURS.gateOther;
     g.lineWidth = 4 * dpr;
     g.beginPath();
@@ -287,27 +395,31 @@ export function drawTop(cv, { stations, ends, mine, ref, lifeScale = 1 }) {
     g.lineTo(q[0], q[1]);
     g.stroke();
   }
-  g.font = `${12 * dpr}px system-ui,sans-serif`;
-  for (const s of topSpots(stations)) {
-    const c = P([s.x, s.z]);
-    if (c[0] < -20 || c[0] > w + 20 || c[1] < -20 || c[1] > h + 20) {
-      continue;
-    }
-    g.fillStyle = s.list.some((i) => lit.has(i)) ? VIEW_COLOURS.gate : VIEW_COLOURS.dim;
-    /* Kept inside the picture: a label that would run off the right edge
-     * is written to the left of its spot instead. */
-    const text = s.list.map(gateName).join(', ');
-    const tw = g.measureText(text).width;
-    const tx = c[0] + 6 * dpr + tw > w - 4 * dpr ? c[0] - 6 * dpr - tw : c[0] + 6 * dpr;
-    g.fillText(text, Math.max(4 * dpr, tx), Math.max(14 * dpr, c[1] - 6 * dpr));
-  }
-
   strokeLine(g, b, P, VIEW_COLOURS.ref, true, dpr);
   strokeLine(g, a, P, VIEW_COLOURS.lap, false, dpr);
 
   const metres = scaleMetres(lifeScale, k, w, 0.12, [0.5, 1, 2, 5, 10, 20, 50]);
-  scaleBar(g, w, h, dpr, metres, metres * lifeScale * k, 36);
-  return { lap: a.length, ref: b.length };
+  const len = metres * lifeScale * k;
+  scaleBar(g, w, h, dpr, metres, len, 36);
+
+  /* The labels last, over everything, each kept off the others, the lines,
+   * the gates' bars and the scale bar, the section's own gates placed
+   * first. */
+  g.font = `${12 * dpr}px system-ui,sans-serif`;
+  const taken = [{ x: 0, y: h - 36 * dpr, w: len + 24 * dpr, h: 36 * dpr }];
+  const pixels = [...linePixels([a, b], P), ...bars];
+  const spots = topSpots(stations).sort((p, q) => Number(q.list.some((i) => lit.has(i))) - Number(p.list.some((i) => lit.has(i))));
+  let labels = 0;
+  for (const s of spots) {
+    const c = P([s.x, s.z]);
+    if (c[0] < 0 || c[0] > w || c[1] < 0 || c[1] > h) {
+      continue;
+    }
+    g.fillStyle = s.list.some((i) => lit.has(i)) ? VIEW_COLOURS.gate : VIEW_COLOURS.dim;
+    writeLabel(g, s.list.map(gateName).join(', '), c[0], c[1], taken, pixels, w, h, dpr);
+    labels += 1;
+  }
+  return { lap: a.length, ref: b.length, labels, rects: taken.slice(1) };
 }
 
 /*
@@ -330,12 +442,16 @@ export function drawSide(cv, { stations, ends, mine, ref, lifeScale = 1 }) {
   for (const [u, y] of pts) {
     u0 = Math.min(u0, u); u1 = Math.max(u1, u); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
   }
-  /* The openings standing within the lines' reach along the axis, and
-   * their full height in view. */
-  const reachPad = Math.max(u1 - u0, 1) * 0.1;
-  const gates = sideGates(stations, axis).filter((q) => q.along >= u0 - reachPad && q.along <= u1 + reachPad);
+  /* The gates near the lines (nearSideGates). The picture is framed on the
+   * lines and the section's own two gates, whole; any other gate is drawn
+   * as far as the picture reaches, so a tall stack beside the lines shows
+   * as bars running off the edge and never shrinks the lines to fit. */
+  const gates = nearSideGates(sideGates(stations, axis), [...mine, ...ref], axis, ends);
   for (const q of gates) {
-    y0 = Math.min(y0, q.lo); y1 = Math.max(y1, q.hi);
+    if (ends.includes(q.i)) {
+      u0 = Math.min(u0, q.along); u1 = Math.max(u1, q.along);
+      y0 = Math.min(y0, q.lo); y1 = Math.max(y1, q.hi);
+    }
   }
   const span = Math.max(u1 - u0, y1 - y0, 1);
   const pad = span * 0.08;
@@ -349,7 +465,12 @@ export function drawSide(cv, { stations, ends, mine, ref, lifeScale = 1 }) {
   const lit = new Set(ends);
   g.font = `${12 * dpr}px system-ui,sans-serif`;
   /* Openings that stand in one place from the side are one bar and one
-   * label, as the view from above joins a stack. */
+   * label, as the view from above joins a stack. Clipped at the top of the
+   * scale bar's strip, so a bar run off the frame does not cross it. */
+  g.save();
+  g.beginPath();
+  g.rect(0, 0, w, hFit);
+  g.clip();
   const spots = [];
   for (const q of gates) {
     const near = spots.find((s) => Math.abs(s.along - q.along) < 0.3 && Math.abs(s.lo - q.lo) < 0.3 && Math.abs(s.hi - q.hi) < 0.3);
@@ -360,7 +481,8 @@ export function drawSide(cv, { stations, ends, mine, ref, lifeScale = 1 }) {
     }
   }
   const bright = (s) => s.list.some((i) => lit.has(i));
-  for (const s of spots.sort((p, q) => Number(bright(p)) - Number(bright(q)))) {
+  spots.sort((p, q) => Number(bright(p)) - Number(bright(q)));
+  for (const s of spots) {
     const p = P([s.along, s.lo]);
     const q = P([s.along, s.hi]);
     g.strokeStyle = bright(s) ? VIEW_COLOURS.gate : VIEW_COLOURS.gateOther;
@@ -369,18 +491,32 @@ export function drawSide(cv, { stations, ends, mine, ref, lifeScale = 1 }) {
     g.moveTo(p[0], p[1]);
     g.lineTo(q[0], q[1]);
     g.stroke();
-    g.fillStyle = bright(s) ? VIEW_COLOURS.gate : VIEW_COLOURS.dim;
-    const text = s.list.map(gateName).join(', ');
-    const tw = g.measureText(text).width;
-    const mid = P([s.along, (s.lo + s.hi) / 2]);
-    const tx = mid[0] + 6 * dpr + tw > w - 4 * dpr ? mid[0] - 6 * dpr - tw : mid[0] + 6 * dpr;
-    g.fillText(text, tx, mid[1] + 4 * dpr);
   }
+  g.restore();
 
   strokeLine(g, b, P, VIEW_COLOURS.ref, true, dpr);
   strokeLine(g, a, P, VIEW_COLOURS.lap, false, dpr);
 
   const metres = scaleMetres(lifeScale, k, w, 0.1);
-  scaleBar(g, w, h, dpr, metres, metres * lifeScale * k, 30);
-  return { lap: a.length, ref: b.length, gates: gates.length };
+  const len = metres * lifeScale * k;
+  scaleBar(g, w, h, dpr, metres, len, 30);
+
+  /* The labels last, the section's own first, each beside the middle of
+   * the part of its bar that is in the picture, and kept off the others,
+   * the lines and the scale bar. */
+  const taken = [{ x: 0, y: h - 30 * dpr, w: len + 24 * dpr, h: 30 * dpr }];
+  const pixels = [...linePixels([a, b], P), ...spots.flatMap((s) => barPixels(P([s.along, s.lo]), P([s.along, s.hi])))];
+  let labels = 0;
+  for (const s of [...spots].reverse()) {
+    const top = Math.max(0, P([s.along, s.hi])[1]);
+    const bottom = Math.min(hFit, P([s.along, s.lo])[1]);
+    const x = P([s.along, s.lo])[0];
+    if (bottom <= top || x < 0 || x > w) {
+      continue;
+    }
+    g.fillStyle = bright(s) ? VIEW_COLOURS.gate : VIEW_COLOURS.dim;
+    writeLabel(g, s.list.map(gateName).join(', '), x, (top + bottom) / 2, taken, pixels, w, h, dpr);
+    labels += 1;
+  }
+  return { lap: a.length, ref: b.length, gates: gates.length, labels, rects: taken.slice(1) };
 }

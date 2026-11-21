@@ -156,19 +156,25 @@ try {
   await page.until("window.__ui.screen === 'flight'", 10000).catch(() => {});
 
   await page.evaluate(`(async () => { ${PILOT}\n return 1; })()`);
-  await page.evaluate(through(2.4));
-  await page.evaluate(through(2.4));
-  await page.evaluate(through(4.0));
+  /* Passes until two laps are in: the first starts a lap and each after
+   * it finishes one. The scripted pilot misses the gate now and then (one
+   * run in a dozen, 2026-11-21, a lap of three passes), so it flies again,
+   * up to six passes, rather than failing on the pilot's aim. */
+  for (let pass = 0; pass < 6 && (await page.evaluate('window.__race().laps.length')) < 2; pass += 1) {
+    await page.evaluate(through(pass < 2 ? 2.4 : 4.0));
+  }
   await page.evaluate(HOLD);
   const laps = await page.evaluate('window.__race().laps');
-  check('two laps flown, of different times', laps.length >= 2 && Math.abs(laps[laps.length - 1] - laps[laps.length - 2]) > 20, JSON.stringify(laps));
+  check('two laps flown', laps.length >= 2, JSON.stringify(laps));
   const first = laps[laps.length - 2];
   const second = laps[laps.length - 1];
   /* The ghost is the first lap as the ghost recorder stored it, to the
    * whole millisecond, and that is the time the review compares with.
    * The scripted pilot's laps differ from run to run, so the second can be
-   * slower (red, and the ghost is still Best) or faster (green, and the
-   * ghost is the previous best now). Either way is asserted. */
+   * slower (red, and the ghost is still Best), faster (green, and the
+   * ghost is the previous best now) or, now and then, within a few
+   * milliseconds of it (level, in the table's own colour: one run flew
+   * 4102.6 and 4114.1 ms). Whichever way it went is asserted. */
   const ghostMs = Math.round(first);
   const want = deltaText(second - ghostMs);
   const tone = toneOf(second - ghostMs);
@@ -191,8 +197,8 @@ try {
     `${JSON.stringify(s.rows[0])} ${JSON.stringify(s.total)} want ${want}`);
   check('the lap row has both times, rounded as the lap clock rounds', s.total.cells[1] === `${seconds(second)} s` && s.total.cells[2] === `${seconds(ghostMs)} s`, JSON.stringify(s.total.cells));
   const shown = await page.evaluate("(() => { const r = document.querySelector('#review .review-total .review-delta'); return r ? getComputedStyle(r).color : ''; })()");
-  const colour = { lost: 'rgb(255, 107, 94)', gained: 'rgb(125, 255, 180)' }[tone];
-  check(`${tone === 'lost' ? 'red' : 'green'} on screen`, shown === colour, shown);
+  const colour = { lost: 'rgb(255, 107, 94)', gained: 'rgb(125, 255, 180)', level: 'rgb(243, 234, 212)' }[tone];
+  check(`${{ lost: 'red', gained: 'green', level: 'the table\'s own colour' }[tone]} on screen`, shown === colour, shown);
   /* The section beside the table, from above and from the side: both
    * lines drawn through it, and the gate seen edge on from the side. Then
    * the pixels, so a line drawn off the picture cannot pass: amber for
@@ -231,6 +237,77 @@ try {
   await page.evaluate("(() => { const ui = window.__ui; ui.onAction('resume', ui.settings); return 1; })()");
   await page.until("window.__ui.screen === 'flight'", 10000).catch(() => {});
   check('resuming by another route takes it away', (await page.evaluate('window.__review().open')) === false);
+
+  /*
+   * A SECTION THIS HARNESS CANNOT FLY, drawn by the real panel. The one gate
+   * track has no stack and nothing across the room, and the contributor's
+   * 15 gate track showed both break the side view (2026-11-20): a tall
+   * gate across the room at the same distance along framed the picture
+   * round its height and squashed the lines to a few pixels, and labels of
+   * gates standing close together were printed over each other. So the
+   * section is built: gate 1 at the bottom of a stack of four bays, a loop
+   * back to gate 2 beside it, and a four metre gate eight metres across the
+   * room. The panel is the shell's own module, opened in this page.
+   */
+  const synth = await page.evaluate(`(async () => {
+    const { ReviewPanel } = await import('/src/review/panel.js');
+    const st = (x, y, z, yaw, clearH = 0.6) => ({ x, y, z, yaw, clearW: 0.6, clearH, virtual: false });
+    const stations = [
+      st(3, 0.5, 0, 0),
+      st(0, 0.5, 0, 0),
+      st(-1.2, 0.5, 0, Math.PI),
+      st(0, 1.2, 0, 0), st(0, 1.9, 0, 0), st(0, 2.6, 0, 0),
+      st(8, 2, -0.7, 0, 4),
+    ];
+    const splits = [1000, 2000, 3000, 4000, 5000, 6000, 7000];
+    const loop = (r, lift) => {
+      const t = []; const x = []; const y = []; const z = [];
+      for (let i = 0; i <= 100; i += 1) {
+        const a = (i / 100) * Math.PI;
+        t.push(1000 + i * 10);
+        x.push(-0.6 + 0.6 * Math.cos(a) * r);
+        /* Up on the way out and down on the way back, so from the side
+         * it is a loop and not one line flown out and back on itself. */
+        y.push(0.5 + lift * Math.sin(a) ** 2 * (1 + Math.cos(a)) * 0.6);
+        z.push(-1.2 * Math.sin(a) * r);
+      }
+      return { t, x, y, z };
+    };
+    const panel = new ReviewPanel();
+    panel.open({
+      lap: { splits, durationMs: 7000 }, ref: { splits, durationMs: 7000 },
+      title: 'A built section', refName: 'Ghost',
+      views: { stations, lapLine: loop(1, 0.3), refLine: loop(1.3, 0.5), lifeScale: 1 },
+    });
+    panel.select(1);
+    const d = panel.state().drawn;
+    const cv = document.querySelector('#review .review-side');
+    const px = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+    let lo = Infinity; let hi = -Infinity;
+    for (let y = 0; y < cv.height; y += 1) {
+      for (let x = 0; x < cv.width; x += 1) {
+        const i = (y * cv.width + x) * 4;
+        if (px[i] > 230 && px[i + 1] > 150 && px[i + 1] < 200 && px[i + 2] < 100) { lo = Math.min(lo, y); hi = Math.max(hi, y); }
+      }
+    }
+    const overlaps = (rects) => !rects || rects.some((r, i) => rects.some((s, j) => j > i && r.x < s.x + s.w && s.x < r.x + r.w && r.y < s.y + s.h && s.y < r.y + r.h));
+    const out = {
+      sideGates: d.side.gates, sideLabels: d.side.labels, topLabels: d.top.labels,
+      lineShare: (hi - lo) / cv.height,
+      overlapTop: overlaps(d.top.rects), overlapSide: overlaps(d.side.rects),
+    };
+    window.__builtPanel = panel;
+    return out;
+  })()`);
+  if (SHOTS) {
+    const shot = await page.cdp.send('Page.captureScreenshot', { format: 'png' }, page.sessionId);
+    writeFileSync(join(SHOTS, 'review-built.png'), Buffer.from(shot.data, 'base64'));
+    console.log(`  (picture: ${join(SHOTS, 'review-built.png')})`);
+  }
+  await page.evaluate('(() => { window.__builtPanel.close(); return 1; })()');
+  check('the side view leaves out the gate across the room and keeps the stack', synth.sideGates === 5, JSON.stringify(synth));
+  check('so the lines fill a good part of its height, not a few pixels', synth.lineShare > 0.2, `${(synth.lineShare * 100).toFixed(0)}% of the picture`);
+  check('no label is printed over another, from above or from the side', !synth.overlapTop && !synth.overlapSide && synth.topLabels >= 2 && synth.sideLabels >= 2, JSON.stringify(synth));
 
   const errs = page.errors.filter((e) => !e.includes('net::ERR_CONNECTION_REFUSED'));
   check('no errors', errs.length === 0, errs.slice(0, 3).join(' | ') || 'none');

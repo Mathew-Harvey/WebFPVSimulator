@@ -22,7 +22,7 @@
 
 import { F, TRACE_FIELDS, TraceLap } from '../src/review/trace.js';
 import {
-  lineOfGhost, lineOfTrace, pathOf, scaleMetres, sideAxis, sideGates, sideOf, stationsOfRaceGates, topSpots,
+  labelCandidates, lateralOf, lineOfGhost, lineOfTrace, nearSideGates, pathOf, placeLabel, scaleMetres, sideAxis, sideGates, sideOf, stationsOfRaceGates, topSpots,
 } from '../src/review/views.js';
 
 let failures = 0;
@@ -96,6 +96,59 @@ console.log('the side view');
   const g = sideGates(stations, axis);
   check('gates flown along the axis are seen edge on, one across it and a flag are not', g.length === 2 && g[0].i === 0 && g[1].i === 1);
   check('each with its place along the axis and its bottom and top', near(g[1].along, 8) && g[1].lo === 3.5 && g[1].hi === 4.5);
+}
+
+console.log('which gates the side view draws');
+{
+  /* Flying -z from (0, ., 0). lateralOf is the signed offset across the
+   * axis; only its size, measured the same way for the lines and the
+   * gates, matters here. */
+  const axis = { x: 0, z: -1, ox: 0, oz: 0 };
+  check('sideways is across the travel, along is along it', near(Math.abs(lateralOf([3, 0, -5], axis)), 3) && near(lateralOf([0, 0, -5], axis), 0));
+  const st = (x, z, y, i) => ({ x, y, z, yaw: 0, clearW: 1, clearH: 1, virtual: false, i });
+  const stations = [
+    st(0, 0, 1),      /* 0: the section's first gate */
+    st(0, -6, 1),     /* 1: its last */
+    st(0, -3, 3),     /* 2: a bay stacked above the path, in the middle */
+    st(8, -3, 1),     /* 3: across the room, at the same distance along */
+    st(0, -40, 1),    /* 4: in line, but far beyond the section */
+  ];
+  const gates = sideGates(stations, axis);
+  check('each gate carries its sideways offset and half width', gates.length === 5 && near(Math.abs(gates[3].lat), 8) && gates[3].halfW === 0.5);
+  /* The lines wander half a metre either side of the axis. */
+  const points = [[0, 1, 0], [0.5, 1.2, -2], [-0.5, 1.1, -4], [0, 1, -6]];
+  const kept = nearSideGates(gates, points, axis, [0, 1]).map((q) => q.i);
+  check('a gate across the room at the same distance along is left out', !kept.includes(3), JSON.stringify(kept));
+  check('a bay stacked over the path is kept', kept.includes(2), JSON.stringify(kept));
+  check('a gate far beyond the section is left out', !kept.includes(4), JSON.stringify(kept));
+  check('the section\'s own two are always kept', kept.includes(0) && kept.includes(1));
+  const far = nearSideGates(gates, points, axis, [0, 3]).map((q) => q.i);
+  check('even when one of them stands across the room', far.includes(3));
+  check('with no lines, only the section\'s own', JSON.stringify(nearSideGates(gates, [], axis, [0, 1]).map((q) => q.i)) === '[0,1]');
+}
+
+console.log('where a label goes');
+{
+  const bounds = { x: 0, y: 0, w: 200, h: 100 };
+  const c = labelCandidates(100, 50, 30, 12, 6);
+  check('first to the right of its anchor, then to the left', c[0].x === 106 && c[1].x === 64 && c[0].y === 44);
+  check('then a line up and a line down', c[2].y === 44 - 18 && c[4].y === 44 + 18);
+  const taken = [];
+  const a = placeLabel(c, taken, [], bounds);
+  check('the first free place is the first choice', a === c[0] && taken.length === 1);
+  const b = placeLabel(labelCandidates(100, 50, 30, 12, 6), taken, [], bounds);
+  check('a second label at the same anchor goes left, not on top', b.x === 64 && b.y === 44);
+  const d = placeLabel(labelCandidates(100, 50, 30, 12, 6), taken, [], bounds);
+  check('a third goes a line up', d.y === 26);
+  const e = placeLabel(labelCandidates(20, 50, 30, 12, 6), [], [[30, 50]], bounds);
+  check('a label keeps off a line', !(30 > e.x && 30 < e.x + e.w && 50 > e.y && 50 < e.y + e.h), JSON.stringify(e));
+  const f = placeLabel(labelCandidates(195, 50, 30, 12, 6), [], [], bounds);
+  check('and inside the picture at its right edge', f.x + f.w <= 200, JSON.stringify(f));
+  const crowd = [];
+  for (let k = 0; k < 20; k += 1) {
+    placeLabel(labelCandidates(100, 50, 30, 12, 6), crowd, [], bounds);
+  }
+  check('when nowhere is free it still places it, inside the picture', crowd.length === 20 && crowd.every((r) => r.y >= 0 && r.y + r.h <= 100));
 }
 
 console.log('the scale bar');

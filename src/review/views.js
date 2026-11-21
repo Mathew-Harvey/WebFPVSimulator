@@ -211,6 +211,25 @@ export function placeLabel(cands, taken, points, bounds, pad = 2) {
   return best;
 }
 
+/*
+ * A gate's bar drawn short of its ends by px at each, so openings that
+ * touch (bays stacked one on another, or two gates side by side across one
+ * line) read as separate bars with a gap between, not one long line (the
+ * contributor, 2026-11-21: "add a bit of space when stacking gates bc now
+ * it look just one green line"). A short bar keeps at least half its
+ * length.
+ */
+export function insetBar(p, q, px) {
+  const len = Math.hypot(q[0] - p[0], q[1] - p[1]);
+  if (!(len > 0)) {
+    return [p, q];
+  }
+  const d = Math.min(px, len / 4);
+  const ux = (q[0] - p[0]) / len;
+  const uy = (q[1] - p[1]) / len;
+  return [[p[0] + ux * d, p[1] + uy * d], [q[0] - ux * d, q[1] - uy * d]];
+}
+
 /* Candidate rects for a label of width tw and height th beside an anchor:
  * right of it, then left, then each moved up and down a line at a time. */
 export function labelCandidates(ax, ay, tw, th, gap) {
@@ -385,8 +404,7 @@ export function drawTop(cv, { stations, ends, mine, ref, lifeScale = 1 }) {
     const st = stations[i];
     const ax = Math.cos(st.yaw) * (st.clearW / 2);
     const az = -Math.sin(st.yaw) * (st.clearW / 2);
-    const p = P([st.x - ax, st.z - az]);
-    const q = P([st.x + ax, st.z + az]);
+    const [p, q] = insetBar(P([st.x - ax, st.z - az]), P([st.x + ax, st.z + az]), 4 * dpr);
     bars.push(...barPixels(p, q));
     g.strokeStyle = lit.has(i) ? VIEW_COLOURS.gate : VIEW_COLOURS.gateOther;
     g.lineWidth = 4 * dpr;
@@ -482,9 +500,10 @@ export function drawSide(cv, { stations, ends, mine, ref, lifeScale = 1 }) {
   }
   const bright = (s) => s.list.some((i) => lit.has(i));
   spots.sort((p, q) => Number(bright(p)) - Number(bright(q)));
+  const drawnBars = [];
   for (const s of spots) {
-    const p = P([s.along, s.lo]);
-    const q = P([s.along, s.hi]);
+    const [p, q] = insetBar(P([s.along, s.lo]), P([s.along, s.hi]), 4 * dpr);
+    drawnBars.push([p, q]);
     g.strokeStyle = bright(s) ? VIEW_COLOURS.gate : VIEW_COLOURS.gateOther;
     g.lineWidth = 4 * dpr;
     g.beginPath();
@@ -518,5 +537,5 @@ export function drawSide(cv, { stations, ends, mine, ref, lifeScale = 1 }) {
     writeLabel(g, s.list.map(gateName).join(', '), x, (top + bottom) / 2, taken, pixels, w, h, dpr);
     labels += 1;
   }
-  return { lap: a.length, ref: b.length, gates: gates.length, labels, rects: taken.slice(1) };
+  return { lap: a.length, ref: b.length, gates: gates.length, labels, rects: taken.slice(1), bars: drawnBars };
 }

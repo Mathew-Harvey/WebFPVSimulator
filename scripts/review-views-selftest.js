@@ -22,7 +22,7 @@
 
 import { F, TRACE_FIELDS, TraceLap } from '../src/review/trace.js';
 import {
-  labelCandidates, lateralOf, lineOfGhost, lineOfTrace, nearSideGates, pathOf, placeLabel, scaleMetres, sideAxis, sideGates, sideOf, stationsOfRaceGates, topSpots,
+  insetBar, labelCandidates, lateralOf, lineOfGhost, lineOfTrace, nearSideGates, pathOf, placeLabel, scaleMetres, sideAxis, sideGates, sideOf, stationsOfRaceGates, topSpots,
 } from '../src/review/views.js';
 
 let failures = 0;
@@ -125,6 +125,19 @@ console.log('which gates the side view draws');
   const far = nearSideGates(gates, points, axis, [0, 3]).map((q) => q.i);
   check('even when one of them stands across the room', far.includes(3));
   check('with no lines, only the section\'s own', JSON.stringify(nearSideGates(gates, [], axis, [0, 1]).map((q) => q.i)) === '[0,1]');
+}
+
+console.log('a gap between bars that touch');
+{
+  const [p, q] = insetBar([10, 100], [10, 40], 4);
+  check('a bar is drawn short of each end', near(p[1], 96) && near(q[1], 44) && p[0] === 10);
+  /* A second bar from 40 up to 0, meeting the first at 40. */
+  const [r] = insetBar([10, 40], [10, 0], 4);
+  check('so two bars that meet leave twice that between them', near(q[1] - r[1], 8), `${q[1]} to ${r[1]}`);
+  const [s, t] = insetBar([0, 0], [8, 0], 4);
+  check('a short bar keeps half its length', near(t[0] - s[0], 4));
+  const [u, v] = insetBar([3, 3], [3, 3], 4);
+  check('a bar of no length is left alone', u[0] === 3 && v[1] === 3);
 }
 
 console.log('where a label goes');

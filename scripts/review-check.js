@@ -256,7 +256,9 @@ try {
       st(3, 0.5, 0, 0),
       st(0, 0.5, 0, 0),
       st(-1.2, 0.5, 0, Math.PI),
-      st(0, 1.2, 0, 0), st(0, 1.9, 0, 0), st(0, 2.6, 0, 0),
+      /* Bays stacked straight on gate 1, touching it and each other, as on
+       * the contributor's track. */
+      st(0, 1.1, 0, 0), st(0, 1.7, 0, 0), st(0, 2.3, 0, 0),
       st(8, 2, -0.7, 0, 4),
     ];
     const splits = [1000, 2000, 3000, 4000, 5000, 6000, 7000];
@@ -291,10 +293,31 @@ try {
       }
     }
     const overlaps = (rects) => !rects || rects.some((r, i) => rects.some((s, j) => j > i && r.x < s.x + s.w && s.x < r.x + r.w && r.y < s.y + s.h && s.y < r.y + r.h));
+    /* Bays that touch in the room, one bar straight above another in the
+     * picture: the gap left between them in pixels, and whether the pixel
+     * in the middle of it is the ground and not a bar. A bar is [bottom,
+     * top] in canvas pixels, y down. */
+    let gap = null; let gapDark = null;
+    const bars = d.side.bars || [];
+    for (const A of bars) {
+      for (const B of bars) {
+        const g = A[1][1] - B[0][1];
+        const mid = (A[1][1] + B[0][1]) / 2;
+        /* Only a gap inside the picture: the bays above the frame are drawn
+         * clipped, and their gaps have no pixel to read. */
+        if (A === B || Math.abs(A[0][0] - B[0][0]) > 1 || !(g >= 0 && g < 30) || (gap !== null && g >= gap) || !(mid >= 0 && mid < cv.height)) {
+          continue;
+        }
+        gap = g;
+        const i = (Math.round((A[1][1] + B[0][1]) / 2) * cv.width + Math.round(A[0][0])) * 4;
+        gapDark = px[i] < 60 && px[i + 1] < 60 && px[i + 2] < 60;
+      }
+    }
     const out = {
       sideGates: d.side.gates, sideLabels: d.side.labels, topLabels: d.top.labels,
       lineShare: (hi - lo) / cv.height,
       overlapTop: overlaps(d.top.rects), overlapSide: overlaps(d.side.rects),
+      stackGap: gap, stackGapDark: gapDark,
     };
     window.__builtPanel = panel;
     return out;
@@ -308,6 +331,7 @@ try {
   check('the side view leaves out the gate across the room and keeps the stack', synth.sideGates === 5, JSON.stringify(synth));
   check('so the lines fill a good part of its height, not a few pixels', synth.lineShare > 0.2, `${(synth.lineShare * 100).toFixed(0)}% of the picture`);
   check('no label is printed over another, from above or from the side', !synth.overlapTop && !synth.overlapSide && synth.topLabels >= 2 && synth.sideLabels >= 2, JSON.stringify(synth));
+  check('bays stacked one on another are separate bars, with the ground between them', synth.stackGap >= 6 && synth.stackGapDark === true, `${synth.stackGap === null ? 'no gap' : `${synth.stackGap.toFixed(1)} px`}, ground between: ${synth.stackGapDark}`);
 
   const errs = page.errors.filter((e) => !e.includes('net::ERR_CONNECTION_REFUSED'));
   check('no errors', errs.length === 0, errs.slice(0, 3).join(' | ') || 'none');

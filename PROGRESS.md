@@ -76722,3 +76722,8 @@ Wrong: nothing attempted and undone.
 ### What went wrong
 
 - The first summary script read a `tune` field the blocking ticket does not have and stopped on it; the second guarded it.
+
+### The board closed, by the standing rule of 2026-11-07
+
+- Read again before closing (00:18Z): 24 open, none filed since the triage began; 0 in progress. Closed with the run's token through `POST /board/api/bugs/:id`, status and resolution: 24 updates, 24 answered 200, all `wontfix` because nothing was fixed. bug-4cfdf54b says the browser listed no controller, what to try, that Radio link does not connect a radio, and that its label is recorded for the owner; bug-c88c3e9a and bug-57314ee8 say 3D mode was on with the keyboard and where to turn it off; bug-3a424f50, bug-bb218f5e and bug-4a6c08c6 carry their key to screen lead; bug-4fd50c7e says its cap 40 hover is the measured table; the rest say no code defect, tune numbers kept in the Tunes panel. Afterwards (00:18:37Z) the board lists 0 open and 0 in progress.
+- Nothing went to main: there was no fix. This entry is on the branch for the owner to take with the next merge.

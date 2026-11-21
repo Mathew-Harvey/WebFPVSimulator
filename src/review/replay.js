@@ -20,8 +20,9 @@
  *
  * SIDE BY SIDE. Your goggles and the ghost's, two pictures at once:
  * splitPanes lays them out and gogglePose puts each camera where the
- * quad's own lens was. THE ORBIT: orbitDir and orbitFit place a camera
- * round the pair. THE TIMELINE: the playhead's speed and loop, the
+ * quad's own lens was. THE ORBIT: orbitDir places a camera round a quad.
+ * THE LINES: how much of each is drawn (pathWindow, tubeRange). THE
+ * TIMELINE: the playhead's speed and loop, the
  * stretch of it shown (zoomView, followView), and each lap's sticks
  * (sticksOf, sticksAt).
  *
@@ -217,22 +218,13 @@ export function gogglePose(pose, lens, size, tiltRad) {
 }
 
 /*
- * THE ORBIT. The camera round the pair, at heading (radians about the up
+ * THE ORBIT. The camera round a quad, at heading (radians about the up
  * axis, 0 looking north, -z) and tilt (radians above level): the way from
- * the middle of the pair to the camera, a unit vector.
+ * the quad to the camera, a unit vector.
  */
 export function orbitDir(heading, tilt) {
   const c = Math.cos(tilt);
   return [Math.sin(heading) * c, Math.sin(tilt), Math.cos(heading) * c];
-}
-
-/* How far the orbit stands from the middle of two quads apart metres
- * apart, scene metres, so both are in a picture fovDeg tall with margin
- * plant metres round them, and never nearer than near plant metres:
- * size scene metres to a plant metre. The pilot's zoom multiplies it. */
-export function orbitFit(apart, size, fovDeg, near = 1.5, margin = 0.5) {
-  const half = (fovDeg * Math.PI) / 360;
-  return Math.max(near * size, (apart / 2 + margin * size) / Math.tan(half));
 }
 
 /*
@@ -324,4 +316,36 @@ export function sticksAt(sticks, ms) {
     out[k] = sticks[k][lo] + (sticks[k][hi] - sticks[k][lo]) * u;
   }
   return out;
+}
+
+/*
+ * THE LINES, how much of each is drawn, as the coach branch's: 'near',
+ * from NEAR_BEHIND_MS behind the quad to NEAR_AHEAD_MS ahead of it on its
+ * own clock; 'section', its own stretch of the section under the playhead;
+ * 'all', the whole of the replay. pathWindow says which stretch of its
+ * clock, [lo, hi], or null for all of it; seg is its own [from, to] of the
+ * section (or null).
+ */
+export const PATH_MODES = ['near', 'section', 'all'];
+export const NEAR_BEHIND_MS = 1500;
+export const NEAR_AHEAD_MS = 1000;
+
+export function pathWindow(mode, ms, seg) {
+  if (mode === 'near') {
+    return [ms - NEAR_BEHIND_MS, ms + NEAR_AHEAD_MS];
+  }
+  if (mode === 'section' && seg) {
+    return [seg[0], seg[1]];
+  }
+  return null;
+}
+
+/* The run of a tube's segments [j0, j1) that covers lo to hi of a line
+ * built over span [a, b] with `segments` segments even in time. */
+export function tubeRange(span, segments, lo, hi) {
+  const [a, b] = span;
+  const at = (ms) => Math.max(0, Math.min(segments, ((ms - a) / (b - a)) * segments));
+  const j0 = Math.floor(at(lo));
+  const j1 = Math.ceil(at(hi));
+  return j1 > j0 ? [j0, j1] : [j0, j0];
 }

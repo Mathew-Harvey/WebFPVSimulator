@@ -286,14 +286,25 @@ try {
   check('it opens the section\'s replay, playing, both holograms in the room', rp.open === true && rp.playing === true && Array.isArray(rp.youAt) && Array.isArray(rp.ghostAt), JSON.stringify(rp));
   const hidden = await page.evaluate("(() => ({ review: window.__review().open, watching: document.documentElement.classList.contains('tg-watching'), bar: !!document.querySelector('#review-replay') }))()");
   check('over the pause: the review put away, the menu hidden, the bar shown', hidden.review === false && hidden.watching === true && hidden.bar === true, JSON.stringify(hidden));
-  check('both lines drawn in the room', rp.lines && rp.lines.you === true && rp.lines.ghost === true, JSON.stringify(rp.lines));
-  await page.tap('KeyP');
-  await page.sleep(200);
-  const noLines = (await page.evaluate('window.__reviewReplay()')).lines;
-  await page.tap('KeyP');
-  await page.sleep(200);
-  const linesBack = (await page.evaluate('window.__reviewReplay()')).lines;
-  check('P hides them and shows them again', noLines && !noLines.you && !noLines.ghost && linesBack.you && linesBack.ghost, JSON.stringify({ noLines, linesBack }));
+  check('both lines drawn in the room, near each quad to start with', rp.lines && rp.lines.you === true && rp.lines.ghost === true && rp.lines.mode === 'near', JSON.stringify(rp.lines));
+  {
+    /* Near: a run of each tube about two and a half seconds long, not the
+     * whole; all: the whole; off: none; and round to near. */
+    const info = rp.lineInfo;
+    const share = (k) => (info[k].drawn[1] - info[k].drawn[0]) / info[k].segments;
+    const wholeMs = rp.endMs - rp.startMs;
+    check('near draws about two and a half seconds of each line, not the whole', info.you.drawn && info.ghost.drawn && share('you') < Math.min(1, 2700 / wholeMs) && share('you') > 0 && share('ghost') > 0, JSON.stringify({ you: info.you.drawn, ghost: info.ghost.drawn, segments: info.you.segments, wholeMs }));
+    check('the ghost\'s line is its own, blue', info.ghost.colour === 0x7fd4ff && info.you.colour === 0xffb340, JSON.stringify({ you: info.you.colour, ghost: info.ghost.colour }));
+    const seen = [];
+    for (let i = 0; i < 3; i += 1) {
+      await page.tap('KeyP');
+      await page.sleep(150);
+      const s = await page.evaluate('window.__reviewReplay()');
+      seen.push({ mode: s.lines.mode, you: s.lines.you, drawn: s.lineInfo.you.drawn, segments: s.lineInfo.you.segments });
+    }
+    check('P goes all (the whole drawn), off (none), and round to near', seen[0].mode === 'all' && seen[0].drawn[0] === 0 && seen[0].drawn[1] === seen[0].segments
+      && seen[1].mode === 'off' && seen[1].you === false && seen[2].mode === 'near' && seen[2].you === true, JSON.stringify(seen));
+  }
   /* The timeline: the lanes with both laps' sticks, speed, loop, zoom, and
    * a click on it scrubs. */
   const tlState = await page.evaluate('window.__reviewReplay()');
@@ -389,7 +400,15 @@ try {
   await page.tap('KeyC');
   await page.sleep(300);
   const orb = await page.evaluate("(() => ({ s: window.__reviewReplay(), surface: !document.querySelector('.review-replay-surface').hidden, follow: !document.querySelector('.review-replay-follow').hidden }))()");
-  check('C to the orbit: round the pair, its drag surface on, no follow button', orb.s.view === 'orbit' && orb.s.orbit && orb.s.orbit.dist > 0 && orb.surface && !orb.follow, JSON.stringify({ view: orb.s.view, orbit: orb.s.orbit, surface: orb.surface, follow: orb.follow }));
+  /* Round the quad followed: the check followed the ghost a moment ago. */
+  const target = (st) => (st.follow === 'ghost' ? st.ghostAt : st.youAt);
+  const camOff = orb.s.orbit && orb.s.orbit.camAt ? Math.hypot(...orb.s.orbit.camAt.map((v, i) => v - target(orb.s)[i])) : NaN;
+  check('C to the orbit: round the quad followed, its distance from it, its drag surface on, the follow button there', orb.s.view === 'orbit' && orb.s.orbit.dist > 0 && Math.abs(camOff - orb.s.orbit.dist) < 0.35 * orb.s.orbit.size && orb.surface && orb.follow, JSON.stringify({ view: orb.s.view, orbit: orb.s.orbit, camOff, surface: orb.surface, follow: orb.follow }));
+  const roundGhost = await page.evaluate("(() => { window.__reviewReplay('follow'); return 1; })()");
+  await page.sleep(300);
+  const og = await page.evaluate('window.__reviewReplay()');
+  const otherOff = og.orbit.camAt ? Math.hypot(...og.orbit.camAt.map((v, i) => v - target(og)[i])) : NaN;
+  check('F: round the other quad instead', roundGhost && og.follow !== orb.s.follow && Math.abs(otherOff - og.orbit.dist) < 0.35 * og.orbit.size, JSON.stringify({ was: orb.s.follow, now: og.follow, otherOff, dist: og.orbit.dist }));
   const turned = await page.evaluate("window.__reviewReplay('turn', [120, 40])");
   check('a drag turns and tilts it', Math.abs(turned.orbit.heading - (orb.s.orbit.heading - 120 * 0.006)) < 1e-9 && turned.orbit.tilt > orb.s.orbit.tilt, JSON.stringify({ was: orb.s.orbit, now: turned.orbit }));
   await page.evaluate("window.__reviewReplay('zoom', 3)");

@@ -11894,8 +11894,12 @@ export async function boot({ loading, bootStart, mapId }) {
       .find((tr) => tr && tr !== lap && Math.abs(tr.durationMs - ref.durationMs) < 1) : null;
     const gateWord = (i) => (i % n !== 0 ? `Gate ${i % n}` : i === 0 ? 'Start' : 'Finish');
     const marks = [];
+    const ghostMarks = [];
     for (let i = i0; i <= i1; i += 1) {
       marks.push({ ms: through(lapLine, lap.splits, i), name: gateWord(i) });
+      if (refLine) {
+        ghostMarks.push(through(refLine, ref.splits, i));
+      }
     }
     return reviewReplayReady().then((rp) => {
       if (reviewLast !== lap || mode !== 'paused' || ui.screen !== 'paused') {
@@ -11918,6 +11922,7 @@ export async function boot({ loading, bootStart, mapId }) {
         ghost: refLine ? span(refLine, ref.splits) : null,
         title: whole ? 'The whole lap' : sectionName(k, lap.splits.length),
         marks,
+        ghostMarks: refLine ? ghostMarks : null,
         lapTrace: lap,
         refTrace: refTrace || null,
         scale: 1 / WORLD_SCALE,

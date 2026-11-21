@@ -30,20 +30,28 @@
  * the aspect is kept; main.js clears it once the replay closes.
  *
  * THE ORBIT (C, or the bar's View button, which goes Chase, Orbit, Side
- * by side): a camera round the middle of the pair, far enough back to
- * have both in the picture (orbitFit in replay.js). Drag on the room to
- * turn round them and tilt; the wheel or a pinch comes in and goes out. A
+ * by side): a camera round the quad followed (F, as the chase), so that
+ * quad is always the middle of the picture. Round the middle of the pair
+ * first, and with the ghost seconds behind on a whole lap the middle was
+ * empty room between the gates and neither quad was in the picture (the
+ * contributor's: "i dont see no drone"). Drag on the room to turn round it
+ * and tilt; the wheel or a pinch comes in and goes out. A
  * drag, the wheel or a pinch in the chase goes to the orbit, from where the
  * chase was looking (the contributor dragged the chase and nothing
  * turned).
  * It keeps off the walls as the chase does: walked in from where it wants
  * to stand until it is clear of the nearest solid, and above the floor.
  *
- * THE LINES. Each lap's line through the section, drawn in the room in its
- * colour as a thin see through tube, from the replay's start to its end on
- * that lap's own clock, so where the two went apart is there to see from
- * any camera. A quad's own line is left out of its own goggles. P (the
- * paths, as on the coach branch) or the bar's button shows and hides them.
+ * THE LINES. Each lap's line drawn in the room in its colour as a thin see
+ * through tube, so where the two went apart is there to see from any
+ * camera. How much of it, as on the coach branch (P, or the bar's button):
+ * near, the stretch round each quad on its own clock, a second and a half
+ * behind it and one ahead; section, each lap's own stretch of the section
+ * under the playhead (a whole lap only); all of the replay; or none. Near
+ * first: the whole lap's line was loops all over the room, and the ghost's
+ * under yours where they ran together (the contributor's "lines too long",
+ * "missing ghost lines"). A quad's own line is left out of its own
+ * goggles.
  *
  * THE TIMELINE, the bar's, as the coach branch's: the replay's stretch
  * of time with each gate where your line went through it (the section's
@@ -90,7 +98,8 @@ import { buildGhostCraft } from '../render/ghostcraft.js';
 import { CAMERA_MOUNT_FORWARD, CAMERA_MOUNT_UP } from '../render/lens.js';
 import { CHASE_FOV, WatchCam } from '../render/watchcam.js';
 import {
-  LANES, PLAY_RATES, Playhead, followView, gogglePose, orbitDir, orbitFit, poseAt, sectionTimeline, splitPanes, sticksAt, sticksOf, zoomView,
+  LANES, PATH_MODES, PLAY_RATES, Playhead, followView, gogglePose, orbitDir, pathWindow, poseAt, sectionTimeline, splitPanes, sticksAt, sticksOf,
+  tubeRange, zoomView,
 } from './replay.js';
 import { deltaText, seconds } from './splits.js';
 
@@ -110,6 +119,10 @@ const PATH_RADIUS = 0.012;
 const PATH_SEGMENT_MS = 20;
 const PATH_RADIAL = 5;
 const PATH_OPACITY = 0.55;
+const PATH_WORDS = { near: 'Lines: near', section: 'Lines: section', all: 'Lines: all', off: 'Lines: off' };
+/* The orbit's distance before the pilot's zoom, plant metres: a little
+ * further back than the chase's boom (watchcam.js BACK, 1.3). */
+const ORBIT_DIST = 1.5;
 
 /* The orbit: tilt when it starts and its limits (radians above level),
  * radians turned a pixel dragged, the wheel's step, the pilot's zoom's
@@ -187,7 +200,7 @@ export class ReviewReplay {
     /* The lines in the room, made when a replay opens and freed when it
      * closes; shown or not, kept from one replay to the next. */
     this.paths = null;
-    this.showPaths = true;
+    this.pathMode = 'near';
     /* The lanes shown, and the play speed, kept from one replay to the
      * next. */
     this.showSticks = true;
@@ -209,6 +222,10 @@ export class ReviewReplay {
       const mesh = new THREE.Mesh(geo, mat);
       mesh.name = 'review-replay-line';
       mesh.renderOrder = 1;
+      /* The run drawn changes every frame, so the bounds stay the whole
+       * tube's and it is never culled for its run being off screen. */
+      mesh.frustumCulled = false;
+      mesh.userData = { span: [a, b], segments };
       return mesh;
     };
     const { tl, data } = this;
@@ -216,6 +233,49 @@ export class ReviewReplay {
       you: make(data.lapLine, tl.startMs, tl.endMs, YOU_COLOUR),
       ghost: data.refLine ? make(data.refLine, tl.ghostAt(tl.startMs), tl.ghostAt(tl.endMs), GHOST_COLOUR) : null,
     };
+  }
+
+  /* The line modes this replay has: section only on a whole lap, where a
+   * section is less than all of it. */
+  pathModes() {
+    const marks = this.marks();
+    return marks.length > 2 ? [...PATH_MODES, 'off'] : PATH_MODES.filter((m) => m !== 'section').concat('off');
+  }
+
+  /* The run of each line the mode asks for, this frame: round each quad on
+   * its own clock, or its own stretch of the section under the playhead. */
+  placePaths(parent, t) {
+    if (!this.paths) {
+      return;
+    }
+    const marks = this.marks();
+    const ghostMarks = this.data.ghostMarks || [];
+    let k = -1;
+    for (let i = 0; i + 1 < marks.length; i += 1) {
+      if (t >= marks[i].ms) {
+        k = i;
+      }
+    }
+    const each = [
+      [this.paths.you, t, k >= 0 ? [marks[k].ms, marks[k + 1].ms] : null],
+      [this.paths.ghost, this.data.refLine ? this.tl.ghostAt(t) : 0,
+        k >= 0 && ghostMarks.length === marks.length ? [ghostMarks[k], ghostMarks[k + 1]] : null],
+    ];
+    for (const [mesh, ms, seg] of each) {
+      if (!mesh) {
+        continue;
+      }
+      if (parent && mesh.parent !== parent) {
+        parent.add(mesh);
+      }
+      mesh.visible = this.pathMode !== 'off';
+      const { span, segments } = mesh.userData;
+      const win = pathWindow(this.pathMode, ms, seg);
+      const [j0, j1] = win ? tubeRange(span, segments, win[0], win[1]) : [0, segments];
+      const per = PATH_RADIAL * 6;
+      mesh.geometry.setDrawRange(j0 * per, Math.max(0, j1 - j0) * per);
+      mesh.userData.drawn = [j0, j1];
+    }
   }
 
   freePaths() {
@@ -343,7 +403,7 @@ export class ReviewReplay {
     this.followBtn = el('button', 'review-replay-btn review-replay-follow', '');
     this.followBtn.type = 'button';
     this.followBtn.addEventListener('click', () => this.act('follow'));
-    this.linesBtn = el('button', 'review-replay-btn', 'Lines');
+    this.linesBtn = el('button', 'review-replay-btn review-replay-lines', '');
     this.linesBtn.type = 'button';
     this.linesBtn.addEventListener('click', () => this.act('lines'));
     this.viewBtn = el('button', 'review-replay-btn review-replay-view', '');
@@ -428,7 +488,9 @@ export class ReviewReplay {
       this.follow = this.follow === 'you' ? 'ghost' : 'you';
       this.cam.free(null);
     } else if (what === 'lines') {
-      this.showPaths = !this.showPaths;
+      /* The next mode round, or the one asked for. */
+      const order = this.pathModes();
+      this.pathMode = order.includes(arg) ? arg : order[(order.indexOf(this.pathMode) + 1) % order.length];
     } else if (what === 'rate') {
       /* A speed asked for, or the next one round. */
       const next = PLAY_RATES.includes(arg) ? arg : PLAY_RATES[(PLAY_RATES.indexOf(this.rate) + 1) % PLAY_RATES.length];
@@ -780,12 +842,17 @@ export class ReviewReplay {
     }
     const into = t - tl.you[0];
     this.clock.textContent = into < 0 ? `${seconds(-into)} s before` : `${seconds(into)} s in`;
-    this.followBtn.textContent = this.follow === 'you' ? 'Behind you' : 'Behind the ghost';
+    const round = this.mode === 'orbit';
+    this.followBtn.textContent = this.follow === 'you' ? (round ? 'Round you' : 'Behind you') : (round ? 'Round the ghost' : 'Behind the ghost');
     this.viewBtn.textContent = VIEW_WORDS[this.mode];
-    this.linesBtn.setAttribute('aria-pressed', String(this.showPaths));
+    if (!this.pathModes().includes(this.pathMode)) {
+      this.pathMode = 'near';
+    }
+    this.linesBtn.textContent = PATH_WORDS[this.pathMode];
+    this.linesBtn.setAttribute('aria-pressed', String(this.pathMode !== 'off'));
     const split = this.splitOn;
     if (this.data.refLine) {
-      this.followBtn.hidden = this.mode !== 'chase';
+      this.followBtn.hidden = split;
     }
     this.surface.hidden = this.mode === 'split';
     const panes = this.panes(window.innerWidth, window.innerHeight);
@@ -821,16 +888,7 @@ export class ReviewReplay {
       rig.setPresence(1);
       return p;
     };
-    if (this.paths) {
-      for (const mesh of [this.paths.you, this.paths.ghost]) {
-        if (mesh) {
-          if (parent && mesh.parent !== parent) {
-            parent.add(mesh);
-          }
-          mesh.visible = this.showPaths;
-        }
-      }
-    }
+    this.placePaths(parent, t);
     const you = place(this.rigs.you, this.data.lapLine, t);
     let ghost = null;
     if (this.data.refLine) {
@@ -851,7 +909,7 @@ export class ReviewReplay {
       }
     } else if (this.mode === 'orbit') {
       this.goggles = null;
-      this.orbitFrame(camera, you, ghost, world, dt);
+      this.orbitFrame(camera, this.follow === 'ghost' && ghost ? ghost : you, world, dt);
       this.lift(camera);
     } else {
       this.goggles = null;
@@ -871,12 +929,12 @@ export class ReviewReplay {
   }
 
   /*
-   * The orbit's camera this frame: round the middle of the pair (you
-   * alone with no ghost), as far back as fits both times the pilot's zoom,
-   * walked in to keep clear of solids and held above the floor, looking at
-   * the middle. It starts behind where the camera was looking.
+   * The orbit's camera this frame: round the quad followed (p, a pose),
+   * ORBIT_DIST times the pilot's zoom back, walked in to keep clear of
+   * solids and held above the floor, looking at the quad. It starts behind
+   * where the camera was looking.
    */
-  orbitFrame(camera, you, ghost, world, dt) {
+  orbitFrame(camera, p, world, dt) {
     const o = this.orbit;
     const size = this.data.size || 1;
     if (o.fresh) {
@@ -886,11 +944,8 @@ export class ReviewReplay {
       }
       o.boom = 0;
     }
-    const m = ghost
-      ? [(you.x + ghost.x) / 2, (you.y + ghost.y) / 2, (you.z + ghost.z) / 2]
-      : [you.x, you.y, you.z];
-    const apart = ghost ? Math.hypot(you.x - ghost.x, you.y - ghost.y, you.z - ghost.z) : 0;
-    const want = orbitFit(apart, size, CHASE_FOV) * o.zoom;
+    const m = [p.x, p.y, p.z];
+    const want = ORBIT_DIST * size * o.zoom;
     const dir = orbitDir(o.heading, o.tilt);
     const min = ORBIT_MIN * size;
     let reach = Math.max(min, want);
@@ -918,6 +973,7 @@ export class ReviewReplay {
       }
     }
     camera.lookAt(m[0], m[1], m[2]);
+    o.camAt = camera.position.toArray();
     if (Math.abs(camera.fov - CHASE_FOV) > 0.01) {
       camera.fov = CHASE_FOV;
       camera.updateProjectionMatrix();
@@ -1041,9 +1097,22 @@ export class ReviewReplay {
       } : null,
       orbit: this.mode === 'orbit' ? { ...this.orbit, size: this.data.size || 1 } : null,
       lines: this.paths ? {
+        mode: this.pathMode,
         you: Boolean(this.paths.you && this.paths.you.visible && this.paths.you.parent),
         ghost: Boolean(this.paths.ghost && this.paths.ghost.visible && this.paths.ghost.parent),
       } : null,
+      lineInfo: this.paths ? Object.fromEntries(['you', 'ghost'].map((k) => {
+        const m = this.paths[k];
+        if (!m) {
+          return [k, null];
+        }
+        m.geometry.computeBoundingBox();
+        const b = m.geometry.boundingBox;
+        return [k, {
+          colour: m.material.color.getHex(), segments: m.userData.segments, drawn: m.userData.drawn || null,
+          box: [b.min.toArray(), b.max.toArray()], parent: Boolean(m.parent), visible: m.visible,
+        }];
+      })) : null,
       panes: this.splitOn ? this.panes(window.innerWidth, window.innerHeight) : null,
       youAt: at(this.rigs.you),
       ghostAt: this.data.refLine ? at(this.rigs.ghost) : null,

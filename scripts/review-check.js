@@ -41,6 +41,7 @@ import { fileURLToPath } from 'node:url';
 
 import { deltaText, seconds, toneOf } from '../src/review/splits.js';
 import { openPage } from '../tests/lib/page.js';
+import { decodePng } from '../tests/lib/png.js';
 import { PILOT } from './lib/pilot.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -299,6 +300,52 @@ try {
   const paused = await page.evaluate("window.__reviewReplay('play')");
   const stepped = await page.evaluate("window.__reviewReplay('step', -1)");
   check('play pauses it, and a step moves it a tenth of a second', paused.playing === false && Math.abs(stepped.t - (paused.t - 100)) < 1e-6, `${paused.t} to ${stepped.t}`);
+  /* Side by side: V, the two goggles' pictures, each the flight's shape,
+   * named, drawn, and black around them; V again, the chase back. */
+  await page.tap('KeyV');
+  await page.sleep(400);
+  const split = await page.evaluate("(() => { const s = window.__reviewReplay(); const tags = [...document.querySelectorAll('.review-replay-pane')].map((t) => ({ text: t.textContent, shown: !t.hidden })); const bar = document.querySelector('#review-replay').getBoundingClientRect(); return { s, tags, barTop: bar.top, vw: innerWidth, vh: innerHeight }; })()");
+  const panes = split.s.panes || [];
+  const shape = panes.length === 2 && panes.every((p) => Math.abs(p.w / p.h - 16 / 9) < 1e-6);
+  check('V shows your goggles and the ghost\'s side by side, each the flight\'s shape, named', split.s.view === 'split' && shape && split.tags.map((t) => `${t.text}${t.shown ? '' : ' hidden'}`).join(',') === 'You,Ghost', JSON.stringify({ view: split.s.view, panes, tags: split.tags }));
+  const across = split.vw >= split.vh;
+  check('side by side on a wide screen, one over the other on an upright one, apart and inside it', panes.length === 2
+    && (across ? Math.abs(panes[1].x - (panes[0].x + panes[0].w)) < 1e-6 : Math.abs(panes[1].y - (panes[0].y + panes[0].h)) < 1e-6)
+    && panes.every((p) => p.x >= -1e-6 && p.y >= -1e-6 && p.x + p.w <= split.vw + 1e-6 && p.y + p.h <= split.vh + 1e-6), JSON.stringify({ panes, vw: split.vw, vh: split.vh }));
+  {
+    const shot = await page.cdp.send('Page.captureScreenshot', { format: 'png' }, page.sessionId);
+    const png = decodePng(Buffer.from(shot.data, 'base64'));
+    const k = png.width / split.vw;
+    const px = (x, y) => {
+      const i = (Math.floor(y * k) * png.width + Math.floor(x * k)) * png.channels;
+      return [png.data[i], png.data[i + 1], png.data[i + 2]];
+    };
+    /* A pane's picture: many distinct colours over a grid, not one flat fill. */
+    const variety = (p) => {
+      const seen = new Set();
+      for (let gy = 1; gy < 8; gy += 1) {
+        for (let gx = 1; gx < 8; gx += 1) {
+          const c = px(p.x + (p.w * gx) / 8, p.y + (p.h * gy) / 8);
+          seen.add(c.map((v) => v >> 4).join(','));
+        }
+      }
+      return seen.size;
+    };
+    const kinds = panes.map(variety);
+    const lit = (c) => c[0] + c[1] + c[2] > 30;
+    const outside = across
+      ? (panes[0].y > 8 ? [px(split.vw / 2, panes[0].y / 2)] : [])
+      : (panes[0].y > 8 ? [px(split.vw / 2, panes[0].y / 2)] : []);
+    check('both panes drawn with a picture, the screen black around them', kinds.every((n) => n >= 6) && outside.every((c) => !lit(c)), JSON.stringify({ kinds, outside }));
+    if (SHOTS) {
+      writeFileSync(join(SHOTS, 'replay-split.png'), Buffer.from(shot.data, 'base64'));
+      console.log(`  (picture: ${join(SHOTS, 'replay-split.png')})`);
+    }
+  }
+  await page.tap('KeyV');
+  await page.sleep(300);
+  const chase = await page.evaluate("(() => ({ s: window.__reviewReplay(), tags: [...document.querySelectorAll('.review-replay-pane')].filter((t) => !t.hidden).length }))()");
+  check('V again: the chase camera back, the names put away', chase.s.view === 'chase' && chase.tags === 0 && chase.s.camera === 'riding', JSON.stringify({ view: chase.s.view, tags: chase.tags, camera: chase.s.camera }));
   await page.tap('Escape');
   const back = await page.evaluate("(() => ({ replay: window.__reviewReplay().open, review: window.__review(), watching: document.documentElement.classList.contains('tg-watching'), screen: window.__ui.screen }))()");
   check('Escape goes back to the review on the same section, the menu back', back.replay === false && back.review.open === true && back.review.selected === 0 && back.watching === false && back.screen === 'paused', JSON.stringify({ ...back, review: back.review.open }));

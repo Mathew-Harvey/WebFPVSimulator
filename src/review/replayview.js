@@ -15,10 +15,18 @@
  * with no flight in, and a seek, a step or a change of quad is a cut: the
  * picture is the section, from its first moment.
  *
+ * SIDE BY SIDE (V, or the bar's button): your goggles and the ghost's at
+ * once, two pictures the shape of the pilot's own (splitPanes in
+ * replay.js), each from that quad's lens with the uptilt flown and its own
+ * hologram out of the way, so a pilot sees what each saw at the same
+ * moment of the section. main.js draws the two (drawSplit); the choice is
+ * kept from one replay to the next.
+ *
  * KEYS. Space or Enter plays and pauses, Left and Right (Up and Down on a
- * radio) step a tenth of a second, F follows the other quad, Escape or
- * Backspace goes back to the review. On the document, in the capture phase,
- * as the review's are; a radio reaches them through Ui.overlay.
+ * radio) step a tenth of a second, F follows the other quad, V switches
+ * between the chase and side by side, Escape or Backspace goes back to the
+ * review. On the document, in the capture phase, as the review's are; a
+ * radio reaches them through Ui.overlay.
  *
  * Runs on the wall clock, as the watching camera does, because the plant is
  * paused while it is open.
@@ -40,14 +48,17 @@
  */
 
 import { buildGhostCraft } from '../render/ghostcraft.js';
+import { CAMERA_MOUNT_FORWARD, CAMERA_MOUNT_UP } from '../render/lens.js';
 import { WatchCam } from '../render/watchcam.js';
-import { Playhead, poseAt, sectionTimeline } from './replay.js';
+import { Playhead, gogglePose, poseAt, sectionTimeline, splitPanes } from './replay.js';
 import { deltaText, seconds } from './splits.js';
 
 const YOU_COLOUR = 0xffb340;
 const GHOST_COLOUR = 0x7fd4ff;
 /* A step of the arrows, ms. */
 const STEP_MS = 100;
+/* Where the live camera sits on the quad (main.js fpvPos). */
+const LENS = { forward: CAMERA_MOUNT_FORWARD, up: CAMERA_MOUNT_UP };
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -71,6 +82,14 @@ export class ReviewReplay {
     this.root = null;
     this.onKey = null;
     this.pose = { px: 0, py: 0, pz: 0, qx: 0, qy: 0, qz: 0, qw: 1, cut: false };
+    /* Side by side or the chase, kept from one replay to the next. */
+    this.split = false;
+    this.goggles = null;
+  }
+
+  /* Side by side now: chosen, and a ghost to show beside you. */
+  get splitOn() {
+    return this.on && this.split && Boolean(this.data.refLine);
   }
 
   get isOpen() {
@@ -94,13 +113,15 @@ export class ReviewReplay {
   }
 
   /*
-   * open({ lapLine, refLine, you, ghost, title, scale, size, onClose })
+   * open({ lapLine, refLine, you, ghost, title, scale, size, tiltRad, onClose })
    *   lapLine, refLine  src/review/views.js lines, refLine null with no ghost
    *   you, ghost        [a, b]: when each line went through the section's
    *                     first and last openings (throughPlane); ghost null
    *   title             the section's name
    *   scale             the holograms' scale, as the shell's ghost's
-   *   size              the watching rig's size (src/render/watchcam.js)
+   *   size              the watching rig's size (src/render/watchcam.js),
+   *                     scene metres to a plant metre
+   *   tiltRad           the goggles' uptilt, for side by side
    *   onClose(how)      'back' when the pilot went back to the review
    */
   open(data) {
@@ -119,6 +140,7 @@ export class ReviewReplay {
     this.cam.free(null);
     this.build();
     this.on = true;
+    this.write();
   }
 
   build() {
@@ -147,15 +169,21 @@ export class ReviewReplay {
     this.followBtn = el('button', 'review-replay-btn review-replay-follow', '');
     this.followBtn.type = 'button';
     this.followBtn.addEventListener('click', () => this.act('follow'));
+    this.viewBtn = el('button', 'review-replay-btn review-replay-view', '');
+    this.viewBtn.type = 'button';
+    this.viewBtn.addEventListener('click', () => this.act('view'));
     if (!data.refLine) {
       this.followBtn.hidden = true;
+      this.viewBtn.hidden = true;
     }
     const back = el('button', 'review-replay-btn', 'Back');
     back.type = 'button';
     back.addEventListener('click', () => this.close('back'));
-    row.append(this.playBtn, this.scrub, this.clock, this.followBtn, back);
+    row.append(this.playBtn, this.scrub, this.clock, this.followBtn, this.viewBtn, back);
     root.append(head, row);
-    document.body.append(root);
+    /* The side by side pictures' names, over their top left corners. */
+    this.paneTags = [el('div', 'review-replay-pane review-replay-you', 'You'), el('div', 'review-replay-pane review-replay-ghost', 'Ghost')];
+    document.body.append(root, ...this.paneTags);
     this.root = root;
     this.onKey = (e) => {
       if (!this.on) {
@@ -178,6 +206,9 @@ export class ReviewReplay {
       } else if (k === 'f' || k === 'F') {
         e.preventDefault();
         this.act('follow');
+      } else if (k === 'v' || k === 'V') {
+        e.preventDefault();
+        this.act('view');
       }
     };
     document.addEventListener('keydown', this.onKey, true);
@@ -201,6 +232,9 @@ export class ReviewReplay {
     } else if (what === 'follow' && this.data.refLine) {
       this.follow = this.follow === 'you' ? 'ghost' : 'you';
       this.cam.free(null);
+    } else if (what === 'view' && this.data.refLine) {
+      this.split = !this.split;
+      this.cam.free(null);
     } else if (what === 'back') {
       this.close('back');
     }
@@ -221,6 +255,17 @@ export class ReviewReplay {
     const into = t - tl.you[0];
     this.clock.textContent = into < 0 ? `${seconds(-into)} s before` : `${seconds(into)} s in`;
     this.followBtn.textContent = this.follow === 'you' ? 'Following you' : 'Following the ghost';
+    this.viewBtn.textContent = this.split ? 'Chase view' : 'Side by side';
+    const split = this.splitOn;
+    if (this.data.refLine) {
+      this.followBtn.hidden = split;
+    }
+    const panes = this.panes(window.innerWidth, window.innerHeight);
+    this.paneTags.forEach((tag, i) => {
+      tag.hidden = !split;
+      tag.style.left = `${Math.round(panes[i].x) + 10}px`;
+      tag.style.top = `${Math.round(panes[i].y) + 8}px`;
+    });
   }
 
   /*
@@ -255,17 +300,63 @@ export class ReviewReplay {
     } else {
       this.rigs.ghost.setPresence(0);
     }
-    const p = this.follow === 'ghost' && ghost ? ghost : you;
-    Object.assign(this.pose, { px: p.x, py: p.y, pz: p.z, qx: p.q[0], qy: p.q[1], qz: p.q[2], qw: p.q[3] });
-    if (!this.started) {
-      this.cam.ride();
-      this.started = true;
+    if (this.splitOn && ghost) {
+      /* Side by side: no chase. The camera sits in your goggles until
+       * drawSplit puts it in each pair in turn. */
+      const size = this.data.size || 1;
+      const tilt = this.data.tiltRad || 0;
+      this.goggles = { you: gogglePose(you, LENS, size, tilt), ghost: gogglePose(ghost, LENS, size, tilt) };
+      camera.position.set(...this.goggles.you.pos);
+      camera.quaternion.set(...this.goggles.you.q);
+      this.started = false;
+    } else {
+      this.goggles = null;
+      const p = this.follow === 'ghost' && ghost ? ghost : you;
+      Object.assign(this.pose, { px: p.x, py: p.y, pz: p.z, qx: p.q[0], qy: p.q[1], qz: p.q[2], qw: p.q[3] });
+      if (!this.started) {
+        this.cam.ride();
+        this.started = true;
+      }
+      this.cam.size = this.data.size || 1;
+      this.cam.frame(camera, this.pose, nowWall, world, home);
     }
-    this.cam.size = this.data.size || 1;
-    this.cam.frame(camera, this.pose, nowWall, world, home);
     if (was !== this.head.playing || this.head.playing) {
       this.write();
     }
+  }
+
+  /* The two pictures on a screen w by h CSS pixels, in the room above the
+   * bar, so on a phone the bar does not cover the ghost's. */
+  panes(w, h) {
+    const top = this.root ? this.root.getBoundingClientRect().top : h;
+    const room = top > h / 2 ? top - 8 : h;
+    return splitPanes(w, room);
+  }
+
+  /*
+   * The side by side view, drawn on a screen w by h CSS pixels: for each
+   * quad, the camera put in its goggles and its own hologram hidden, then
+   * draw(pane, which) to draw the scene into that pane ({ x, y, w, h } from
+   * the top left). The renderer, its viewport and the camera's lens are
+   * the shell's (main.js); this says where each picture is and from where.
+   */
+  drawSplit(camera, w, h, draw) {
+    if (!this.splitOn || !this.goggles) {
+      return false;
+    }
+    const panes = this.panes(w, h);
+    const sides = [['you', this.rigs.you], ['ghost', this.rigs.ghost]];
+    sides.forEach(([which, rig], i) => {
+      const g = this.goggles[which];
+      camera.position.set(...g.pos);
+      camera.quaternion.set(...g.q);
+      camera.updateMatrixWorld();
+      const shown = rig.group.visible;
+      rig.group.visible = false;
+      draw(panes[i], which);
+      rig.group.visible = shown;
+    });
+    return true;
   }
 
   close(how = 'shell') {
@@ -276,7 +367,11 @@ export class ReviewReplay {
     if (this.root) {
       this.root.remove();
       this.root = null;
+      for (const tag of this.paneTags) {
+        tag.remove();
+      }
     }
+    this.goggles = null;
     if (this.rigs) {
       this.rigs.you.setPresence(0);
       this.rigs.ghost.setPresence(0);
@@ -305,6 +400,8 @@ export class ReviewReplay {
       ghost: this.tl.ghost,
       playing: this.head.playing,
       follow: this.follow,
+      view: this.splitOn ? 'split' : 'chase',
+      panes: this.splitOn ? this.panes(window.innerWidth, window.innerHeight) : null,
       youAt: at(this.rigs.you),
       ghostAt: this.data.refLine ? at(this.rigs.ghost) : null,
       camera: this.cam.phase,

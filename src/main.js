@@ -11835,6 +11835,8 @@ export async function boot({ loading, bootStart, mapId }) {
    * first time it is opened; null until then.
    */
   let reviewReplay = null;
+  const replaySplitSize = new THREE.Vector2();
+  const replaySplitClear = new THREE.Color();
   let reviewReplayLoading = null;
   function reviewReplayReady() {
     if (reviewReplay) {
@@ -11894,6 +11896,8 @@ export async function boot({ loading, bootStart, mapId }) {
         title: sectionName(k, lap.splits.length),
         scale: 1 / WORLD_SCALE,
         size: simLenToWorld(1),
+        /* Side by side, the goggles as this lap flew them. */
+        tiltRad: cameraTiltRad(lap.meta.cameraAngle ?? camTilt),
         onClose: (how) => {
           document.documentElement.classList.remove('tg-watching', 'tg-replay');
           applyRaceLine(ui.settings);
@@ -11909,6 +11913,48 @@ export async function boot({ loading, bootStart, mapId }) {
       notice = { text: `Could not open the replay.\n${e.message ?? e}`, untilMs: performance.now() + 5000 };
       return false;
     });
+  }
+
+  /*
+   * The replay side by side (src/review/replayview.js drawSplit): the
+   * frame drawn twice, once through your goggles and once through the
+   * ghost's, each into its pane of the canvas, the rest of it black. The
+   * whole post chain draws each, as it draws the flight, with the lens
+   * set as in flight for a picture of the flight's shape (16:9) and the
+   * pilot's fisheye; the canvas viewport and scissor say where it lands.
+   * Paused under it, so twice the drawing costs no flight anything.
+   */
+  function drawReplaySplit() {
+    const r = shell.renderer;
+    const cam = shell.camera;
+    const size = r.getSize(replaySplitSize);
+    const aspect = 16 / 9;
+    const was = { aspect: cam.aspect, fov: cam.fov };
+    cam.aspect = aspect;
+    cam.fov = fpvFov(ui.settings.cameraFov, aspect);
+    cam.updateProjectionMatrix();
+    setFisheye(view.post, ui.settings.fisheye, cam.fov, aspect);
+    r.setRenderTarget(null);
+    r.setScissorTest(false);
+    r.getClearColor(replaySplitClear);
+    const alpha = r.getClearAlpha();
+    r.setClearColor(0x000000, 1);
+    r.clear();
+    r.setClearColor(replaySplitClear, alpha);
+    r.setScissorTest(true);
+    const drawn = reviewReplay.drawSplit(cam, size.x, size.y, (pane) => {
+      const y = size.y - pane.y - pane.h;
+      r.setViewport(pane.x, y, pane.w, pane.h);
+      r.setScissor(pane.x, y, pane.w, pane.h);
+      setCameraNear(fpvNear(cam.position));
+      view.post.render();
+    });
+    r.setScissorTest(false);
+    r.setViewport(0, 0, size.x, size.y);
+    cam.aspect = was.aspect;
+    cam.fov = was.fov;
+    cam.updateProjectionMatrix();
+    return drawn;
   }
 
   /* Once a frame while the replay is open, in the camera chain: the two
@@ -14434,7 +14480,9 @@ export async function boot({ loading, bootStart, mapId }) {
        * its inputs moved: see src/render/fisheye.js. */
       setFisheye(view.post, fpvLens || (replayMode && replayCamera === 'fpv') ? ui.settings.fisheye : 0,
         shell.camera.fov, shell.camera.aspect);
-      view.post.render();
+      if (!(reviewReplay && reviewReplay.splitOn && drawReplaySplit())) {
+        view.post.render();
+      }
       gpuGate.submitted(performance.now());
       timerDraws += 1;
       if (timerJudging) {

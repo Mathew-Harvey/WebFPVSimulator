@@ -7152,6 +7152,13 @@
       .review-replay-btn[hidden] { display: none; }
       /* As wide for the ghost as for you, so the scrub keeps its length when F is pressed. */
       .review-replay-follow { min-width: 11em; }
+      .review-replay-view { min-width: 8.5em; }
+      /* Side by side: each picture's name over its top left corner. */
+      .review-replay-pane {
+        position: fixed; z-index: 2147483000; padding: 3px 9px; border-radius: 4px;
+        font-family: var(--ui-font); font-size: 14px; background: rgba(26, 36, 28, 0.82);
+      }
+      .review-replay-pane[hidden] { display: none; }
       @media (max-width: 520px) {
         .review-replay-row { flex-wrap: wrap; }
         .review-replay-scrub { flex-basis: 100%; order: -1; }

@@ -18,6 +18,10 @@
  * attitude as qx, qy, qz, qw): scene positions and a scene quaternion, the
  * frame a trace and a ghost are both stored in. Nothing is converted.
  *
+ * SIDE BY SIDE. Your goggles and the ghost's, two pictures at once:
+ * splitPanes lays them out and gogglePose puts each camera where the
+ * quad's own lens was.
+ *
  * This file is part of WebFPVSimulator.
  *
  * WebFPVSimulator is free software: you can redistribute it and/or modify
@@ -140,4 +144,60 @@ export class Playhead {
       this.playing = false;
     }
   }
+}
+
+/*
+ * Where the two pictures of the side by side view go on a screen w by h
+ * (CSS pixels, from the top left): each the shape of the pilot's own
+ * picture, aspect wide (16:9), as large as fits, side by side on a screen
+ * wider than tall and one over the other on one taller than wide, the
+ * pair in the middle. [yours, the ghost's], each { x, y, w, h }. The same
+ * shape as in flight, so a pilot reads them as the goggles they flew in.
+ */
+export function splitPanes(w, h, aspect = 16 / 9) {
+  const across = w >= h;
+  const boxW = across ? w / 2 : w;
+  const boxH = across ? h : h / 2;
+  const pw = Math.min(boxW, boxH * aspect);
+  const ph = pw / aspect;
+  const x0 = across ? (w - 2 * pw) / 2 : (w - pw) / 2;
+  const y0 = across ? (h - ph) / 2 : (h - 2 * ph) / 2;
+  return [
+    { x: x0, y: y0, w: pw, h: ph },
+    across ? { x: x0 + pw, y: y0, w: pw, h: ph } : { x: x0, y: y0 + ph, w: pw, h: ph },
+  ];
+}
+
+/* q times r, both [x, y, z, w]. */
+function qMul(q, r) {
+  return [
+    q[3] * r[0] + q[0] * r[3] + q[1] * r[2] - q[2] * r[1],
+    q[3] * r[1] - q[0] * r[2] + q[1] * r[3] + q[2] * r[0],
+    q[3] * r[2] + q[0] * r[1] - q[1] * r[0] + q[2] * r[3],
+    q[3] * r[3] - q[0] * r[0] - q[1] * r[1] - q[2] * r[2],
+  ];
+}
+
+/* v turned by q. */
+function qRot(q, v) {
+  const p = qMul(qMul(q, [v[0], v[1], v[2], 0]), [-q[0], -q[1], -q[2], q[3]]);
+  return [p[0], p[1], p[2]];
+}
+
+/*
+ * The goggles' camera on a quad at pose ({ x, y, z, q }, from poseAt): at
+ * its camera, lens.up above and lens.forward ahead of its centre in the
+ * craft's frame (the mount in src/render/lens.js, where main.js puts the
+ * live camera; plant metres) times size (scene
+ * metres to a plant metre), and looking out of it tilted up by tiltRad,
+ * as the shell turns the live camera (the quad's attitude, then the tilt
+ * about its own x). { pos: [x, y, z], q: [x, y, z, w] }.
+ */
+export function gogglePose(pose, lens, size, tiltRad) {
+  const off = qRot(pose.q, [0, lens.up * size, -lens.forward * size]);
+  const h = tiltRad / 2;
+  return {
+    pos: [pose.x + off[0], pose.y + off[1], pose.z + off[2]],
+    q: qMul(pose.q, [Math.sin(h), 0, 0, Math.cos(h)]),
+  };
 }

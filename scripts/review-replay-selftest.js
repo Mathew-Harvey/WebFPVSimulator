@@ -19,7 +19,7 @@
  */
 
 import {
-  LEAD_MS, MAX_FRAME_MS, Playhead, TAIL_MS, poseAt, sectionTimeline, slerp,
+  LEAD_MS, MAX_FRAME_MS, Playhead, TAIL_MS, gogglePose, poseAt, sectionTimeline, slerp, splitPanes,
 } from '../src/review/replay.js';
 
 let failures = 0;
@@ -96,6 +96,29 @@ console.log('the playhead');
   p.seek(400);
   p.toggle();
   check('pause holds where it is', p.t === 400 && !p.playing);
+}
+
+console.log('side by side');
+{
+  const [a, b] = splitPanes(1280, 720);
+  check('a wide screen: two pictures side by side, the flight\'s shape, as large as fits', near(a.w, 640) && near(a.h, 360) && near(b.x, 640) && near(a.y, b.y));
+  check('the pair in the middle, the bar\'s room below it', near(a.y, 180) && near(a.y + a.h, 540));
+  const [c, d] = splitPanes(390, 760);
+  check('a phone held upright: one over the other, the screen\'s width', near(c.w, 390) && near(c.h, 390 * 9 / 16) && near(d.y, c.y + c.h) && near(c.x, d.x));
+  check('and the pair in the middle of its height', near(c.y, (760 - 2 * c.h) / 2));
+  const [e] = splitPanes(2000, 400);
+  check('a very wide screen: as tall as the screen, in the middle across', near(e.h, 400) && near(e.w, 400 * 16 / 9) && near(e.x, (2000 - 2 * e.w) / 2));
+  const lens = { forward: 0.1, up: 0.02 };
+  const level = { x: 1, y: 2, z: 3, q: [0, 0, 0, 1] };
+  const g = gogglePose(level, lens, 2, 0);
+  check('the goggles are at the lens: ahead along -z and up, scaled to the scene', near(g.pos[0], 1) && near(g.pos[1], 2.04) && near(g.pos[2], 3 - 0.2));
+  const turned = gogglePose({ ...level, q: [0, Math.sin(Math.PI / 4), 0, Math.cos(Math.PI / 4)] }, lens, 1, 0);
+  check('a quad turned a quarter left has its lens out to the left', near(turned.pos[0], 1 - 0.1, 1e-12) && near(turned.pos[2], 3, 1e-12));
+  const t = 30 * Math.PI / 180;
+  const up = gogglePose(level, lens, 1, t);
+  /* The look, -z turned by q: its height is 2 (w x - y z). */
+  const lookY = 2 * (up.q[3] * up.q[0] - up.q[1] * up.q[2]);
+  check('uptilt turns the look up by the tilt', near(lookY, Math.sin(t), 1e-12), String(lookY));
 }
 
 console.log(failures ? `\n${failures} FAILED` : '\nall passed');

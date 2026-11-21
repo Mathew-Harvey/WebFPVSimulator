@@ -24,8 +24,8 @@
 import { F, TRACE_FIELDS, TraceLap } from '../src/review/trace.js';
 import { gateAcross, gateUp, travelAxis } from '../src/game/race.js';
 import {
-  anchorIn, depthOf, joinSpots, labelCandidates, lineOfGhost, lineOfTrace, localOf, nearSideGates, openingCorners, pathOf, placeLabel,
-  scaleMetres, shrinkQuad, sideFrame, sideGates, sideOf, stationOf, stationsOfRaceGates, throughPlane,
+  anchorIn, labelCandidates, lineOfGhost, lineOfTrace, localOf, openingCorners, pathOf, placeLabel,
+  scaleMetres, sectionGates, shrinkQuad, sideFrame, sideOf, stationOf, stationsOfRaceGates, throughPlane,
 } from '../src/review/views.js';
 
 let failures = 0;
@@ -128,7 +128,6 @@ console.log('the side view looks across the section');
   const back = sideFrame([[...path].reverse()], stationOf({ x: 0, y: 1, z: 0 }));
   check('the same line flown the other way is pointed the other way', back.x < 0 && sideOf([...path].reverse(), back)[3][0] > sideOf([...path].reverse(), back)[0][0]);
   check('a point is its distance along and its height', near(s[0][1], 1) && near(s[3][0] - s[0][0], 3, 0.05));
-  check('and its depth is across', near(Math.abs(depthOf([1.5, 1, 4], f) - depthOf([1.5, 1, 0], f)), 4, 0.05));
   /* A gate left sideways: the first cut looked across the first gate's
    * travel (-z here), so this section was seen end on. */
   const sideways = [[0, 1, 0], [0.5, 1, -0.3], [2, 1, -0.4], [4, 1, -0.3]];
@@ -140,48 +139,24 @@ console.log('the side view looks across the section');
   check('or across it when that gate is flown straight up', near(Math.hypot(diveHover.x, diveHover.z), 1), JSON.stringify(diveHover));
 }
 
-console.log('the openings from the side');
+console.log('a view draws the section\'s two gates and no other');
 {
-  const along = { x: 0, z: -1, ox: 0, oz: 0 };
-  const [edge] = sideGates([stationOf({ x: 0, y: 1, z: -2, clearW: 2, clearH: 1 })], along);
-  check('an upright gate seen along its travel is an upright bar', near(edge.along1 - edge.along0, 0, 1e-9) && near(edge.hi - edge.lo, 1) && near(edge.along0, 2));
-  const [face] = sideGates([stationOf({ x: 0, y: 1, z: -2, heading: Math.PI / 2, clearW: 2, clearH: 1 })], along);
-  check('seen across its travel it is its whole face', near(face.along1 - face.along0, 2) && near(face.hi - face.lo, 1));
-  const [flat] = sideGates([stationOf({ x: 0, y: 2, z: -2, pitch: Math.PI / 2, clearW: 2, clearH: 1 })], along);
-  check('a dive gate is a level bar at its height', near(flat.hi - flat.lo, 0, 1e-9) && near(flat.lo, 2) && near(flat.along1 - flat.along0, 1));
-  check('a flag is not drawn', sideGates([stationOf({ x: 0, y: 1, z: 0, virtual: true })], along).length === 0);
-}
-
-console.log('which gates the side view draws');
-{
-  const at = (x, y, z) => stationOf({ x, y, z, clearW: 1, clearH: 1 });
   const stations = [
-    at(0, 1, 0),      /* 0: the section's first gate */
-    at(0, 1, -6),     /* 1: its last */
-    at(0, 3, -3),     /* 2: a bay stacked above the path, in the middle */
-    at(8, 1, -3),     /* 3: across the room, at the same distance along */
-    at(0, 1, -40),    /* 4: in line, but far beyond the section */
+    stationOf({ x: 0, y: 1, z: 0, clearW: 1, clearH: 1 }),
+    stationOf({ x: 0, y: 1, z: -6, clearW: 1, clearH: 1 }),
+    stationOf({ x: 8, y: 1, z: -3, clearW: 1, clearH: 1 }),
   ];
-  /* The lines wander half a metre either side, flown towards -z. */
-  const points = [[0, 1, 0], [0.5, 1.2, -2], [-0.5, 1.1, -4], [0, 1, -6]];
-  const frame = sideFrame([points], stations[0]);
-  const gates = sideGates(stations, frame);
-  const kept = nearSideGates(gates, points, frame, [0, 1]).map((q) => q.i);
-  check('a gate across the room at the same distance along is left out', !kept.includes(3), JSON.stringify(kept));
-  check('a bay stacked over the path is kept', kept.includes(2), JSON.stringify(kept));
-  check('a gate far beyond the section is left out', !kept.includes(4), JSON.stringify(kept));
-  check('the section\'s own two are always kept', kept.includes(0) && kept.includes(1));
-  check('even when one of them stands across the room', nearSideGates(gates, points, frame, [0, 3]).map((q) => q.i).includes(3));
-  check('with no lines, only the section\'s own', JSON.stringify(nearSideGates(gates, [], frame, [0, 1]).map((q) => q.i)) === '[0,1]');
-}
-
-console.log('openings in one place are one outline');
-{
-  const q = (x) => [[x, 0], [x, 0], [x, 1], [x, 1]];
-  const spots = joinSpots([{ i: 1, w: 1, quad: q(0) }, { i: 2, w: 1, quad: q(5) }, { i: 3, w: 1, quad: q(0.05) }]);
-  check('two that coincide share an outline and a label', spots.length === 2 && JSON.stringify(spots[0].list) === '[1,3]');
-  const stacked = joinSpots([{ i: 1, w: 1, quad: [[0, 0], [0, 0], [0, 1], [0, 1]] }, { i: 2, w: 1, quad: [[0, 1], [0, 1], [0, 2], [0, 2]] }]);
-  check('bays one on another do not', stacked.length === 2);
+  const top = sectionGates(stations, [0, 1], (p) => [p[0], p[2]]);
+  check('two outlines, the section\'s own', top.length === 2 && top[0].list[0] === 0 && top[1].list[0] === 1);
+  check('each its opening\'s four corners on the picture', top[0].quad.length === 4 && top[0].quad.every((q) => near(q[1], 0)));
+  check('one when the section starts and ends at the same gate', sectionGates(stations, [0, 0], (p) => [p[0], p[2]]).length === 1);
+  const along = { x: 0, z: -1, ox: 0, oz: 0 };
+  const [edge] = sectionGates([stationOf({ x: 0, y: 1, z: -2, clearW: 2, clearH: 1 })], [0], (p) => sideOf([p], along)[0]);
+  const us = edge.quad.map((q) => q[0]);
+  const vs = edge.quad.map((q) => q[1]);
+  check('from the side an upright gate seen along its travel is an upright bar', near(Math.max(...us) - Math.min(...us), 0, 1e-9) && near(Math.max(...vs) - Math.min(...vs), 1));
+  const [flat] = sectionGates([stationOf({ x: 0, y: 2, z: -2, pitch: Math.PI / 2, clearW: 2, clearH: 1 })], [0], (p) => sideOf([p], along)[0]);
+  check('and a dive gate a level bar at its height', flat.quad.every((q) => near(q[1], 2, 1e-9)));
 }
 
 console.log('a gap between outlines that touch');

@@ -250,96 +250,19 @@ export function sideOf(points, frame) {
   return points.map((p) => [(p[0] - frame.ox) * frame.x + (p[2] - frame.oz) * frame.z, p[1]]);
 }
 
-/* How far into the picture a scene point stands, scene metres: the depth
- * the side view looks through. */
-export function depthOf(p, frame) {
-  return (p[0] - frame.ox) * frame.z - (p[2] - frame.oz) * frame.x;
-}
-
 /*
- * The openings seen from the side: each as its four corners on the
- * picture ([along, height]), and how far along and how deep its corners
- * reach. A flat dive gate comes out a level bar, an upright one seen edge
- * on an upright bar, and one seen face on a rectangle.
+ * The gates a view draws: the section's own two, and no other. Each is its
+ * opening's outline as it falls on the picture (`project` takes a scene
+ * point [x, y, z] to the picture's two axes): a bar where it is seen edge
+ * on, a rectangle where it is seen face on or lies flat. The first cut also
+ * drew every gate nearby, faint, with rules for which and how to join a
+ * stack's labels; on a 15 gate track that was a crowd of outlines of every
+ * size, and the contributor, 2026-11-21: "do not overengeneir things make
+ * it more simple". One gate when the section starts and ends at the same
+ * one (a course of one gate).
  */
-export function sideGates(stations, frame) {
-  const out = [];
-  stations.forEach((st, i) => {
-    if (st.virtual) {
-      return;
-    }
-    const c = openingCorners(st);
-    const quad = sideOf(c, frame);
-    const d = c.map((p) => depthOf(p, frame));
-    out.push({
-      i, quad, w: st.clearW,
-      along0: Math.min(...quad.map((q) => q[0])), along1: Math.max(...quad.map((q) => q[0])),
-      lo: Math.min(...quad.map((q) => q[1])), hi: Math.max(...quad.map((q) => q[1])),
-      depth0: Math.min(...d), depth1: Math.max(...d),
-    });
-  });
-  return out;
-}
-
-/*
- * The gates the side view draws: the section's own two, and the others the
- * lines pass near. Seen from the side, a gate across the room at the same
- * distance along stands in the same place as one the lines fly through;
- * drawn, it framed the picture round its height and squashed the lines to
- * a few pixels (the contributor's 15 gate track, 2026-11-20). So a gate is
- * near when its depth comes within one opening's width of the lines' own,
- * and its reach along comes within a tenth of theirs. `points` are the
- * lines' scene points.
- */
-export function nearSideGates(gates, points, frame, ends) {
-  if (!points.length) {
-    return gates.filter((q) => ends.includes(q.i));
-  }
-  let d0 = Infinity; let d1 = -Infinity; let u0 = Infinity; let u1 = -Infinity;
-  for (const p of points) {
-    const d = depthOf(p, frame);
-    const [[u]] = sideOf([p], frame);
-    d0 = Math.min(d0, d); d1 = Math.max(d1, d); u0 = Math.min(u0, u); u1 = Math.max(u1, u);
-  }
-  const reach = Math.max(u1 - u0, 1) * 0.1;
-  return gates.filter((q) => {
-    if (ends.includes(q.i)) {
-      return true;
-    }
-    const along = q.along1 >= u0 - reach && q.along0 <= u1 + reach;
-    const deep = Math.max(0, d0 - q.depth1, q.depth0 - d1) <= q.w;
-    return along && deep;
-  });
-}
-
-/* Openings that fall in one place on a picture are one outline and one
- * label, "3, 7": a stack of bays seen from above, or bays one behind
- * another seen from the side. `items` are { i, quad, w }, quads in scene
- * metres on the picture's two axes. */
-export function joinSpots(items) {
-  const spots = [];
-  const centre = (q) => [q.reduce((s, p) => s + p[0], 0) / 4, q.reduce((s, p) => s + p[1], 0) / 4];
-  for (const it of items) {
-    const c = centre(it.quad);
-    const tol = 0.15 * it.w;
-    const near = spots.find((s) => {
-      const sc = centre(s.quad);
-      return Math.hypot(sc[0] - c[0], sc[1] - c[1]) < tol
-        && s.quad.every((p, k) => Math.hypot(p[0] - it.quad[k][0], p[1] - it.quad[k][1]) < tol * 2);
-    });
-    if (near) {
-      near.list.push(it.i);
-    } else {
-      spots.push({ quad: it.quad, list: [it.i] });
-    }
-  }
-  return spots;
-}
-
-/* The openings seen from above: each as its four corners over the ground,
- * [x, z]. */
-export function topGates(stations) {
-  return stations.map((st, i) => ({ i, w: st.clearW, quad: openingCorners(st).map((p) => [p[0], p[2]]) }));
+export function sectionGates(stations, ends, project) {
+  return [...new Set(ends)].map((i) => ({ list: [i], quad: openingCorners(stations[i]).map(project) }));
 }
 
 /* A scale bar's length in OSD metres: the first of these that is at least
@@ -600,16 +523,15 @@ export function drawTop(cv, { stations, ends, mine, ref, lifeScale = 1 }) {
   const metres = scaleMetres(lifeScale, k, w, 0.12, [0.5, 1, 2, 5, 10, 20, 50]);
   const len = metres * lifeScale * k;
   scaleBar(g, w, h, dpr, metres, len, 36);
-  const spots = joinSpots(topGates(stations).filter((q) => !stations[q.i].virtual || ends.includes(q.i)));
+  const spots = sectionGates(stations, ends, (p) => [p[0], p[2]]);
   const drawn = paint(g, { spots, lit: new Set(ends), a, b, P, w, h, hFit, dpr, strip: 36, len });
   return { lap: a.length, ref: b.length, ...drawn };
 }
 
 /*
  * The section from the side (sideFrame): the two lines at true scale,
- * height up, and the openings near them as they fall on the picture, the
- * section's two ends bright and in the picture whole. Arguments as drawTop;
- * 8:3. Returns what it drew.
+ * height up, and the section's two gates as they fall on the picture, all
+ * in it whole. Arguments as drawTop; 8:3. Returns what it drew.
  */
 export function drawSide(cv, { stations, ends, mine, ref, lifeScale = 1 }) {
   const { g, w, h, dpr } = sizeCanvas(cv, 3 / 8);
@@ -621,11 +543,8 @@ export function drawSide(cv, { stations, ends, mine, ref, lifeScale = 1 }) {
   if (!pts.length) {
     return { lap: 0, ref: 0, gates: 0, outlines: [], labels: 0, rects: [] };
   }
-  const gates = nearSideGates(sideGates(stations, frame), [...mine, ...ref], frame, ends);
-  /* Framed on the lines and the section's own two openings, whole; any
-   * other is drawn as far as the picture reaches, so a tall stack beside
-   * the lines runs off the edge and never shrinks the lines to fit. */
-  const box = [...pts, ...gates.filter((q) => ends.includes(q.i)).flatMap((q) => q.quad)];
+  const gates = sectionGates(stations, ends, (p) => sideOf([p], frame)[0]);
+  const box = [...pts, ...gates.flatMap((q) => q.quad)];
   const us = box.map((p) => p[0]);
   const vs = box.map((p) => p[1]);
   const hFit = h - 30 * dpr;
@@ -633,6 +552,6 @@ export function drawSide(cv, { stations, ends, mine, ref, lifeScale = 1 }) {
   const metres = scaleMetres(lifeScale, k, w, 0.1);
   const len = metres * lifeScale * k;
   scaleBar(g, w, h, dpr, metres, len, 30);
-  const drawn = paint(g, { spots: joinSpots(gates), lit: new Set(ends), a, b, P, w, h, hFit, dpr, strip: 30, len });
+  const drawn = paint(g, { spots: gates, lit: new Set(ends), a, b, P, w, h, hFit, dpr, strip: 30, len });
   return { lap: a.length, ref: b.length, gates: gates.length, frame, ...drawn };
 }

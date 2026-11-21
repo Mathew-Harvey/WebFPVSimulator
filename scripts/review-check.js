@@ -281,7 +281,10 @@ try {
    * gates standing close together were printed over each other. So the
    * section is built: gate 1 at the bottom of a stack of four bays, a loop
    * back to gate 2 beside it, and a four metre gate eight metres across the
-   * room. The panel is the shell's own module, opened in this page.
+   * room. Each view draws the section's own two gates and none of the
+   * others (the contributor, 2026-11-21: "make it more simple"), so the
+   * stack and the far gate must not be in either picture. The panel is the
+   * shell's own module, opened in this page.
    */
   const synth = await page.evaluate(`(async () => {
     const { ReviewPanel } = await import('/src/review/panel.js');
@@ -330,36 +333,12 @@ try {
       }
     }
     const overlaps = (rects) => !rects || rects.some((r, i) => rects.some((s, j) => j > i && r.x < s.x + s.w && s.x < r.x + r.w && r.y < s.y + s.h && s.y < r.y + r.h));
-    /* Bays that touch in the room, one outline straight above another in
-     * the picture: the gap left between them in pixels, and whether the
-     * pixel in the middle of it is the ground and not an outline. Outlines
-     * are quads in canvas pixels, y down. */
-    let gap = null; let gapDark = null;
-    const box = (q) => ({ x0: Math.min(...q.map((p) => p[0])), x1: Math.max(...q.map((p) => p[0])), y0: Math.min(...q.map((p) => p[1])), y1: Math.max(...q.map((p) => p[1])) });
-    const outlines = (d.side.outlines || []).map((o) => box(o.quad));
-    for (const A of outlines) {
-      for (const B of outlines) {
-        /* B above A: A's top less B's bottom. */
-        const g = A.y0 - B.y1;
-        const mid = (A.y0 + B.y1) / 2;
-        const x = (Math.max(A.x0, B.x0) + Math.min(A.x1, B.x1)) / 2;
-        /* Only a gap inside the picture: the bays above the frame are drawn
-         * clipped, and their gaps have no pixel to read. */
-        if (A === B || Math.max(A.x0, B.x0) > Math.min(A.x1, B.x1) + 1 || !(g >= 0 && g < 30) || (gap !== null && g >= gap) || !(mid >= 0 && mid < cv.height)) {
-          continue;
-        }
-        gap = g;
-        const i = (Math.round(mid) * cv.width + Math.round(x)) * 4;
-        gapDark = px[i] < 60 && px[i + 1] < 60 && px[i + 2] < 60;
-      }
-    }
     const out = {
-      sideGates: d.side.gates, sideLabels: d.side.labels, topLabels: d.top.labels,
+      sideGates: d.side.outlines.length, topGates: d.top.outlines.length, sideLabels: d.side.labels, topLabels: d.top.labels,
       /* How much of the picture your line spans, its wider way: a picture
        * framed on the lines fills its width or its height with them. */
       lineShare: Math.max((hi - lo) / cv.height, (right - left) / cv.width),
       overlapTop: overlaps(d.top.rects), overlapSide: overlaps(d.side.rects),
-      stackGap: gap, stackGapDark: gapDark,
     };
     window.__builtPanel = panel;
     return out;
@@ -370,10 +349,9 @@ try {
     console.log(`  (picture: ${join(SHOTS, 'review-built.png')})`);
   }
   await page.evaluate('(() => { window.__builtPanel.close(); return 1; })()');
-  check('the side view leaves out the gate across the room and keeps the stack', synth.sideGates === 5, JSON.stringify(synth));
+  check('each view draws the section\'s two gates and no other, not the stack or the gate across the room', synth.sideGates === 2 && synth.topGates === 2, JSON.stringify(synth));
   check('so your line spans a good part of the picture, not a few pixels', synth.lineShare > 0.4, `${(synth.lineShare * 100).toFixed(0)}% of the picture its wider way`);
   check('no label is printed over another, from above or from the side', !synth.overlapTop && !synth.overlapSide && synth.topLabels >= 2 && synth.sideLabels >= 2, JSON.stringify(synth));
-  check('bays stacked one on another are separate bars, with the ground between them', synth.stackGap >= 6 && synth.stackGapDark === true, `${synth.stackGap === null ? 'no gap' : `${synth.stackGap.toFixed(1)} px`}, ground between: ${synth.stackGapDark}`);
 
   const errs = page.errors.filter((e) => !e.includes('net::ERR_CONNECTION_REFUSED'));
   check('no errors', errs.length === 0, errs.slice(0, 3).join(' | ') || 'none');

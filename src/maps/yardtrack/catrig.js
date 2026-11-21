@@ -78,6 +78,10 @@ export const BONE = {
   bladeL: 36, bladeR: 37,
 };
 export const BONES = 38;
+/* Lengths, written out, because Math.hypot makes garbage in V8: see
+ * ./cat.js. */
+const hyp2 = (a, b) => Math.sqrt(a * a + b * b);
+const hyp3 = (a, b, c) => Math.sqrt(a * a + b * b + c * c);
 export const TAIL = 6;
 
 /* The legs, in the order everything here lists them. */
@@ -179,7 +183,7 @@ export function restPivot(b) {
   return [PIVOT[b * 3], PIVOT[b * 3 + 1], PIVOT[b * 3 + 2]];
 }
 
-const dist2 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+const dist2 = (a, b) => hyp2(a[0] - b[0], a[1] - b[1]);
 /* The lengths of a leg's three long bones, fore and hind. */
 const LEN = [
   [dist2(REST.shoulder, REST.elbow), dist2(REST.elbow, REST.wrist), dist2(REST.wrist, REST.forePaw)],
@@ -425,6 +429,7 @@ export function makeRig(scale) {
   let lowE = 0;
   let wiggleE = 0;
   let giveE = 0;
+  let airArch = 0;
   let leanE = 0;
   let pitchE = 0;
   let rollE = 0;
@@ -585,17 +590,17 @@ export function makeRig(scale) {
     let dx = x1 - x0;
     let dy = y1 - y0;
     let dz = z1 - z0;
-    const dl = Math.hypot(dx, dy, dz) || 1;
+    const dl = hyp3(dx, dy, dz) || 1;
     dx /= dl;
     dy /= dl;
     dz /= dl;
-    const rl = Math.hypot(r1[0] - r0[0], r1[1] - r0[1]);
+    const rl = hyp2(r1[0] - r0[0], r1[1] - r0[1]);
     /* The side kept square to this bone. */
     const dn = dx * nx + dy * ny + dz * nz;
     let sx = nx - dx * dn;
     let sy = ny - dy * dn;
     let sz = nz - dz * dn;
-    const sl = Math.hypot(sx, sy, sz) || 1;
+    const sl = hyp3(sx, sy, sz) || 1;
     sx /= sl;
     sy /= sl;
     sz /= sl;
@@ -612,7 +617,7 @@ export function makeRig(scale) {
     let ex = px - jx;
     let ey = py - jy;
     let ez = pz - jz;
-    let d = Math.hypot(ex, ey, ez);
+    let d = hyp3(ex, ey, ez);
     if (d < 1e-5) {
       ex = 0;
       ey = -1;
@@ -631,7 +636,7 @@ export function makeRig(scale) {
     let nx = ey * fz0;
     let ny = ez * fx0 - ex * fz0;
     let nz = -ey * fx0;
-    const nl = Math.hypot(nx, ny, nz);
+    const nl = hyp3(nx, ny, nz);
     if (nl < 1e-3) {
       /* The leg points straight forward or back: level will do. */
       nx = -fz0;
@@ -651,7 +656,7 @@ export function makeRig(scale) {
       let ux = -nx * ny;
       let uy = 1 - ny * ny;
       let uz = -nz * ny;
-      const ul = Math.hypot(ux, uy, uz) || 1;
+      const ul = hyp3(ux, uy, uz) || 1;
       ux /= ul;
       uy /= ul;
       uz /= ul;
@@ -684,7 +689,7 @@ export function makeRig(scale) {
     let ux = ax - jx;
     let uy = ay - jy;
     let uz = az - jz;
-    let ud = Math.hypot(ux, uy, uz);
+    let ud = hyp3(ux, uy, uz);
     const most = L[0] + L[1] - 0.0012;
     const least = Math.abs(L[0] - L[1]) + 0.006;
     legOut.over = 0;
@@ -742,7 +747,7 @@ export function makeRig(scale) {
     /* The paw: along the ground ahead of the leg, toes turned up by `toe`. */
     let hx = nz;
     let hz = -nx;
-    const hl = Math.hypot(hx, hz);
+    const hl = hyp2(hx, hz);
     if (hl < 1e-4) {
       hx = 1;
       hz = 0;
@@ -780,6 +785,7 @@ export function makeRig(scale) {
     lowE = 0;
     wiggleE = 0;
     giveE = 0;
+    airArch = 0;
     leanE = 0;
     pitchE = 0;
     rollE = 0;
@@ -824,7 +830,7 @@ export function makeRig(scale) {
     }
     /* How fast it is going over the ground, as a cat feels it, and how
      * fast it is turning. */
-    const speed = Math.hypot(c.vx, c.vz) / S;
+    const speed = hyp2(c.vx, c.vz) / S;
     speedE += (speed - speedE) * ease(dt, 0.04);
     const turnRate = dt > 0 ? wrapAngle(c.yaw - lastYaw) / dt : turnE;
     lastYaw = c.yaw;
@@ -993,7 +999,11 @@ export function makeRig(scale) {
     const hipYaw = 0.13 * wigB + sway * 0.5;
     const hipY = q[Q.hipY] - giveE * 0.07 + bob + c.lift - run * 0.01 + 0.006 * Math.abs(wigA);
     const chestY = q[Q.chestY] - giveE * 0.085 + bob * 0.8 + c.lift - run * 0.012 + breath;
-    const arch = q[Q.arch] + fold + giveE * 0.3;
+    /* A leap straight up is made at full stretch, the back hollow, and the
+     * body folds as it comes down, the way a cat brings its feet under it. */
+    const airWant = inAir && c.up > 0.5 ? lerp(-0.34, 0.3, smooth((c.air - 0.5) / 0.3)) * (1 - smooth((c.air - 0.86) / 0.14)) : 0;
+    airArch += (airWant - airArch) * ease(dt, 0.05);
+    const arch = q[Q.arch] + fold + giveE * 0.3 + airArch;
     /* The line from hips to chest climbs by this much. A rock, or a leap's
      * own pitch, turns the body about its middle and not its hips. */
     const base = Math.asin(clamp((chestY - hipY - SPINE_RISE) / SPINE_LEN, -0.98, 0.98));
@@ -1021,7 +1031,7 @@ export function makeRig(scale) {
       const hy = loc[1] - PIV[BONE.neck * 3 + 1] - 0.045;
       const hzz = loc[2] - PIV[BONE.neck * 3 + 2];
       const toYaw = Math.atan2(-hzz, hx);
-      const toPitch = Math.atan2(hy, Math.hypot(hx, hzz));
+      const toPitch = Math.atan2(hy, hyp2(hx, hzz));
       const wantYaw = clamp(toYaw, -2.1, 2.1) * lookW;
       const wantPitch = clamp(toPitch, -1.0, 1.4) * lookW;
       /* Fast, as a cat's head is, but it is carried there. */
@@ -1076,7 +1086,7 @@ export function makeRig(scale) {
       const up = q[Q.tailP] + c.tailUp + (inAir ? 0.35 + 0.5 * pitchE : 0) + run * 0.45 - giveE * 0.3;
       const tw = c.twitch * Math.sin(clock * 19) * (0.55 + 0.45 * Math.sin(clock * 2.7));
       euler(ROT, BONE.tail1 * 9, -bodyYaw * 0.4 + tailSide[0] + q[Q.tailY] * 0.5, -up, 0);
-      const curl = q[Q.tailC] + (inAir ? -0.06 : 0) - run * 0.05;
+      const curl = q[Q.tailC] + (inAir ? (c.up > 0.5 ? 0.09 : -0.06) : 0) - run * 0.05;
       for (let j = 1; j < TAIL; j += 1) {
         const b = BONE.tail1 + j;
         carry(b, b - 1);
@@ -1146,14 +1156,23 @@ export function makeRig(scale) {
             let ly;
             let lz;
             if (inAir && c.up > 0.5) {
-              /* Straight up: both paws overhead, closing on what is there. */
-              const close = smooth((a - 0.3) / 0.2) * (1 - smooth((a - 0.72) / 0.2));
-              lx = 0.12 + 0.045 * close;
-              ly = 0.02 + 0.075 * close;
-              lz = side * lerp(0.05, 0.016, close) - side * HALF_F;
-              toe = 0.7;
+              /* Straight up: the paws thrown high and wide as it leaves the
+               * ground, clapped together on what is there at the top, held
+               * a moment, thrown wide again and brought down for the
+               * ground. They go up in front of the face, the chest's own
+               * under side, and never through the head. */
+              const rise = smooth(a / 0.26);
+              const close = smooth((a - 0.4) / 0.1) * (1 - smooth((a - 0.62) / 0.12));
+              const down = smooth((a - 0.74) / 0.24);
+              lx = lerp(lerp(0.07, 0.205 + 0.012 * close, rise), 0.11, down);
+              ly = lerp(lerp(-0.085, -0.02 - 0.03 * close, rise), -0.155, down);
+              lz = side * lerp(lerp(0.035, lerp(0.125, 0.013, close), rise), 0.04, down) - side * HALF_F;
+              toe = lerp(0.7, 0.1, down);
               lie = 0.05;
-              splay = 0.3;
+              splay = lerp(0.3, 0.1, close);
+              if (close > 0.2) {
+                quick = 0.012;
+              }
             } else if (inAir) {
               /* A pounce: gathered as it leaves, thrown forward through the
                * middle of the leap, and reaching down for the ground. */
@@ -1185,11 +1204,14 @@ export function makeRig(scale) {
           let lx;
           let ly;
           if (c.up > 0.5) {
-            const down = smooth((a - 0.7) / 0.28);
-            lx = lerp(-0.035, 0.0, down);
-            ly = lerp(-0.215, -0.18, down);
-            toe = lerp(-1.0, -0.1, down);
-            lie = 0.25;
+            /* Straight up: at full length behind it as they leave, toes
+             * pointed, then drawn up under the belly, then down. */
+            const push = 1 - smooth(a / 0.34);
+            const down = smooth((a - 0.68) / 0.3);
+            lx = lerp(lerp(-0.02, -0.195, push), 0.0, down);
+            ly = lerp(lerp(-0.165, -0.09, push), -0.18, down);
+            toe = lerp(lerp(-0.5, -1.25, push), -0.1, down);
+            lie = lerp(lerp(0.7, 0.15, push), 0.25, down);
           } else {
             const trail = 1 - smooth((a - 0.28) / 0.34);
             const down = smooth((a - 0.7) / 0.28);

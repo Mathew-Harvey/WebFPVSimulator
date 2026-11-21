@@ -21,10 +21,12 @@
  *   one program  compiled with the rest of the map before the first frame
  *                (src/render/warm.js), because the mesh is in the scene by
  *                then. Nothing about the cat is ever compiled in flight
- *   no garbage   every frame writes into arrays made once
+ *   no garbage   every frame writes into arrays made once; no object is
+ *                made in one
  *
- * and while the cat is out of the picture its bones are not even worked
- * out (./cat.js still thinks, which is a few comparisons).
+ * and while the cat is out of the picture and the craft is nowhere near
+ * it its bones are not even worked out (./cat.js still thinks, which is a
+ * few comparisons).
  *
  * THE COAT. A black cat on a page is one dark shape, so the fur is a very
  * dark cool grey, never true black (Xencelabs on drawing black cats: start
@@ -33,9 +35,9 @@
  * the shader asks the toon what a WHITE thing would show at this spot,
  * bands, shade tint, sun's shadow and all, and takes a few percent of it.
  * So the cat is in step with noon and with dusk without knowing which it
- * is. On top goes a pale band along the edges turned to the sky and a
- * ragged streak of gloss where the light glances, which is how a mangaka
- * gives a black animal its form.
+ * is. On top go two flat shapes of pale light, the way a mangaka gives a
+ * black animal its form: a band along the edges that are turned to the sky,
+ * and a patch of gloss where the coat faces the sun square on.
  *
  * THE FACE. Painted per pixel from where the corner sits on the head
  * (./catmodel.js FACE): a gold iris darker under the lid, a pupil whose
@@ -78,6 +80,8 @@
 
 import * as THREE from 'three';
 import { cel } from '../city/vendored/core/toon.js';
+import { CRAFT_WORLD_R } from '../../game/collide.js';
+import { makeCatLife, makeFace, makeMarks } from './cat.js';
 import { buildCat, FACE, MARK, SWIPE, PUFF } from './catmodel.js';
 import { BONE, BONES, REST, makeControls, makeRig } from './catrig.js';
 
@@ -272,7 +276,9 @@ const backOut = (t) => {
  *   pose(dt)   work the bones out (skip it while the cat is out of view)
  *   show(camera)   hand the frame to the graphics card
  */
-export function makeCatBody({ scale, ground = 0, lite = false, sun = null, shadowLift = 0.03, rig = null, controls = null }) {
+export function makeCatBody({
+  scale, ground = 0, lite = false, sun = null, shadowLift = 0.03, rig = null, controls = null, face = makeFace(), marks = makeMarks(),
+}) {
   const model = buildCat({ lite });
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(model.position, 3));
@@ -319,12 +325,6 @@ export function makeCatBody({ scale, ground = 0, lite = false, sun = null, shado
   mesh.matrixAutoUpdate = true;
   mesh.position.set(0, ground, 0);
 
-  const face = { pupil: 0.35, lid: 0, squint: 0, brow: 0, gazeX: 0, gazeY: 0, sparkle: 0, clawL: 0, clawR: 0, hackle: 0 };
-  const marks = {
-    mark: MARK.none, markT: 0, markDur: 1,
-    swipe: SWIPE.none, swipeT: 0, swipeDur: 0.2, swipeX: 0, swipeY: 0, swipeZ: 0, swipeRoll: 0,
-    puff: PUFF.none, puffT: 0, puffDur: 0.4, puffX: 0, puffY: 0, puffZ: 0,
-  };
   const crown = [0, 0, 0];
   const sunDir = new THREE.Vector3(-0.4, 0.75, 0.5).normalize();
   let sunPower = 1;
@@ -419,4 +419,165 @@ export function makeCatBody({ scale, ground = 0, lite = false, sun = null, shado
       material.dispose();
     },
   };
+}
+
+/* What the cat's vertex shader needs in uniform vectors: three to a bone,
+ * and three's own matrices, lights and shadow with room to spare. WebGL 2
+ * promises 256; an old WebGL 1 card may have 128, and a program that asks
+ * for more does not link. */
+const NEED_UNIFORMS = BONES * 3 + 64;
+/* World metres to a cat's: how near the camera is before the cat is posed
+ * whether or not it is in the picture, for a turn faster than the
+ * camera's matrix. */
+const NEAR_POSE = 4;
+
+/* A number for a name, so each yard's cat has whims of its own. */
+function seedOf(text) {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+  }
+  return (h >>> 0) || 7;
+}
+
+/*
+ * THE CAT FOR A MAP: lawn, body, mind and drawing as the one thing a map
+ * adds to its scene and steps from its updateAnim, the way Heads is added
+ * to his garage (../heads/mandraw.js).
+ *
+ *   track      the map's yard track (./yardtrack.js)
+ *   colliders  the map's built collider set, every solid there is
+ *   parts      the map's own structure, for what is drawn and not lawn
+ *   starts     where else a run is set down: the map's own start
+ *   camera     the shell's
+ *   craftAt    answers where the drawn craft is in the world, or null
+ *   lite       the Low preset's model
+ *   sun        the map's sun
+ *   renderer   the shell's, asked how many uniforms a vertex shader may have
+ *
+ * Returns null where the graphics card cannot hold the bones: such a map
+ * has no cat and loses nothing else.
+ *
+ * ITS CLOCK is the one the map's updateAnim is handed, the title's, the
+ * run's or the finish's: forward steps are lived, and a step back or a leap
+ * of more than a second goes by as nothing, so a new run or a pause never
+ * moves the cat by itself. THE CRAFT'S SIZE is read every frame from
+ * src/game/collide.js, so the air the cat keeps is the air round the craft
+ * being flown, whoop or five inch.
+ *
+ * A harness (scripts/ only) can stand in for the craft with
+ * `mesh.userData.craftAt`, a world { x, y, z }, and for its size with
+ * `mesh.userData.craftR`, and can switch the cat off, undrawn and
+ * unthinking, with `mesh.userData.off`.
+ */
+export function makeCat({
+  track, colliders = null, parts = null, starts = null, camera, craftAt = () => null, lite = false, sun = null, renderer = null, seed = null,
+}) {
+  if (renderer && renderer.capabilities && renderer.capabilities.maxVertexUniforms < NEED_UNIFORMS) {
+    return null;
+  }
+  const S = track.scale;
+  const ground = track.y || 0;
+  const light = sun ? Math.min(1, Math.max(0.15, (sun.visible === false ? 0 : sun.intensity) / 2.25)) : 0.6;
+  const life = makeCatLife({
+    track, solids: colliders, parts, starts, seed: seed == null ? seedOf(String(track.id || 'yard')) : seed, light,
+  });
+  const body = makeCatBody({
+    scale: S, ground, lite, sun, rig: life.rig, controls: life.controls, face: life.face, marks: life.marks,
+  });
+  const mesh = body.mesh;
+  const c = life.controls;
+  const eye = { x: 0, y: 0, z: 0, fx: 0, fy: 0, fz: -1 };
+  const frustum = new THREE.Frustum();
+  const pm = new THREE.Matrix4();
+  const sphere = new THREE.Sphere();
+  let last = null;
+  let frames = 0;
+
+  function update(step) {
+    const ud = mesh.userData;
+    if (ud.off) {
+      mesh.visible = false;
+      last = step;
+      return;
+    }
+    mesh.visible = true;
+    let d = 0;
+    if (last !== null) {
+      const dd = step - last;
+      if (dd > 0 && dd <= 1000) {
+        d = dd;
+      }
+    }
+    last = step;
+    frames += 1;
+    /* The pilot's eye as it is this frame: where the camera is and which
+     * way it looks, from its own place and turn and not its matrix, which
+     * is last frame's until the picture is drawn. */
+    const p = camera.position;
+    const q = camera.quaternion;
+    eye.x = p.x;
+    eye.y = p.y;
+    eye.z = p.z;
+    eye.fx = -2 * (q.x * q.z + q.w * q.y);
+    eye.fy = -2 * (q.y * q.z - q.w * q.x);
+    eye.fz = -(1 - 2 * (q.x * q.x + q.y * q.y));
+    const dx = p.x - c.x;
+    const dz = p.z - c.z;
+    let seen = dx * dx + dz * dz < NEAR_POSE * S * NEAR_POSE * S;
+    if (!seen) {
+      pm.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+      frustum.setFromProjectionMatrix(pm);
+      sphere.center.set(c.x, ground + 0.3 * S, c.z);
+      sphere.radius = 1.5 * S;
+      seen = frustum.intersectsSphere(sphere);
+    }
+    life.frame(d / 1000, ud.craftAt || craftAt(), ud.craftR || CRAFT_WORLD_R, eye, seen);
+    body.show(camera);
+  }
+  /* Shown once whether or not it is in view, so its first sight is a cat. */
+  body.show(camera);
+
+  return {
+    mesh,
+    life,
+    body,
+    update,
+    stats: () => ({
+      ...life.stats(),
+      frames,
+      lite: Boolean(lite),
+      vertices: body.model.position.length / 3,
+      triangles: body.model.index.length / 3,
+    }),
+  };
+}
+
+/*
+ * The cat added to a built map that has a yard track, in the map's scene
+ * (whose dispose frees it) and so before the map's programs are warmed.
+ * `shell` is the page's, `parts` the map's own structure. Returns the cat,
+ * or null on a map with no yard track or a card that cannot draw it; the
+ * map steps it from its updateAnim and adds its stats to its own.
+ */
+export function addYardCat(map, shell, parts) {
+  if (!map.yardTrack) {
+    return null;
+  }
+  const cat = makeCat({
+    track: map.yardTrack,
+    colliders: map.colliders,
+    parts,
+    starts: map.spawn ? [map.spawn] : null,
+    camera: shell.camera,
+    craftAt: () => (shell.quad ? shell.quad.position : null),
+    lite: map.graphics === 'low',
+    /* The sun is the first of the map's two lights: src/maps/built/index.js. */
+    sun: map.scene.children.find((o) => o.isDirectionalLight) || null,
+    renderer: shell.renderer,
+  });
+  if (cat) {
+    map.scene.add(cat.mesh);
+  }
+  return cat;
 }

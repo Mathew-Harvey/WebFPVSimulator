@@ -50,6 +50,11 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
+/* Lengths, written out, because Math.hypot makes garbage in V8: see
+ * ./cat.js. */
+const hyp2 = (a, b) => Math.sqrt(a * a + b * b);
+const hyp3 = (a, b, c) => Math.sqrt(a * a + b * b + c * c);
+
 /* A cell's side, world metres. */
 export const CELL = 0.25;
 /* What way() answers. */
@@ -106,9 +111,11 @@ const UNDER_HIGH = 1.75;
  * is the map's built collider set (src/game/collide.js Colliders, after
  * build()), every solid there is. `parts` is the map's own structure
  * (src/props/parts.js), read for what is drawn and not solid: a drive, a
- * path, a kerb, which are not lawn.
+ * path, a kerb, which are not lawn. `starts` is wherever else a run is set
+ * down, world { x, z }: the map's own start, which at Bardwell's is on this
+ * lawn.
  */
-export function makeLawn({ track, solids = null, parts = null }) {
+export function makeLawn({ track, solids = null, parts = null, starts = null }) {
   const S = track.scale;
   const g = track.y || 0;
   const M = MARGIN * S;
@@ -179,7 +186,7 @@ export function makeLawn({ track, solids = null, parts = null }) {
   /* And for a rectangle turned any way: its middle, its two unit axes and
    * its half sizes along them. */
   function plank(into, mx, mz, ux, uz, hu, hv) {
-    const r = Math.hypot(hu, hv);
+    const r = hyp2(hu, hv);
     const i0 = Math.max(0, Math.floor((mx - r - x0) / CELL));
     const i1 = Math.min(cols - 1, Math.floor((mx + r - x0) / CELL));
     const j0 = Math.max(0, Math.floor((mz - r - z0) / CELL));
@@ -272,9 +279,14 @@ export function makeLawn({ track, solids = null, parts = null }) {
       plank(soft, gt.position.x, gt.position.z, ux, uz, a.clearW / 2, LANE * S);
     }
   }
-  /* Where a run is set down, and a ring round it not to stop in. */
-  pipe(hard, track.start.x, track.start.z, track.start.x, track.start.z, START * S, 0);
-  pipe(soft, track.start.x, track.start.z, track.start.x, track.start.z, (START + 0.25) * S, 0);
+  /* Where a run is set down, and a ring round it not to stop in: a craft
+   * that appears there must never appear on the cat. */
+  for (const p of [track.start, ...(starts || [])]) {
+    if (p) {
+      pipe(hard, p.x, p.z, p.x, p.z, START * S, 0);
+      pipe(soft, p.x, p.z, p.x, p.z, (START + 0.25) * S, 0);
+    }
+  }
   /* The floor logos: a cat sat on a partner's mark hides it. */
   for (const lg of track.logos || []) {
     plank(soft, lg.x, lg.z, Math.cos(lg.yaw), -Math.sin(lg.yaw), lg.w / 2, lg.d / 2);
@@ -283,7 +295,7 @@ export function makeLawn({ track, solids = null, parts = null }) {
   /* THE RACING LINE, kept as flat arrays, with how far along it each point
    * is. A lap's line ends where it began: the last point is the first. */
   const raw = track.line || [];
-  const closed = raw.length > 2 && Math.hypot(raw[0].x - raw[raw.length - 1].x, raw[0].y - raw[raw.length - 1].y, raw[0].z - raw[raw.length - 1].z) < 0.05;
+  const closed = raw.length > 2 && hyp3(raw[0].x - raw[raw.length - 1].x, raw[0].y - raw[raw.length - 1].y, raw[0].z - raw[raw.length - 1].z) < 0.05;
   const ln = closed ? raw.length - 1 : raw.length;
   const lx = new Float32Array(ln);
   const ly = new Float32Array(ln);
@@ -296,7 +308,7 @@ export function makeLawn({ track, solids = null, parts = null }) {
   }
   for (let i = 0; i < ln; i += 1) {
     const k = (i + 1) % ln;
-    ls[i + 1] = ls[i] + (i + 1 < ln || closed ? Math.hypot(lx[k] - lx[i], ly[k] - ly[i], lz[k] - lz[i]) : 0);
+    ls[i + 1] = ls[i] + (i + 1 < ln || closed ? hyp3(lx[k] - lx[i], ly[k] - ly[i], lz[k] - lz[i]) : 0);
   }
   const lineLength = ls[ln];
   for (let i = 0; i < ln; i += 1) {
@@ -657,7 +669,7 @@ export function makeLawn({ track, solids = null, parts = null }) {
     const b = (i + 2) % ln;
     let tx = lx[b] - lx[a];
     let tz = lz[b] - lz[a];
-    const tl = Math.hypot(tx, tz);
+    const tl = hyp2(tx, tz);
     if (tl < 0.05) {
       continue;
     }
@@ -752,7 +764,7 @@ export function makeLawn({ track, solids = null, parts = null }) {
     cellX: (k) => cx(k % cols),
     cellZ: (k) => cz((k - (k % cols)) / cols),
     centre: { x: (track.box.x0 + track.box.x1) / 2, z: (track.box.z0 + track.box.z1) / 2 },
-    reach: Math.hypot(track.box.x1 - track.box.x0, track.box.z1 - track.box.z0) / 2 + M,
+    reach: hyp2(track.box.x1 - track.box.x0, track.box.z1 - track.box.z0) / 2 + M,
     top: (track.box.top ?? 10 * S) - g,
     rests,
     restX,

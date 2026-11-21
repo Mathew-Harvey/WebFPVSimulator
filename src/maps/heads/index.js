@@ -51,6 +51,7 @@ import { headsLayout, headsYardTrack, basementFloorAt, BASEMENT_HOLE, FRAME, wor
 import { floorQuads, loadFloorMarks, FLOOR_MARKS } from '../yardtrack/yardtrack.js';
 import { headsDocument } from './yard.js';
 import { makeMan } from './mandraw.js';
+import { addYardCat } from '../yardtrack/catdraw.js';
 import {
   SHEETS, SHEET_PX, ACHIEVEMENT, IL_LOGO, IL_OUTLINE, PATCH, WALL_STICKERS,
   ATLAS_W, ATLAS_H, CELLS, placeSigns, placeDecals, placePatches,
@@ -579,6 +580,11 @@ export async function buildHeadsWorld(shell, onProgress, options, plus) {
    * linked with the rest. */
   const man = makeMan(shell.camera, () => (shell.quad ? shell.quad.position : null));
   map.scene.add(man.group);
+  /* The yard's black cat (../yardtrack/cat.js), which hunts whatever is
+   * flown round the yard track and never touches it: one mesh, added before
+   * the programs are warmed for the same reason, and absent from a world
+   * with no yard track. */
+  const cat = addYardCat(map, shell, L.parts);
   /* What the world adds of its own that moves, before the programs are
    * warmed for the same reason: the goats. */
   const more = plus && plus.after ? await plus.after(map, { sheets, layout: L }) : null;
@@ -587,11 +593,17 @@ export async function buildHeadsWorld(shell, onProgress, options, plus) {
   map.updateAnim = (step) => {
     anim(step);
     man.update(step);
+    if (cat) {
+      cat.update(step);
+    }
     if (more) {
       more.update(step);
     }
   };
+  map.yardCat = cat;
   const stats = map.stats;
-  map.stats = () => ({ ...stats(), heads: man.stats(), ...(more ? more.stats() : {}) });
+  map.stats = () => ({
+    ...stats(), heads: man.stats(), ...(cat ? { cat: cat.stats() } : {}), ...(more ? more.stats() : {}),
+  });
   return map;
 }

@@ -49,9 +49,11 @@
  *
  * FOR THE LATENCY RULE. One think() is a state's handful of comparisons,
  * the craft's speed by difference, and at most one look at the lawn's
- * grid; nothing is made in a frame. The cat is not in the plant, times
- * nothing and collides with nothing, so nothing here is on the physics
- * path and JS's own sines are fair.
+ * grid. No object, array or closure is made in a frame: what a frame
+ * leaves for the collector is the numbers V8 boxes on their way between
+ * functions, and PROGRESS.md's entry has the measured figure. The cat is
+ * not in the plant, times nothing and collides with nothing, so nothing
+ * here is on the physics path and JS's own sines are fair.
  *
  * Lengths that are the cat's are in a cat's metres and multiplied by the
  * scale, the world metres to one of the cat's; the craft and the lawn are
@@ -73,8 +75,8 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { WAY, WAIT, UNDER } from './catlawn.js';
-import { POSTURE, wrapAngle } from './catrig.js';
+import { WAY, WAIT, UNDER, makeLawn } from './catlawn.js';
+import { POSTURE, wrapAngle, makeControls, makeRig } from './catrig.js';
 import { MARK, SWIPE, PUFF } from './catmodel.js';
 
 /* What the cat is doing. */
@@ -124,6 +126,12 @@ const AIR_SIDE = 0.16;
  * under it: lower than that it is in the way, and is walked round. */
 const UNDERPASS = 0.66;
 
+/* Lengths, written out: Math.hypot is correct to the last bit and, in V8,
+ * makes a small array of its arguments every time it is called, which over
+ * the few hundred lengths a frame of the cat takes is kilobytes of garbage
+ * a frame. These make none. */
+const hyp2 = (a, b) => Math.sqrt(a * a + b * b);
+const hyp3 = (a, b, c) => Math.sqrt(a * a + b * b + c * c);
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
 const smooth = (t) => {
@@ -192,7 +200,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     let best = -1;
     let bd = 1e18;
     for (let r = 0; r < lawn.rests; r += 1) {
-      const d = Math.abs(Math.hypot(lawn.restX[r] - lawn.centre.x, lawn.restZ[r] - lawn.centre.z) - lawn.reach * 0.55) + 2 * rnd();
+      const d = Math.abs(hyp2(lawn.restX[r] - lawn.centre.x, lawn.restZ[r] - lawn.centre.z) - lawn.reach * 0.55) + 2 * rnd();
       if (d < bd) {
         bd = d;
         best = r;
@@ -348,7 +356,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
    * it has arrived, or that there is no way, stands until it is asked for
    * somewhere else, so the state can see it. */
   function goTo(x, z, speed) {
-    const moved = Math.hypot(go.x - x, go.z - z);
+    const moved = hyp2(go.x - x, go.z - z);
     if (moved > 0.5 * S) {
       go.failed = false;
       go.arrived = false;
@@ -433,7 +441,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
       const jz = craft.z - cr.z;
       /* Further in a frame than anything flies: it was put there (a reset,
        * a new run), and that is not a speed. */
-      if (Math.hypot(jx, jy, jz) > Math.max(0.9 * S, 110 * dt)) {
+      if (hyp3(jx, jy, jz) > Math.max(0.9 * S, 110 * dt)) {
         cr.vx = 0;
         cr.vy = 0;
         cr.vz = 0;
@@ -454,12 +462,12 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     cr.on = true;
     cr.R = craftR;
     cr.keep = craftR + KEEP * S;
-    cr.sp = Math.hypot(cr.vx, cr.vy, cr.vz);
-    cr.hs = Math.hypot(cr.vx, cr.vz);
+    cr.sp = hyp3(cr.vx, cr.vy, cr.vz);
+    cr.hs = hyp2(cr.vx, cr.vz);
     cr.dx = cr.x - c.x;
     cr.dz = cr.z - c.z;
-    cr.dh = Math.hypot(cr.dx, cr.dz);
-    const far = Math.hypot(cr.x - lawn.centre.x, cr.z - lawn.centre.z);
+    cr.dh = hyp2(cr.dx, cr.dz);
+    const far = hyp2(cr.x - lawn.centre.x, cr.z - lawn.centre.z);
     cr.yard = far < lawn.reach + 0.5 * S && cr.y < lawn.top + S;
     cr.awayT = cr.yard ? 0 : cr.awayT + dt;
     const wasDown = cr.down;
@@ -501,11 +509,11 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
       const ex = c.x - eye.x;
       const ey = g + 0.2 * S - eye.y;
       const ez = c.z - eye.z;
-      const d = Math.hypot(ex, ey, ez);
+      const d = hyp3(ex, ey, ez);
       cr.eyeOn = d < 5 * S && d > 1e-3 && (ex * eye.fx + ey * eye.fy + ez * eye.fz) > d * 0.86;
       /* And which way it looks over the ground, for choosing where to be
        * seen from. */
-      const fh = Math.hypot(eye.fx, eye.fz);
+      const fh = hyp2(eye.fx, eye.fz);
       if (fh > 0.2) {
         cr.eye = true;
         cr.efx = eye.fx / fh;
@@ -538,7 +546,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     const lim = cr.keep + 0.6 * S;
     for (let k = 0; k <= 6; k += 1) {
       predict((within * k) / 6);
-      if (pr.y < 1.4 * S && Math.hypot(pr.x - x, pr.z - z) < lim) {
+      if (pr.y < 1.4 * S && hyp2(pr.x - x, pr.z - z) < lim) {
         return true;
       }
     }
@@ -563,8 +571,8 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     const ring = cr.keep + 0.36 * S;
     const rx = cr.x + cr.vx * 0.2 - c.x;
     const rz = cr.z + cr.vz * 0.2 - c.z;
-    const rd = Math.hypot(rx, rz);
-    if (Math.hypot(go.x - cr.x, go.z - cr.z) < ring + 0.02 * S) {
+    const rd = hyp2(rx, rz);
+    if (hyp2(go.x - cr.x, go.z - cr.z) < ring + 0.02 * S) {
       /* Where it was going is in the craft's lap, which nothing plans: as
        * far as the edge of it and no further. */
       if (rd < ring + 0.1 * S) {
@@ -588,7 +596,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     if (rd > ring) {
       const along = rd * Math.cos(da);
       const perp = rd * Math.sin(da);
-      if (Math.hypot(go.wx - c.x, go.wz - c.z) < along - Math.sqrt(Math.max(0, ring * ring - perp * perp))) {
+      if (hyp2(go.wx - c.x, go.wz - c.z) < along - Math.sqrt(Math.max(0, ring * ring - perp * perp))) {
         return to;
       }
     }
@@ -610,7 +618,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     let to = NaN;
     kerb = false;
     if (go.on) {
-      const gd = Math.hypot(go.x - c.x, go.z - c.z);
+      const gd = hyp2(go.x - c.x, go.z - c.z);
       if (gd <= 0.05 * S) {
         go.on = false;
         go.arrived = true;
@@ -658,7 +666,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
             if (into >= 0) {
               /* How far it is to the far kerb, the way it is going: as far
                * as the place it is making for, at most. */
-              const most = Math.min(Math.hypot(go.wx - c.x, go.wz - c.z), 9 * S);
+              const most = Math.min(hyp2(go.wx - c.x, go.wz - c.z), 9 * S);
               let off = into;
               while (off < most && lawn.lane(c.x + tx * off, c.z + tz * off)) {
                 off += 0.2 * S;
@@ -811,7 +819,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     c.up = hop.up;
     pose(POSTURE.air, 0.05);
     const rise = (4 * hop.H * (1 - 2 * s)) / hop.T;
-    const run = Math.hypot(c.vx, c.vz) / S;
+    const run = hyp2(c.vx, c.vz) / S;
     c.pitch = hop.up ? lerp(1.15, 0.5, smooth((s - 0.55) / 0.4)) : clamp(Math.atan2(rise, Math.max(0.6, run)) * 0.55, -0.5, 0.6);
     if (s >= 1) {
       hop.on = false;
@@ -934,7 +942,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     return enter(DO.wander);
   }
   /* Is a place in the lap of a craft that is low enough to be in the way. */
-  const lap = (x, z) => cr.on && cr.y < cr.keep + UNDERPASS * S && Math.hypot(x - cr.x, z - cr.z) < cr.keep + 0.7 * S;
+  const lap = (x, z) => cr.on && cr.y < cr.keep + UNDERPASS * S && hyp2(x - cr.x, z - cr.z) < cr.keep + 0.7 * S;
   /* The nearest place it may stop that is not in the craft's lap: a cell
    * of the lawn, or -1. */
   function clearSpot(room) {
@@ -992,7 +1000,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
           continue;
         }
       }
-      let s = Math.hypot(x - c.x, z - c.z);
+      let s = hyp2(x - c.x, z - c.z);
       if (!lawn.sight(c.x, c.z, x, z)) {
         s *= 1.6;
       }
@@ -1065,7 +1073,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
       if (eta > 12) {
         continue;
       }
-      const d = Math.hypot(lawn.waitX[w] - c.x, lawn.waitZ[w] - c.z);
+      const d = hyp2(lawn.waitX[w] - c.x, lawn.waitZ[w] - c.z);
       if (eta < (d * 1.3) / (RUN * 0.8 * S) + 1.6) {
         continue;
       }
@@ -1103,14 +1111,14 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     /* Out from the line to the place, and the way the line runs there. */
     let nx = wx - plan.cx;
     let nz = wz - plan.cz;
-    const nd = Math.max(1e-3, Math.hypot(nx, nz));
+    const nd = Math.max(1e-3, hyp2(nx, nz));
     nx /= nd;
     nz /= nd;
     const a = (at - 2 + L.n) % L.n;
     const b = (at + 2) % L.n;
     let tx = L.x[b] - L.x[a];
     let tz = L.z[b] - L.z[a];
-    const tl = Math.max(1e-3, Math.hypot(tx, tz));
+    const tl = Math.max(1e-3, hyp2(tx, tz));
     tx /= tl;
     tz /= tl;
     const off = Math.max(nd, cr.keep + (NOSE + 0.1) * S);
@@ -1155,7 +1163,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
       const rx = plan.cx - cr.x;
       const rz = plan.cz - cr.z;
       const t = (rx * cr.vx + rz * cr.vz) / (cr.hs * cr.hs);
-      if (Math.hypot(rx - cr.vx * t, rz - cr.vz * t) < 0.9 * S) {
+      if (hyp2(rx - cr.vx * t, rz - cr.vz * t) < 0.9 * S) {
         return t;
       }
     }
@@ -1333,7 +1341,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
       bx -= cr.vx * al;
       bz -= cr.vz * al;
     }
-    const oh = Math.hypot(bx, bz);
+    const oh = hyp2(bx, bz);
     if (oh > 0.02 * S) {
       thr.nx = bx / oh;
       thr.nz = bz / oh;
@@ -1380,12 +1388,12 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
         const rx = x - cr.x;
         const rz = z - cr.z;
         const al = (rx * cr.vx + rz * cr.vz) / cr.hs;
-        near = Math.min(near, al > -0.3 * S ? Math.abs(rx * cr.vz - rz * cr.vx) / cr.hs : Math.hypot(rx, rz));
+        near = Math.min(near, al > -0.3 * S ? Math.abs(rx * cr.vz - rz * cr.vx) / cr.hs : hyp2(rx, rz));
       } else {
         for (let i = 0; i <= 8; i += 1) {
           predict(i * 0.14);
           if (pr.y < 1.6 * S) {
-            near = Math.min(near, Math.hypot(pr.x - x, pr.z - z));
+            near = Math.min(near, hyp2(pr.x - x, pr.z - z));
           }
         }
       }
@@ -1395,7 +1403,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
       for (let i = 1; i <= 4; i += 1) {
         predict((T * i) / 4);
         if (pr.y < 1.6 * S) {
-          near = Math.min(near, Math.hypot(pr.x - lerp(c.x, x, i / 4), pr.z - lerp(c.z, z, i / 4)) + 0.2 * S);
+          near = Math.min(near, hyp2(pr.x - lerp(c.x, x, i / 4), pr.z - lerp(c.z, z, i / 4)) + 0.2 * S);
         }
       }
       /* How far the craft will pass is what counts, up to plenty; then the
@@ -1550,18 +1558,43 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
       if (stT === 0 || phT === dt) {
         moves.groom += 1;
       }
-      /* A fore paw up to the mouth, licked, the head nodding at it. */
+      /* A fore paw up to the mouth and licked, the head nodding at it;
+       * then the wet paw drawn up over the cheek, the eye and the ear and
+       * down again, eyes shut and the head leaned into it. The wash
+       * everybody knows, a beat and a half each time. */
+      const beat = phT % 1.5;
+      const fx = Math.cos(c.yaw);
+      const fz = -Math.sin(c.yaw);
       rig.at('mouth', at3);
+      const mx = at3[0];
+      const my = at3[1];
+      const mz = at3[2];
       c.freeL = 1;
       c.reachL = 1;
-      c.pawLX = at3[0] + Math.cos(c.yaw) * 0.012 * S;
-      c.pawLY = at3[1] - 0.012 * S;
-      c.pawLZ = at3[2] - Math.sin(c.yaw) * 0.012 * S;
-      c.toeL = 0.9;
-      const nod = Math.sin(phT * 7.5);
-      lookAt(c.x + Math.cos(c.yaw) * 0.3 * S, (0.2 + 0.035 * nod) * S, c.z - Math.sin(c.yaw) * 0.3 * S, 1);
-      c.jaw = 0.07 + 0.05 * Math.max(0, nod);
-      if (phT > dur * 0.55) {
+      if (beat < 0.7) {
+        c.pawLX = mx + fx * 0.012 * S;
+        c.pawLY = my - 0.012 * S;
+        c.pawLZ = mz + fz * 0.012 * S;
+        c.toeL = 0.9;
+        const nod = Math.sin(beat * 7.5);
+        lookAt(c.x + fx * 0.3 * S, (0.2 + 0.035 * nod) * S, c.z + fz * 0.3 * S, 1);
+        c.jaw = 0.07 + 0.05 * Math.max(0, nod);
+      } else {
+        /* Up and back: 0 at the mouth, 1 behind the ear. Out to the paw's
+         * own side and forward of the face, so it goes round the head. */
+        const u = Math.sin((Math.PI * (beat - 0.7)) / 0.8);
+        const out = (0.012 + 0.034 * u) * S;
+        const fwd = (0.012 + 0.016 * Math.sin(Math.PI * u)) * S;
+        rig.at('crown', at3);
+        c.pawLX = mx + (at3[0] - mx) * u - Math.sin(c.yaw) * out + fx * fwd;
+        c.pawLY = my + (at3[1] - my) * u - 0.012 * S * (1 - u);
+        c.pawLZ = mz + (at3[2] - mz) * u - Math.cos(c.yaw) * out + fz * fwd;
+        c.toeL = 0.9 - 0.5 * u;
+        c.tilt = -0.24 * u;
+        lidT = 1;
+        lookAt(c.x + fx * 0.3 * S, 0.19 * S, c.z + fz * 0.3 * S, 1);
+      }
+      if (phT > dur * 0.55 && beat < 0.1) {
         phase(1);
       }
     } else {
@@ -1661,7 +1694,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
       let bs = 1e18;
       for (let k = 0; k < 6 && lawn.rests > 0; k += 1) {
         const r = Math.floor(rnd() * lawn.rests);
-        const d = Math.hypot(lawn.restX[r] - c.x, lawn.restZ[r] - c.z);
+        const d = hyp2(lawn.restX[r] - c.x, lawn.restZ[r] - c.z);
         const s = Math.abs(d - 1.4 * S);
         if (s < bs && d > 0.5 * S && !lap(lawn.restX[r], lawn.restZ[r])) {
           bs = s;
@@ -1790,7 +1823,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
       }
     } else {
       /* The craft has moved from where the plan was made for. */
-      const moved = Math.hypot(cr.x - plan.cx, cr.z - plan.cz);
+      const moved = hyp2(cr.x - plan.cx, cr.z - plan.cz);
       const landed = cr.landT > 0.4;
       if ((k === PL.ground || k === PL.sniff) !== landed || (k !== PL.ground && k !== PL.sniff && cr.sp > 1.3 * S)) {
         return hunt();
@@ -1802,11 +1835,11 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
         go.on = false;
       }
     }
-    const gd = Math.hypot(plan.x - c.x, plan.z - c.z);
+    const gd = hyp2(plan.x - c.x, plan.z - c.z);
     /* Flat out if there is a way to go or no time, a low trot from one
      * stop to the next, and the last of it on its belly: but only toward
      * the craft. Going back from it for another run it trots. */
-    const toward = Math.hypot(plan.x - cr.x, plan.z - cr.z) < cr.dh + 0.2 * S;
+    const toward = hyp2(plan.x - cr.x, plan.z - cr.z) < cr.dh + 0.2 * S;
     let speed = SLINK;
     if (plan.hurry ? gd > 0.8 * S : gd > 3.2 * S) {
       speed = RUN;
@@ -1885,14 +1918,14 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
          * moment before it does. */
         const yaw = yawTo(plan.lx, plan.lz);
         turnTo(yaw);
-        const d = Math.hypot(plan.lx - c.x, plan.lz - c.z);
+        const d = hyp2(plan.lx - c.x, plan.lz - c.z);
         const H = clamp(0.1 + 0.16 * (d / S), 0.14, 0.36);
         const T = Math.max(0.16, Math.sqrt((8 * H) / G));
         if (eta <= T + 0.1 && stT > 0.3 && aimed(yaw, 0.4)) {
           /* Only if the craft is keeping to its line: where it will pass
            * must leave the landing its air. */
           predict(Math.max(0, eta));
-          if (Math.hypot(pr.x - plan.lx, pr.z - plan.lz) >= cr.keep + (NOSE + 0.03) * S && canLand(plan.lx, plan.lz, 0.1 * S)) {
+          if (hyp2(pr.x - plan.lx, pr.z - plan.lz) >= cr.keep + (NOSE + 0.03) * S && canLand(plan.lx, plan.lz, 0.1 * S)) {
             hopTo(plan.lx, plan.lz, H, 0);
             moves.pounce += 1;
             weary += 0.25;
@@ -1964,7 +1997,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
         const pz = cr.z + cr.vz * 0.42;
         const dx = px - c.x;
         const dz = pz - c.z;
-        const d = Math.max(1e-3, Math.hypot(dx, dz));
+        const d = Math.max(1e-3, hyp2(dx, dz));
         const far = clamp(d - cr.keep - (NOSE + 0.1) * S, 0, 1.7 * S);
         if (far < 0.3 * S) {
           return enter(DO.swat);
@@ -2090,7 +2123,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     let ux = at3[0] - cr.x;
     let uy = at3[1] - cr.y;
     let uz = at3[2] - cr.z;
-    const d = Math.hypot(ux, uy, uz);
+    const d = hyp3(ux, uy, uz);
     if (d < 1e-3) {
       return false;
     }
@@ -2305,7 +2338,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
           const al = (ux * cr.vx + uz * cr.vz) / (cr.hs * cr.hs);
           const lx = ux - cr.vx * al;
           const lz = uz - cr.vz * al;
-          const ll = Math.hypot(lx, lz);
+          const ll = hyp2(lx, lz);
           if (ll > 0.05) {
             ux = lx / ll;
             uz = lz / ll;
@@ -2350,7 +2383,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     const m = cr.sp > 0.2 * S ? 6 : 0;
     for (let k = 0; k <= m; k += 1) {
       predict(k * 0.08);
-      if (pr.y < cr.keep + 0.8 * S && Math.hypot(pr.x - c.x, pr.z - c.z) < lim) {
+      if (pr.y < cr.keep + 0.8 * S && hyp2(pr.x - c.x, pr.z - c.z) < lim) {
         return true;
       }
     }
@@ -2476,8 +2509,8 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
       let bs = -1e18;
       for (let k = 0; k < 10 && lawn.rests > 0; k += 1) {
         const r = Math.floor(rnd() * lawn.rests);
-        const fromCraft = cr.on ? Math.hypot(lawn.restX[r] - cr.x, lawn.restZ[r] - cr.z) : 9 * S;
-        const fromCat = Math.hypot(lawn.restX[r] - c.x, lawn.restZ[r] - c.z);
+        const fromCraft = cr.on ? hyp2(lawn.restX[r] - cr.x, lawn.restZ[r] - cr.z) : 9 * S;
+        const fromCat = hyp2(lawn.restX[r] - c.x, lawn.restZ[r] - c.z);
         /* Not a place the way to which is through the craft, or past it. */
         const cos = cr.on && fromCat > 1e-3 && cr.dh > 1e-3
           ? ((lawn.restX[r] - c.x) * cr.dx + (lawn.restZ[r] - c.z) * cr.dz) / (fromCat * cr.dh) : -1;
@@ -2504,7 +2537,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
         let uz = -cr.dz / d;
         if (!lawn.free(c.x + ux * 0.3 * S, c.z + uz * 0.3 * S)) {
           /* Away is a wall: the way it is going, then. */
-          const gd = Math.max(1e-3, Math.hypot(plan.x - c.x, plan.z - c.z));
+          const gd = Math.max(1e-3, hyp2(plan.x - c.x, plan.z - c.z));
           ux = (plan.x - c.x) / gd;
           uz = (plan.z - c.z) / gd;
         }
@@ -2512,11 +2545,11 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
         return st;
       }
       phase(1);
-      vel = Math.hypot(c.vx, c.vz);
+      vel = hyp2(c.vx, c.vz);
     }
     goTo(plan.x, plan.z, RUN);
     lookAt(go.wx, 0.25 * S, go.wz, 0.4);
-    if (go.arrived || go.failed || stT > 3.5 || Math.hypot(plan.x - c.x, plan.z - c.z) < 0.1 * S) {
+    if (go.arrived || go.failed || stT > 3.5 || hyp2(plan.x - c.x, plan.z - c.z) < 0.1 * S) {
       weary = Math.max(weary, 1);
       resting = true;
       wantPuff = 1;
@@ -2751,6 +2784,16 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     wayX[k] = Math.cos((k * 2 * Math.PI) / ways);
     wayZ[k] = Math.sin((k * 2 * Math.PI) / ways);
   }
+  /* A frame in which the body was not posed (./makeCatLife: out of the
+   * picture, the craft nowhere near): what was to be marked on the body is
+   * let go, since there is no body to put it on and nobody to see it. */
+  function unposed() {
+    wantSwipe = 0;
+    wantPuff = 0;
+    if (!hop.on) {
+      topOff = st === DO.leap || st === DO.crouch ? UP_TOP : AIR_TOP;
+    }
+  }
   function settle() {
     /* How tall it stands above its feet in the air, for the next frame's
      * ceiling. */
@@ -2823,7 +2866,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
       return false;
     }
     /* The seventeenth way: straight away from the craft. */
-    const qd = Math.hypot(qx, qz);
+    const qd = hyp2(qx, qz);
     wayX[ways] = qd > 1e-3 ? -qx / qd : Math.cos(c.yaw + Math.PI);
     wayZ[ways] = qd > 1e-3 ? -qz / qd : -Math.sin(c.yaw + Math.PI);
     let best = -1;
@@ -2900,6 +2943,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
   return {
     think,
     settle,
+    unposed,
     craft: cr,
     plan,
     /* For the check and the harness: an object a call, never in a frame. */
@@ -2926,6 +2970,93 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     },
     force(s) {
       enter(s);
+    },
+  };
+}
+
+/* How far from the craft's air, in a cat's metres, the body still matters
+ * to it: past this, and out of the picture, the bones are left alone. */
+const BODY_NEAR = 6.5;
+
+/*
+ * THE CAT WHOLE, less the drawing: the lawn it walks (./catlawn.js), its
+ * body (./catrig.js) and what it wants, and one frame of all three in the
+ * order that keeps the promise: it decides, the body is posed, and the
+ * posed body is measured against the craft and moved off it. The page's
+ * cat (./catdraw.js) and scripts/yardcat-check.js both go through this, so
+ * the cat that is checked is the cat that is drawn.
+ *
+ *   frame(dt, craft, craftR, eye, seen)   one frame. `seen` is whether the
+ *       cat is in the picture or near the camera. True if the body was
+ *       posed, which is whenever it is seen or the craft is near enough to
+ *       be kept off; out of the picture and far from the craft only the
+ *       mind runs, and the body is put right in one go when it is next
+ *       wanted (eight steps, a tenth of a millisecond, once)
+ */
+export function makeCatLife({ track, solids = null, parts = null, starts = null, seed = 7, light = 0.6 }) {
+  const lawn = makeLawn({ track, solids, parts, starts });
+  const S = lawn.scale;
+  const rig = makeRig(S);
+  const controls = makeControls();
+  const face = makeFace();
+  const marks = makeMarks();
+  const mind = makeMind({ lawn, rig, controls, face, marks, seed, light });
+  let live = false;
+  let idle = 0;
+  let posed = 0;
+  let skipped = 0;
+  let woken = 0;
+  /* The body as it would be had it been posed all along. */
+  function wake() {
+    rig.reset();
+    for (let k = 0; k < 8; k += 1) {
+      rig.step(0.08, controls);
+    }
+    live = true;
+    woken += 1;
+  }
+  wake();
+  function frame(dt, craft, craftR, eye, seen) {
+    /* A frame longer than a tenth of a second is a stall, not a tenth of a
+     * second of cat: it carries on from where it was. */
+    const d = dt > 0.1 ? 0.1 : dt;
+    if (!(d > 0)) {
+      return live;
+    }
+    const R = craftR > 0 ? craftR : 0.2;
+    mind.think(d, craft, R, eye);
+    let wanted = Boolean(seen);
+    if (!wanted && craft) {
+      wanted = hyp2(craft.x - controls.x, craft.z - controls.z) < R + (KEEP + BODY_NEAR) * S;
+    }
+    /* A second's grace, so a cat at the edge of the picture is not put to
+     * sleep and woken every other frame. */
+    idle = wanted ? 0 : idle + d;
+    if (idle > 1) {
+      mind.unposed();
+      live = false;
+      skipped += 1;
+      return false;
+    }
+    if (!live) {
+      wake();
+    }
+    rig.step(d, controls);
+    mind.settle();
+    posed += 1;
+    return true;
+  }
+  return {
+    lawn,
+    rig,
+    controls,
+    face,
+    marks,
+    mind,
+    frame,
+    /* For the check and the harness: an object a call, never in a frame. */
+    stats() {
+      return { ...mind.stats(), posed, skipped, woken, lawn: lawn.stats() };
     },
   };
 }

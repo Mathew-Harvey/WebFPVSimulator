@@ -180,6 +180,9 @@ export function buildCat(opt = {}) {
 
   let layer = 0;
   let kind = KIND.fur;
+  /* A part that is fur and near the face but not of it: the chin, which
+   * must stay fur when the mouth's roof above it is painted. */
+  let offFace = false;
   const vert = (p, c, bw, ax) => {
     pos.push(p[0], p[1], p[2]);
     col.push(c[0], c[1], c[2]);
@@ -189,7 +192,11 @@ export function buildCat(opt = {}) {
     } else {
       aux.push(0, 0, 0, 0);
     }
-    look.push(kind, p[0] - HEAD_AT[0], p[1] - HEAD_AT[1], p[2] - HEAD_AT[2]);
+    if (offFace) {
+      look.push(kind, 0, 0, 0);
+    } else {
+      look.push(kind, p[0] - HEAD_AT[0], p[1] - HEAD_AT[1], p[2] - HEAD_AT[2]);
+    }
     return pos.length / 3 - 1;
   };
   const tri = (a, b, c) => idx.push(a, b, c);
@@ -572,6 +579,7 @@ export function buildCat(opt = {}) {
   /* The jaw. Shut, it is the chin under the muzzle; open, its top is the
    * tongue, and the fangs show. The mouth's roof is painted on the head. */
   const JAWW = [BONE.jaw, BONE.jaw, 1];
+  offFace = true;
   closed(() => {
     loft([
       { c: [0.222, 0.265, 0] },
@@ -582,6 +590,7 @@ export function buildCat(opt = {}) {
       { c: [0.276, 0.2662, 0] },
     ], lite ? 6 : 8, { bw: JAWW });
   });
+  offFace = false;
   kind = KIND.flat;
   facing([0, 1, 0], () => {
     const mid = vert([0.247, 0.2738, 0], TONGUE, JAWW, null);

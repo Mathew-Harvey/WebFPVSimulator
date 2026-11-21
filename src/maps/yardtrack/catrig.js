@@ -372,9 +372,11 @@ export function makeControls() {
  *   step(dt, c)  move the body on `dt` seconds toward what `c` asks
  *   bones        BONES rows of twelve numbers, for the graphics card
  *   at(name, out)  a place on the cat, in the world
- *   probes       the body as balls, [x, y, z, r] each in the world, for
- *                keeping it off the craft (./cat.js)
- *   shift(dx, dy, dz)  move every bone and ball by this much (world)
+ *   probes       the body as balls, [x, y, z, r] each in the world (y over
+ *                the lawn), for keeping it off the craft (./cat.js)
+ *   shift(dx, dz)  the whole cat moved over the ground after a step
+ *   top()        the highest any part of it reaches
+ *   lead         where the eyes are ahead of the head, [left, up] radians
  *   reset()      forget the feet and the tail's swing
  */
 export function makeRig(scale) {
@@ -433,6 +435,9 @@ export function makeRig(scale) {
   let wagPhase = 0;
   /* The tail's own swing: each bone's turn to the side lags the one before. */
   const tailSide = new Float64Array(TAIL);
+  /* How far what is looked at is from where the head points, to the left
+   * and up, radians: where the eyes go before the head does. */
+  const lead = new Float64Array(2);
 
   /* The probes: a ball on a bone, [bone, x, y, z from its pivot, radius],
    * in the cat's metres. Together they wrap the drawn cat (the check in
@@ -1015,12 +1020,17 @@ export function makeRig(scale) {
       const hx = loc[0] - PIV[BONE.neck * 3] - 0.05;
       const hy = loc[1] - PIV[BONE.neck * 3 + 1] - 0.045;
       const hzz = loc[2] - PIV[BONE.neck * 3 + 2];
-      const wantYaw = clamp(Math.atan2(-hzz, hx), -2.1, 2.1) * lookW;
-      const wantPitch = clamp(Math.atan2(hy, Math.hypot(hx, hzz)), -1.0, 1.4) * lookW;
+      const toYaw = Math.atan2(-hzz, hx);
+      const toPitch = Math.atan2(hy, Math.hypot(hx, hzz));
+      const wantYaw = clamp(toYaw, -2.1, 2.1) * lookW;
+      const wantPitch = clamp(toPitch, -1.0, 1.4) * lookW;
       /* Fast, as a cat's head is, but it is carried there. */
       const hk = ease(dt, 0.035);
       headYaw += clamp((wantYaw - headYaw) * hk, -13 * dt, 13 * dt);
       headPitch += clamp((wantPitch - headPitch) * hk, -11 * dt, 11 * dt);
+      /* What the head has yet to turn: the eyes are there already. */
+      lead[0] = lookW * wrapAngle(toYaw - bend * 0.6 - headYaw);
+      lead[1] = lookW * (toPitch - headPitch);
     }
     headTilt += (c.tilt - headTilt) * ease(dt, 0.08);
     const bodyYaw = bend * 0.6;
@@ -1359,19 +1369,31 @@ export function makeRig(scale) {
     return out;
   }
 
-  /* Everything drawn moved by this much in the world: the last word of
-   * keeping the cat off the craft (./cat.js). */
-  function shift(dx, dy, dz) {
-    for (let b = 0; b < BONES; b += 1) {
-      bones[b * 12 + 3] += dx;
-      bones[b * 12 + 7] += dy;
-      bones[b * 12 + 11] += dz;
-    }
+  /* The whole cat moved by this much over the ground, feet and all, after
+   * a step: the last word of keeping it off the craft (./cat.js, which
+   * moves the spot it asks for by the same). The bones are written against
+   * the cat's spot, so they need nothing; the balls and the feet are the
+   * world's and go with it. */
+  function shift(dx, dz) {
+    rootX += dx;
+    rootZ += dz;
     for (let i = 0; i < PROBE.length; i += 1) {
       probes[i * 4] += dx;
-      probes[i * 4 + 1] += dy;
       probes[i * 4 + 2] += dz;
     }
+    carryFeet(dx, dz);
+  }
+
+  /* The highest any part of the cat reaches, world metres over the lawn. */
+  function top() {
+    let y = 0;
+    for (let i = 0; i < PROBE.length; i += 1) {
+      const t = probes[i * 4 + 1] + probes[i * 4 + 3];
+      if (t > y) {
+        y = t;
+      }
+    }
+    return y;
   }
 
   /* The feet moved with the cat when the cat's spot is moved from under
@@ -1393,9 +1415,11 @@ export function makeRig(scale) {
   return {
     bones,
     probes,
+    lead,
     step,
     at,
     shift,
+    top,
     carryFeet,
     poised,
     reset,

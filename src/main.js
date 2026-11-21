@@ -11914,6 +11914,14 @@ export async function boot({ loading, bootStart, mapId }) {
       if (view && view.setRaceLine) {
         view.setRaceLine(false);
       }
+      /* So is the next gate cue, the gate lit green for the live race:
+       * over the replay it lit the gate the paused flight wants, nothing
+       * to do with either quad (the contributor: "turn off the green/red
+       * gates indicator while replaying"). Dark while it is open, the
+       * pilot's setting again after. */
+      if (view && view.setGuidance) {
+        view.setGuidance(false);
+      }
       ui.overlay = rp;
       rp.open({
         lapLine,
@@ -11932,6 +11940,9 @@ export async function boot({ loading, bootStart, mapId }) {
         onClose: (how) => {
           document.documentElement.classList.remove('tg-watching', 'tg-replay');
           applyRaceLine(ui.settings);
+          if (view && view.setGuidance) {
+            view.setGuidance(ui.settings.nextGateCue !== false);
+          }
           ui.overlay = reviewPanel;
           /* Back to where it was opened from: a section to the review on
            * that section, the whole lap to the pause menu. */
@@ -16485,7 +16496,10 @@ export async function boot({ loading, bootStart, mapId }) {
     if (reviewReplay && what) {
       reviewReplay.act(what, arg);
     }
-    return reviewReplay ? reviewReplay.state() : { open: false };
+    /* targetLit: whether a gate is lit as the race's next, for the check
+     * that the replay puts the cue out and the flight gets it back. */
+    const targetLit = Boolean(view && view.targetAim && view.targetAim().active);
+    return reviewReplay ? { ...reviewReplay.state(), targetLit } : { open: false, targetLit };
   };
   /*
    * Where the newest lap and its ghost went through each gate, in that

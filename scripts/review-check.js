@@ -280,9 +280,11 @@ try {
   check('the review has a button to replay the section', button === 'Replay this section', button);
   /* Read a moment after it opens: the holograms are placed by its first
    * frame, not by the call that opens it. */
+  const litBefore = (await page.evaluate('window.__reviewReplay()')).targetLit;
   await page.evaluate("window.__reviewReplay('open', 0)");
   await page.sleep(200);
   const rp = await page.evaluate('window.__reviewReplay()');
+  check('the next gate cue is out while the replay is open, lit before it', litBefore === true && rp.targetLit === false, JSON.stringify({ litBefore, open: rp.targetLit }));
   check('it opens the section\'s replay, playing, both holograms in the room', rp.open === true && rp.playing === true && Array.isArray(rp.youAt) && Array.isArray(rp.ghostAt), JSON.stringify(rp));
   const hidden = await page.evaluate("(() => ({ review: window.__review().open, watching: document.documentElement.classList.contains('tg-watching'), bar: !!document.querySelector('#review-replay') }))()");
   check('over the pause: the review put away, the menu hidden, the bar shown', hidden.review === false && hidden.watching === true && hidden.bar === true, JSON.stringify(hidden));
@@ -395,11 +397,25 @@ try {
   {
     /* A in side by side: by place, the ghost where it was at the same
      * point of your line, so nearer you than by time; the time between
-     * the two printed, red where you got there later; A again, by time. */
-    const mid = (split.s.you[0] + split.s.you[1]) / 2;
+     * the two printed, red where you got there later; A again, by time.
+     * Read where the two are furthest apart by time inside the section:
+     * these laps are flown live and differ run to run, and where they
+     * happen to be together by time by place has nothing to bring nearer. */
+    const apart = (st) => Math.hypot(...st.youAt.map((v, i) => v - st.ghostAt[i]));
+    let mid = split.s.you[0];
+    let widest = -1;
+    for (let f = 0.1; f < 0.95; f += 0.1) {
+      const ms = split.s.you[0] + (split.s.you[1] - split.s.you[0]) * f;
+      await page.evaluate(`window.__reviewReplay('seek', ${ms})`);
+      await page.sleep(80);
+      const d = apart(await page.evaluate('window.__reviewReplay()'));
+      if (d > widest) {
+        widest = d;
+        mid = ms;
+      }
+    }
     await page.evaluate(`window.__reviewReplay('seek', ${mid})`);
     await page.sleep(200);
-    const apart = (st) => Math.hypot(...st.youAt.map((v, i) => v - st.ghostAt[i]));
     const byTime = await page.evaluate('window.__reviewReplay()');
     await page.tap('KeyA');
     await page.sleep(300);
@@ -451,6 +467,7 @@ try {
   check('the replay lifts its picture above the bar with a lens shift', shifted && shifted.y > 0.05, JSON.stringify(shifted));
   await page.tap('Escape');
   const back = await page.evaluate("(() => ({ replay: window.__reviewReplay().open, review: window.__review(), watching: document.documentElement.classList.contains('tg-watching'), screen: window.__ui.screen }))()");
+  check('and lit again once the replay closes', (await page.evaluate('window.__reviewReplay()')).targetLit === true);
   check('Escape goes back to the review on the same section, the menu back', back.replay === false && back.review.open === true && back.review.selected === 0 && back.watching === false && back.screen === 'paused', JSON.stringify({ ...back, review: back.review.open }));
   await page.sleep(200);
   check('and the shift is gone once it closes, so flight is not off centre', (await page.evaluate('window.__camGround().shift')) === null, JSON.stringify(await page.evaluate('window.__camGround().shift')));

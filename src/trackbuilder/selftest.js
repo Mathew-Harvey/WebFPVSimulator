@@ -40,7 +40,7 @@ import {
 import { applyAutoFaces, flipFace, setYaw, clearOverride, travelDirection, defaultYawFor } from './faces.js';
 import {
   addToSequence, addNextLevel, sequenceLabel, faceLabel, bendIndexFor, bendLineAt, gateNumbers,
-  neighboursOf, pinFacesAt, sequenceNumbers, removeElement, removeFromSequence,
+  neighboursOf, pinFacesAt, sequenceNumbers, removeElement, removeFromSequence, unsequencedElements,
 } from './sequence.js';
 import {
   applyFigure, matchingFigure, defaultFigure, upgradeStackedFigures, figuresFor, figureHandOf, wrapBetween, levelName,
@@ -83,6 +83,7 @@ import {
   WALL_MIN, WALL_DEFAULT, WALL_MAX, HURDLE, SPIRAL, ROUND_NAME, roundFlagOf, removeSpiral, removeSpiralUp, flagForRound,
   BAR_HURDLE, HURDLE_LINES, HURDLE_SIZES, hurdleAngleOf, hurdleLineOf, hurdleSizeOf, hurdleTop, placeBarHurdle, setHurdleAngle,
   setHurdleLine, setHurdleSize, canBeFloating, canBeDecor, setFloating, setDecor,
+  joinGates, joinProblem, joinedMembers, splitJoined,
 } from './parts.js';
 import { frameParts as sharedFrameParts } from '../props/aperture.js';
 import {
@@ -146,7 +147,7 @@ import { BANNER_SIZE, GATE_BANNER_H, flagMast, flagSailProfile } from '../art/ba
 import { courseFromDocument, isRaceGowCourse } from '../game/trackdoc.js';
 import { GUIDE, guideFromKnots, knotsFromPath, tessellateGuide } from '../game/guide.js';
 import { GATE_SCALE, MICRO_SCALE, fastestThreeConsecutive } from '../game/track.js';
-import { PRACTICE_LAPS, Race, fmt, gateAcross, gateUp, runComplete, stationLegMin } from '../game/race.js';
+import { PRACTICE_LAPS, Race, alsoOpenings, fmt, gateAcross, gateUp, runComplete, stationLegMin } from '../game/race.js';
 import { LapVoice, lapCall, pickVoice } from '../render/voice.js';
 import {
   Colliders, hitOutcome, groundOutcome, GROUND_LAND, GROUND_BOUNCE, GROUND_CRASH,
@@ -11409,6 +11410,144 @@ function suiteLetterCourse() {
  * new: an aperture can already say that nothing is built for it (isUnbuilt), and the new things are the piece that lays one in a
  * click, the one press that takes the frame from any gate or letter, and the words for it.
  */
+/*
+ * TWO GATES MADE ONE (joinGates in parts.js): an L or a T of invisible gates that counts once in the lap. What is held:
+ * the document says so and survives a save, the lap counts one gate, the station carries the other's rectangle in its
+ * own frame, and the race scores a crossing of either opening and of nothing between them.
+ */
+function suiteJoinedGates() {
+  console.log('\ntwo gates made one: an L or a T that counts once');
+  const near = (a, b, tol = 1e-6) => Math.abs(a - b) < tol;
+  /* An invisible gate laid on the plane of `a`, `across` along its width and `up` above it (document metres). */
+  const beside = (doc, a, across, up) => {
+    const el = placeInvisibleGate(doc, { x: a.position.x, y: a.position.y }, {});
+    const f = apertureFrame(a.yaw, a.pitch);
+    el.yaw = a.yaw;
+    el.pitch = a.pitch;
+    el.yawOverridden = true;
+    a.yawOverridden = true;
+    el.position.x = a.position.x + f.widthAxis.x * across;
+    el.position.y = a.position.y + f.widthAxis.y * across;
+    el.position.z = a.position.z + up;
+    return el;
+  };
+  const pair = () => {
+    const doc = createTrack('join', 'micro');
+    const a = placeInvisibleGate(doc, { x: 4, y: 3 }, {});
+    const w = aperturesOf(a)[0].clearW;
+    const b = beside(doc, a, w * 1.2, 0);
+    return { doc, a, b, w };
+  };
+
+  /* THE DOCUMENT */
+  {
+    const { doc, a, b } = pair();
+    check('two gates in the flying order are two passes', doc.sequence.length === 2 && joinProblem(doc, a.id, b.id) === null);
+    const head = joinGates(doc, b.id, a.id);
+    check('combined, the one flown first is the head, whichever was named first, and the other is flown no more',
+      head === a.id && b.joinedTo === a.id && doc.sequence.length === 1 && doc.sequence[0].elementId === a.id
+      && joinedMembers(doc, a.id).length === 1 && unsequencedElements(doc).length === 0);
+    const back = deserialize(serialize(doc)).doc;
+    check('it is written and read back, and the member still names its head', elementById(back, b.id).joinedTo === a.id && roundTripsCleanly(doc));
+    const wild = toPlain(doc);
+    wild.elements.find((e) => e.id === b.id).joinedTo = 'nothing-here';
+    const fixed = normalize(wild).doc;
+    check('a head that is not there lets the member go, and says so', elementById(fixed, b.id).joinedTo === undefined);
+    check('a combined gate cannot be made decor and a head that is makes its members fly on their own',
+      !canBeDecor(b) && (() => { setDecor(doc, a.id, true); return b.joinedTo === undefined && doc.sequence.some((q) => q.elementId === b.id) && a.decor === true; })());
+  }
+  {
+    const { doc, a, b } = pair();
+    joinGates(doc, a.id, b.id);
+    check('splitting a member puts it back right after its head, as a gate of its own',
+      splitJoined(doc, b.id) && b.joinedTo === undefined && doc.sequence.length === 2 && doc.sequence[1].elementId === b.id);
+    joinGates(doc, a.id, b.id);
+    removeElement(doc, a.id);
+    check('deleting the head sets its members free to be flown', b.joinedTo === undefined && doc.sequence.length === 1 && doc.sequence[0].elementId === b.id);
+  }
+  {
+    const { doc, a, b } = pair();
+    const turned = beside(doc, a, 1, 0);
+    turned.yaw += Math.PI / 2;
+    const stood = beside(doc, a, 1, 0);
+    stood.position.x += 2 * Math.cos(a.yaw);
+    stood.position.y += 2 * Math.sin(a.yaw);
+    check('a gate turned right round, or standing well in front of the plane, is refused with a reason, and nothing changes',
+      typeof joinProblem(doc, a.id, turned.id) === 'string' && typeof joinProblem(doc, a.id, stood.id) === 'string'
+      && joinGates(doc, a.id, turned.id) === null && turned.joinedTo === undefined && doc.sequence.length === 4);
+    const nudged = beside(doc, a, 1, 0);
+    nudged.yaw += 0.2;
+    nudged.position.x += 0.3 * Math.cos(a.yaw);
+    nudged.position.y += 0.3 * Math.sin(a.yaw);
+    check('one turned a little, or a little off the plane, is put in the plane of the first when they are combined',
+      joinGates(doc, a.id, nudged.id) === a.id && near(nudged.yaw, a.yaw) && near(nudged.position.x * Math.cos(a.yaw) + nudged.position.y * Math.sin(a.yaw),
+        a.position.x * Math.cos(a.yaw) + a.position.y * Math.sin(a.yaw)) && nudged.yawOverridden === true);
+    const wide = createTrack('letter', 'micro');
+    const g = placeInvisibleGate(wide, { x: 4, y: 3 }, {});
+    check('and it takes two different gates', joinProblem(wide, g.id, g.id) !== null && joinProblem(doc, a.id, b.id) === null);
+  }
+
+  /* THE COURSE: the other rectangle, in the station's own frame, and the member built with its head */
+  {
+    const { doc, a, b } = pair();
+    const c = beside(doc, a, 0, aperturesOf(a)[0].clearH);
+    joinGates(doc, a.id, b.id);
+    joinGates(doc, a.id, c.id);
+    const course = courseFromDocument(doc);
+    const st = course.stations[0];
+    check('the lap is one station with the other two as rectangles about its centre, and nothing for an ordinary gate',
+      course.stations.length === 1 && st.also?.length === 2
+      && st.also.some((m) => Math.abs(m.across) > 0 && near(m.up, 0, 1e-6))
+      && st.also.every((m) => m.clearW > 0 && m.clearH > 0) && course.companions?.length === 2
+      && courseFromDocument(createTrack('plain', 'micro')).stations.every((q) => q.also === undefined));
+    check('a member whose head is not flown is not built', (() => {
+      const lone = pair();
+      joinGates(lone.doc, lone.a.id, lone.b.id);
+      lone.doc.sequence.length = 0;
+      return (courseFromDocument(lone.doc).companions ?? []).length === 0;
+    })());
+  }
+
+  /* THE RACE: an L of three invisible gates is one gate, scored by either arm and by nothing between them */
+  {
+    const { doc, a, b } = pair();
+    const c = beside(doc, a, 0, aperturesOf(a)[0].clearH);
+    joinGates(doc, a.id, b.id);
+    joinGates(doc, a.id, c.id);
+    const st = courseFromDocument(doc).stations[0];
+    const gate = {
+      position: { x: st.x, y: st.baseY, z: st.z },
+      heading: st.yaw,
+      pitch: st.pitch ?? 0,
+      flyOrder: 0,
+      apertures: [
+        { shape: 'square', index: 0, centreY: st.centreY, clearW: st.clearW, clearH: st.clearH },
+        ...alsoOpenings(st.centreY, st.also, 1),
+      ],
+    };
+    const fly = (across, up) => {
+      const race = new Race([gate]);
+      const g = race.gates[0];
+      const at = (s) => ({
+        x: g.x + g.ax.x * across + g.ay.x * up + g.az.x * s,
+        y: g.y + st.centreY + g.ax.y * across + g.ay.y * up + g.az.y * s,
+        z: g.z + g.ax.z * across + g.ay.z * up + g.az.z * s,
+      });
+      race.update(at(-0.4), at(0.4), 16, 16);
+      return race.lapStartMs != null;
+    };
+    const arm = st.also.find((m) => Math.abs(m.across) > Math.abs(m.up));
+    const top = st.also.find((m) => Math.abs(m.up) > Math.abs(m.across));
+    check('through the gate itself counts', fly(0, 0));
+    check('through the gate beside it counts as the same gate', fly(arm.across, arm.up));
+    check('through the gate above it counts as the same gate', fly(top.across, top.up));
+    check('through the empty corner of the L, where neither stands, does not count', !fly(arm.across, top.up));
+    check('and far outside all of it does not', !fly(arm.across * 3, 0));
+    check('a plain gate scores what it always did: one opening, its own box',
+      (() => { const one = new Race([{ ...gate, apertures: [gate.apertures[0]] }]); return one.gates[0].apertures.length === 1; })());
+  }
+}
+
 function suiteInvisibleGate() {
   console.log('\nan invisible gate: an opening with nothing built round it');
   const near = (a, b, tol = 1e-9) => Math.abs(a - b) < tol;
@@ -14733,6 +14872,7 @@ async function main() {
   suiteLetterPiece();
   suiteLetterCourse();
   suiteInvisibleGate();
+  suiteJoinedGates();
   suiteLetterPlan();
   await suiteCube();
   await suiteShareLink();

@@ -94,7 +94,7 @@ import { makeShadowRate } from './shadowrate.js';
 import { circuitPoint, CIRCUIT_POINTS, CIRCUIT_STATIONS } from '../game/circuit.js';
 import { GUIDE, guideFromPolyline } from '../game/guide.js';
 /* The gate frame belongs to the scorer, so the mesh and the test agree. */
-import { travelAxis } from '../game/race.js';
+import { alsoOpenings, travelAxis } from '../game/race.js';
 import { buildGuideMesh } from './marks.js';
 import { createRaceLine } from './raceline.js';
 /* The printed vinyl a course is dressed in, shared with the track builder's
@@ -3702,6 +3702,8 @@ function coursePlacements(course) {
       pitch: st.pitch,
       cue: st.cue ?? '',
       elementId: st.elementId,
+      /* The gates combined into this one (src/game/trackdoc.js), which score as it does. Nothing for any other. */
+      ...(st.also ? { also: st.also } : {}),
       /* A letter's hole scores where it is and as it is shaped, which is not the piece's middle and not a box:
        * the station says so. Nothing here for any other piece. */
       ...(st.poly ? {
@@ -3731,6 +3733,30 @@ function coursePlacements(course) {
       elementId: l.elementId,
       dress: structure.dress,
       /* No pass goes through it, so no face is the approach face. */
+      bothWays: true,
+      stations: [],
+    });
+  }
+  /*
+   * The gates combined into a gate that is flown (`companions` in src/game/trackdoc.js): built like any gate and given
+   * no station, so they score nothing of their own and take no number. They are lit with their head, which the build
+   * loop below arranges, so unlike a loose face their lit parts are kept.
+   */
+  for (const l of course.companions ?? []) {
+    out.push({
+      companion: true,
+      headId: l.headId,
+      spec: specFor(l.structure, l.clearW, l.clearH),
+      x: l.x,
+      z: l.z,
+      baseY: l.baseY,
+      yaw: l.yaw,
+      pitch: l.pitch,
+      isStart: false,
+      plateIndex: course.stations.length,
+      primary: 0,
+      elementId: l.elementId,
+      dress: l.structure.dress,
       bothWays: true,
       stations: [],
     });
@@ -6286,6 +6312,32 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
       );
     }
     /*
+     * A GATE COMBINED INTO ANOTHER (`companions` in src/game/trackdoc.js) has no station, so it has no gate of its own to
+     * be the target. Its lit parts are handed to the gate it was combined into, which lights and darkens them with its
+     * own (dressGate, setNextGate), so the pilot sees the whole of the opening that scores as the target. The head was
+     * built before it: companions come after every structure that is flown.
+     */
+    if (st.companion) {
+      const lit = {
+        ringMat: made.ringMat,
+        haloMat: made.haloMat,
+        glowMat: made.glowMat,
+        ringMeshes: made.ringMeshes,
+        haloMeshes: made.haloMeshes,
+        litApertures: [0],
+        ringColor: made.ringColor,
+        glowGain: micro ? 0.34 : 1,
+        cueGroup: made.cueGroup,
+        fillMat: made.fillMat,
+        virtual: false,
+      };
+      for (const gt of gates) {
+        if (gt.elementId === st.headId) {
+          (gt.companions ??= []).push(lit);
+        }
+      }
+    }
+    /*
      * ONE STRUCTURE, ONE GATE PER STATION.
      *
      * WHICH OPENINGS SCORE. MultiGP counts a ladder as one gate however high
@@ -6307,7 +6359,7 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
       /* A letter's hole scores in the frame of the station that flies it: its own corners, turned for the way it is
        * flown (src/game/trackdoc.js), about its own point, with the height it is at. The mesh's hole, in the
        * mesh's frame, is only what is lit. */
-      const scoring = named == null
+      const scoringOne = named == null
         ? made.apertures
         : [station.poly
           ? {
@@ -6325,6 +6377,11 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
        * circuit offers all of a stack's openings and any of them scores, so
        * all of them light, which is still the honest picture of the rule.
        */
+      /* A gate with others combined into it also scores each of theirs: a rectangle about this opening's centre, across
+       * and up by where its own centre is, and as large as the smallest box about that centre that holds it. The race
+       * tests the opening and then each of these in turn, which is the two together as one gate. */
+      const extra = alsoOpenings(scoringOne[0].centreY, station.also, scoringOne.length);
+      const scoring = extra.length ? [...scoringOne, ...extra] : scoringOne;
       const litApertures = named == null
         ? made.apertures.map((_, k) => k)
         : [named];
@@ -6533,6 +6590,12 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
       gt.fillMat.uniforms.uWrong.value = 0;
       gt.fillMat.uniforms.uOpacity.value = tier === 'target' ? 0.22 : 0.10;
     }
+    /* The gates combined into this one are lit when it is, and dark when it is. */
+    if (gt.companions) {
+      for (const c of gt.companions) {
+        dressGate(c, tier);
+      }
+    }
   }
   /* The pilot's "Next gate cue" setting. Off paints no target at all: every
    * gate stays dark and the shell's arrow has nothing to point at, because
@@ -6582,6 +6645,13 @@ export async function buildFieldScene(shell, onProgress, course = null, quality 
      * box with the pennant washed out. The edge band stays legible at
      * 0.55; what goes is the interior bloom that painted over the frame. */
     target.glowMat.uniforms.uGain.value = 0.55 * (target.glowGain ?? 1);
+    for (const c of target.companions ?? []) {
+      c.ringMat.color.set(NEXT_COLOUR);
+      c.haloMat.color.set(NEXT_COLOUR);
+      c.glowMat.uniforms.uFront.value.set(NEXT_COLOUR);
+      c.glowMat.uniforms.uBack.value.set(WRONG_COLOUR);
+      c.glowMat.uniforms.uGain.value = 0.55 * (c.glowGain ?? 1);
+    }
     /* A stacked figure shares one glow across its openings. Put that
      * glow, and the pane, on the hole this station names. */
     if (target.trackGlow && target.aperture) {

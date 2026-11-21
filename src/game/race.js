@@ -234,6 +234,31 @@ export function travelAxis(heading, pitch) {
   return { x: -cp * Math.sin(heading), y: Math.sin(pitch), z: -cp * Math.cos(heading) };
 }
 
+/*
+ * THE OPENINGS OF THE GATES COMBINED INTO A STATION, as the race scores them: one rectangle for each, as a polygon
+ * about the head's own centre (centreY is the height of that centre in the frame the race works in) and the smallest
+ * box about the same centre that holds it, which is what the race clips a crossing to before it tests the corners.
+ * `first` is the index the first one takes, after the head's own opening. The same function builds them for the
+ * game and for the checks, so a check that passes is a check of the openings a pilot flies.
+ */
+export function alsoOpenings(centreY, also, first = 1) {
+  return (also ?? []).map((m, k) => {
+    const hw = m.clearW * 0.5;
+    const hh = m.clearH * 0.5;
+    return {
+      shape: 'poly',
+      index: first + k,
+      sillH: centreY + m.up - hh,
+      centreY,
+      clearW: (Math.abs(m.across) + hw) * 2,
+      clearH: (Math.abs(m.up) + hh) * 2,
+      poly: [
+        [m.across - hw, m.up - hh], [m.across + hw, m.up - hh], [m.across + hw, m.up + hh], [m.across - hw, m.up + hh],
+      ],
+    };
+  });
+}
+
 /* The same shape ui.js formatTime writes: no leading "0:" under a minute.
  * The flash and the results table used to spell one lap two ways. */
 export function fmt(ms) {

@@ -56,7 +56,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ELEMENTS, KIND, GATE_FLAG_POLE_R, apertureShapeOf, docModeOf, flagLeanSign, flagSideOf, flagSideSigns, frameSidesOf, unbuiltPolesOf, gateFlagHeight, hasMissingSides, isLetterPiece, isPvcPipe, isFloating, isDecor, openingSizesOf, isPlain, isUnbuilt, letterOfPiece, trackClassOf, virtualApertureDims } from '../trackbuilder/elements.js';
+import { ELEMENTS, KIND, GATE_FLAG_POLE_R, apertureShapeOf, docModeOf, flagLeanSign, flagSideOf, flagSideSigns, frameSidesOf, unbuiltPolesOf, gateFlagHeight, hasMissingSides, isLetterPiece, isPvcPipe, isFloating, isDecor, isJoined, openingSizesOf, isPlain, isUnbuilt, letterOfPiece, trackClassOf, virtualApertureDims } from '../trackbuilder/elements.js';
 import {
   normalize, elementById, aperturesOf, startPadsOf, logosOf, logoForDecal, dressOrder,
 } from '../trackbuilder/model.js';
@@ -66,6 +66,7 @@ import { buildPath } from '../trackbuilder/path.js';
 import { apertureFrame } from '../trackbuilder/geometry.js';
 import { wrapBetween, figureCueOf, upgradeStackedFigures } from '../trackbuilder/figures.js';
 import { gateScaleFor, MICRO_SCALE } from './track.js';
+import { gateAcross, gateUp } from './race.js';
 import { ROOM_WIDTH, ROOM_DEPTH, ROOM_HEIGHT } from '../trackbuilder/racegow.js';
 import { startBlockLaneOffset, startBlockDims } from '../art/startblock.js';
 import { guideFromKnots } from './guide.js';
@@ -723,6 +724,36 @@ function buildCourse(raw) {
       x: el.position.x + f.widthAxis.x * across,
       y: el.position.y + f.widthAxis.y * across,
     });
+    /*
+     * THE GATES COMBINED INTO THIS ONE (isJoined in elements.js), as rectangles in this station's own frame: how far
+     * across and up from this opening's centre each one's centre is, and its size. They are worked out in the frame
+     * the pass is scored in (race.js's own axes, for the heading this pass is flown at), so a gate flown from the
+     * other side has its members on the other hand without anything here knowing which way is which. The race tests a
+     * crossing against this opening and then each of these, and any one of them is the gate. Nothing for a gate with
+     * none, so every course that has never combined two is the object it was.
+     */
+    const also = [];
+    if (!letter) {
+      const ax = gateAcross(yaw);
+      const ay = gateUp(yaw, tilt);
+      const centreHere = elev(el.position.z) + ap.centerH * gateScale;
+      for (const m of doc.elements) {
+        if (m.joinedTo !== el.id || !isJoined(m)) {
+          continue;
+        }
+        const apM = aperturesOf(m)[0];
+        const at = toScene(field, m.position);
+        const dx = at.x - pos.x;
+        const dy = elev(m.position.z) + apM.centerH * gateScale - centreHere;
+        const dz = at.z - pos.z;
+        also.push({
+          across: dx * ax.x + dy * ax.y + dz * ax.z,
+          up: dx * ay.x + dy * ay.y + dz * ay.z,
+          clearW: apM.clearW * gateScale,
+          clearH: apM.clearH * gateScale,
+        });
+      }
+    }
     knotStation.set(knot, stations.length);
     stations.push({
       elementId: el.id,
@@ -736,6 +767,7 @@ function buildCourse(raw) {
       centreY: ap.centerH * gateScale,
       clearW: ap.clearW * gateScale,
       clearH: ap.clearH * gateScale,
+      ...(also.length ? { also } : {}),
       ...(ap.shape ? { shape: ap.shape } : {}),
       /* The hole as this pass scores it: its corners about its own point, in the frame the pass test works in, which
        * is the document's across axis when the pass is along the normal and the other way round when it is not. */
@@ -785,6 +817,42 @@ function buildCourse(raw) {
     const pos = toScene(field, { x: el.position.x, y: el.position.y });
     loose.push({
       elementId: el.id,
+      structure,
+      x: pos.x,
+      z: pos.z,
+      baseY: elev(el.position.z),
+      centreY: ap.centerH * gateScale,
+      clearW: ap.clearW * gateScale,
+      clearH: ap.clearH * gateScale,
+      ...(ap.shape ? { shape: ap.shape } : {}),
+      yaw,
+      pitch: tilt,
+      name: structure.name,
+      type: el.type,
+    });
+  }
+
+  /*
+   * THE GATES COMBINED INTO A GATE THAT IS FLOWN. They have no pass of their own, and are built and lit with their head
+   * (the scene hangs them on it), so they are listed here the way a face of a group is, with the same fields. A member
+   * whose head is not flown is not built, as a gate the order leaves out is not.
+   */
+  const companions = [];
+  for (const el of doc.elements) {
+    const structure = byElement.get(el.id);
+    if (!isJoined(el) || flown.has(el.id) || !flown.has(el.joinedTo) || !structure || structure.kind !== KIND.APERTURE) {
+      continue;
+    }
+    const normal = apertureFrame(el.yaw, el.pitch).normal;
+    const { yaw, tilt } = meshFrameFor(normal, structure);
+    if (structure.frameSides && !structure.meshSides) {
+      structure.meshSides = meshSidesFor(el, normal, structure.frameSides, structure.framePoles);
+    }
+    const ap = aperturesOf(el)[0];
+    const pos = toScene(field, { x: el.position.x, y: el.position.y });
+    companions.push({
+      elementId: el.id,
+      headId: el.joinedTo,
       structure,
       x: pos.x,
       z: pos.z,
@@ -903,6 +971,7 @@ function buildCourse(raw) {
     structures,
     stations,
     ...(loose.length ? { loose } : {}),
+    ...(companions.length ? { companions } : {}),
     spawn,
     line,
     guide,
@@ -963,7 +1032,7 @@ export function roomOf(course) {
   const base = { width: ROOM_WIDTH * K, depth: ROOM_DEPTH * K, height: ROOM_HEIGHT * K };
   let halfW = base.width / 2;
   let halfD = base.depth / 2;
-  const pieces = [...(course.structures ?? []), ...(course.loose ?? [])];
+  const pieces = [...(course.structures ?? []), ...(course.loose ?? []), ...(course.companions ?? [])];
   let growW = 0;
   let growD = 0;
   for (const p of pieces) {

@@ -35,7 +35,7 @@ import {
   GATE_PRESETS, MICRO_GATE_PRESETS, gatePresetsFor,
   applyGatePreset, matchingGatePreset, presetHeight, levelPitchFor, apertureLevels, apertureShapeOf, openingSizesOf,
   elementHeight, TRACK_CLASS_DEFAULT, trackClassOf, docModeOf, paletteGroupOf, clampByLimits, lowestBase,
-  isLetterPiece, isUnbuilt, letterExtent, pieceLabel, gateFlagHeight,
+  isLetterPiece, isUnbuilt, isJoined, letterExtent, pieceLabel, gateFlagHeight,
 } from './elements.js';
 import { LETTERS, openingCount, openingName } from '../props/letters.js';
 import {
@@ -46,7 +46,7 @@ import { gateNumbers, gateNumberOf, sequenceLabel, faceLabel, unsequencedElement
 import { labelOf, MAP_TOOLS, WHOOP_TOOLS, FIVE_INCH_TOOLS, partPiecesFor } from './elements.js';
 import { replacementsFor } from './snap.js';
 import {
-  canBecomeLetter, canBeInvisible, canBeFloating, canBeDecor, canFlag, flagsAsFlown, flagsOf, roundFlagOf, wallOf, wallFlagsOf, wallIsWoven, wallSizeOf, HURDLE,
+  canBecomeLetter, canBeInvisible, canBeFloating, canBeDecor, canFlag, joinedMembers, flagsAsFlown, flagsOf, roundFlagOf, wallOf, wallFlagsOf, wallIsWoven, wallSizeOf, HURDLE,
   HURDLE_LINES, HURDLE_SIZES, HURDLE_TYPES, canFlyOver, hurdleAngleOf, hurdleLineOf, hurdleSizeOf,
 } from './parts.js';
 import { scaleOf, say as sayLength } from './scale.js';
@@ -2850,6 +2850,13 @@ export class Panels {
       if (swap) {
         card.append(swap);
       }
+      /* Two gates, made one: an L or a T, or one wide opening, that counts once in the lap. */
+      const pair = ids.length === 2 ? ids.map((id) => elementById(doc, id)) : [];
+      if (pair.length === 2 && pair.every((e2) => e2 && kindOf(e2) === KIND.APERTURE && !e2.group && !isLetterPiece(e2))) {
+        card.append(el('p', 'tb-help', 'Combine them into one gate: a crossing of either opening counts, in the place of the first one flown. Make both invisible first for an L or T shaped target with nothing built.'));
+        card.append(button('Combine into one gate', 'tb-btn', () => this.host.combineSelected(),
+          'One gate that scores the area of both. Split apart undoes it.'));
+      }
       /* A whole course made one size: Select all, and one press. A cube's faces and a wall's bays are sized as the
        * pieces they are. */
       const loose = ids.map((id) => elementById(doc, id)).filter((e2) => e2 && kindOf(e2) === KIND.APERTURE && !e2.group && !isLetterPiece(e2));
@@ -2925,6 +2932,7 @@ export class Panels {
     this.cardLetter(card, element, at);
     this.cardFrame(card, element);
     this.cardAir(card, element);
+    this.cardJoin(card, element);
     this.cardPassOn(card, element, at);
     this.cardFlags(card, element);
     this.cardHurdle(card, element, touched);
@@ -3445,6 +3453,23 @@ export class Panels {
    * or hangs in the air; any gate flies in the race or is only there, solid and never asked for. Plain choices, off
    * by default, so a gate that has neither set reads as it always did.
    */
+  /* A gate combined into another, or one that has others combined into it: what it is, and the way back to two. */
+  cardJoin(card, element) {
+    const doc = this.host.doc;
+    if (isJoined(element)) {
+      const head = elementById(doc, element.joinedTo);
+      const number = head ? gateNumberOf(doc, doc.sequence.find((q) => q.elementId === head.id)?.id) : null;
+      card.append(el('p', 'tb-help', `Combined into ${number != null ? `gate ${number}` : 'another gate'}: it counts as part of that one, which is lit with it.`));
+      card.append(button('Split apart', 'tb-btn', () => this.host.splitPiece(element.id), 'Make it a gate of its own again, flown right after the first'));
+      return;
+    }
+    const members = joinedMembers(doc, element.id);
+    if (members.length) {
+      card.append(el('p', 'tb-help', `${members.length + 1} gates made one: a crossing of any of them counts as this gate.`));
+      card.append(button('Split apart', 'tb-btn', () => this.host.splitPiece(element.id), 'Make them gates of their own again, flown one after the other'));
+    }
+  }
+
   cardAir(card, element) {
     if (docModeOf(this.host.doc) === 'freestyle') {
       return;

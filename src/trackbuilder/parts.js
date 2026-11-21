@@ -31,7 +31,7 @@
 
 import {
   ELEMENTS, KIND, FLAG_SIDES, FRAME_TUBE_OD, GATE_FLAG_H, GATE_PRESETS, applyGatePreset, apertureShapeOf, defaultDims,
-  docModeOf, elementHeight, flagSideOf, flagSideSigns, isLetterPiece, canBeDecorType, isPlain, isUnbuilt, letterDimsFor,
+  docModeOf, elementHeight, flagSideOf, flagSideSigns, isLetterPiece, isJoined, canBeDecorType, isPlain, isUnbuilt, letterDimsFor,
   levelPitchFor, trackClassOf, wallPitchFor,
 } from './elements.js';
 import {
@@ -937,6 +937,148 @@ export function setInvisible(doc, id, on) {
   return true;
 }
 
+/* ------------------------------------------------------------------ */
+/* Two gates made one                                                  */
+/* ------------------------------------------------------------------ */
+
+/*
+ * TWO GATES MADE ONE GATE, whose opening is both of theirs together. The owner's words: "combine two gates into one,
+ * to enable me to create invisible gates that are L or T shaped, so create gate 1 and gate 2, combine them together
+ * to make gate 1 that captures the combined area of 1 and 2".
+ *
+ * The head keeps its pass, its number and its place in the lap. The other gate gets `joinedTo: head.id` and loses its
+ * passes, so the lap counts one gate; the game scores a crossing of EITHER opening as that gate (the station carries
+ * the extra rectangles, src/game/trackdoc.js) and lights both when it is the next one. Nothing is merged into one
+ * polygon: a crossing is tested against each rectangle in turn, which is the union without any geometry to get wrong,
+ * and costs one more box test per member on the one gate that is the target.
+ *
+ * Both are gates with one opening each, and the rectangles are scored in the head's own frame, one flat opening. A gate
+ * that faces the way the line has turned it, a little differently from its neighbour's, or stands a little in front of
+ * or behind the plane, is put into the head's plane when they are combined (it is turned to the head's heading and
+ * tilt, and slid along the way through): that is what two pieces of one L or T are. One turned a long way round, or
+ * standing a metre off the plane, is refused, because that is not one opening. They may overlap, touch or stand
+ * apart. The first one that is in the flying order is the head.
+ */
+export const JOIN_PLANE_TOL = 1;
+const JOIN_TURN_TOL = Math.cos(Math.PI / 4);
+
+/* The gates combined into this one, in the order they were made. */
+export function joinedMembers(doc, headId) {
+  return doc.elements.filter((e) => e.joinedTo === headId);
+}
+
+function joinable(el) {
+  return Boolean(el) && kindOf(el) === KIND.APERTURE && !el.group && !isLetterPiece(el) && aperturesOf(el).length === 1;
+}
+
+/* Why two gates cannot be made one, in words for the pilot, or null when they can. */
+export function joinProblem(doc, aId, bId) {
+  const a = elementById(doc, aId);
+  const b = elementById(doc, bId);
+  if (!a || !b || a === b) {
+    return 'Pick two different gates.';
+  }
+  if (!joinable(a) || !joinable(b)) {
+    return 'Only gates with one opening each can be combined: not a letter, a cube, a wall or a stack.';
+  }
+  const na = elementNormal(a);
+  const nb = elementNormal(b);
+  if (Math.abs(na.x * nb.x + na.y * nb.y + na.z * nb.z) < JOIN_TURN_TOL) {
+    return 'The two gates face different ways. Turn one to face as the other does first: one flat opening is what they are scored as.';
+  }
+  const d = {
+    x: b.position.x - a.position.x,
+    y: b.position.y - a.position.y,
+    z: b.position.z - a.position.z + (aperturesOf(b)[0].centerH - aperturesOf(a)[0].centerH),
+  };
+  if (Math.abs(d.x * na.x + d.y * na.y + d.z * na.z) > JOIN_PLANE_TOL) {
+    return 'The two gates are not in the same plane: one is well in front of the other. Line them up first.';
+  }
+  const flown = (el) => (el.joinedTo ? elementById(doc, el.joinedTo) : el);
+  if (!doc.sequence.some((q) => q.elementId === flown(a)?.id || q.elementId === flown(b)?.id)) {
+    return 'Neither gate is in the flying order. Add one to the track first: the combined gate takes its place.';
+  }
+  return null;
+}
+
+/* The head of a pair: the one that is flown, else the first of the two given. Null when neither is flown. */
+function headOf(doc, a, b) {
+  const first = (el) => doc.sequence.findIndex((s) => s.elementId === el.id);
+  const ia = first(a);
+  const ib = first(b);
+  if (ia < 0 && ib < 0) {
+    return null;
+  }
+  return ib < 0 || (ia >= 0 && ia <= ib) ? a : b;
+}
+
+/*
+ * Combine gate b into gate a (or the other way round, when only b is flown). Returns the head's id, or null when
+ * the document did not change. What was combined into the gate that goes under the head comes with it.
+ */
+export function joinGates(doc, aId, bId) {
+  if (joinProblem(doc, aId, bId)) {
+    return null;
+  }
+  const a = elementById(doc, aId);
+  const b = elementById(doc, bId);
+  /* A gate that is already part of another one is combined by its head: the pair is the head's. */
+  const rootA = a.joinedTo ? elementById(doc, a.joinedTo) : a;
+  const rootB = b.joinedTo ? elementById(doc, b.joinedTo) : b;
+  if (!rootA || !rootB || rootA === rootB) {
+    return null;
+  }
+  const head = headOf(doc, rootA, rootB);
+  if (!head) {
+    return null;
+  }
+  const under = head === rootA ? rootB : rootA;
+  const taken = [under, ...joinedMembers(doc, under.id)];
+  const nh = elementNormal(head);
+  const centreOf = (el) => el.position.z + aperturesOf(el)[0].centerH;
+  for (const el of taken) {
+    /* Into the head's plane: its heading and tilt, kept (the face rule does not turn it back), and slid along the way
+     * through until its centre is in the plane. A gate that was in it already does not move. */
+    el.yaw = head.yaw;
+    el.pitch = head.pitch;
+    el.yawOverridden = true;
+    const off = (el.position.x - head.position.x) * nh.x + (el.position.y - head.position.y) * nh.y
+      + (centreOf(el) - centreOf(head)) * nh.z;
+    el.position.x = Math.round((el.position.x - nh.x * off) * 1e6) / 1e6;
+    el.position.y = Math.round((el.position.y - nh.y * off) * 1e6) / 1e6;
+    el.position.z = Math.round((el.position.z - nh.z * off) * 1e6) / 1e6;
+    for (const seq of doc.sequence.filter((q) => q.elementId === el.id)) {
+      removeFromSequence(doc, seq.id);
+    }
+    el.joinedTo = head.id;
+    delete el.decor;
+  }
+  applyAutoFaces(doc);
+  return head.id;
+}
+
+/*
+ * Let a combined gate go. A member comes out on its own and is flown right after its head; a head lets all of its
+ * members go the same way, one after the other. Returns true when the document changed.
+ */
+export function splitJoined(doc, id) {
+  const el = elementById(doc, id);
+  if (!el) {
+    return false;
+  }
+  const head = isJoined(el) ? elementById(doc, el.joinedTo) : el;
+  const going = isJoined(el) ? [el] : joinedMembers(doc, el.id);
+  if (!going.length) {
+    return false;
+  }
+  let at = head ? doc.sequence.findIndex((q) => q.elementId === head.id) : -1;
+  for (const m of going) {
+    delete m.joinedTo;
+    addToSequence(doc, m.id, 0, at >= 0 ? (at += 1) : null);
+  }
+  return true;
+}
+
 /*
  * A GATE HUNG IN THE AIR, AND A GATE THAT IS ONLY THERE (isFloating and isDecor in elements.js).
  *
@@ -965,7 +1107,7 @@ export function setFloating(doc, id, on) {
 }
 
 export function canBeDecor(el) {
-  return Boolean(el) && canBeDecorType(el.type) && !el.group && !isLetterPiece(el);
+  return Boolean(el) && canBeDecorType(el.type) && !el.group && !isLetterPiece(el) && !isJoined(el);
 }
 
 export function setDecor(doc, id, on) {
@@ -974,6 +1116,8 @@ export function setDecor(doc, id, on) {
     return false;
   }
   if (on) {
+    /* The gates combined into this one go back to flying on their own: the head is leaving the race. */
+    splitJoined(doc, id);
     for (const seq of doc.sequence.filter((q) => q.elementId === id)) {
       removeFromSequence(doc, seq.id);
     }

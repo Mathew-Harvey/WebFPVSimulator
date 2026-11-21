@@ -56,7 +56,7 @@ import {
 } from './snap.js';
 import {
   addSpiral, canBecomeLetter, canBeInvisible, canBeFloating, canBeDecor, setFloating, setDecor, flyOver, placeBarHurdle, placeHurdle, placeInvisibleGate, placeUpGate, placeWall,
-  flagForRound, legOf as legOfSide, removeSpiral, removeSpiralUp, reverseWall, roundFlagOf, setFlags, setInvisible, setWallFlags, setHurdleAngle, setHurdleLine, setHurdleSize,
+  flagForRound, joinGates, joinProblem, legOf as legOfSide, splitJoined, removeSpiral, removeSpiralUp, reverseWall, roundFlagOf, setFlags, setInvisible, setWallFlags, setHurdleAngle, setHurdleLine, setHurdleSize,
   setWallSize, setWallWeave, turnIntoGate, turnIntoLetter, wallOf,
 } from './parts.js';
 import { cloneElements, anyCloneable } from './clone.js';
@@ -2867,6 +2867,37 @@ export class App {
     this.edit(on ? 'make it invisible' : 'put the frame back', (d) => { setInvisible(d, id, on); });
     if (hadFlags) {
       this.toast('The flag went with the frame: a pennant on a mast round nothing would hang in the air.');
+    }
+  }
+
+  /*
+   * TWO GATES MADE ONE (see joinGates in parts.js): the two selected, as one undo step, with the head selected after.
+   * The reason it cannot be done is said, because the card offers the button whenever two gates are selected.
+   */
+  combineSelected() {
+    const ids = [...this.selection];
+    if (ids.length !== 2) {
+      return;
+    }
+    const why = joinProblem(this.doc, ids[0], ids[1]);
+    if (why) {
+      this.toast(why);
+      return;
+    }
+    let head = null;
+    this.edit('combine two gates', (d) => { head = joinGates(d, ids[0], ids[1]); });
+    if (head) {
+      this.setSelection([head]);
+      this.sayOnce('joined gate', 'One gate now: a crossing of either opening counts, and both light when it is next. Split it apart on its card to undo, or press Undo.');
+    }
+  }
+
+  /* A combined gate let go: a member alone, or every member of a head. One undo step. */
+  splitPiece(id) {
+    let changed = false;
+    this.edit('split a combined gate', (d) => { changed = splitJoined(d, id); });
+    if (changed) {
+      this.toast('The gates are separate again, flown one after the other.');
     }
   }
 

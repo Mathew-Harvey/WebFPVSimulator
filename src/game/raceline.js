@@ -392,7 +392,7 @@ export function solidsOf(course) {
     }
     unmodelled.push(type);
   }
-  for (const l of course.loose ?? []) {
+  for (const l of [...(course.loose ?? []), ...(course.companions ?? [])]) {
     if (!l.structure.unbuilt) {
       frameCaps({ ...l.structure, x: l.x, z: l.z, baseY: l.baseY, shape: l.shape }, l.yaw, l.pitch ?? 0, caps);
     }

@@ -41,7 +41,7 @@
 import {
   ELEMENTS, KIND, TUNING, TRACK_CLASSES, TRACK_CLASS_DEFAULT, FRAME_SIDES, apertureLevels, apertureShapeOf, openingSizesOf,
   defaultDims, defaultPitch, defaultZ, elementHeight, normalizeFlagSide, normalizeUnbuiltSides,
-  trackClassOf, tuningFor, docModeOf, POLE_SIDES, PVC_TYPES, isPvcPipe, isFloating, isDecor, canBeDecorType, poleKey, unbuiltPolesOf, isTrafficType, clampByLimits, FLAG_SIDES, GATE_FLAG_H, GATE_STYLES,
+  trackClassOf, tuningFor, docModeOf, POLE_SIDES, PVC_TYPES, isPvcPipe, isFloating, isDecor, isJoined, canBeDecorType, poleKey, unbuiltPolesOf, isTrafficType, clampByLimits, FLAG_SIDES, GATE_FLAG_H, GATE_STYLES,
   ROAD_NODES_MAX, ROAD_NODE_REACH, SINK_MAX, LETTER_TUBE_OD, isLetterPiece, letterDimsFor, letterOfPiece,
 } from './elements.js';
 import { apertureFrame, wrapAngle } from './geometry.js';
@@ -1498,6 +1498,10 @@ export function normalize(raw) {
     if (rawEl.decor === true && canBeDecorType(el.type)) {
       el.decor = true;
     }
+    /* Combined into another gate: see isJoined in elements.js. The target is checked once every element is read. */
+    if (def.kind === KIND.APERTURE && typeof rawEl.joinedTo === 'string' && rawEl.joinedTo !== '' && !letter) {
+      el.joinedTo = rawEl.joinedTo.slice(0, 64);
+    }
     /* A length of frame pipe rather than a race piece: see isPvcPipe in elements.js. */
     if (PVC_TYPES.includes(el.type) && rawEl.pvc === true) {
       el.pvc = true;
@@ -1624,6 +1628,22 @@ export function normalize(raw) {
     if (el.decor === true && doc.sequence.some((s) => s.elementId === el.id)) {
       delete el.decor;
       repairs.push(`${el.id}: was marked as decor but is in the flying order, so it is flown.`);
+    }
+  }
+
+  /* A gate combined into another one needs a head that is there, is a gate of its own and is not itself combined,
+   * and has no pass of its own: the head carries the pass. Anything else is a hand edit, and the gate is let go. */
+  for (const el of doc.elements) {
+    if (el.joinedTo === undefined) {
+      continue;
+    }
+    const head = elementById(doc, el.joinedTo);
+    const why = !head || head === el ? 'there is no such gate'
+      : (head.joinedTo !== undefined ? 'that gate is itself combined into another'
+        : (kindOf(head) !== KIND.APERTURE || head.group || el.group ? 'a cube is not combined' : null));
+    if (why || doc.sequence.some((s) => s.elementId === el.id)) {
+      repairs.push(`${el.id}: was combined into ${el.joinedTo} but ${why ?? 'it is flown on its own'}, so it stands alone.`);
+      delete el.joinedTo;
     }
   }
 
@@ -1836,6 +1856,9 @@ export function toPlain(doc) {
       }
       if (isDecor(el)) {
         out.decor = true;
+      }
+      if (isJoined(el) && !letter) {
+        out.joinedTo = el.joinedTo;
       }
       if (def.kind === KIND.APERTURE) {
         const sides = normalizeUnbuiltSides(el.unbuiltSides);

@@ -373,6 +373,17 @@ export function isDecor(el) {
   return Boolean(el) && el.decor === true && canBeDecorType(el.type);
 }
 
+/*
+ * `joinedTo`: this gate has been COMBINED into another, whose id it names. The pair is one gate in the lap: the
+ * head is flown, numbered and lit, and what scores is the head's opening together with this one's, so two
+ * gates side by side make an L or a T, or one wide opening, that counts once. The member has no pass of its own
+ * (the head carries the pass) and stays built and lit with its head, which is why the line ignores it like
+ * decor and the field still builds it. See joinGates in parts.js.
+ */
+export function isJoined(el) {
+  return Boolean(el) && typeof el.joinedTo === 'string' && el.joinedTo !== '' && ELEMENTS[el.type]?.kind === KIND.APERTURE;
+}
+
 /* A gate, a pole, a flag or a cone can be scenery. A waypoint is not a thing that stands on the field, and the rest
  * (barriers, furniture) are never in the order, so they already are. */
 export function canBeDecorType(type) {

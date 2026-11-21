@@ -31,7 +31,7 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ELEMENTS, KIND, pieceLabel, trackClassOf } from './elements.js';
+import { ELEMENTS, KIND, isJoined, pieceLabel, trackClassOf } from './elements.js';
 import {
   createElement, createSequenceEntry, elementById, kindOf, aperturesOf, isSequenceable, sequenceRefCount,
 } from './model.js';
@@ -48,8 +48,9 @@ export function addToSequence(doc, elementId, apertureIndex = 0, atIndex = null)
   if (!el || !isSequenceable(el)) {
     return null;
   }
-  /* A gate that is flown is not decor (isDecor in elements.js). */
+  /* A gate that is flown is not decor (isDecor in elements.js), and is not combined into another one's (isJoined). */
   delete el.decor;
+  delete el.joinedTo;
   const entry = createSequenceEntry(doc, elementId, apertureIndex);
   if (atIndex == null || atIndex < 0 || atIndex >= doc.sequence.length) {
     doc.sequence.push(entry);
@@ -125,8 +126,15 @@ export function removeElement(doc, elementId) {
   if (i < 0) {
     return false;
   }
+  /* The gates combined into this one come out as gates of their own again, flown where this one was. */
+  const members = doc.elements.filter((e) => e.joinedTo === elementId);
+  const at = doc.sequence.findIndex((s) => s.elementId === elementId);
   doc.elements.splice(i, 1);
   doc.sequence = doc.sequence.filter((s) => s.elementId !== elementId);
+  members.forEach((m, k) => {
+    delete m.joinedTo;
+    addToSequence(doc, m.id, 0, at >= 0 ? at + k : null);
+  });
   applyAutoFaces(doc);
   return true;
 }
@@ -356,5 +364,6 @@ export function unsequencedElements(doc) {
   /* A cube is flown through two of its faces and the others are not forgotten: a piece of a group that has
    * a face in the flying order is part of what is flown. A group that has none is said to be, face by face. */
   const flown = new Set(doc.elements.filter((e) => e.group && used.has(e.id)).map((e) => e.group));
-  return doc.elements.filter((e) => isSequenceable(e) && !used.has(e.id) && !(e.group && flown.has(e.group)));
+  /* A gate combined into another is part of what that one scores (isJoined in elements.js), not forgotten. */
+  return doc.elements.filter((e) => isSequenceable(e) && !used.has(e.id) && !(e.group && flown.has(e.group)) && !isJoined(e));
 }

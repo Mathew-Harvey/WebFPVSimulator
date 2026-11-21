@@ -349,6 +349,10 @@ export function makeControls() {
      * second), its tip alone twitching (0 to 1), raised (radians added at
      * the root), and bristled (0 to 1). */
     wag: 0, wagHz: 1, twitch: 0, tailUp: 0, bristle: 0,
+    /* How far the hackles stand along the back, 0 to 1. They are the
+     * drawing's (./catdraw.js lets them out), and are told here only so
+     * that the balls below can be as big as the cat they wrap. */
+    hackle: 0,
     /* The fore paws let go of the ground (0 or 1 each) and where each is
      * wanted: with `reach` 1 a point in the world, and how the paw is
      * turned, toes up positive. A free paw with `reach` 0 hangs by the
@@ -450,9 +454,10 @@ export function makeRig(scale) {
   const PROBE = [
     [BONE.hips, -0.04, -0.03, 0, 0.082], [BONE.hips, 0.03, -0.035, 0, 0.08],
     [BONE.spine1, 0.03, -0.05, 0, 0.08], [BONE.spine2, 0.03, -0.055, 0, 0.084],
-    [BONE.chest, 0, -0.05, 0, 0.086], [BONE.chest, 0.05, -0.03, 0, 0.066],
+    [BONE.chest, 0, -0.05, 0, 0.086], [BONE.chest, 0.05, -0.03, 0, 0.07],
     [BONE.neck, 0.025, 0.015, 0, 0.056],
-    [BONE.head, 0.03, 0.012, 0, 0.078], [BONE.head, 0.07, -0.012, 0, 0.05],
+    [BONE.head, 0.03, 0.012, 0, 0.083], [BONE.head, 0.07, -0.012, 0, 0.05],
+    [BONE.jaw, 0.047, -0.009, 0, 0.031],
     [BONE.earL, -0.004, 0.034, -0.008, 0.044], [BONE.earR, -0.004, 0.034, 0.008, 0.044],
     [BONE.whiskL, 0, 0, -0.045, 0.058], [BONE.whiskR, 0, 0, 0.045, 0.058],
   ].map((p) => (p[0] >= BONE.head && p[0] <= BONE.whiskR ? [p[0], p[1] * HEAD_SCALE, p[2] * HEAD_SCALE, p[3] * HEAD_SCALE, p[4] * HEAD_SCALE] : p));
@@ -466,13 +471,17 @@ export function makeRig(scale) {
   for (let leg = 0; leg < 4; leg += 1) {
     const b = BONE.flU + leg * 4;
     const hind = leg >= 2;
-    PROBE.push([b, hind ? 0.018 : -0.012, hind ? -0.03 : -0.026, 0, hind ? 0.066 : 0.05]);
+    PROBE.push([b, hind ? 0.016 : -0.012, hind ? -0.027 : -0.026, 0, hind ? 0.075 : 0.056]);
     PROBE.push([b + 1, hind ? -0.026 : 0.006, hind ? -0.018 : -0.026, 0, 0.042]);
     PROBE.push([b + 1, hind ? -0.064 : 0.014, hind ? -0.046 : -0.06, 0, 0.034]);
     PROBE.push([b + 2, hind ? 0.006 : 0.004, hind ? -0.03 : -0.014, 0, 0.034]);
     PROBE.push([b + 3, 0.014, 0.002, 0, 0.044]);
   }
   const probes = new Float32Array(PROBE.length * 4);
+  /* Hackles up, the back is taller by their length: the balls along it
+   * (the first of the list, as far as the neck) grow to wrap them. */
+  const HACKLE_BIG = 0.27;
+  let hackleE = 0;
 
   /* A turn from three angles: about the up axis, then nose up, then rolled
    * (right side down positive), written at `o` in `m`. */
@@ -782,6 +791,7 @@ export function makeRig(scale) {
     jaw = 0;
     whisk = 0;
     bristle = 0;
+    hackleE = 0;
     lowE = 0;
     wiggleE = 0;
     giveE = 0;
@@ -1071,6 +1081,7 @@ export function makeRig(scale) {
      * modelled lying straight back, so a turn up at the root is a turn the
      * other way about the cat's side. */
     bristle += (c.bristle - bristle) * ease(dt, 0.07);
+    hackleE = c.hackle;
     carry(BONE.tail1, BONE.hips);
     {
       wagPhase += dt * 2 * Math.PI * c.wagHz;
@@ -1354,7 +1365,7 @@ export function makeRig(scale) {
       probes[i * 4] = wld[0];
       probes[i * 4 + 1] = wld[1];
       probes[i * 4 + 2] = wld[2];
-      probes[i * 4 + 3] = S * p[4] * (b >= BONE.tail1 && b <= BONE.tail6 ? 1 + 1.3 * bristle : 1);
+      probes[i * 4 + 3] = S * p[4] * (b >= BONE.tail1 && b <= BONE.tail6 ? 1 + 1.3 * bristle : (b <= BONE.neck ? 1 + HACKLE_BIG * hackleE : 1));
     }
   }
 

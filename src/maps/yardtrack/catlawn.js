@@ -29,6 +29,15 @@
  * and the two lists the cat hunts from: places to rest, and places beside
  * the low parts of the racing line to lie in wait.
  *
+ * The grid is about where the cat STANDS. A cat is longer than it is wide:
+ * its nose is half a metre ahead of where it stands when it stalks and its
+ * tail further behind, and no rule about a spot on the ground can say where
+ * those are. So the lawn also hands over, as plain lists of numbers, the
+ * things a nose or a tail could be put in: the holes of the gates and every
+ * bar that lies or hangs near the lawn (flats), and every pipe that stands
+ * on it (posts). ./cat.js's settle() measures the posed body against them
+ * each frame and has the last word.
+ *
  * Finding a way round things is a flood from the goal over the free cells
  * (a few thousand, a few tens of microseconds), done only when the goal
  * moves to another cell and there is no straight way to it, never every
@@ -57,6 +66,10 @@ const hyp3 = (a, b, c) => Math.sqrt(a * a + b * b + c * c);
 
 /* A cell's side, world metres. */
 export const CELL = 0.25;
+/* How high over the lawn, in a cat's metres, a pipe can begin and still be
+ * something the cat could put a paw or a tail in at the top of a leap. The
+ * check measures how high any ball of it gets and holds it under this. */
+export const CEIL = 2.2;
 /* What way() answers. */
 export const NONE = 0;
 export const WAY = 1;
@@ -81,7 +94,10 @@ const SPREAD = 500;
  *   TALL       the cat standing on its hind legs: a solid that begins above
  *              this is a roof and not a wall
  *   GATE_SIDE  a gate's mouth is hard this far past each post
- *   GATE_DEEP  and this far in front of it and behind it
+ *   GATE_DEEP  and this far in front of it and behind it: further than the
+ *              cat's nose is from its middle when it stalks with its neck
+ *              out (0.54), so a cat that crosses in front of a gate, or
+ *              stalks straight at one, has no part of itself in the hole
  *   GATE_WIDE  an opening wider than this with no pipe round it is a
  *              scoring plane and not a gate: soft, not hard
  *   START      hard this far round where a run is set down
@@ -90,13 +106,17 @@ const SPREAD = 500;
  *   ROOM       a place to stop has this much room all round
  *   UNDER_LOW  the line this high or higher can be leapt at from below
  *   UNDER_HIGH and higher than this it is out of a cat's reach
+ *   LEAN       (a ratio, not a length) a pipe that runs no further over the
+ *              ground than this times its height is upright: a post, a pole
+ *              or a trunk, round at any height to within two parts in a
+ *              hundred
  */
 const MARGIN = 1.3;
 const BODY = 0.16;
 const STEP_OVER = 0.05;
 const TALL = 0.56;
 const GATE_SIDE = 0.1;
-const GATE_DEEP = 0.45;
+const GATE_DEEP = 0.6;
 const GATE_WIDE = 0.9;
 const START = 0.75;
 const LANE = 0.3;
@@ -104,6 +124,7 @@ const LANE_LOW = 0.75;
 const ROOM = 0.34;
 const UNDER_LOW = 1.08;
 const UNDER_HIGH = 1.75;
+const LEAN = 0.2;
 
 /*
  * THE LAWN. `track` is the yard track (./yardtrack.js): its box, its
@@ -202,6 +223,34 @@ export function makeLawn({ track, solids = null, parts = null, starts = null }) 
     }
   }
 
+  /* A pipe the cat could put a ball in, kept for the last word on where
+   * its head, its paws and its tail are (./cat.js settle), which no rule
+   * about where it stands can have. The whole map's solids are asked: only
+   * what stands on this lawn or within a cat's length of it is kept.
+   *
+   * One that stands upright (a gate's post, a pole, a tree's trunk) is
+   * eight numbers: its lower end (x, how high over the lawn, z), its upper
+   * end, its radius and how far it leans. Any other (the bar over a gate, a
+   * strut, a branch) is kept as the upright rectangle it lies in, eight
+   * numbers again: its middle, the unit way along it over the ground, half
+   * its run, half its rise, and its radius, which is how far it stands off
+   * that rectangle. For a level bar that is the bar exactly; for one on a
+   * slope it is a little more than the bar, which errs the safe way. */
+  const uprights = [];
+  const flats = [];
+  const ceil = g + CEIL * S;
+  function keepPipe(ax, ay, az, bx, by, bz, r) {
+    const run = hyp2(bx - ax, bz - az);
+    const out = r + run + S;
+    if (ax <= x0 - out || ax >= x0 + cols * CELL + out || az <= z0 - out || az >= z0 + rows * CELL + out) {
+      return;
+    }
+    if (run <= Math.max(r, LEAN * Math.abs(by - ay))) {
+      uprights.push(ay <= by ? [ax, ay - g, az, bx, by - g, bz, r, run] : [bx, by - g, bz, ax, ay - g, az, r, run]);
+    } else {
+      flats.push([(ax + bx) / 2, (ay + by) / 2 - g, (az + bz) / 2, (bx - ax) / run, (bz - az) / run, run / 2, Math.abs(by - ay) / 2, r]);
+    }
+  }
   /* One solid, as a wall, a roof or nothing: a box from (ax, ay, az) to
    * (bx, by, bz), or a pipe between those ends of radius r. */
   let walls = 0;
@@ -229,6 +278,9 @@ export function makeLawn({ track, solids = null, parts = null, starts = null }) 
       slab(hard, xa, za, xb, zb, hi <= stepOver ? 0.1 : body, 0);
       walls += 1;
       return;
+    }
+    if (!drawnOnly && hi > stepOver && lo < ceil) {
+      keepPipe(ax, ay, az, bx, by, bz, r);
     }
     if (lo >= tall) {
       if (!drawnOnly) {
@@ -279,6 +331,26 @@ export function makeLawn({ track, solids = null, parts = null, starts = null }) 
       plank(soft, gt.position.x, gt.position.z, ux, uz, a.clearW / 2, LANE * S);
     }
   }
+  /* THE HOLES THEMSELVES, every one with pipe either side of it, the high
+   * ones too since a cat leaps. The mouths above keep where the cat STANDS
+   * out of a gate; these are for the last word on where its nose and its
+   * tail are. A hole is an upright rectangle like the bars kept above, and
+   * goes at the head of their list in the same eight numbers: its middle
+   * (x, how high over the lawn, z), the unit way across it, its half width
+   * and its half height, and a nought, because a hole is air and stands
+   * off its rectangle by nothing. */
+  const holes = track.openings || [];
+  const flat = new Float32Array((holes.length + flats.length) * 8);
+  holes.forEach((h, i) => {
+    flat.set([h.x, h.y - g, h.z, h.ux, h.uz, h.hw, h.hh, 0], i * 8);
+  });
+  flats.forEach((f, i) => {
+    flat.set(f, (holes.length + i) * 8);
+  });
+  const posts = new Float32Array(uprights.length * 8);
+  uprights.forEach((u, i) => {
+    posts.set(u, i * 8);
+  });
   /* Where a run is set down, and a ring round it not to stop in: a craft
    * that appears there must never appear on the cat. */
   for (const p of [track.start, ...(starts || [])]) {
@@ -775,11 +847,13 @@ export function makeLawn({ track, solids = null, parts = null, starts = null }) 
     waitAt,
     waitKind,
     line: { n: ln, x: lx, y: ly, z: lz, s: ls, length: lineLength, closed },
+    flats: flat,
+    posts,
     onLine,
     ahead,
     /* For the check and the harness. */
     stats() {
-      return { cols, rows, cells: n, blocked, lane: lanes, walls, mouths, rests, waits, floods };
+      return { cols, rows, cells: n, blocked, lane: lanes, walls, mouths, holes: holes.length, bars: flats.length, posts: uprights.length, rests, waits, floods };
     },
   };
 }

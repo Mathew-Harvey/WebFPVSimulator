@@ -47,6 +47,23 @@
  * scripts/yardcat-check.js flies craft at the cat every way it can think
  * of and measures the gap to every drawn corner.
  *
+ * NEVER IN A GATE is the same three things. The project's map rule is that
+ * every gap a pilot can see is flyable, and the cat is drawn and not solid,
+ * so a gate's hole has to be the pilot's alone. The lawn is hard in a
+ * gate's mouth, so the cat is never PLANNED to stand in one (./catlawn.js).
+ * But a nose is half a metre ahead of where a cat stands and a tail further
+ * behind, and a cat beside a post can turn its head into the hole. So the
+ * same settle() that measures the craft measures every hole with pipe round
+ * it against every ball of the body, with GAP of air, and the one slide
+ * clears both. The craft was the owner's own words and the gates are the
+ * map rule's, and neither gives way to the other: the slide is found for
+ * both at once. And for a third thing while it is about it: the pipe that
+ * stands or hangs on the lawn, a gate's post and the bar over it, a pole,
+ * a strut, the trunk of a tree and its low branches. The lawn keeps where
+ * the cat stands half its width from each, which says nothing of a head
+ * put out at one or a tail thrown up under one, so settle() keeps every
+ * ball of the body out of those too.
+ *
  * FOR THE LATENCY RULE. One think() is a state's handful of comparisons,
  * the craft's speed by difference, and at most one look at the lawn's
  * grid. No object, array or closure is made in a frame: what a frame
@@ -95,6 +112,17 @@ export const DOING = Object.keys(DO);
  * cat's body, so it is the same air round a whoop and round a five inch.
  */
 export const KEEP = 0.15;
+/* And between the cat and a gate's opening, its metres: no ball of the body
+ * is in a hole with pipe round it, nor this near one. */
+export const GAP = 0.03;
+/* And between the cat and any pipe on its lawn: a gate's post and its bar,
+ * a pole, a strut, the trunk of a tree and its branches. */
+export const POST = 0.01;
+/* No ball of the body is further than this from the cat's spot over the
+ * ground, its metres: what is further from the cat than this and the
+ * ball's own size is not asked about. The check measures the furthest any
+ * ball gets (0.58) and holds it to this. */
+export const REACH = 0.75;
 
 /* The cat's own sizes, in its metres, measured off the rig: how high each
  * posture reaches, and how far ahead of its spot its nose is. */
@@ -164,7 +192,8 @@ export function makeMarks() {
  *       body. `craft` is the drawn craft's middle in the world or null,
  *       `craftR` its sweep in world metres, `eye` the camera as
  *       { x, y, z, fx, fy, fz } or null
- *   settle()    after the body has been posed: keep it off the craft
+ *   settle()    after the body has been posed: keep it off the craft and
+ *       out of the gates
  *   stats()     for the check and the harness
  */
 export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0.6 }) {
@@ -230,6 +259,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     flee: 0, lieInWait: 0, hiss: 0,
   };
   let pushes = 0;
+  let nudges = 0;
   let pushedNow = false;
   let pushX = 0;
   let pushZ = 0;
@@ -242,6 +272,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
   let misses = 0;
   let landVisit = 0;
   let sniffed = false;
+  let adored = false;
   let idleNext = 0;
   let bangAt = -99;
   let reflexAt = -99;
@@ -259,7 +290,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
    * when the plan was made, or the point of the line watched (cx, cz, and
    * for the line its index and its height). */
   const plan = {
-    kind: PL.none, sub: 0, x: 0, z: 0, lx: 0, lz: 0, at: -1, cx: 0, cz: 0, h: 0, made: 0, hurry: false, wait: false,
+    kind: PL.none, sub: 0, x: 0, z: 0, lx: 0, lz: 0, at: -1, cx: 0, cz: 0, h: 0, made: 0, hurry: false, wait: false, down: false,
   };
   const lineStep = L.n > 0 ? L.length / L.n : 1;
   /* A leap: from, to, how high, how long, how far through. */
@@ -281,6 +312,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
   let lastKind = PL.none;
   let freezes = 0;
   let lastIdle = -1;
+  let stretchedAt = -1e9;
   let faceOn = false;
   let faceYaw = 0;
   let turnRate = 0;
@@ -482,6 +514,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     if (!cr.down && landVisit > 0 && cr.y > 0.3 * S) {
       landVisit = 0;
       sniffed = false;
+      adored = false;
     }
     /* The line: only looked for while it is going somewhere, near where it
      * was first and the whole line a few times a second when it is lost. */
@@ -917,10 +950,15 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     if (!lawn.stay(c.x, c.z, 0.25 * S)) {
       return enter(DO.wander);
     }
-    /* Never the thing it has just done. */
+    /* Never the thing it has just done. And a stretch is for after a rest
+     * (a loaf always ends in one): as a turn of the round it is taken only
+     * when the last was a good while ago, or the cat is forever bowing. */
     idleNext = Math.floor(rnd() * 5);
     if (idleNext === lastIdle) {
       idleNext = (idleNext + 1 + Math.floor(rnd() * 3)) % 5;
+    }
+    if (idleNext === 3 && now - stretchedAt < 45) {
+      idleNext = lastIdle === 4 ? 0 : 4;
     }
     lastIdle = idleNext;
     if (idleNext === 0) {
@@ -1049,6 +1087,10 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     plan.kind = kind;
     plan.hurry = false;
     plan.wait = false;
+    /* Made for a craft that is down: a paw put out to one that has landed
+     * is the same plan as a swat at one in the air, and is dropped only
+     * when the craft is no longer what it was made for. */
+    plan.down = cr.landT > 0.4;
     const land = kind === PL.low || kind === PL.ground ? cr.keep + (NOSE + 0.1) * S : 0;
     return ringSpot(ringOf(kind), kind === PL.leap ? 0.2 * S : 0.3 * S, land);
   }
@@ -1189,19 +1231,24 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
       /* Down and still. A pounce at it, a sniff of it, and then it is
        * furniture: sat by, washed beside, blinked at. */
       landVisit += 1;
+      if (landVisit > 7) {
+        /* It has been there for ever (or it is down where the cat may not
+         * go, and has been looked at from here for long enough). The cat
+         * has a life of its own. */
+        bored = true;
+        return idle();
+      }
       if (landVisit === 1) {
         return planFor(rnd() < 0.6 ? PL.ground : PL.sniff) ? enter(DO.stalk) : sitOut(2);
       }
       if (!sniffed) {
         return planFor(PL.sniff) ? enter(DO.stalk) : sitOut(2);
       }
-      if (landVisit > 7) {
-        /* It has been there for ever. The cat has a life of its own. */
-        bored = true;
-        return idle();
-      }
+      /* The slow blink, at a whim, and once for certain before it is
+       * bored: a pilot who lands and waits for the cat is owed it. */
       const r = rnd();
-      if (r < 0.28) {
+      if (r < 0.28 || (!adored && landVisit >= 5)) {
+        adored = true;
         return enter(DO.adore);
       }
       if (r < 0.42 && lawn.stay(c.x, c.z, 0.2 * S)) {
@@ -1657,6 +1704,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
       /* The bow: fore legs out, rump up, toes spread. */
       if (phT === 0) {
         moves.stretch += 1;
+        stretchedAt = now;
       }
       pose(POSTURE.bow, 0.22);
       clawLT = 1;
@@ -1825,7 +1873,7 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
       /* The craft has moved from where the plan was made for. */
       const moved = hyp2(cr.x - plan.cx, cr.z - plan.cz);
       const landed = cr.landT > 0.4;
-      if ((k === PL.ground || k === PL.sniff) !== landed || (k !== PL.ground && k !== PL.sniff && cr.sp > 1.3 * S)) {
+      if (plan.down !== landed || (!plan.down && cr.sp > 1.3 * S)) {
         return hunt();
       }
       if (moved > 0.3 * S && now - plan.made > 0.35) {
@@ -2757,6 +2805,8 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
     c.bristle = fear;
     hark(dt);
     visage(dt);
+    /* The body's balls wrap the hackles as far as they are drawn out. */
+    c.hackle = f.hackle;
     m.markT += dt;
     m.swipeT += dt;
     m.puffT += dt;
@@ -2767,15 +2817,28 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
   }
 
   /*
-   * AFTER THE BODY IS POSED. The promise: no ball of the body nearer the
-   * craft than its sweep and KEEP of air. If one is, the whole cat is slid
-   * over the ground the shortest of seventeen ways that clears every ball
-   * at once, by choice to somewhere it may be and by a straight way there.
+   * AFTER THE BODY IS POSED. Three promises are kept here, and this is the
+   * last word on all of them: no ball of the body nearer the craft than
+   * its sweep and KEEP of air, no ball of the body in a gate's opening or
+   * within GAP of one, and no ball of the body in a pipe (a post, a bar, a
+   * pole, a trunk, a branch) or within POST of one. If any is broken, the
+   * whole cat is slid over the ground the cheapest of seventeen ways that
+   * clears every ball of everything at once, by choice to somewhere it may
+   * be and by a straight way there.
+   *
    * Sliding along a way u by s moves a ball at h (from the craft, over the
    * ground) to h + s u, which is clear of the craft's circle at that
-   * ball's height once s is past the far root of |h + s u| = need; the
-   * most of those over every ball clears them all, because past its own
-   * far root a ball only gets further away.
+   * ball's height once s is past the far root of |h + s u| = need. An
+   * upright is a circle at any height, the same sum. A hole is flat and
+   * upright, and so is the rectangle a bar lies in, so at a ball's height
+   * what the ball may not be over is a line across the ground grown by
+   * what is left of the ball's reach at that height: a strip with round
+   * ends, which a straight slide also leaves once and for good. The most
+   * of those far roots over every ball and every thing clears them all,
+   * because none of the shapes bulges inward, and past its own far root a
+   * ball only gets further from such a shape. So a slide that keeps every
+   * promise exists every way the cat could be slid, and the cheapest is
+   * taken.
    */
   const ways = 16;
   const wayX = new Float64Array(ways + 1);
@@ -2783,6 +2846,293 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
   for (let k = 0; k < ways; k += 1) {
     wayX[k] = Math.cos((k * 2 * Math.PI) / ways);
     wayZ[k] = Math.sin((k * 2 * Math.PI) / ways);
+  }
+  /* The flats (./catlawn.js: the gates' holes, then the bars, eight numbers
+   * each) and the uprights (posts, eight each). For each one taken into a
+   * frame's sum, every ball is kept in that thing's own terms. For a flat:
+   * how far along it from its middle, how far off it to one side, and the
+   * square of the ball's reach at its height, nothing if it has none. For
+   * an upright: where the ball is from its middle at the ball's own
+   * height, and the square of what must lie between them. */
+  const probeN = rig.probes.length / 4;
+  const bodyFar = REACH * S;
+  const gapAir = GAP * S;
+  const postAir = POST * S;
+  const flats = lawn.flats;
+  const flatN = flats.length / 8;
+  const flatIn = new Uint8Array(Math.max(1, flatN));
+  const flatOf = new Int32Array(Math.max(1, flatN));
+  const flatA = new Float64Array(Math.max(1, flatN) * probeN);
+  const flatT = new Float64Array(Math.max(1, flatN) * probeN);
+  const flatR2 = new Float64Array(Math.max(1, flatN) * probeN);
+  const posts = lawn.posts;
+  const postN = posts.length / 8;
+  const postIn = new Uint8Array(Math.max(1, postN));
+  const postX = new Float64Array(Math.max(1, postN) * probeN);
+  const postZ = new Float64Array(Math.max(1, postN) * probeN);
+  const postR2 = new Float64Array(Math.max(1, postN) * probeN);
+  /* How many of each are taken, and how many of those have had the hair
+   * added to their reach that a slide is worked with. */
+  let flatsIn = 0;
+  let postsIn = 0;
+  let flatsGrown = 0;
+  let postsGrown = 0;
+  /* What a ball keeps between itself and flat `o`: GAP of air from a hole,
+   * and from a bar its thickness and POST. */
+  const flatPad = (o) => (flats[o + 7] > 0 ? flats[o + 7] + postAir : gapAir);
+  /* Would a cat whose spot is (x, z), and whose highest ball tops out at
+   * `high`, have a ball near enough to flat `o`, or upright `o`, for it to
+   * matter. Most of what is on a lawn is over a cat's head most of the
+   * time: the bar of a gate, a branch, the crown of a tree. */
+  function flatBy(o, x, z, high) {
+    const pad = flatPad(o);
+    if (flats[o + 1] - flats[o + 6] - pad > high) {
+      return false;
+    }
+    const mx = x - flats[o];
+    const mz = z - flats[o + 2];
+    const ma = mx * flats[o + 3] + mz * flats[o + 4];
+    const mt = mz * flats[o + 3] - mx * flats[o + 4];
+    const lim = bodyFar + pad;
+    return mt < lim && mt > -lim && ma < flats[o + 5] + lim && ma > -flats[o + 5] - lim;
+  }
+  function postBy(o, x, z, high) {
+    if (posts[o + 1] - posts[o + 6] - postAir > high) {
+      return false;
+    }
+    const mx = x - posts[o];
+    const mz = z - posts[o + 2];
+    const lim = bodyFar + postAir + posts[o + 6] + posts[o + 7];
+    return mx * mx + mz * mz < lim * lim;
+  }
+  /* Take flat `o` into the sum. True if a ball is in it, or nearer it than
+   * it may be. A ball higher or lower than the flat by more than its own
+   * reach has nothing to do with it. */
+  function takeFlat(o) {
+    const P = rig.probes;
+    const ax = flats[o + 3];
+    const az = flats[o + 4];
+    const hw = flats[o + 5];
+    const pad = flatPad(o);
+    const q = flatsIn * probeN;
+    let hit = false;
+    for (let i = 0; i < probeN; i += 1) {
+      const px = P[i * 4] - flats[o];
+      const pz = P[i * 4 + 2] - flats[o + 2];
+      const a = px * ax + pz * az;
+      const t = pz * ax - px * az;
+      let dv = P[i * 4 + 1] - flats[o + 1];
+      dv = (dv < 0 ? -dv : dv) - flats[o + 6];
+      const rr = P[i * 4 + 3] + pad;
+      const r2 = dv > 0 ? rr * rr - dv * dv : rr * rr;
+      flatA[q + i] = a;
+      flatT[q + i] = t;
+      flatR2[q + i] = r2;
+      if (r2 > 0 && !hit) {
+        const da = (a < 0 ? -a : a) - hw;
+        hit = t * t + (da > 0 ? da * da : 0) < r2;
+      }
+    }
+    flatOf[flatsIn] = o;
+    flatsIn += 1;
+    return hit;
+  }
+  /* And upright `o`. Its middle at a ball's height is along its lean; over
+   * its top, and under its foot, it is its round end. */
+  function takePost(o) {
+    const P = rig.probes;
+    const ay = posts[o + 1];
+    const by = posts[o + 4];
+    const ex = posts[o + 3] - posts[o];
+    const ez = posts[o + 5] - posts[o + 2];
+    const q = postsIn * probeN;
+    let hit = false;
+    for (let i = 0; i < probeN; i += 1) {
+      const y = P[i * 4 + 1];
+      const up = by > ay ? (y - ay) / (by - ay) : 0;
+      const f = up < 0 ? 0 : up > 1 ? 1 : up;
+      const hx = P[i * 4] - posts[o] - ex * f;
+      const hz = P[i * 4 + 2] - posts[o + 2] - ez * f;
+      const dy = y < ay ? ay - y : y > by ? y - by : 0;
+      const rr = P[i * 4 + 3] + posts[o + 6] + postAir;
+      const r2 = rr * rr - dy * dy;
+      postX[q + i] = hx;
+      postZ[q + i] = hz;
+      postR2[q + i] = r2;
+      if (r2 > 0 && hx * hx + hz * hz < r2) {
+        hit = true;
+      }
+    }
+    postsIn += 1;
+    return hit;
+  }
+  /* A hair more reach than the tests above ask, on what has been taken
+   * since this was last done, so that a ball a slide clears is clear by
+   * those tests' sums as well. */
+  function grow() {
+    for (let q = flatsGrown * probeN; q < flatsIn * probeN; q += 1) {
+      if (flatR2[q] > 0) {
+        const rr = Math.sqrt(flatR2[q]) + 0.004;
+        flatR2[q] = rr * rr;
+      }
+    }
+    flatsGrown = flatsIn;
+    for (let q = postsGrown * probeN; q < postsIn * probeN; q += 1) {
+      if (postR2[q] > 0) {
+        const rr = Math.sqrt(postR2[q]) + 0.004;
+        postR2[q] = rr * rr;
+      }
+    }
+    postsGrown = postsIn;
+  }
+  /* How far along a way (wa along the flat, wt off it) a ball has to go to
+   * be clear of a flat half `hw` long and to stay clear: nothing if it
+   * never comes to it. The strip's two round ends, then its straight
+   * middle. */
+  function flatRoot(a, t, r2, hw, wa, wt) {
+    let far = 0;
+    let h = a + hw;
+    let b = h * wa + t * wt;
+    let disc = b * b - (h * h + t * t) + r2;
+    if (disc > 0) {
+      const si = -b + Math.sqrt(disc);
+      if (si > far) {
+        far = si;
+      }
+    }
+    h = a - hw;
+    b = h * wa + t * wt;
+    disc = b * b - (h * h + t * t) + r2;
+    if (disc > 0) {
+      const si = -b + Math.sqrt(disc);
+      if (si > far) {
+        far = si;
+      }
+    }
+    let lo = -1e18;
+    let hi = 1e18;
+    if (wa > 1e-9 || wa < -1e-9) {
+      const s1 = (-hw - a) / wa;
+      const s2 = (hw - a) / wa;
+      lo = s1 < s2 ? s1 : s2;
+      hi = s1 < s2 ? s2 : s1;
+    } else if (a > hw || a < -hw) {
+      return far;
+    }
+    const rho = Math.sqrt(r2);
+    if (wt > 1e-9 || wt < -1e-9) {
+      const s1 = (-rho - t) / wt;
+      const s2 = (rho - t) / wt;
+      const l2 = s1 < s2 ? s1 : s2;
+      const h2 = s1 < s2 ? s2 : s1;
+      if (l2 > lo) {
+        lo = l2;
+      }
+      if (h2 < hi) {
+        hi = h2;
+      }
+    } else if (t > rho || t < -rho) {
+      return far;
+    }
+    return lo < hi && hi > far ? hi : far;
+  }
+  /* The cheapest of the seventeen ways clear of the craft (if it is near)
+   * and of every flat and upright taken: which way, and in slideS how far.
+   * `pushed` is whether it is the craft the cat is being moved off. */
+  let slideS = 0;
+  function cheapest(craftNear, pushed) {
+    const P = rig.probes;
+    const n = probeN;
+    const need = cr.keep;
+    let best = -1;
+    let bestCost = 1e18;
+    slideS = 0;
+    for (let k = 0; k <= ways; k += 1) {
+      const ux = wayX[k];
+      const uz = wayZ[k];
+      let s = 0;
+      if (craftNear) {
+        for (let i = 0; i < n; i += 1) {
+          const hx = P[i * 4] - cr.x;
+          const hz = P[i * 4 + 2] - cr.z;
+          const dy = P[i * 4 + 1] - cr.y;
+          const rr = need + P[i * 4 + 3] + 0.004;
+          const n2 = rr * rr - dy * dy;
+          if (n2 <= 0) {
+            continue;
+          }
+          const b = hx * ux + hz * uz;
+          const disc = b * b - (hx * hx + hz * hz) + n2;
+          if (disc <= 0) {
+            continue;
+          }
+          const si = -b + Math.sqrt(disc);
+          if (si > s) {
+            s = si;
+          }
+        }
+      }
+      for (let e = 0; e < flatsIn; e += 1) {
+        const o = flatOf[e];
+        const ax = flats[o + 3];
+        const az = flats[o + 4];
+        const hw = flats[o + 5];
+        const wa = ux * ax + uz * az;
+        const wt = uz * ax - ux * az;
+        const q = e * n;
+        for (let i = 0; i < n; i += 1) {
+          const r2 = flatR2[q + i];
+          if (r2 <= 0) {
+            continue;
+          }
+          const si = flatRoot(flatA[q + i], flatT[q + i], r2, hw, wa, wt);
+          if (si > s) {
+            s = si;
+          }
+        }
+      }
+      for (let q = 0; q < postsIn * n; q += 1) {
+        const r2 = postR2[q];
+        if (r2 <= 0) {
+          continue;
+        }
+        const hx = postX[q];
+        const hz = postZ[q];
+        const b = hx * ux + hz * uz;
+        const disc = b * b - (hx * hx + hz * hz) + r2;
+        if (disc <= 0) {
+          continue;
+        }
+        const si = -b + Math.sqrt(disc);
+        if (si > s) {
+          s = si;
+        }
+      }
+      const tx = c.x + ux * s;
+      const tz = c.z + uz * s;
+      let cost = s;
+      if (!lawn.free(tx, tz)) {
+        cost += 1000;
+      } else if (!lawn.sight(c.x, c.z, tx, tz)) {
+        cost += 500;
+      }
+      if (pushed) {
+        /* Out of its way and not along it: a cat moved the way the craft is
+         * going is in its way again a frame later. */
+        if (cr.sp > 0.5 * S) {
+          cost += 0.5 * S * Math.max(0, (ux * cr.vx + uz * cr.vz) / cr.sp);
+        }
+        if (k === lastDir) {
+          cost -= 0.05 * S;
+        }
+      }
+      if (cost < bestCost) {
+        bestCost = cost;
+        best = k;
+        slideS = s;
+      }
+    }
+    return best;
   }
   /* A frame in which the body was not posed (./makeCatLife: out of the
    * picture, the craft nowhere near): what was to be marked on the body is
@@ -2839,89 +3189,101 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
       m.puffZ = (lz + at3[2]) / 2;
       wantPuff = 0;
     }
-    if (!cr.on) {
-      return false;
-    }
     const P = rig.probes;
-    const n = P.length / 4;
+    const n = probeN;
+    /* THE CRAFT: is it near enough to matter, and is a ball too near it. */
     const need = cr.keep;
     const qx = cr.x - c.x;
     const qz = cr.z - c.z;
     const far = 1.1 * S + need;
-    if (qx * qx + qz * qz > far * far) {
-      return false;
+    let craftNear = cr.on && qx * qx + qz * qz <= far * far;
+    let hitCraft = false;
+    if (craftNear) {
+      for (let i = 0; i < n; i += 1) {
+        const dx = P[i * 4] - cr.x;
+        const dy = P[i * 4 + 1] - cr.y;
+        const dz = P[i * 4 + 2] - cr.z;
+        const rr = need + P[i * 4 + 3];
+        if (dx * dx + dy * dy + dz * dz < rr * rr) {
+          hitCraft = true;
+          break;
+        }
+      }
     }
-    let hit = false;
-    for (let i = 0; i < n; i += 1) {
-      const dx = P[i * 4] - cr.x;
-      const dy = P[i * 4 + 1] - cr.y;
-      const dz = P[i * 4 + 2] - cr.z;
-      const rr = need + P[i * 4 + 3];
-      if (dx * dx + dy * dy + dz * dz < rr * rr) {
+    /* THE GATES, THE BARS AND THE UPRIGHTS the cat is near, and whether a
+     * ball is in one. */
+    flatsIn = 0;
+    postsIn = 0;
+    flatsGrown = 0;
+    postsGrown = 0;
+    let hit = hitCraft;
+    const high = rig.top();
+    for (let j = 0; j < flatN; j += 1) {
+      flatIn[j] = flatBy(j * 8, c.x, c.z, high) ? 1 : 0;
+      if (flatIn[j] && takeFlat(j * 8)) {
         hit = true;
-        break;
+      }
+    }
+    for (let j = 0; j < postN; j += 1) {
+      postIn[j] = postBy(j * 8, c.x, c.z, high) ? 1 : 0;
+      if (postIn[j] && takePost(j * 8)) {
+        hit = true;
       }
     }
     if (!hit) {
       return false;
     }
-    /* The seventeenth way: straight away from the craft. */
+    /* The seventeenth way: straight away from the craft, or with no craft
+     * about, a step back. */
     const qd = hyp2(qx, qz);
-    wayX[ways] = qd > 1e-3 ? -qx / qd : Math.cos(c.yaw + Math.PI);
-    wayZ[ways] = qd > 1e-3 ? -qz / qd : -Math.sin(c.yaw + Math.PI);
+    wayX[ways] = craftNear && qd > 1e-3 ? -qx / qd : Math.cos(c.yaw + Math.PI);
+    wayZ[ways] = craftNear && qd > 1e-3 ? -qz / qd : -Math.sin(c.yaw + Math.PI);
+    /* The cheapest slide clear of everything the cat is near. Then: is the
+     * cat, where that would put it, near anything that was not asked? If it
+     * is, that is asked too and the slide found again; the third time of
+     * asking, everything there is on the lawn is, and that answer stands. */
     let best = -1;
-    let bestCost = 1e18;
-    let bestS = 0;
-    for (let k = 0; k <= ways; k += 1) {
-      const ux = wayX[k];
-      const uz = wayZ[k];
-      let s = 0;
-      for (let i = 0; i < n; i += 1) {
-        const hx = P[i * 4] - cr.x;
-        const hz = P[i * 4 + 2] - cr.z;
-        const dy = P[i * 4 + 1] - cr.y;
-        const rr = need + P[i * 4 + 3] + 0.004;
-        const n2 = rr * rr - dy * dy;
-        if (n2 <= 0) {
-          continue;
-        }
-        const b = hx * ux + hz * uz;
-        const disc = b * b - (hx * hx + hz * hz) + n2;
-        if (disc <= 0) {
-          continue;
-        }
-        const si = -b + Math.sqrt(disc);
-        if (si > s) {
-          s = si;
+    for (let tries = 0; tries < 4; tries += 1) {
+      grow();
+      best = cheapest(craftNear, hitCraft);
+      if (best < 0 || slideS <= 0) {
+        break;
+      }
+      const tx = c.x + wayX[best] * slideS;
+      const tz = c.z + wayZ[best] * slideS;
+      const all = tries === 2;
+      let more = false;
+      for (let j = 0; j < flatN; j += 1) {
+        if (!flatIn[j] && (all || flatBy(j * 8, tx, tz, high))) {
+          flatIn[j] = 1;
+          takeFlat(j * 8);
+          more = true;
         }
       }
-      const tx = c.x + ux * s;
-      const tz = c.z + uz * s;
-      let cost = s;
-      if (!lawn.free(tx, tz)) {
-        cost += 1000;
-      } else if (!lawn.sight(c.x, c.z, tx, tz)) {
-        cost += 500;
+      for (let j = 0; j < postN; j += 1) {
+        if (!postIn[j] && (all || postBy(j * 8, tx, tz, high))) {
+          postIn[j] = 1;
+          takePost(j * 8);
+          more = true;
+        }
       }
-      /* Out of its way and not along it: a cat moved the way the craft is
-       * going is in its way again a frame later. */
-      if (cr.sp > 0.5 * S) {
-        cost += 0.5 * S * Math.max(0, (ux * cr.vx + uz * cr.vz) / cr.sp);
+      if (cr.on && !craftNear) {
+        const ex = cr.x - tx;
+        const ez = cr.z - tz;
+        if (all || ex * ex + ez * ez <= far * far) {
+          craftNear = true;
+          more = true;
+        }
       }
-      if (k === lastDir) {
-        cost -= 0.05 * S;
-      }
-      if (cost < bestCost) {
-        bestCost = cost;
-        best = k;
-        bestS = s;
+      if (!more) {
+        break;
       }
     }
-    if (best < 0 || bestS <= 0) {
+    if (best < 0 || slideS <= 0) {
       return false;
     }
-    const dx = wayX[best] * bestS;
-    const dz = wayZ[best] * bestS;
+    const dx = wayX[best] * slideS;
+    const dz = wayZ[best] * slideS;
     c.x += dx;
     c.z += dz;
     rig.shift(dx, dz);
@@ -2931,6 +3293,12 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
       hop.az += dz;
       hop.bx += dx;
       hop.bz += dz;
+    }
+    if (!hitCraft) {
+      /* Eased out of a gate or off a post with no craft in it: nothing to
+       * be afraid of, and nothing the cat is told about. */
+      nudges += 1;
+      return true;
     }
     lastDir = best;
     pushes += 1;
@@ -2953,11 +3321,12 @@ export function makeMind({ lawn, rig, controls, face, marks, seed = 7, light = 0
         done[name] = did[i];
       });
       return {
-        doing: DOING[st], phase: ph, pushes, weary, fear, misses, moves: { ...moves }, done, x: c.x, z: c.z, yaw: c.yaw,
+        doing: DOING[st], phase: ph, pushes, nudges, weary, fear, misses, moves: { ...moves }, done, x: c.x, z: c.z, yaw: c.yaw,
       };
     },
     doing: () => st,
     pushes: () => pushes,
+    nudges: () => nudges,
     air: () => hop.on,
     /* For the bench: put it somewhere, doing something. */
     put(x, z, yaw) {

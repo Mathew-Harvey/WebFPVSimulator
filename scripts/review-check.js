@@ -286,6 +286,14 @@ try {
   check('it opens the section\'s replay, playing, both holograms in the room', rp.open === true && rp.playing === true && Array.isArray(rp.youAt) && Array.isArray(rp.ghostAt), JSON.stringify(rp));
   const hidden = await page.evaluate("(() => ({ review: window.__review().open, watching: document.documentElement.classList.contains('tg-watching'), bar: !!document.querySelector('#review-replay') }))()");
   check('over the pause: the review put away, the menu hidden, the bar shown', hidden.review === false && hidden.watching === true && hidden.bar === true, JSON.stringify(hidden));
+  check('both lines drawn in the room', rp.lines && rp.lines.you === true && rp.lines.ghost === true, JSON.stringify(rp.lines));
+  await page.tap('KeyL');
+  await page.sleep(200);
+  const noLines = (await page.evaluate('window.__reviewReplay()')).lines;
+  await page.tap('KeyL');
+  await page.sleep(200);
+  const linesBack = (await page.evaluate('window.__reviewReplay()')).lines;
+  check('L hides them and shows them again', noLines && !noLines.you && !noLines.ghost && linesBack.you && linesBack.ghost, JSON.stringify({ noLines, linesBack }));
   await page.sleep(800);
   const later = await page.evaluate('window.__reviewReplay()');
   const moved = (a, b) => Array.isArray(a) && Array.isArray(b) && Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) > 0.05;

@@ -22,10 +22,16 @@
  * moment of the section. main.js draws the two (drawSplit); the choice is
  * kept from one replay to the next.
  *
+ * THE LINES. Each lap's line through the section, drawn in the room in its
+ * colour as a thin see through tube, from the replay's start to its end on
+ * that lap's own clock, so where the two went apart is there to see from
+ * any camera. A quad's own line is left out of its own goggles. L or the
+ * bar's button shows and hides them.
+ *
  * KEYS. Space or Enter plays and pauses, Left and Right (Up and Down on a
  * radio) step a tenth of a second, F follows the other quad, V switches
- * between the chase and side by side, Escape or Backspace goes back to the
- * review. On the document, in the capture phase, as the review's are; a
+ * between the chase and side by side, L shows or hides the lines, Escape
+ * or Backspace goes back to the review. On the document, in the capture phase, as the review's are; a
  * radio reaches them through Ui.overlay.
  *
  * Runs on the wall clock, as the watching camera does, because the plant is
@@ -47,6 +53,8 @@
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
 
+import * as THREE from 'three';
+
 import { buildGhostCraft } from '../render/ghostcraft.js';
 import { CAMERA_MOUNT_FORWARD, CAMERA_MOUNT_UP } from '../render/lens.js';
 import { WatchCam } from '../render/watchcam.js';
@@ -59,6 +67,36 @@ const GHOST_COLOUR = 0x7fd4ff;
 const STEP_MS = 100;
 /* Where the live camera sits on the quad (main.js fpvPos). */
 const LENS = { forward: CAMERA_MOUNT_FORWARD, up: CAMERA_MOUNT_UP };
+
+/* The lines in the room: a tube this many plant metres round (a WebGL line
+ * is one pixel wide whatever is asked of it), a segment every
+ * PATH_SEGMENT_MS of the lap's clock, see through enough not to hide the
+ * gates. The coach branch's numbers, seen there on full size and whoop
+ * tracks. */
+const PATH_RADIUS = 0.012;
+const PATH_SEGMENT_MS = 20;
+const PATH_RADIAL = 5;
+const PATH_OPACITY = 0.55;
+
+/* A line as a curve on its own clock: u from 0 to 1 is a to b ms, so the
+ * tube's segments are even in time. */
+class LineCurve extends THREE.Curve {
+  constructor(line, a, b) {
+    super();
+    this.line = line;
+    this.a = a;
+    this.b = b;
+  }
+
+  getPoint(u, target = new THREE.Vector3()) {
+    const p = poseAt(this.line, this.a + (this.b - this.a) * u);
+    return target.set(p.x, p.y, p.z);
+  }
+
+  getUtoTmapping(u) {
+    return u;
+  }
+}
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -85,6 +123,48 @@ export class ReviewReplay {
     /* Side by side or the chase, kept from one replay to the next. */
     this.split = false;
     this.goggles = null;
+    /* The lines in the room, made when a replay opens and freed when it
+     * closes; shown or not, kept from one replay to the next. */
+    this.paths = null;
+    this.showPaths = true;
+  }
+
+  /* Each line through the replay's stretch of its own clock, as a tube in
+   * its colour. */
+  buildPaths() {
+    this.freePaths();
+    const size = this.data.size || 1;
+    const make = (line, a, b, colour) => {
+      if (!line || !(b > a)) {
+        return null;
+      }
+      const segments = Math.max(2, Math.ceil((b - a) / PATH_SEGMENT_MS));
+      const geo = new THREE.TubeGeometry(new LineCurve(line, a, b), segments, PATH_RADIUS * size, PATH_RADIAL, false);
+      const mat = new THREE.MeshBasicMaterial({ color: colour, transparent: true, opacity: PATH_OPACITY, depthWrite: false });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.name = 'review-replay-line';
+      mesh.renderOrder = 1;
+      return mesh;
+    };
+    const { tl, data } = this;
+    this.paths = {
+      you: make(data.lapLine, tl.startMs, tl.endMs, YOU_COLOUR),
+      ghost: data.refLine ? make(data.refLine, tl.ghostAt(tl.startMs), tl.ghostAt(tl.endMs), GHOST_COLOUR) : null,
+    };
+  }
+
+  freePaths() {
+    if (!this.paths) {
+      return;
+    }
+    for (const mesh of [this.paths.you, this.paths.ghost]) {
+      if (mesh) {
+        mesh.removeFromParent();
+        mesh.geometry.dispose();
+        mesh.material.dispose();
+      }
+    }
+    this.paths = null;
   }
 
   /* Side by side now: chosen, and a ghost to show beside you. */
@@ -138,6 +218,7 @@ export class ReviewReplay {
       rig.group.scale.setScalar(data.scale || 1);
     }
     this.cam.free(null);
+    this.buildPaths();
     this.build();
     this.on = true;
     this.write();
@@ -169,6 +250,9 @@ export class ReviewReplay {
     this.followBtn = el('button', 'review-replay-btn review-replay-follow', '');
     this.followBtn.type = 'button';
     this.followBtn.addEventListener('click', () => this.act('follow'));
+    this.linesBtn = el('button', 'review-replay-btn', 'Lines');
+    this.linesBtn.type = 'button';
+    this.linesBtn.addEventListener('click', () => this.act('lines'));
     this.viewBtn = el('button', 'review-replay-btn review-replay-view', '');
     this.viewBtn.type = 'button';
     this.viewBtn.addEventListener('click', () => this.act('view'));
@@ -179,7 +263,7 @@ export class ReviewReplay {
     const back = el('button', 'review-replay-btn', 'Back');
     back.type = 'button';
     back.addEventListener('click', () => this.close('back'));
-    row.append(this.playBtn, this.scrub, this.clock, this.followBtn, this.viewBtn, back);
+    row.append(this.playBtn, this.scrub, this.clock, this.followBtn, this.viewBtn, this.linesBtn, back);
     root.append(head, row);
     /* The side by side pictures' names, over their top left corners. */
     this.paneTags = [el('div', 'review-replay-pane review-replay-you', 'You'), el('div', 'review-replay-pane review-replay-ghost', 'Ghost')];
@@ -209,6 +293,9 @@ export class ReviewReplay {
       } else if (k === 'v' || k === 'V') {
         e.preventDefault();
         this.act('view');
+      } else if (k === 'l' || k === 'L') {
+        e.preventDefault();
+        this.act('lines');
       }
     };
     document.addEventListener('keydown', this.onKey, true);
@@ -232,6 +319,8 @@ export class ReviewReplay {
     } else if (what === 'follow' && this.data.refLine) {
       this.follow = this.follow === 'you' ? 'ghost' : 'you';
       this.cam.free(null);
+    } else if (what === 'lines') {
+      this.showPaths = !this.showPaths;
     } else if (what === 'view' && this.data.refLine) {
       this.split = !this.split;
       this.cam.free(null);
@@ -256,6 +345,7 @@ export class ReviewReplay {
     this.clock.textContent = into < 0 ? `${seconds(-into)} s before` : `${seconds(into)} s in`;
     this.followBtn.textContent = this.follow === 'you' ? 'Following you' : 'Following the ghost';
     this.viewBtn.textContent = this.split ? 'Chase view' : 'Side by side';
+    this.linesBtn.setAttribute('aria-pressed', String(this.showPaths));
     const split = this.splitOn;
     if (this.data.refLine) {
       this.followBtn.hidden = split;
@@ -293,6 +383,16 @@ export class ReviewReplay {
       rig.setPresence(1);
       return p;
     };
+    if (this.paths) {
+      for (const mesh of [this.paths.you, this.paths.ghost]) {
+        if (mesh) {
+          if (parent && mesh.parent !== parent) {
+            parent.add(mesh);
+          }
+          mesh.visible = this.showPaths;
+        }
+      }
+    }
     const you = place(this.rigs.you, this.data.lapLine, t);
     let ghost = null;
     if (this.data.refLine) {
@@ -351,10 +451,18 @@ export class ReviewReplay {
       camera.position.set(...g.pos);
       camera.quaternion.set(...g.q);
       camera.updateMatrixWorld();
+      const line = this.paths && this.paths[which];
       const shown = rig.group.visible;
+      const lineShown = line ? line.visible : false;
       rig.group.visible = false;
+      if (line) {
+        line.visible = false;
+      }
       draw(panes[i], which);
       rig.group.visible = shown;
+      if (line) {
+        line.visible = lineShown;
+      }
     });
     return true;
   }
@@ -377,6 +485,7 @@ export class ReviewReplay {
       this.rigs.ghost.setPresence(0);
     }
     this.cam.stop();
+    this.freePaths();
     const wasOn = this.on;
     this.on = false;
     if (wasOn && this.data && this.data.onClose) {
@@ -401,6 +510,10 @@ export class ReviewReplay {
       playing: this.head.playing,
       follow: this.follow,
       view: this.splitOn ? 'split' : 'chase',
+      lines: this.paths ? {
+        you: Boolean(this.paths.you && this.paths.you.visible && this.paths.you.parent),
+        ghost: Boolean(this.paths.ghost && this.paths.ghost.visible && this.paths.ghost.parent),
+      } : null,
       panes: this.splitOn ? this.panes(window.innerWidth, window.innerHeight) : null,
       youAt: at(this.rigs.you),
       ghostAt: this.data.refLine ? at(this.rigs.ghost) : null,

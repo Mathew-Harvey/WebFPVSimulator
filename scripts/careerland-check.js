@@ -31,6 +31,11 @@
  * is on state, never a fixed sleep standing in for one, except the short
  * looks at a craft that must stay where it is.
  *
+ * `--slow=N` slows the page N times with Chromium's own CPU throttle, to
+ * stand in for a slower machine than the one it runs on: `npm run
+ * check:career:slow` runs the career's browser checks at --slow=4 (see
+ * ON A SLOW MACHINE in scripts/careerface-check.js).
+ *
  * Not part of `npm run verify`. Run it as `npm run check:careerland`.
  *
  * This file is part of WebFPVSimulator.
@@ -57,6 +62,9 @@ import { lessonById } from '../src/career/curriculum.js';
 import { docToWorld } from '../src/career/geometry.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+
+/* A slower machine than this one, on --slow=N. */
+const SLOW = Number((process.argv.find((a) => a.startsWith('--slow=')) || '').slice(7)) || 1;
 
 /* Above the shell's takeoff latch (0.25) and under the five inch's hover, so
  * the quad comes down onto the pad and is never parked while it is held. */
@@ -176,6 +184,9 @@ async function setDownOn(at, thr) {
 async function section(name, fn) {
   console.log(`\n${name}`);
   page = await openPage({ root: ROOT, width: 1280, height: 720, seed });
+  if (SLOW > 1) {
+    await page.cdp.send('Emulation.setCPUThrottlingRate', { rate: SLOW }, page.sessionId);
+  }
   try {
     await page.until('!!window.__shellReady', 180000);
     await fn();

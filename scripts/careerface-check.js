@@ -28,6 +28,28 @@
  *
  * Every wait is on state, never a fixed sleep standing in for one.
  *
+ * ON A SLOW MACHINE. The pilot below flies once per drawn frame, as a person
+ * does, so the frame rate is part of what it flies through. It used to be
+ * tuned in frames: a per frame integrator, a velocity smoothed over frames
+ * from the drawn position, and a derivative gain that put the loop's
+ * crossover near 9 rad/s. That holds a height where the page draws near 60.
+ * The 2026-11-23 bug board run ran it where the page draws 14 to 16 frames
+ * a second, on main and on the commit that wrote it, and it failed both:
+ * asked for 0.25 m it swung from 1.5 to 9.6 m, because a third of a second
+ * of lag at that crossover is most of a cycle. The lesson was never at
+ * fault (the same run finished it); the check could not fly it. So the pilot
+ * is now written in seconds: the plant's own vertical speed rather than one
+ * smoothed from the picture, the page's own hover throttle as its start,
+ * gains per second with the crossover near 2 rad/s, an integrator that only
+ * runs while flying near the goal, and a goal that moves at half a metre a
+ * second as a pilot eases a height. Measured holding 0.25 m to the
+ * centimetre at 16 frames a second, and inside the lesson's window at 8.
+ *
+ * `--slow=N` slows the page N times with Chromium's own CPU throttle, so the
+ * check can stand in for a slower machine than the one it runs on, and
+ * the frame rate it flew at is printed at the end. `npm run
+ * check:career:slow` runs the career's browser checks at --slow=4.
+ *
  * Not part of `npm run verify`. Run it as `npm run check:careerface`.
  *
  * This file is part of WebFPVSimulator.
@@ -73,38 +95,52 @@ const seed = [NO_BOARD, `try {
 
 /*
  * The pilot, in the page, every frame: a height held on the throttle about
- * a five inch's hover, and the yaw that turns onto the next flag. The height
- * it holds is window.__faceTarget, so a section moves it from here. It
- * keeps what the gauge and the judge said while it flew, and the most
- * headings the judge ever counted.
+ * the page's own hover, and the yaw that turns onto the next flag. The height
+ * it holds is window.__faceTarget, so a section moves it from here; the goal
+ * it flies to walks there at half a metre a second. Everything is per
+ * second, never per frame, so the pilot is the same pilot at 60 frames a
+ * second and at 8 (see ON A SLOW MACHINE above). It keeps what the gauge and
+ * the judge said while it flew, the most headings the judge ever counted,
+ * and how many frames it flew and the longest gap between two.
  */
 const PILOT = `(() => {
   const pad = window.__facePad;
-  let lastY = null;
+  const base = window.__faceHover;
+  const KP = 0.03;
+  const KD = 0.06;
+  const KI = 0.015;
   let lastT = null;
-  let vy = 0;
   let integ = 0;
-  window.__faceSeen = { maxIndex: 0 };
+  let goal = null;
+  window.__faceSeen = { maxIndex: 0, frames: 0, maxGapMs: 0, t0: performance.now() };
   const tick = (now) => {
     if (!window.__career || window.__career.state() !== 'flight') {
       return;
     }
+    const dt = lastT == null ? 1 / 60 : Math.min(0.25, Math.max(1e-3, (now - lastT) / 1000));
+    if (lastT != null) {
+      window.__faceSeen.maxGapMs = Math.max(window.__faceSeen.maxGapMs, now - lastT);
+    }
+    lastT = now;
+    window.__faceSeen.frames += 1;
+    window.__faceSeen.last = now;
     const c = window.__craftState();
     const h = c.worldY - pad.y;
-    if (lastY != null) {
-      const dt = Math.max(1e-3, (now - lastT) / 1000);
-      vy = 0.7 * vy + 0.3 * (c.worldY - lastY) / dt;
-    }
-    lastY = c.worldY;
-    lastT = now;
+    const vy = c.vel ? c.vel.y : 0;
     const s = window.__career.status();
     const cur = s && s.current;
     if (cur && cur.kind === 'face') {
       window.__faceSeen.maxIndex = Math.max(window.__faceSeen.maxIndex, cur.state.index);
     }
-    const e = window.__faceTarget - h;
-    integ = Math.max(-0.2, Math.min(0.2, integ + e * 0.002));
-    const thr = Math.max(0, Math.min(1, 0.37 + 0.12 * e - 0.10 * vy + integ));
+    if (goal == null) {
+      goal = h;
+    }
+    goal = Math.max(goal - 0.5 * dt, Math.min(goal + 0.5 * dt, window.__faceTarget));
+    const e = goal - h;
+    if (!c.landed && Math.abs(e) < 0.3) {
+      integ = Math.max(-0.08, Math.min(0.08, integ + e * KI * dt));
+    }
+    const thr = Math.max(0, Math.min(1, base + KP * e - KD * vy + integ));
     /* The nose onto the flag the judge is waiting for, wherever the craft
      * is: a pilot who can see the flag turns to it. Heading as the judge
      * reads it (geometry.js headingOf); a positive error is a turn left,
@@ -150,6 +186,7 @@ const LOOK = `(() => {
 
 let fails = 0;
 let passes = 0;
+let flown = '';
 const check = (what, ok, got = '') => {
   if (ok) {
     passes += 1;
@@ -160,9 +197,15 @@ const check = (what, ok, got = '') => {
   return ok;
 };
 
+/* A slower machine than this one, on --slow=N. See ON A SLOW MACHINE. */
+const SLOW = Number((process.argv.find((a) => a.startsWith('--slow=')) || '').slice(7)) || 1;
+
 const t0 = Date.now();
 const state = (s) => `window.__career && window.__career.state() === ${JSON.stringify(s)}`;
 const page = await openPage({ root: ROOT, width: 1280, height: 720, seed });
+if (SLOW > 1) {
+  await page.cdp.send('Emulation.setCPUThrottlingRate', { rate: SLOW }, page.sessionId);
+}
 const look = () => page.evaluate(LOOK);
 
 /* Hold a height until the page says `cond` (a JS expression over the LOOK
@@ -194,6 +237,9 @@ try {
     window.__facePad = { x: c.worldX, y: c.worldY, z: c.worldZ };
     window.__faceTarget = 1.0;
     window.__faceYaw = false;
+    /* The hover the keyboard springs to on this model, airframe and pack,
+     * as a percentage of stick: the throttle the pilot starts from. */
+    window.__faceHover = window.__ui.bugSnapshot().stick.keyHover / 100;
   })()`);
   await page.evaluate(PILOT);
 
@@ -220,14 +266,19 @@ try {
   const report = await page.evaluate('(() => { const r = window.__ui.bugSnapshot(); return r.career || null; })()');
   check("a report written there names it: lesson 1-3, the turns, 'low'",
     Boolean(report) && report.lesson === '1-3' && report.kind === 'face' && report.detail === 'low', JSON.stringify(report));
-  /* From here the pilot turns onto each flag. */
-  await page.evaluate('window.__faceYaw = true');
-
   /* Over the top: 7 m, under the career's soft ceiling (25 m), so the line
-   * is the objective's own. */
-  const high = await holdAt(7, "v.h > 6.3 && /too high/i.test(v.coach)", 40000);
-  check('held at 7 m, the coach says too high', Boolean(high) && /too high/i.test(high.coach) && high.detail === 'high',
-    high ? `${high.coach} (${high.detail}, ${high.h} m)` : 'no such line');
+   * is the objective's own. Climbed with the nose still, as a pilot eases up
+   * through the zone, because a climb with the turns on counts the flags on
+   * the way through it (the zone runs to 6 m) and finishes the lesson before
+   * the top. The turns start once the craft is over it: from there the
+   * pilot turns onto each flag, and up there none may count. */
+  const up7 = await holdAt(7, 'v.h > 6.3', 60000);
+  await page.evaluate('window.__faceYaw = true');
+  const high = up7 ? await holdAt(7, "v.h > 6.3 && /too high/i.test(v.coach)", 40000) : null;
+  check('held at 7 m, turning onto the flags, the coach says too high', Boolean(high) && /too high/i.test(high.coach) && high.detail === 'high',
+    high ? `${high.coach} (${high.detail}, ${high.h} m)` : `no such line, climbed: ${JSON.stringify(up7)}`);
+  check('and nothing counted on the way up or over the top', Boolean(high) && high.seen.maxIndex === 0,
+    high ? `${high.seen.maxIndex} counted` : '');
 
   /* And back to a hover the zone takes, turning onto each flag: it
    * finishes. */
@@ -244,8 +295,13 @@ try {
 } catch (e) {
   check('the check ran to the end', false, e && e.stack ? e.stack.split('\n').slice(0, 3).join(' | ') : String(e));
 } finally {
+  /* What machine this run stood in for: the frames the pilot flew. */
+  const f = await page.evaluate(`(() => { const s = window.__faceSeen; return s && s.last ? { frames: s.frames, s: (s.last - s.t0) / 1000, gap: s.maxGapMs } : null; })()`).catch(() => null);
+  if (f && f.s > 0) {
+    flown = `, flown at ${(f.frames / f.s).toFixed(1)} frames a second, longest gap ${Math.round(f.gap)} ms${SLOW > 1 ? `, CPU slowed ${SLOW} times` : ''}`;
+  }
   await page.close();
 }
 
-console.log(`\ncareerface-check: ${passes} passed, ${fails} failed, ${Math.round((Date.now() - t0) / 1000)} s`);
+console.log(`\ncareerface-check: ${passes} passed, ${fails} failed, ${Math.round((Date.now() - t0) / 1000)} s${flown}`);
 process.exit(fails ? 1 : 0);

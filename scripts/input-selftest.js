@@ -820,9 +820,153 @@ section('the throttle-as-yaw verdict on an uncalibrated radio');
   rig.ax(3, 1);
   rig.run(3008);
   check('full yaw against the stop for three seconds: no verdict', rig.im.padSummary().guessYawParked === false);
-  rig.run(1200);
-  check('for four, the one false positive, and what it earns is an offer to calibrate',
-    rig.im.padSummary().guessYawParked === true);
+  rig.run(9000);
+  /* It was, until 2026-11-23, at four: "the one false positive", which the
+   * board showed was the only kind there ever was. See noteYawParked. */
+  check('nor for twelve: the axis it guessed is the throttle sits at the bottom, where no sprung stick rests, so a yaw at its stop is a thumb',
+    rig.im.padSummary().guessYawParked === false);
+  rig.ax(3, 0);
+  rig.run(600);
+  const why = rig.im.mapReport().yawWhy;
+  check('and letting go of it is a spring on the yaw axis, which settles it for this pad',
+    Boolean(why) && why.yawSprang === true && why.thrSprang === false && why.yawRested === false, JSON.stringify(why));
+  rig.ax(2, 0);
+  rig.run(600);
+  rig.ax(3, 1);
+  rig.run(10000);
+  check('so even with the throttle then parked at the middle and yaw held at its stop for ten seconds: never',
+    rig.im.padSummary().guessYawParked === false, JSON.stringify(rig.im.mapReport().yawWhy));
+}
+
+/*
+ * THE TWO REPORTS THE OLD VERDICT WAS GIVEN TO, both a Radiomaster Pocket
+ * on a correct AETR guess (the 2026-11-23 bug board run). bug-7cc49b3d flew
+ * Into the Goggles, the yaw lesson, and held yaw at its stop: axes 2 and 3
+ * travelled [-1, 1] and [-0.97, 1], the throttle read -1 under the parked
+ * craft. bug-2ea950fa filed a tune from the title with the same shape.
+ */
+section('the throttle-as-yaw verdict: the two Pockets it was wrong about, and the spring that tells them apart');
+{
+  const rig = new Rig(makePad([0, 0, -1, 0, 1, -1, -1, -1], 24, 'Radiomaster Pocket Joystick'));
+  rig.run(3000);
+  /* Taken off and hovering: the throttle near the five inch's hover,
+   * moving a hair, and yaw held hard right for ten seconds, in flight. */
+  rig.im.flying = true;
+  for (let t = 0; t < 10000; t += 16) {
+    rig.ax(2, -0.47 + ((t / 16) % 2 ? 0.002 : 0));
+    rig.ax(3, 1);
+    rig.step();
+  }
+  check('bug-7cc49b3d: yaw held at its stop for ten seconds in a hover: no verdict', rig.im.padSummary().guessYawParked === false);
+  rig.ax(3, -0.97);
+  rig.run(8000);
+  check('and the other way, at the stop the report read, for eight more: no verdict', rig.im.padSummary().guessYawParked === false);
+  /* Landed, the throttle down, the pause menu up, and yaw still held. */
+  rig.ax(2, -1);
+  rig.im.flying = false;
+  rig.run(10000);
+  check('down on the pad, paused, yaw still at its stop for ten seconds: no verdict, because the throttle axis is at its end and not at the middle',
+    rig.im.padSummary().guessYawParked === false, JSON.stringify(rig.im.mapReport().yawWhy));
+  check('and the report says why: nothing on the throttle axis has sprung back, and yaw never rested with it at centre',
+    rig.im.mapReport().yawWhy.thrSprang === false && rig.im.mapReport().yawWhy.yawRested === false, JSON.stringify(rig.im.mapReport().yawWhy));
+}
+{
+  /* A hover held to the hundredth for four seconds is a throttle resting in
+   * the middle of its travel, which no thumb does with a sprung stick: the
+   * guessed throttle is a throttle, so yaw is not. */
+  const rig = new Rig(makePad([0, 0, -1, 0, 0, -1], 4, 'AETR radio that hovers'));
+  rig.im.flying = true;
+  rig.ax(2, -0.47);
+  rig.run(4200);
+  check('a throttle left at hover for four seconds is seen resting mid travel', rig.im.mapReport().yawWhy.thrRestedMid === true);
+  rig.im.flying = false;
+  rig.ax(2, 0.8); rig.step(); rig.ax(2, 0); rig.run(600);
+  rig.ax(3, -1);
+  rig.run(10000);
+  check('so afterwards even the swapped radio\'s whole signature, a spring and a rest, is never the verdict',
+    rig.im.padSummary().guessYawParked === false, JSON.stringify(rig.im.mapReport().yawWhy));
+}
+{
+  /* 3D mode rests the throttle at the middle, where a sprung stick rests. */
+  const rig = new Rig(makePad([0, 0, 0, 0, 0, -1], 4, 'AETR radio in 3D'));
+  rig.im.set3d(true);
+  rig.ax(2, -0.8); rig.step(); rig.ax(2, 0); rig.run(600);
+  rig.ax(3, 1);
+  rig.run(10000);
+  check('in 3D mode, the throttle snapped to the middle and yaw held at its stop for ten seconds in a menu: no verdict',
+    rig.im.padSummary().guessYawParked === false, JSON.stringify(rig.im.mapReport().yawWhy));
+}
+{
+  /* bug-c9423f3e again, read the other way round: the radio left alone on
+   * the title for four seconds first, the stick on the guessed throttle
+   * touched and let go after. Either order is the verdict. */
+  const rig = new Rig(makePad([0, 0, 0, -1, 0, 0], 4, 'Pocket in Firefox, left alone first'));
+  rig.run(4200);
+  const w0 = rig.im.mapReport().yawWhy;
+  check('alone for four seconds: the rest is seen, and with no spring seen yet there is no verdict',
+    w0.yawRested === true && w0.thrSprang === false && rig.im.padSummary().guessYawParked === false, JSON.stringify(w0));
+  check('and the row that is up meanwhile is the guess one, whose words are true of this radio',
+    rig.im.padSummary().mapUsable === false);
+  rig.ax(2, 0.9); rig.step(); rig.ax(2, 0);
+  rig.run(304);
+  check('let go, home, not yet settled: not yet', rig.im.padSummary().guessYawParked === false);
+  rig.run(200);
+  check('settled at the middle: the spring, and the verdict', rig.im.padSummary().guessYawParked === true,
+    JSON.stringify(rig.im.mapReport().yawWhy));
+}
+{
+  /* The same radio, never touched: no spring, so nothing is claimed. */
+  const rig = new Rig(makePad([0, 0, 0, -1, 0, 0], 4, 'Pocket in Firefox, untouched'));
+  rig.run(20000);
+  check('the swapped radio never touched: no verdict, and the guess row stands in for it',
+    rig.im.padSummary().guessYawParked === false && rig.im.padSummary().mapUsable === false);
+}
+{
+  /* A stall is not a spring. The stick on the guessed throttle read off
+   * centre, then the page stopped for two seconds, then it read centre. */
+  const rig = new Rig(makePad([0, 0, 0, -1, 0, 0], 4, 'Pocket on a stalled page'));
+  rig.run(4200);
+  rig.ax(2, 0.9); rig.step(); rig.ax(2, 0); rig.step(2000);
+  rig.run(1000);
+  check('home only after a two second stall: not a spring, no verdict', rig.im.padSummary().guessYawParked === false
+    && rig.im.mapReport().yawWhy.thrSprang === false, JSON.stringify(rig.im.mapReport().yawWhy));
+  rig.ax(2, -0.9); rig.step(); rig.ax(2, 0);
+  rig.run(600);
+  check('and let go with the page running: the verdict', rig.im.padSummary().guessYawParked === true);
+}
+{
+  /* How fast the page polls does not decide it. 240 Hz reads the gimbal on
+   * its way home; five frames a second reads it once, 200 ms later. */
+  for (const [name, ms] of [['a 240 Hz display', 4], ['a page at five frames a second', 200]]) {
+    const rig = new Rig(makePad([0, 0, 0, -1, 0, 0], 4, `Pocket on ${name}`));
+    for (let t = 0; t < 4400; t += ms) {
+      rig.step(ms);
+    }
+    rig.ax(2, 0.95); rig.step(ms);
+    if (ms < 16) {
+      for (const v of [0.7, 0.4, 0.2, 0.06, -0.02]) {
+        rig.ax(2, v); rig.step(ms);
+      }
+    }
+    rig.ax(2, 0);
+    for (let t = 0; t < 800; t += ms) {
+      rig.step(ms);
+    }
+    check(`on ${name}, the spring and the rest are the verdict`, rig.im.padSummary().guessYawParked === true,
+      JSON.stringify(rig.im.mapReport().yawWhy));
+  }
+}
+{
+  /* A hand moving the throttle to the middle at a hand's speed is not a
+   * spring: over half a second from three quarters to the middle. */
+  const rig = new Rig(makePad([0, 0, 0, 0, 0, -1], 4, 'AETR radio, throttle walked to the middle'));
+  for (let t = 0; t <= 500; t += 16) {
+    rig.ax(2, 0.5 * (1 - t / 500));
+    rig.step();
+  }
+  rig.run(800);
+  check('a throttle walked to the middle over half a second is not a spring',
+    rig.im.mapReport().yawWhy.thrSprang === false, JSON.stringify(rig.im.mapReport().yawWhy));
 }
 {
   /* The rest is timed on the wall clock, not on the polls' dtMs, which is

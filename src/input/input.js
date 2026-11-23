@@ -434,11 +434,33 @@ const GUESS = {
   PARK_OFF: 0.35,
   /* ...and stays within this of where it settled... */
   PARK_STILL: 0.01,
-  /* ...for this long, on the wall clock (see noteYawParked). A thumb
-   * holding yaw at the stop for four seconds is seven turns of a spin; a
-   * throttle waiting at the bottom on the title screen is there for
-   * minutes. */
+  /* ...for this long, on the wall clock (see noteYawParked). A throttle
+   * waiting at the bottom on the title screen is there for minutes. */
   PARK_MS: 4000,
+  /* A sprung stick nobody is touching reads inside this of zero. A radio in
+   * joystick mode reports its own calibrated centre, a few thousandths out
+   * at most; the margin is for a gimbal that has drifted. See noteYawParked. */
+  CENTRE: 0.1,
+  /* A SPRING is a stick let go from off centre (past PARK_OFF) and back
+   * inside CENTRE within SNAP_FAST_MS of the last reading off centre,
+   * through however many readings a fast display takes on the way: a
+   * gimbal's spring covers that last stretch in a few hundredths of a
+   * second, and a hand moving a throttle there at a hand's speed is seen
+   * passing through. A page polling slower than that cannot see between two
+   * readings, so there the very next reading home counts, if it came within
+   * SNAP_MS: long enough for a page drawing five frames a second, short
+   * enough that a stall is not a spring. */
+  SNAP_FAST_MS: 80,
+  SNAP_MS: 300,
+  /* ...and it then stays inside CENTRE for this long, the last SNAP_STILL_MS
+   * of it still to PARK_STILL, which is a spring at rest: a released gimbal
+   * rings for a few readings and then reads one number. */
+  SNAP_SETTLE_MS: 400,
+  SNAP_STILL_MS: 200,
+  /* A rest in the MIDDLE of the travel, still to PARK_STILL for PARK_MS at
+   * more than PARK_OFF and less than this, is a stick with no spring. A
+   * thumb holds a sprung stick that still only against its end stop. */
+  MID_MAX: 0.9,
 };
 
 /*
@@ -487,6 +509,56 @@ const DEAD = {
  * screen's, which ask the same question. */
 function sweptLikeStick(span, far) {
   return span.hi - span.lo >= far && span.levels.size >= GUESS.STRAY_LEVELS;
+}
+
+/*
+ * A SPRING, read off one axis: let go from off centre, home by the next
+ * reading, and at rest there. See GUESS.SNAP_* and noteYawParked.
+ *
+ *   offAt     the wall stamp of the last reading at PARK_OFF or further out
+ *   home      the stretch inside CENTRE that began within SNAP_MS of offAt:
+ *             since, and the reading it has been still at since stillSince
+ */
+function springWatch() {
+  return { offAt: null, lastOff: false, home: null };
+}
+
+/* One reading. True on the reading that completes a spring. */
+function watchSpring(a, v, now) {
+  const av = Math.abs(v);
+  const lastOff = a.lastOff;
+  a.lastOff = av >= GUESS.PARK_OFF;
+  if (a.lastOff) {
+    a.offAt = now;
+    a.home = null;
+    return false;
+  }
+  if (av > GUESS.CENTRE) {
+    /* On the way, or a hand holding it near the middle: not home. */
+    a.home = null;
+    return false;
+  }
+  if (!a.home) {
+    /* Home fast through any readings on the way, or home on the very next
+     * reading of a page that polls slowly. See GUESS.SNAP_FAST_MS. */
+    const since = a.offAt === null ? Infinity : now - a.offAt;
+    if (!(since <= GUESS.SNAP_FAST_MS || (lastOff && since <= GUESS.SNAP_MS))) {
+      return false;
+    }
+    a.home = { since: now, at: v, stillSince: now };
+    return false;
+  }
+  if (Math.abs(v - a.home.at) > GUESS.PARK_STILL) {
+    a.home.at = v;
+    a.home.stillSince = now;
+    return false;
+  }
+  if (now - a.home.since >= GUESS.SNAP_SETTLE_MS && now - a.home.stillSince >= GUESS.SNAP_STILL_MS) {
+    a.home = null;
+    a.offAt = null;
+    return true;
+  }
+  return false;
 }
 
 /* One range, grown by one reading. The level set stops growing at the
@@ -1870,11 +1942,10 @@ export class InputManager {
     this.guessSpan = null;
     this.guessYawAlive = false;
     this.guessWrongOrder = false;
-    /* And whether the guess's yaw axis rests like a throttle. See
-     * noteYawParked. */
+    /* And whether the guess's yaw axis rests like a throttle, with what the
+     * two axes it involves have been seen doing. See noteYawParked. */
     this.guessYawParked = false;
-    this.yawParkAt = null;
-    this.yawParkSince = 0;
+    this.yawPark = null;
     /* The stick the pilot is flying without, on any map: the flight's
      * watch, the channels judged dead (a new array on every change, so the
      * shell can compare it by reference), and the ones that have proved
@@ -2316,18 +2387,80 @@ export class InputManager {
    * throttle axis off centre once, and noteGuessOrder saw the guessed yaw
    * move plenty, because what is on it is the throttle.
    *
-   * What gives a throttle away is how it RESTS. It has no spring, so it
-   * stays where it was left, most often at the bottom, and it stays there
-   * still for as long as nobody touches it. A yaw stick is on a spring and
-   * comes back to the middle the moment the thumb lets go. So if the axis
-   * the guess calls yaw sits off centre and still for PARK_MS, the guess has
-   * a throttle where it expects yaw, and the pilot's throttle is turning the
-   * quad instead of lifting it.
+   * THE FIRST VERSION OF THIS ASKED ONE AXIS ONE QUESTION, and it was wrong
+   * for every pilot it ever spoke to on the board. It called the guessed
+   * yaw axis a throttle when it sat off centre and still for PARK_MS, and a
+   * thumb holding yaw against its end stop does exactly that: the stop is a
+   * hard limit, so the reading does not move. Its comment called that the
+   * one false positive and its cost an offer to calibrate. The row it earned
+   * says "your throttle is probably turning the quad instead of lifting it".
+   * The 2026-11-23 bug board run read every report that carried the
+   * verdict, in that day's 22 and the 200 closed before them: two, a
+   * Radiomaster Pocket each (bug-7cc49b3d, flying the yaw lesson, and
+   * bug-2ea950fa), both on a correct guess, both with the throttle they had
+   * just flown on parked at the bottom of the axis the guess calls the
+   * throttle. Two of two wrong.
    *
-   * Sticky, for the reason on noteThrottleParked: a warning that blinks is
-   * worse than either answer. The one false positive is a thumb holding
-   * full yaw against the stop for four seconds, and what it earns is an
-   * offer to calibrate, which is not a wrong thing to offer.
+   * WHAT DECIDES IT NOW is the thing that actually differs between a stick
+   * and a throttle, the SPRING, read on both axes the swap would involve,
+   * the guessed yaw Y and the guessed throttle T. If the throttle is on Y,
+   * then T is a sprung stick. So the verdict needs both halves of that:
+   *
+   *   T SPRANG        T was let go from off centre and was back inside
+   *                   CENTRE within a few hundredths of a second, and
+   *                   settled there (GUESS.SNAP_*). A spring does this every
+   *                   time a thumb lets go. A throttle would need a hand
+   *                   that moves it to the exact middle in a few hundredths
+   *                   of a second and leaves it there.
+   *   Y RESTED        out of flight and out of 3D mode, Y sat off centre and
+   *                   T sat inside CENTRE, both still to PARK_STILL, at the
+   *                   same time for PARK_MS. The swapped radio on the title
+   *                   screen, with nobody touching it, is exactly this. The
+   *                   right radio would need its throttle parked at the
+   *                   middle while a thumb holds yaw against the stop, in a
+   *                   menu, for four seconds.
+   *
+   * And either of two observations rules the swap out for the life of the
+   * pad, because each one shows which axis has the spring:
+   *
+   *   Y SPRANG        Y was let go and came home the way T has to. A
+   *                   throttle has no spring to do that with, so Y is a
+   *                   stick. Every pilot whose guess is right does this the
+   *                   first time they let go of yaw, which is how both
+   *                   tickets above would have been answered.
+   *   T RESTED MID    T sat still in the middle of its travel, past PARK_OFF
+   *                   and short of MID_MAX, for PARK_MS. A thumb holds a
+   *                   sprung stick that still only against a stop, so T has
+   *                   no spring, so T is the throttle.
+   *
+   * Nothing here waits on a stick at its end stop on its own any more,
+   * because that reading means a throttle at its end or a thumb at its stop
+   * and cannot say which.
+   *
+   * WHAT IT DOES NOT CATCH, and why that is the safe side: a swapped radio
+   * whose pilot never lets go of the stick on T, never leaves the radio
+   * alone for four seconds out of flight, or snaps their throttle to the
+   * exact middle once, gets no row from here. Until T has left centre at all
+   * the map is not usable (noteThrottleParked) and the title already asks
+   * that pilot to calibrate, with words that are true of a swapped radio;
+   * letting go of T after that is the spring this waits for.
+   *
+   * WHAT IT CAN STILL GET WRONG, written down because the owner asked for a
+   * row that is right every time (2026-11-23) and readings off two axes can
+   * only make a mistake take a deliberate coincidence. On a radio whose map
+   * is right, the row needs its throttle parked at the exact middle outside
+   * 3D mode, snapped there from an end in under a tenth of a second, while a
+   * thumb holds yaw against its stop in a menu for four seconds, all before
+   * that pilot has once let go of yaw. On a gamepad the browser gives no
+   * standard layout, so it is read on this guess too and every axis is
+   * sprung, the first touch of the stick on Y would have to be that four
+   * second hold in a menu, with the stick on T already let go once. Any
+   * release of Y before either rules it out for good.
+   *
+   * Sticky once decided, for the reason on noteThrottleParked: a warning
+   * that blinks is worse than either answer. Facts about the pad, so they
+   * reset with the pad and with the map (forgetYawPark), and the axes they
+   * were read on are kept, so a guess that moves its axes starts them over.
    *
    * ON THE WALL CLOCK. How long a stick has rested is the pilot's time, so
    * the rest is timed from the wall stamp of the first poll that saw it
@@ -2340,30 +2473,100 @@ export class InputManager {
    * arrived at 9.4 s of wall with 4.1 s credited; runs recorded in PROGRESS
    * waited past the check's 20 s. A pilot with a radio in the wrong mode on a slow machine
    * waited the same way. A stick read at the same place either side of a
-   * stall rested through it as far as anything can tell.
+   * stall rested through it as far as anything can tell. The one thing a
+   * stall must not do is pass for a spring, so a snap counts only between
+   * two readings SNAP_MS apart or less, and on a page polling faster than
+   * that, only inside SNAP_FAST_MS.
    */
   noteYawParked(gp, nowWall) {
     if (this.map.stored || this.map.guess === 'standard' || this.guessYawParked) {
       return;
     }
-    const spec = this.map.yaw;
-    if (!gp || !spec || !Number.isInteger(spec.axis) || spec.axis >= gp.axes.length) {
+    const ys = this.map.yaw;
+    const ts = this.map.throttle;
+    if (!gp || !ys || !ts || !Number.isInteger(ys.axis) || !Number.isInteger(ts.axis)
+      || ys.axis >= gp.axes.length || ts.axis >= gp.axes.length || ys.axis === ts.axis) {
       return;
     }
-    const v = gp.axes[spec.axis];
-    if (!(Math.abs(v) >= GUESS.PARK_OFF)) {
-      this.yawParkAt = null;
-      this.yawParkSince = 0;
+    let w = this.yawPark;
+    if (!w || w.yAxis !== ys.axis || w.tAxis !== ts.axis) {
+      w = {
+        yAxis: ys.axis,
+        tAxis: ts.axis,
+        yaw: springWatch(),
+        thr: springWatch(),
+        thrMid: { at: null, since: 0 },
+        joint: { y: null, t: null, since: 0 },
+        yawSprang: false,
+        thrSprang: false,
+        yawRested: false,
+        thrRestedMid: false,
+      };
+      this.yawPark = w;
+    }
+    const yv = gp.axes[ys.axis];
+    const tv = gp.axes[ts.axis];
+    if (!Number.isFinite(yv) || !Number.isFinite(tv)) {
       return;
     }
-    if (this.yawParkAt === null || Math.abs(v - this.yawParkAt) > GUESS.PARK_STILL) {
-      this.yawParkAt = v;
-      this.yawParkSince = nowWall;
-      return;
+    if (watchSpring(w.yaw, yv, nowWall)) {
+      w.yawSprang = true;
     }
-    if (nowWall - this.yawParkSince >= GUESS.PARK_MS) {
+    if (watchSpring(w.thr, tv, nowWall)) {
+      w.thrSprang = true;
+    }
+    /* T still in the middle of its travel: no spring there. */
+    const ta = Math.abs(tv);
+    const m = w.thrMid;
+    if (ta >= GUESS.PARK_OFF && ta < GUESS.MID_MAX) {
+      if (m.at === null || Math.abs(tv - m.at) > GUESS.PARK_STILL) {
+        m.at = tv;
+        m.since = nowWall;
+      } else if (nowWall - m.since >= GUESS.PARK_MS) {
+        w.thrRestedMid = true;
+      }
+    } else {
+      m.at = null;
+    }
+    /* Y off centre and T at centre, both still, nobody flying. */
+    const j = w.joint;
+    if (!this.flying && !this.mode3d && Math.abs(yv) >= GUESS.PARK_OFF && ta <= GUESS.CENTRE) {
+      if (j.y === null || Math.abs(yv - j.y) > GUESS.PARK_STILL || Math.abs(tv - j.t) > GUESS.PARK_STILL) {
+        j.y = yv;
+        j.t = tv;
+        j.since = nowWall;
+      } else if (nowWall - j.since >= GUESS.PARK_MS) {
+        w.yawRested = true;
+      }
+    } else {
+      j.y = null;
+      j.t = null;
+    }
+    if (!w.yawSprang && !w.thrRestedMid && w.thrSprang && w.yawRested) {
       this.guessYawParked = true;
     }
+  }
+
+  /* What noteYawParked has seen, and the verdict with it, forgotten together:
+   * a different pad, a different map, or a calibration that answers it. */
+  forgetYawPark() {
+    this.guessYawParked = false;
+    this.yawPark = null;
+  }
+
+  /* The evidence behind the verdict, for a report: which axis has shown a
+   * spring and which has rested like a throttle. See noteYawParked. */
+  yawParkEvidence() {
+    const w = this.yawPark;
+    if (!w) {
+      return null;
+    }
+    return {
+      yawSprang: w.yawSprang,
+      thrSprang: w.thrSprang,
+      yawRested: w.yawRested,
+      thrRestedMid: w.thrRestedMid,
+    };
   }
 
   /*
@@ -3027,6 +3230,11 @@ export class InputManager {
       usable: this.mapUsable(),
       noYaw: this.guessWrongOrder,
       yawParked: this.guessYawParked,
+      /* And what that verdict was decided on, both ways: whether each of the
+       * two axes has shown a spring, whether yaw rested like a throttle with
+       * the throttle at centre, and whether the throttle rested mid travel.
+       * See noteYawParked. Null until the guess has been read. */
+      yawWhy: this.yawParkEvidence(),
       /*
        * WHICH GUESS, AND WHAT THE STICK CHECK HAS SEEN. `map` says guess for
        * the AETR guess and for the Firefox radio guess alike, and they read
@@ -3155,9 +3363,7 @@ export class InputManager {
     this.guessSpan = null;
     this.guessYawAlive = false;
     this.guessWrongOrder = false;
-    this.guessYawParked = false;
-    this.yawParkAt = null;
-    this.yawParkSince = 0;
+    this.forgetYawPark();
     /* And so is the stick resolution. Same line, same reason. */
     this.forgetAxisResolution();
     this.forgetFlightRecord();
@@ -4034,9 +4240,7 @@ export class InputManager {
     this.guessSpan = null;
     this.guessYawAlive = false;
     this.guessWrongOrder = false;
-    this.guessYawParked = false;
-    this.yawParkAt = null;
-    this.yawParkSince = 0;
+    this.forgetYawPark();
     /* The same goes for a dead channel, which was judged on the old axes,
      * and for a radio dressed as a gamepad, which the wizard has just read
      * for what it is. */

@@ -56,6 +56,11 @@
  * without an error. PROGRESS.md has the repros. A bug found and not fixed
  * is printed as a `known` line, not counted, until it is.
  *
+ * `--slow=N` slows the page N times with Chromium's own CPU throttle, to
+ * stand in for a slower machine than the one it runs on: `npm run
+ * check:career:slow` runs the career's browser checks at --slow=4 (see
+ * ON A SLOW MACHINE in scripts/careerface-check.js).
+ *
  * Not part of `npm run verify`. Run it as `npm run check:careerui`.
  * `--only=desktop` or `--only=phone` runs one size.
  *
@@ -85,6 +90,9 @@ import { emptyProgress, recordRun, encodeSave } from '../src/career/progress.js'
 import { LIVERIES } from '../src/render/livery.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+
+/* A slower machine than this one, on --slow=N. */
+const SLOW = Number((process.argv.find((a) => a.startsWith('--slow=')) || '').slice(7)) || 1;
 const ONLY = (process.argv.find((a) => a.startsWith('--only=')) || '').slice(7);
 
 const SIZES = [
@@ -162,6 +170,9 @@ async function run(size) {
     root: ROOT, width: size.width, height: size.height, touch: size.touch, seed,
   });
   const { cdp, sessionId } = page;
+  if (SLOW > 1) {
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: SLOW }, sessionId);
+  }
   const check = (what, ok, got = '') => {
     if (ok) {
       passes += 1;

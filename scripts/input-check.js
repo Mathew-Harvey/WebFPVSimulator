@@ -565,27 +565,60 @@ async function mousePage(page) {
   /* --------------------------------------------------------------------
    * 3b. The throttle where the guess expects yaw. bug-c9423f3e, a
    *     Radiomaster Pocket in Firefox: "the throttle is mapped on the yaw
-   *     axes and the throttle movement is not detected". Axis 3, which the
-   *     guess calls yaw, is given what a throttle does: parked at the
-   *     bottom and left there. The title says so by itself, after four
-   *     seconds and not before, because before that it could be a thumb.
+   *     axes and the throttle movement is not detected". On that radio the
+   *     throttle is on axis 3, where the guess reads yaw, and a sprung
+   *     stick is on axis 2, where it reads the throttle.
+   *
+   *     Until 2026-11-23 this section gave axis 3 a throttle's rest and
+   *     nothing else, on this radio whose axis 2 is parked at the bottom:
+   *     which is a correct AETR radio with a thumb holding yaw against its
+   *     stop, and the row came up for it. The board's two reports of the
+   *     verdict were exactly that, and both were wrong. So both halves are
+   *     here now, each on a fresh pad: the right radio held that way gets
+   *     no row, and the swapped radio, its stick on axis 2 let go and the
+   *     radio left alone, gets the row by itself after four seconds.
    * ------------------------------------------------------------------ */
-  section('title: a throttle resting on the guessed yaw axis earns its own row');
+  section('title: a thumb holding yaw is not a throttle, and a throttle on the yaw axis earns its own row');
   const AS_YAW = 'This browser has your throttle as yaw';
   const asYawShown = `Array.from(window.__ui.screens.title.querySelectorAll('.row-warn .row-label')).some((n) => n.textContent === ${JSON.stringify(AS_YAW)})`;
+  const freshPad = "input.setPadChoice({ kind: 'pad', id: window.__pad.id, index: 0 }); return 0;";
+  await ev(freshPad);
   await page.evaluate('window.__pad.axes[3] = -1; window.__pad.timestamp += 1; 0');
-  const parkedAt = Date.now();
+  await page.sleep(6500);
+  const heldYaw = await ev(`const r = input.mapReport(); const s = input.padSummary();
+    return JSON.stringify({ parked: s.guessYawParked, why: r && r.yawWhy, usable: s.mapUsable,
+      row: ${asYawShown} });`).then(JSON.parse);
+  check('the right radio, yaw held at its stop on the title for six and a half seconds: no row, and input.js agrees',
+    heldYaw.row === false && heldYaw.parked === false && heldYaw.usable === true, JSON.stringify(heldYaw));
+  check('and the report says why: the axis read as the throttle sits at its end and has not sprung back',
+    Boolean(heldYaw.why) && heldYaw.why.thrSprang === false && heldYaw.why.yawRested === false, JSON.stringify(heldYaw.why));
+  /* The swapped radio: the sprung stick on axis 2, the throttle on 3. */
+  await page.evaluate('window.__pad.axes[2] = 0; window.__pad.axes[3] = -1; window.__pad.timestamp += 1; 0');
+  await ev(freshPad);
+  await page.sleep(300);
+  await page.evaluate(`(async () => {
+    const pad = window.__pad;
+    pad.axes[2] = 0.8; pad.timestamp += 1;
+    await new Promise((r) => setTimeout(r, 120));
+    pad.axes[2] = 0; pad.timestamp += 1;
+  })()`);
+  const letGoAt = Date.now();
   let asYaw = true;
   await page.until(asYawShown, 20000).catch(() => { asYaw = false; });
-  const tookMs = Date.now() - parkedAt;
-  check('parked and left, the row arrives by itself, and not before four seconds', asYaw && tookMs >= 4000, `${tookMs} ms`);
+  const tookMs = Date.now() - letGoAt;
+  check('the swapped radio, its stick let go and the radio left alone: the row arrives by itself, and not before four seconds',
+    asYaw && tookMs >= 4000, `${tookMs} ms`);
   const asYawReport = await ev(`const r = input.mapReport(); const s = input.padSummary();
-    return JSON.stringify({ parked: s.guessYawParked, noYaw: s.guessNoYaw, map: r && r.map, yawAxis: r && r.axes.yaw, live3: r && r.live[3] });`)
+    return JSON.stringify({ parked: s.guessYawParked, noYaw: s.guessNoYaw, map: r && r.map, yawAxis: r && r.axes.yaw, live3: r && r.live[3], why: r && r.yawWhy });`)
     .then(JSON.parse);
-  check('and input.js agrees, and a report would show the axis and what it reads',
+  check('and input.js agrees, and a report would show the axis, what it reads, and the spring and the rest it was decided on',
     asYawReport.parked === true && asYawReport.noYaw === false && asYawReport.map === 'guess'
-    && asYawReport.yawAxis === 3 && asYawReport.live3 === -1, JSON.stringify(asYawReport));
-  await page.evaluate('window.__pad.axes[3] = 0; window.__pad.timestamp += 1; 0');
+    && asYawReport.yawAxis === 3 && asYawReport.live3 === -1
+    && Boolean(asYawReport.why) && asYawReport.why.thrSprang && asYawReport.why.yawRested
+    && !asYawReport.why.yawSprang && !asYawReport.why.thrRestedMid, JSON.stringify(asYawReport));
+  /* Back to the radio the rest of this run expects. */
+  await page.evaluate('window.__pad.axes[2] = -1; window.__pad.axes[3] = 0; window.__pad.timestamp += 1; 0');
+  await ev(freshPad);
 
   /* --------------------------------------------------------------------
    * 4. The wizard, end to end, on the radio with no way to answer step

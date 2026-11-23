@@ -107,6 +107,7 @@
     "check:careerui": "node scripts/career-ui-check.js",
     "check:careerland": "node scripts/careerland-check.js",
     "check:careerface": "node scripts/careerface-check.js",
+    "check:career:slow": "node scripts/careerface-check.js --slow=4 && node scripts/careerland-check.js --slow=4 && node scripts/career-ui-check.js --slow=4",
     "check:career:rig": "node --test tests/career/rig.test.js",
     "check:bardwell": "node scripts/bardwell-check.js",
     "check:sunny": "node scripts/sunny-check.js",

@@ -3988,20 +3988,27 @@ function padTroubleItem(info, platform = 'other') {
    * on the yaw axes and the throttle movement is not detected". Both rows
    * above stayed quiet for it: the guessed throttle axis had been off
    * centre once, and the guessed yaw moves plenty, because it IS the
-   * throttle. How it rests is what gives it away: off centre and still for
-   * seconds, which a throttle does and a sprung yaw stick never does. See
+   * throttle. The spring is what gives it away, read on both axes: see
    * noteYawParked in src/input/input.js.
+   *
+   * It says only what was SEEN, because both halves are seen before it is
+   * shown: the axis read as the throttle sprang back to the middle when it
+   * was let go, and the axis read as yaw stayed off centre while the throttle
+   * axis sat at the middle, with nobody flying. The first version was shown
+   * on the yaw half alone, which a thumb holding yaw against its stop gives
+   * too, and said "probably" to two pilots of two whose radios were right
+   * (the 2026-11-23 bug board run).
    */
   if (!info.calibrated && info.guessYawParked) {
     return {
       label: 'This browser has your throttle as yaw',
       action: 'calibrate',
       rowClass: 'row-warn',
-      note: 'The axis it guessed was yaw sits off centre and stays there, which a yaw stick'
-        + ' on its spring never does and a throttle always does. So this radio reports its'
-        + ' channels in another order, and your throttle is probably turning the quad'
-        + ' instead of lifting it. Calibrating takes about a minute and tells this page'
-        + ' which axis is which.',
+      note: 'The axis it is reading as your throttle springs back to the middle when you let'
+        + ' go of it, which a throttle never does, and the axis it is reading as yaw stays'
+        + ' wherever it is left, which only a throttle does. So this radio sends its channels'
+        + ' in another order, and your throttle is turning the quad instead of lifting it.'
+        + ' Calibrating takes about a minute and tells this page which axis is which.',
     };
   }
   /*

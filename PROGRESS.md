@@ -76948,3 +76948,8 @@ Asked by the owner in the thread "Combine gates into L or T shapes": "in the who
 
 - The first reading of the careerface failure was that the check's pilot was flying the old classic hover on the new Realistic default. The page said otherwise: the harness forces classic, and the hover it reported was classic's 35.0. The run on 08c4af23 and the frame count are what found the cause.
 - The first summary script read the Motor power from the report's context, where a feel report carries only the tune's name; a tune report carries it at the top level.
+
+### The board closed, by the standing rule of 2026-11-07
+
+- Read again before closing (00:31:12Z): 22 open, none filed since the triage began; 0 in progress. Closed with the run's token through `POST /board/api/bugs/:id`, status and resolution: 22 updates, 22 answered 200, all `wontfix` because nothing was fixed. bug-7cc49b3d says the lesson still finishes, what it counts, that the yaw held at its stop swings past each flag, and that its throttle as yaw warning was a false alarm recorded for the owner; bug-2d78bd2a says Windows' own controller panel did not list the radio, and HID mode and a data cable; bug-8ce347f7 says 3D mode was on, in English and Spanish, and where to turn it off; bug-c2214ff6 names the Camera angle row; bug-c2dd0343 says the keyboard flew Angle; the rest say no code defect, tune numbers kept in the Tunes panel. Afterwards (00:31:50Z) the board lists 0 open and 0 in progress.
+- Nothing went to main: there was no fix. This entry, and the 2026-11-21 and 2026-11-22 runs' fast forwarded ahead of it, are on the branch for the owner to take with the next merge.

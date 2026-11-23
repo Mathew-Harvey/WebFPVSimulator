@@ -4004,11 +4004,10 @@ function padTroubleItem(info, platform = 'other') {
       label: 'This browser has your throttle as yaw',
       action: 'calibrate',
       rowClass: 'row-warn',
-      note: 'The axis it is reading as your throttle springs back to the middle when you let'
-        + ' go of it, which a throttle never does, and the axis it is reading as yaw stays'
-        + ' wherever it is left, which only a throttle does. So this radio sends its channels'
-        + ' in another order, and your throttle is turning the quad instead of lifting it.'
-        + ' Calibrating takes about a minute and tells this page which axis is which.',
+      note: 'The axis it reads as your throttle springs back to the middle when let go, which a'
+        + ' throttle never does, and the axis it reads as yaw stays where it is left, which only'
+        + ' a throttle does. So your throttle is turning the quad, not lifting it. Calibrating'
+        + ' takes about a minute and tells this page which axis is which.',
     };
   }
   /*

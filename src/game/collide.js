@@ -2586,6 +2586,9 @@ export function stateUpZ(st) {
  *
  *   hit        the ground judged a smack this frame: hitClosing, hitSpeed,
  *              hitHard, hitCrash and hitAtMs, the step it was judged at
+ *   solidHit   a solid judged a smack this frame, for the OSD's bounce
+ *              count: solidHitClosing and solidHitAtMs, its step (see A
+ *              SOLID'S BOUNCE in step())
  *   crash      '' or the rule that called the frame's crash, 'ground',
  *              'solid' or 'stop' (named in that order when a step meets
  *              more than one), and crashAtMs, its step
@@ -2631,6 +2634,7 @@ export class CrashJudge {
     this.groundAtMs = -Infinity;
     this.hardAtMs = -Infinity;
     this.groundLastMs = -Infinity;
+    this.solidAtMs = -Infinity;
     this.beginFrame();
   }
 
@@ -2648,6 +2652,7 @@ export class CrashJudge {
     this.groundAtMs = -Infinity;
     this.hardAtMs = -Infinity;
     this.groundLastMs = -Infinity;
+    this.solidAtMs = -Infinity;
   }
 
   /* A knock (solidContactKnock) in the step's report rep, with the state
@@ -2663,6 +2668,9 @@ export class CrashJudge {
     this.hitHard = false;
     this.hitCrash = false;
     this.hitAtMs = 0;
+    this.solidHit = false;
+    this.solidHitClosing = 0;
+    this.solidHitAtMs = 0;
     this.crash = '';
     this.crashAtMs = 0;
     this.stopHard = false;
@@ -2726,6 +2734,41 @@ export class CrashJudge {
       }
     }
     const solidTouched = rep[0] > 0;
+    /*
+     * A SOLID'S BOUNCE, for the OSD's count, on the ground's line and the
+     * ground's clock. bug-3c840d7f: "when i crashed in the wall my bounces
+     * went higher if i stayed on the surface", expected "the bounces should
+     * go up by 1". The shell counted a wall's bounce on any frame whose
+     * contact pass had applied an impulse, behind a cooldown of
+     * BOUNCE_COOLDOWN_MS on the WALL clock, and a craft held against a face
+     * takes an impulse every few milliseconds for as long as it stays there
+     * (the knock buzz, solidContactKnock's KNOCK_CLOSING_MIN), so the count
+     * climbed about five times a second until the pilot flew off or was set
+     * down: 24 for one slow arrival held three seconds on the shopfront,
+     * 14 to 17 for a smack held two, at a rate set by the frame rate.
+     *
+     * So it is judged here, each step, as the ground's smack is: a step
+     * whose report closes on a face at GRAZE_SPEED_MAX or more, which is
+     * the line under which a touch is not announced on the OSD and the one
+     * solidContactCrash draws for a wall, and BOUNCE_COOLDOWN_MS of sim
+     * clock after the last one counted. A craft buzzing on a face comes back
+     * to it at the knock's walking pace, DULL_OUT_MIN to DULL_OUT_MAX and
+     * whatever its thrust adds in a few milliseconds, never at a smack's, so
+     * a crash held there is one bounce however long it is held, and a
+     * deliberate Wall Tap, which the recogniser separates from a smack on
+     * the same line, is none. A clock that went backwards ends the cooldown
+     * as the ground's does. The impact cue, the sound and the shake, is the
+     * shell's and is not judged here.
+     */
+    if (solidTouched && rep[1] >= GRAZE_SPEED_MAX
+      && (atMs - this.solidAtMs > BOUNCE_COOLDOWN_MS || atMs < this.solidAtMs)) {
+      this.solidAtMs = atMs;
+      if (!this.solidHit) {
+        this.solidHit = true;
+        this.solidHitClosing = rep[1];
+        this.solidHitAtMs = atMs;
+      }
+    }
     if (!kind && solidTouched && solidContactCrash(rep, after[7], after[8], after[9], after[10], this.c, this.s, this.both)) {
       kind = 'solid';
     }

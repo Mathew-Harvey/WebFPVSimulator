@@ -5746,7 +5746,10 @@ export async function boot({ loading, bootStart, mapId }) {
   let speedNow = 0;
   /* How many contacts this run has bounced off, for the readback and for
    * nothing else. It used to be a count DOWN from three lives; there is no
-   * damage model any more, so it counts up and costs nothing. */
+   * damage model any more, so it counts up and costs nothing. A bounce is a
+   * smack judged by crashJudge, the ground's (hit) or a solid's (solidHit),
+   * so a craft held against a face is one bounce and not one every few
+   * hundred milliseconds (bug-3c840d7f, scripts/wallbounce-check.js). */
   let bounceCount = 0;
   let bounceAtWall = 0;
   /* Real Betaflight crashflip, held by the pilot. Distinct from
@@ -13199,14 +13202,24 @@ export async function boot({ loading, bootStart, mapId }) {
       trickTouchAtSimMs = simTimeMs;
       trickDetector.bump(frameClosing);
     }
+    /*
+     * THE COUNT IS THE JUDGE'S, NOT THE CUE'S. A solid's bounce is a step
+     * crashJudge judged a smack (A SOLID'S BOUNCE in src/game/collide.js),
+     * on the sim clock, the way the ground's is above. It was the cue's
+     * gate below until bug-3c840d7f: any impulse, every BOUNCE_COOLDOWN_MS
+     * of wall clock, so a craft held on a face counted five a second.
+     */
+    if (crashJudge.solidHit) {
+      bounceCount += 1;
+    }
     if (obsImpulse > 0) {
       /* One cue per frame at the hardest impulse the pass applied, not one
        * per contact: a corner is two faces in the same millisecond and
        * firing twice reads as a stutter rather than as a harder hit. The
        * cooldown that used to gate this is gone with the banner it was
-       * really protecting. */
+       * really protecting. The sound and the shake only: the OSD's count is
+       * the judge's, above. */
       if (nowWall - bounceAtWall >= BOUNCE_COOLDOWN_MS || obsImpulse > lastImpulse * 1.6) {
-        bounceCount += 1;
         feelImpact(obsImpulse, obsImpulseKind);
         /* The workbook's BUMP: "complete trick, but tapped a gate, wall or
          * the ground without disarming". Half the trick's points and half

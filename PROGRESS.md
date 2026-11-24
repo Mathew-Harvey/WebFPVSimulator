@@ -77108,3 +77108,7 @@ The owner, flying the Steam build, 2026-11-24 10:15Z: "after running a battery f
 - What went wrong on the way: a scenario added to `together-shots.js` passed on the old code, because a swap still in flight when Host a room was pressed hides the fault (syncWorld returns early), and a reload in the scene lost the whoop setting. Dropped for the standalone check above. That scene's gate page also fails on main as it stands: it still expects five Fly solo cards, and there are six since Mini games joined the solo page. Not changed here.
 - Latency: none; a menu ordering.
 - Merged main (d3a2694, PR 262: Multiplayer asks the kind of room first, the quad badge in the picker) into this branch. Only PROGRESS conflicted, main's entries kept first. The check now picks Freestyle on Multiplayer's new first page, and reads the map's buttons without the badge's Change to whoop. On main's `ui.js` it fails 2 ("freestyle null 5inch", "Change to whoop,Fly together,Copy link,Fly this"), with the fix 0. `lint:boot` 10 of 10.
+
+### To main, on the owner's word
+
+- 2026-11-24 10:45:56Z, the owner tapped "Push to main" on the card "Push the low pack and Host a room fixes to web main?". That covers both fixes on this branch (PR 261): the fresh pack's first read above, and the Host a room after whoop racing fix of 2026-11-11, which had waited as a draft since then. Fast forward from 247a7b3, nothing forced.

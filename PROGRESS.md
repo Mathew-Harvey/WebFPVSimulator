@@ -77062,3 +77062,39 @@ Asked by the owner in the thread "Combine gates into L or T shapes": "in the who
 ### The board closed, by the standing rule of 2026-11-07
 
 - Read again before closing (00:48:59Z): 24 open, the 23 above and bug-319914f8, filed at 00:37Z during the triage and read above; 0 in progress. Closed with the run's token through `POST /board/api/bugs/:id`, status and resolution: 24 updates, 24 answered 200. bug-3c840d7f `fixed`, naming main's 3a9ff29: one bounce per hit at 4 m/s or more however long the quad stays on the wall, a gentle touch not counted, as on the ground. The rest `wontfix`, because nothing else was fixed: bug-319914f8 says the path from Mini games to a running fight works at its window size on the current site, that its tab was an older version, and to report again from where it stops; bug-bf53ed93 says the split setting is passed to the owner and the line was not reproduced; bug-f90dbeca says the curve is Betaflight's own and where the centre sensitivity and a radio's expo come in; bug-cc98cd7b is a feel note on the Realistic wobble for the owner; bug-6028883f a feel note with the key to screen lag recorded; the other feel notes and the tune reports say no code defect, tune numbers kept in the Tunes panel. Afterwards (00:49:09Z) the board lists 0 open and 0 in progress.
+
+## 2026-11-24 | shell | A fresh pack read as the last one on its first frame in the air: "Pack is getting low" on a full pack
+
+The owner, flying the Steam build, 2026-11-24 10:15Z: "after running a battery flat on a map , i then quit to main menu , then solo and freestyle map the first thing it said is reset my battery is low, but it wasn't low, so i reset the map an dit fiexed it". The code is this repository's, so the web game has it as well.
+
+### The cause
+
+- Realistic physics' pack is read through a diagnostic tap, `sim_bf_debug(74)`, which the plant writes as it steps (`PLANT_DBG_REAL[3]` in `src/native/plant.c`). `sim_reset` and `sim_set_realism` both give the module a fresh pack (`plant_real_forget(s, 1)`), and neither clears the tap, so it says what the last pack had used until the plant steps again.
+- The shell's read sits before the frame's steps, and the pack is not read on the ground. So the first frame in the air on a new pack read the old one's figure. Over `REAL_PACK_LOW_AH` (1.0 Ah, a pack nearly flat) that is "Pack is getting low. Reset for a fresh one." on a full pack, once, because the call is made once per pack; and for half a second, until the next read, the keyboard's hover sat on the flat pack's stick.
+- A reset in the air does not call it again, because by then the tap holds the new pack's small figure. That is why the owner's reset "fixed it".
+
+### Reproduced
+
+- In the Steam desktop build (repack 33d933dd, game/ at 1700bdf), Electron under Xvfb: freestyle on The town, a punch until the tap read 0.084 Ah, Quit to title (the tap still 0.084, the shell's own figure 0), The town again, a punch: the shell took 0.0839 Ah on its first read in the air, where the pack had used 0.027.
+- `npm run check:realrow` with the new line below, on main 247a7b3 with only the check changed: FAIL, "the shell took 0.0689 Ah, the module has used 0.0283, the last run ended on 0.0681". The low pack call itself needs 1.0 Ah drawn, which is more than a minute at full throttle in a software rasteriser, so the check holds the read that makes it rather than the words.
+
+### The fix
+
+- `src/main.js`: `packUnstepped`, set wherever the module is given a fresh pack (the reset and `applyRealism`) and cleared when a frame's steps are about to run. The read waits for it, so the first read on a new pack is the module's own. No change to the module, the tap or the ABI: `dist/sim.wasm` is main's file. One boolean test a frame in the air.
+- `scripts/realrow-check.js`: after the existing "a new run is a fresh pack" line, which is read on the ground and so could not see this, a punch on the new run with every frame watched, and the line "in the air the shell never takes more of the pack than the module has used, not even on the first frame". A pack only runs down, so a figure over the module's own is the old pack.
+
+### Checks this turn
+
+- `npm run check:realrow`: all passed with the fix ("the shell took 0.0172 Ah, the module has used 0.0276, the last run ended on 0.0703"), and the new line FAIL on the base as above.
+- `npm run lint:frame` 34 passed, 0 failed. `npm run lint:reset` all passed.
+- Not run: `npm run verify`. Nothing here is the physics, the plant, the module ABI or the build. No stick value reaches the module differently except the keyboard's hover spring during that half second, which now rests on the new pack's hover as it was meant to.
+- Latency: none. One boolean test a frame, in the air, where realistic physics' pack runs down.
+
+### Not this
+
+- The same message thread's other report, "the mini game can't be started, i click play with bots and nothing happens", after a freestyle flight, the title, Fly solo, Mini games and Goat herding: not reproduced in the Steam build here (fresh save, Steam not running), with the five inch and with the whoop flown first, on the repack's main and with this repository's 247a7b3 synced in. Every run went on to Set the herd, the quad page and the round. Waiting on the owner's saved report from his PC.
+
+### What went wrong
+
+- The first guess was that the flat pack had been carried into the goat round and the round could not see a takeoff. The owner said it was a different bug, and it was: the module's pack is fresh after a reset, and only the shell's first read was old.
+- The first probe of the second run stopped on the Realistic physics explainer, which a profile is shown on its first Fly after it has flown, and read as a hang until the screen was printed.

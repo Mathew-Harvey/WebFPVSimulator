@@ -5983,6 +5983,21 @@ export async function boot({ loading, bootStart, mapId }) {
   const PACK_HOVER_STEP_AH = 0.01;
   let packUsedAh = 0;
   let packPollAtMs = 0;
+  /*
+   * WHETHER THE MODULE HAS STEPPED ON THIS PACK YET. The charge used is read
+   * through a diagnostic tap (sim_bf_debug 74), which the plant writes as
+   * it steps and which neither sim_reset nor a change of mask clears: both
+   * give the module a fresh pack, and the tap goes on saying what the last
+   * one had used until the plant steps again. The read below comes before
+   * the frame's steps, so the first frame in the air on a new pack read the
+   * old one's figure. A pack flown flat, then the title and another map,
+   * met the new run with "Pack is getting low" on a full pack (the owner,
+   * 2026-11-24: "the first thing it said is reset my battery is low, but it
+   * wasn't low"), and the keyboard's hover sat on the flat pack's stick for
+   * half a second. So a fresh pack is not read until the module has stepped
+   * on it.
+   */
+  let packUnstepped = true;
   function realMaskWanted() {
     if (!realPhysicsFor(ui.settings, runAirframe)) {
       return 0;
@@ -6015,6 +6030,7 @@ export async function boot({ loading, bootStart, mapId }) {
     /* The module forgets the pack on any change of mask, so the keys do. */
     packUsedAh = 0;
     packPollAtMs = 0;
+    packUnstepped = true;
     return moved;
   }
   /* The charge per cell the keyboard's hover is read at: the run's own,
@@ -8179,6 +8195,7 @@ export async function boot({ loading, bootStart, mapId }) {
      * the model cannot move between runs. */
     packUsedAh = 0;
     packPollAtMs = 0;
+    packUnstepped = true;
     syncKeyHover();
     /*
      * AND SAY SO, because nothing in flight did. Four pilots in three days
@@ -12537,7 +12554,7 @@ export async function boot({ loading, bootStart, mapId }) {
       /* Realistic physics' pack, read twice a second where it runs down:
        * called once when most of it is used, and the keyboard's hover kept
        * on it (see packUsedAh). One integer test a frame anywhere else. */
-      if ((runReal & REAL_PACK) !== 0 && nowWall >= packPollAtMs) {
+      if ((runReal & REAL_PACK) !== 0 && !packUnstepped && nowWall >= packPollAtMs) {
         packPollAtMs = nowWall + PACK_POLL_MS;
         const used = sim.e.sim_bf_debug(74);
         if (!toldPackLow && used > REAL_PACK_LOW_AH) {
@@ -12552,6 +12569,11 @@ export async function boot({ loading, bootStart, mapId }) {
       acc += dt;
       let steps = Math.floor(acc / MS_PER_STEP);
       acc -= steps * MS_PER_STEP;
+      /* The steps below run on this pack, so the next frame's read of it is
+       * the module's own (packUnstepped). */
+      if (steps > 0) {
+        packUnstepped = false;
+      }
       /* No clamp on steps: dt is already capped at 100 ms where it is
        * read, and acc carries less than 1 ms forward, so this cannot ask
        * for more than 100 steps. The cap belongs on the wall clock, in one

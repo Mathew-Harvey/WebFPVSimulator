@@ -248,6 +248,38 @@ async function fiveInch(map) {
       const again = await page.evaluate(KEYS);
       check('a new run is a fresh pack, and the keys are back on its hover', again.used === 0 && Math.abs(again.at - freshWant) <= 0.15,
         `${again.at.toFixed(2)}, ${again.used} Ah used`);
+      /*
+       * AND THE SHELL READS THE NEW PACK FROM ITS FIRST FRAME IN THE AIR.
+       * The line above is read on the ground, where the pack is not polled,
+       * so it could not see this. The tap the shell reads keeps the last
+       * pack's figure until the module steps on the new one, and the read
+       * came before the frame's steps: the first poll in the air on a new
+       * run took the old pack, and a pack flown flat met the next run with
+       * "Pack is getting low" on a full one (the owner, 2026-11-24). A pack
+       * only runs down, so whatever the shell took must not be more than the
+       * module says has been used since. Every frame is watched, because the
+       * stale figure lasted one poll, half a second.
+       */
+      await page.evaluate(`(() => {
+        window.__packSeen = 0;
+        const look = () => {
+          const u = window.__realism().used;
+          if (u > window.__packSeen) {
+            window.__packSeen = u;
+          }
+          window.__packLook = requestAnimationFrame(look);
+        };
+        look();
+        window.__stick(0, 0, 0, 1);
+        return 1;
+      })()`);
+      await wait(1200);
+      await page.evaluate('(window.__stick(0, 0, 0, 0.3), 1)');
+      await wait(1200);
+      const took = await page.evaluate('(() => { cancelAnimationFrame(window.__packLook); window.__stick(); return { seen: window.__packSeen, module: window.__simModule().e.sim_bf_debug(74), air: window.__mode }; })()');
+      check('and in the air the shell never takes more of the pack than the module has used, not even on the first frame',
+        took.module > 0 && took.seen <= took.module + 1e-9,
+        `the shell took ${took.seen.toFixed(4)} Ah, the module has used ${took.module.toFixed(4)}, the last run ended on ${spent.used.toFixed(4)}`);
     }
     await page.evaluate(TITLE);
     await wait(500);

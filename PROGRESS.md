@@ -77112,3 +77112,5 @@ The owner, flying the Steam build, 2026-11-24 10:15Z: "after running a battery f
 ### To main, on the owner's word
 
 - 2026-11-24 10:45:56Z, the owner tapped "Push to main" on the card "Push the low pack and Host a room fixes to web main?". That covers both fixes on this branch (PR 261): the fresh pack's first read above, and the Host a room after whoop racing fix of 2026-11-11, which had waited as a draft since then. Fast forward from 247a7b3, nothing forced.
+- Pushed 10:46:20Z, 247a7b3 to 51f6269. Live check: by 10:47:56Z https://webfpv.org/sim/ served this tree's src/main.js (ff1de8f45c2c66a0) and src/ui/ui.js (02e6689dbe2906f8), page Last-Modified 10:47:16Z. A fresh headless profile through Playwright booted it in 12.3 s with no page error.
+- The Steam build takes both with its next Update Steam run, whose step 2 pulls this main into game/.

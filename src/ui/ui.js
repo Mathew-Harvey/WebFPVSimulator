@@ -1710,6 +1710,11 @@ const DEFAULTS = {
    * so nobody's flight changes until they flip it. Read as `=== true`, so a
    * blob from before it existed is Off. See run3d in src/main.js. */
   mode3d: false,
+  /* Whether 3D being on is known to be the pilot's own choice: set when
+   * they turn it on through its question or answer Keep 3D on at Fly. A
+   * profile that has 3D on without it got there before 2026-11-25, when two
+   * quick presses turned it on, and is asked once. See mode3dRow, tell3d. */
+  mode3dSure: false,
   /* REALISTIC PHYSICS, the owner's ask of 2026-11-14: "Let's build it all
    * but put all changes behind a realistic physics switch in settings, so
    * nothing changes untill the switch is toggled to on". Off is the quad
@@ -4819,8 +4824,6 @@ const CARD_PRESS_NOTE = 'Choose it to see what you can do with it, or double cli
  * The row says so now, and so does the hint on the screen itself.
  */
 const MID_RUN_WARNING = ' Changing it during a run puts the quad back on the start line.';
-/* How long the 3D mode row waits for its second press. See mode3dRow. */
-const MODE3D_CONFIRM_MS = 4000;
 
 function tuneItem(s, midRun) {
   const name = tuneById(s.tune).name;
@@ -5300,6 +5303,11 @@ function yawTipFixable(rates) {
 
 /* How long a yes or no refuses to be answered after it opens. See askConfirm. */
 const CONFIRM_DEAF_MS = 300;
+/* The same for a guarded question, one whose risky answer must never come
+ * from a burst (askConfirm's `guard`). Longer than a double click on any
+ * desktop's default (Windows' is 500 ms), and still well inside the second
+ * or more a person takes to read the question before answering it. */
+const CONFIRM_GUARD_DEAF_MS = 700;
 
 function ratesChanged(s) {
   return !ratesAreDefault(s.rates);
@@ -8383,9 +8391,31 @@ export class Ui {
    * the confirming button takes focus instead. Resolves true or false, and
    * a backdrop click or Escape is false.
    */
-  askConfirm({ title, detail, yes, no, escape = false }) {
+  /*
+   * A GUARDED QUESTION, `guard: true`: one whose `yes` changes something a
+   * pilot must never get by accident, and the 3D mode row is why it exists
+   * (see mode3dRow). Three things differ from a plain one, and each closes a
+   * way an accident got through:
+   *
+   *   - `no`, the safe answer, is where the cursor starts, and Enter, Space
+   *     and a pad's select answer the button the cursor is ON, not always
+   *     yes. A second press of whatever opened the question lands on `no`.
+   *   - nothing is accepted for CONFIRM_GUARD_DEAF_MS, so a double click or
+   *     a double press is swallowed whole, wherever the box lies under it.
+   *   - a pad steps between the two with left and right and answers with
+   *     select, as on the quad picker, once its sticks have been seen at
+   *     rest; back is Escape. A plain question takes back and left as
+   *     Escape and never takes select, so a pad could not answer yes at all.
+   *
+   * `escape` may be null here, for a question that walking away leaves
+   * unanswered: the promise resolves null and the caller does nothing.
+   */
+  askConfirm({
+    title, detail, yes, no, escape = false, guard = false,
+  }) {
     return new Promise((resolve) => {
       this.nameWait = resolve;
+      this.guardDialog = Boolean(guard);
       const box = el('div', 'name-dialog-box');
       box.append(el('h2', null, title));
       if (detail) {
@@ -8422,13 +8452,43 @@ export class Ui {
        * swallow input that was already queued when the dialog opened.
        */
       const openedAt = performance.now();
+      const deafMs = guard ? CONFIRM_GUARD_DEAF_MS : CONFIRM_DEAF_MS;
       const finish = (v) => {
-        if (performance.now() - openedAt < CONFIRM_DEAF_MS) {
+        if (performance.now() - openedAt < deafMs) {
           return;
         }
         this.closeNameDialog(v);
       };
+      /* A guarded question's cursor: 0 is `no`, 1 is `yes`. The lit button
+       * is the one Enter answers, so what is drawn is what a press does. */
+      let at = 0;
+      const paint = () => {
+        noBtn.classList.toggle('on', at === 0);
+        yesBtn.classList.toggle('on', at === 1);
+        (at === 1 ? yesBtn : noBtn).focus();
+      };
+      const guardKey = (e) => {
+        const step = { ArrowLeft: 0, ArrowUp: 0, ArrowRight: 1, ArrowDown: 1 }[e.key];
+        if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+          finish(at === 1);
+        } else if (e.key === 'Escape') {
+          finish(escape === null ? null : Boolean(escape));
+        } else if (e.key === 'n' || e.key === 'N') {
+          finish(false);
+        } else if (step !== undefined || e.key === 'Tab') {
+          at = step !== undefined ? step : 1 - at;
+          paint();
+        } else {
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+      };
       const onKey = (e) => {
+        if (guard) {
+          guardKey(e);
+          return;
+        }
         if (e.key === 'Enter' || e.key === 'y' || e.key === 'Y') {
           e.preventDefault();
           e.stopPropagation();
@@ -8450,7 +8510,21 @@ export class Ui {
       this.nameDialog.addEventListener('keydown', onKey, true);
       yesBtn.addEventListener('click', () => finish(true));
       noBtn.addEventListener('click', () => finish(false));
-      yesBtn.focus();
+      if (guard) {
+        paint();
+        /* A click beside the buttons (the second half of the double click
+         * that opened this, say) takes the focus off them, and the keys
+         * would then reach nobody. It answers nothing: it puts the focus
+         * back on the lit button. closeNameDialog removes it. */
+        this.nameClickHandler = (e) => {
+          if (!(e.target && e.target.closest && e.target.closest('button'))) {
+            paint();
+          }
+        };
+        this.nameDialog.addEventListener('click', this.nameClickHandler);
+      } else {
+        yesBtn.focus();
+      }
     });
   }
 
@@ -9060,6 +9134,7 @@ export class Ui {
     /* And the quad picker's pad routing, which a dialog opened over the
      * picker would otherwise leave pointed at a page that is gone. */
     this.quadDialog = false;
+    this.guardDialog = false;
     this.padListening = false;
     /* Any route out of the dialog retires the unsaved guard with it, or a
      * stale restore would hide the next form behind a panel that is no
@@ -13914,51 +13989,115 @@ export class Ui {
    * and none of them knew 3D was on.
    *
    * The row stays where the owner put it (2026-10-21). Turning it OFF is
-   * one press of anything, as before. Turning it ON is never a stick
-   * nudge, and is two presses: the first asks, the note says so, and a
-   * second press inside four seconds turns it on. A mouse click is the
-   * same, so every input has one rule.
+   * one press of anything, as before. Right, the roll a radio sends, does
+   * nothing on it.
+   *
+   * TWO PRESSES WERE NOT ENOUGH, the owner, 2026-11-25: "We need to fix the
+   * 3d mode accidently turn on". From 2026-11-06 the first press asked and a
+   * second inside four seconds turned it on, which is exactly what a double
+   * click on the switch is, and what Enter or A pressed twice on arriving
+   * at a screen whose cursor opens on this row is. The board kept showing
+   * it: 16 of the 231 reports read on 2026-11-25 were flown in 3D, most on
+   * an Xbox pad or the keyboard, one of them "like a plane and inverted
+   * controls", another a pilot who went to Gamepad throttle for a bottom
+   * with no thrust (bug-ccc6de42).
+   *
+   * So a press on it while it is off asks a guarded question (askConfirm's
+   * `guard`), and only that question's own Turn 3D on button turns it on.
+   * The cursor starts on Keep it off, a second press of anything answers
+   * Keep it off, nothing is heard for CONFIRM_GUARD_DEAF_MS, and reaching
+   * Turn 3D on takes a move across to it and then a press: a step no burst
+   * of one key or one button makes. Turning it on through the question is
+   * the pilot's own choice, so it marks the profile sure (tell3d).
    */
   mode3dRow(s, midRun) {
     const on = s.mode3d === true;
-    const asking = !on && this.arm3dAt > 0 && performance.now() - this.arm3dAt < MODE3D_CONFIRM_MS;
     const tail = midRun ? MID_RUN_WARNING : '';
     const row = toggle(
       '3D mode',
       on
         ? `On: the motors spin both ways. Throttle in the middle is no thrust, below the middle pushes the other way, so you can hang upside down and fly inverted. No turtle, just reverse off the ground. Fitted with 3D props, a little less punch than race props. Laps post to the public board tagged Tuned and keep a best lap of their own.${tail}`
-        : (asking
-          ? 'Press again to turn 3D mode on. In 3D the middle of the throttle is no thrust and the bottom flies you backwards, so normal flying will feel broken until you turn it off.'
-          : `Off: normal flying, the motors spin one way and the bottom of the throttle is idle. Turn it on for reversible motors, the way 3D pilots fly: throttle in the middle is no thrust and below it flies you upside down. It takes two presses to turn on.${tail}`),
+        : `Off: normal flying, the motors spin one way and the bottom of the throttle is idle. For reversible motors, the way 3D pilots fly: throttle in the middle is no thrust and below it flies you upside down. Turning it on asks first.${tail}`,
       on,
       (v) => { s.mode3d = Boolean(v); },
     );
-    if (asking) {
-      row.value = 'Press again';
-    }
     const press = () => {
       if (s.mode3d === true) {
         s.mode3d = false;
-        this.arm3dAt = 0;
         return;
       }
-      if (this.arm3dAt > 0 && performance.now() - this.arm3dAt < MODE3D_CONFIRM_MS) {
-        s.mode3d = true;
-        this.arm3dAt = 0;
-        return;
-      }
-      this.arm3dAt = performance.now();
+      this.ask3d();
     };
     /* Left still turns it off. Right, the roll a radio sends, does nothing. */
     row.adjust = (d) => {
       if (d < 0) {
         s.mode3d = false;
-        this.arm3dAt = 0;
       }
     };
     row.flip = press;
     row.confirmOn = press;
     return row;
+  }
+
+  /* The question a press on 3D mode asks while it is off. See mode3dRow. */
+  ask3d() {
+    if (this.nameDialog && !this.nameDialog.hidden) {
+      return;
+    }
+    this.askConfirm({
+      title: 'Turn on 3D mode?',
+      detail: 'For 3D flying only. The motors spin both ways: the middle of the throttle is no thrust and the bottom flies you backwards, so normal flying will feel broken until you turn it off again, here in Settings, Pilot, 3D mode.',
+      no: 'Keep it off',
+      yes: 'Turn 3D on',
+      escape: false,
+      guard: true,
+    }).then((yes) => {
+      if (yes !== true) {
+        return;
+      }
+      this.settings.mode3d = true;
+      this.settings.mode3dSure = true;
+      this.writeSettings();
+    });
+  }
+
+  /*
+   * 3D ALREADY ON, FROM BEFORE IT ASKED. A profile that has 3D on and was
+   * never marked sure got there while two quick presses turned it on (see
+   * mode3dRow), and the reports say most such pilots do not know. So the
+   * first Fly asks, once, with the same guard: the cursor starts on Turn
+   * 3D off, and Keep 3D on takes a move and a press. Either answer is the
+   * pilot's own and is never asked again. Escape answers nothing and does
+   * not fly: walking away from the question changes no setting, and the
+   * question is back at the next Fly.
+   *
+   * Returns true when it has taken the Fly, which it gives back by acting
+   * `fly` again once answered, tellRealPhysics' pattern.
+   */
+  tell3d() {
+    const s = this.settings;
+    if (s.mode3d !== true || s.mode3dSure === true) {
+      return false;
+    }
+    this.askConfirm({
+      title: '3D mode is on',
+      detail: 'In 3D the middle of the throttle is no thrust and the bottom flies you backwards, so normal flying feels broken. It was easy to turn on by accident. Keep it on only if you fly 3D.',
+      no: 'Turn 3D off',
+      yes: 'Keep 3D on',
+      escape: null,
+      guard: true,
+    }).then((keep) => {
+      if (keep === null) {
+        return;
+      }
+      if (keep === false) {
+        this.settings.mode3d = false;
+      }
+      this.settings.mode3dSure = true;
+      this.writeSettings();
+      this.act('fly');
+    });
+    return true;
   }
 
   /*
@@ -24272,6 +24411,9 @@ export class Ui {
     if (action === 'fly') {
       this.seatCraftForCourse();
     }
+    if (action === 'fly' && this.tell3d()) {
+      return;
+    }
     if (action === 'fly' && this.tellRealPhysics()) {
       return;
     }
@@ -25047,11 +25189,13 @@ export class Ui {
       const rest = !now.up && !now.down && !now.left && !now.right && !now.select && !now.back;
       /* The quad picker is the one dialog a radio pilot has to answer, or
        * no map could be flown from the pad: left and right move between
-       * the two quads, select picks, back is Back. */
+       * the two quads, select picks, back is Back. A guarded question
+       * (askConfirm's `guard`) is answered the same way, because its select
+       * presses the button the cursor is on, which starts on the safe one. */
       const key = (k) => this.nameDialog.dispatchEvent(new KeyboardEvent('keydown', {
         key: k, code: k, bubbles: true, cancelable: true,
       }));
-      if (this.quadDialog && this.dialogPadArmed) {
+      if ((this.quadDialog || this.guardDialog) && this.dialogPadArmed) {
         if (now.back && !this.padPrev.back) {
           this.dialogPadArmed = false;
           key('Escape');

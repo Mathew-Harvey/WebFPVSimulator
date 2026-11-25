@@ -121,6 +121,51 @@ try {
   s = await page.evaluate(STATE);
   check('flying in 3D says so in the banner', /3D mode is on/.test(s.banner), s.banner);
   check('and the sim is in 3D', await page.evaluate('window.__mode3d().shell === true'));
+  /*
+   * bug-ccc6de42, on a Radiomaster Pocket with 3D on: "when i went to change
+   * it to give no throttle when my stick is all the way down nothing
+   * happened". The pilot went to Gamepad throttle, picked Whole stick, whose
+   * note said "the bottom of the stick is no throttle", and nothing moved,
+   * because in 3D the throttle is the whole stick with no thrust in the
+   * middle whatever that row says (readGamepad's fly3d). So while 3D is on
+   * the row has to say that it changes nothing and where 3D is turned off,
+   * and what it says is read against what the input reads: the radio's
+   * throttle at the bottom, through the flight's own call, on every choice.
+   */
+  const PAD_ROW = `(() => {
+    const it = window.__ui.items().find((r) => r.label === 'Gamepad throttle');
+    const im = window.__input;
+    return {
+      row: (window.__ui.items()[window.__ui.cursor] || {}).label,
+      value: it && it.value,
+      note: it ? String(it.note) : '',
+      set: im.padThrottle,
+      fly3d: Boolean(im.mode3d),
+      thr: im.readGamepad(window.__pads[0], im.map, Boolean(im.mode3d), true).throttle,
+    };
+  })()`;
+  await page.evaluate("(() => { window.__ui.show('pilot'); window.__ui.setCursor(window.__ui.items().findIndex((it) => it.label === 'Gamepad throttle')); return 1; })()");
+  await wait(300);
+  const seen = [];
+  for (let i = 0; i < 3; i += 1) {
+    seen.push(await page.evaluate(PAD_ROW));
+    await page.tap('ArrowRight');
+    await wait(250);
+  }
+  check('in 3D, Right on Gamepad throttle still steps through all three choices, and the input takes each',
+    seen.every((r) => r.row === 'Gamepad throttle' && r.fly3d) && new Set(seen.map((r) => r.set)).size === 3,
+    JSON.stringify(seen.map((r) => [r.row, r.value, r.set, r.fly3d])));
+  check('and every choice flies the same throttle with the radio\'s stick at the bottom',
+    seen.every((r) => r.thr === seen[0].thr), JSON.stringify(seen.map((r) => [r.set, r.thr])));
+  check('so every note says 3D mode is on and this row changes nothing',
+    seen.every((r) => /3D mode is on/.test(r.note) && /changes nothing/.test(r.note)),
+    seen.map((r) => r.note).join(' | '));
+  check('none promises no throttle at the bottom of the stick, which 3D makes full reverse',
+    seen.every((r) => /bottom is full reverse/.test(r.note) && !/bottom of the stick is no throttle/.test(r.note)),
+    seen.map((r) => r.note).join(' | '));
+  check('and each says where to turn 3D off',
+    seen.every((r) => /turn 3D mode off/i.test(r.note) && /first row/.test(r.note)),
+    seen.map((r) => r.note).join(' | '));
   /* Check sticks, by hand. */
   await page.evaluate("(() => { window.__ui.show('pilot'); window.__ui.act('calibrate-check'); return 1; })()");
   await wait(300);
@@ -134,6 +179,17 @@ try {
   await page.evaluate(axis(4, 0)); await wait(250);
   const after = await page.evaluate("(() => [...document.querySelectorAll('.cal-assign button')].map((b) => b.textContent))()");
   check('pushing axis 4 right makes it roll', after.includes('Roll: axis 4'), JSON.stringify(after));
+  /* And with 3D off again, by Left on its row, the Gamepad throttle notes
+   * are the ones they always were: the warning is 3D's alone. */
+  await page.evaluate("(() => { window.__ui.show('pilot'); window.__ui.setCursor(window.__ui.items().findIndex((it) => it.label === '3D mode')); return 1; })()");
+  await wait(300);
+  await page.tap('ArrowLeft');
+  await wait(250);
+  s = await page.evaluate(STATE);
+  check('Left on the 3D row turns it off', !s.on && s.row === '3D mode', JSON.stringify(s));
+  const off = await page.evaluate(PAD_ROW);
+  check('with 3D off the Gamepad throttle note says what its choice does, and nothing about 3D',
+    !/3D mode is on/.test(off.note) && /^(Upper half|Whole stick|Right trigger):/.test(off.note), off.note);
 } finally {
   await page.close();
 }

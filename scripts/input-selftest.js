@@ -3089,6 +3089,38 @@ section('a gamepad throttle can be the whole stick or the right trigger, and def
     && frig.im.weaponSpecFor('gun', fpad).index !== 4, `${JSON.stringify(frig.im.channels)} gun ${frig.im.weaponSpecFor('gun', fpad).index}`);
 }
 
+/*
+ * bug-ccc6de42: in 3D the Gamepad throttle row changes nothing, which is
+ * what the row's note says while 3D is on (src/ui/ui.js). This is the claim
+ * pinned to the input: every choice reads the same throttle at the bottom,
+ * at rest and at the top, on a sprung gamepad and on a radio. If a choice
+ * ever starts to matter in 3D, this fails and the note is wrong.
+ */
+section('in 3D every Gamepad throttle choice flies the same throttle (bug-ccc6de42)');
+{
+  const std = { ...makePad([0, 0, 0, 0], 17, 'Throttle pad (STANDARD GAMEPAD)'), mapping: 'standard' };
+  const radio = makePad([0, 0, -1, 0, 0], 8, 'Some radio');
+  for (const [what, pad, axis, ends] of [['a gamepad', std, 1, [1, 0, -1]], ['a radio', radio, 2, [-1, 0, 1]]]) {
+    const rig = new Rig(pad);
+    const im = rig.im;
+    im.set3d(true);
+    const read = {};
+    for (const v of ends) {
+      for (const id of PAD_THROTTLES) {
+        im.setPadThrottle(id);
+        rig.ax(axis, v); rig.step();
+        (read[v] = read[v] || []).push(im.channels.throttle);
+      }
+    }
+    const same = ends.every((v) => read[v].every((x) => x === read[v][0]));
+    check(`${what}: bottom, rest and top read the same on upper, full and trigger`, same, JSON.stringify(read));
+    check(`${what}: and the stick's whole travel is used, bottom to top`, read[ends[0]][0] < 0.01 && read[ends[2]][0] > 0.99,
+      JSON.stringify(read));
+    im.set3d(false);
+    im.setPadThrottle('upper');
+  }
+}
+
 /* ------------------------------------------------------------------------
  * A radio the browser lists with no axes is named, not dropped in silence.
  * bug-ca2e5b4b, 2026-11-06: "I have a gamepad, a joystick, and a RadioMaster

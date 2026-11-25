@@ -11716,13 +11716,31 @@ export class Ui {
           (id) => ({ auto: 'Auto', small: 'Small', medium: 'Medium', large: 'Large' })[id],
           (id) => { s.padDeadzone = normalisePadDeadzone(id); },
         ),
+        /*
+         * IN 3D THIS ROW CHANGES NOTHING, AND IT HAS TO SAY SO.
+         *
+         * bug-ccc6de42, a Radiomaster Pocket with 3D on: "when i went to
+         * change it to give no throttle when my stick is all the way down
+         * nothing happened". The pilot came here for exactly what Whole
+         * stick's note promised, "the bottom of the stick is no throttle",
+         * and in 3D that is false on every device: readGamepad in
+         * src/input/input.js flies the whole stick with no thrust in the
+         * middle whatever this is set to, and the bottom is full reverse.
+         * What the pilot wanted was 3D off, the first row of the same
+         * screen and named nowhere here. So while 3D is on, every choice's
+         * note says that instead. scripts/threedrow-check.js reads the note
+         * against what the input flies, and scripts/input-selftest.js holds
+         * the input to "changes nothing".
+         */
         choice(
           'Gamepad throttle',
-          {
-            upper: 'Upper half: the left stick at rest is no throttle and pushed to the top is full, the way a gamepad has always flown here. A radio is not changed by this.',
-            full: 'Whole stick: the bottom of the stick is no throttle and the top is full, so the stick at rest is half throttle. Hold it down to stay on the ground. More travel for the same throttle, like a radio. A radio is not changed by this.',
-            trigger: 'Right trigger: squeeze for throttle, let go for none. In a dogfight the gun moves to the left bumper. In 3D the stick is the throttle, because a trigger cannot reverse. A gamepad only.',
-          }[normalisePadThrottle(s.padThrottle)],
+          s.mode3d === true
+            ? '3D mode is on, so this changes nothing: in 3D the middle of the stick is no thrust and the bottom is full reverse, on any gamepad or radio. For no throttle at the bottom, turn 3D mode off, the first row of this screen.'
+            : {
+              upper: 'Upper half: the left stick at rest is no throttle and pushed to the top is full, the way a gamepad has always flown here. A radio is not changed by this.',
+              full: 'Whole stick: the bottom of the stick is no throttle and the top is full, so the stick at rest is half throttle. Hold it down to stay on the ground. More travel for the same throttle, like a radio. A radio is not changed by this.',
+              trigger: 'Right trigger: squeeze for throttle, let go for none. In a dogfight the gun moves to the left bumper. In 3D the stick is the throttle, because a trigger cannot reverse. A gamepad only.',
+            }[normalisePadThrottle(s.padThrottle)],
           PAD_THROTTLES,
           normalisePadThrottle(s.padThrottle),
           (id) => ({ upper: 'Upper half', full: 'Whole stick', trigger: 'Right trigger' })[id],

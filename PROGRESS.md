@@ -77194,3 +77194,4 @@ The owner, flying the Steam build, 2026-11-24 10:15Z: "after running a battery f
 ### To main and to Steam, on the owner's word
 
 - The owner's message above is the word for main in both repositories. Main here fast forwards from 47c5c3f; the Steam repack takes it by its subtree pull (its PROGRESS.md).
+- The owner, 2026-11-25 about 01:38Z, on the report: "Push to main , I'll.fly.it". Both mains already held it (here 7228cf7, live on https://webfpv.org/sim/ and serving this tree's src/ui/ui.js; the Steam repack e4bf1daf), so nothing more was pushed but this line. The verification scale he picked is fly it. Steam reaches players when he runs Update Steam.

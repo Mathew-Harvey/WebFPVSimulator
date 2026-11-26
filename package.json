@@ -79,6 +79,7 @@
     "check:crash-pacing": "node scripts/crash-pacing.js",
     "check:timeryield": "node scripts/timeryield-check.js",
     "check:timerpace": "node scripts/timerpace-check.js",
+    "check:autolow": "node scripts/autolow-check.js --shell",
     "check:bounce": "node scripts/bounce-check.js",
     "check:stall": "node scripts/stall-check.js",
     "check:pollclock": "node scripts/pollclock-check.js",

@@ -209,6 +209,63 @@ export function createAutoScale() {
     }
   }
 
+  /*
+   * HEADROOM ONLY: the one question Auto can still answer while the timer
+   * paces Low, and the only way off Low there is.
+   *
+   * bug-3402c0cd, 2026-11-25, Brave on "Laptop and desktop with 5x series
+   * GPUs": "Used to look amazing now very clearly grainy. Nothing has been
+   * changed across my settings or computers." The report: Auto, on Low, at
+   * full scale, the timer pacing at 123 frames a second, the GPU at 6.7 ms.
+   * Frame pacing's Auto paces Low with the timer (pacingTimerOn in ui.js),
+   * and Auto stood down for every frame the timer paced (main.js, THE LOOP
+   * WITHOUT VSYNC), on the reasoning that there is no preset below Low to
+   * move to. There is one above it. A promotion is the only way Auto leaves
+   * a preset upward, its evidence is gathered in observe() and nowhere
+   * else, and so a machine on Auto's Low stayed there for good: however it
+   * got there (a session's demotions, or a boot on a software rasteriser,
+   * whose guess sets Low and says a future round may raise it), and the
+   * faster the machine the more surely, because the timer hands the frames
+   * back to the display only when it cannot outdraw it.
+   *
+   * So while the timer paces Low this gathers the promote evidence, by the
+   * rule observe() uses for it, and nothing else: forty five seconds of
+   * frames under 17.5 ms at full scale with the GPU timed under 45 percent
+   * of a sixty hertz frame. It moves no scale and never asks for a lower
+   * preset, so a machine without that headroom, which is nearly every
+   * machine on Low, flies exactly as it did. The timer's interval is shorter
+   * than the display's, so the frame interval half of the rule is easier to
+   * meet here than under the display; the GPU half is the same per frame,
+   * timed queue included, and it is the half that decides. Fences or
+   * nothing: with no GPU timing there is no promotion, as in observe().
+   *
+   * What happens next is the existing rule, unchanged: main.js moves the
+   * preset up one step on the title, at most once a session and never in a
+   * session that came down. Medium is paced by the display, where observe()
+   * watches everything again, so a promotion this machine cannot hold comes
+   * back down, and coming down from a preset Auto raised to sets the
+   * ceiling, which stops it being tried again (autoPresetMove).
+   */
+  function observeHeadroom(dt, gate, targetMs = FRAME_MS) {
+    s.dirty = 0;
+    const target = targetMs > FRAME_MS ? targetMs : FRAME_MS;
+    if (!(dt > 0) || dt > 250) {
+      return;
+    }
+    s.dtEma += (dt - s.dtEma) * 0.1;
+    if (s.warmMs < WARM_MS) {
+      s.warmMs += dt;
+      return;
+    }
+    const gpuKnown = Boolean(gate && gate.on && gate.samples >= 10);
+    const gpuShare = gpuKnown ? gate.gpuMs / target : 0;
+    const quiet = gpuKnown && s.dtEma < EASY_DT * target && gpuShare < PROMOTE_GPU;
+    s.easyFullMs = quiet && s.scale >= 0.999 ? s.easyFullMs + dt : 0;
+    if (s.easyFullMs >= PROMOTE_HOLD_MS) {
+      s.promote = true;
+    }
+  }
+
   /* The caller applied `want`. */
   function applied(scale) {
     s.scale = scale;
@@ -255,7 +312,40 @@ export function createAutoScale() {
     s.promote = false;
   }
 
-  return { state: s, observe, applied, setFloor, resetEvidence };
+  return { state: s, observe, observeHeadroom, applied, setFloor, resetEvidence };
+}
+
+/*
+ * WHICH OF AUTO'S TWO WATCHES THIS FRAME GETS: 'all' (observe), 'headroom'
+ * (observeHeadroom) or 'none'. A decision rather than a condition in
+ * main.js, so it can be held in Node (scripts/autolow-check.js).
+ *
+ *   timer      whether the timer loop is pacing (main.js timerLoop)
+ *   forced     whether the ?loop= address forced the loop for the session
+ *   pacing     the Frame pacing row: 'auto', 'timer' or 'display'
+ *   graphics   the normalised preset
+ *   deviceLow  whether this device starts on Low by detection (a Steam
+ *              Deck, a phone, an iPad: detectDefaultGraphics in quality.js)
+ *
+ * Under the display, everything, as always. Under the timer, the headroom
+ * watch only where the timer is pacing BECAUSE the preset is Low: Frame
+ * pacing on Auto, nothing forcing the loop, the preset Low. Not under Timer,
+ * always, or ?loop=timer, which are a pilot's choice of loop: there Medium
+ * would be timer paced too, observe() would stand down again, and a
+ * promotion that machine could not hold would never come back down. And not
+ * on a device whose own default is Low: that Low was chosen for the hardware
+ * in hand before any frame was drawn ("the first flight has to hold frame
+ * rate"), it is not a measurement that went wrong, and this change is not
+ * the place to start promoting a Steam Deck. It flies as it did.
+ */
+export function autoWatch({ timer, forced, pacing, graphics, deviceLow }) {
+  if (!timer) {
+    return 'all';
+  }
+  if (forced || pacing === 'timer' || graphics !== 'low' || deviceLow) {
+    return 'none';
+  }
+  return 'headroom';
 }
 
 /* The presets in the order Auto moves through them. */

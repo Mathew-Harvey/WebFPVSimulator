@@ -47,7 +47,7 @@
 import * as THREE from 'three';
 import { buildShell } from './render/shell.js';
 import { applyLook } from './render/look.js';
-import { applyPixelRatio, autoMinPixels, bootGuessGraphics, graphicsLabel, inkLinesOn, internalScale, normalizeGraphics, pixelRatioFor, qualityFor, qualityOf, setInkLines } from './render/quality.js';
+import { applyPixelRatio, autoMinPixels, bootGuessGraphics, detectDefaultGraphics, graphicsLabel, inkLinesOn, internalScale, normalizeGraphics, pixelRatioFor, qualityFor, qualityOf, setInkLines } from './render/quality.js';
 import { readGpuInfo } from './render/gpuinfo.js';
 import { makeAttractCamera } from './render/attract.js';
 import { MangaLayer } from './render/manga.js';
@@ -55,7 +55,7 @@ import { measureBudget } from './render/budget.js';
 import { createFlightPerf } from './render/flightperf.js';
 import { estimateSceneBytes } from './render/vram.js';
 import { createGpuGate } from './render/gpugate.js';
-import { AUTO_FLOOR, autoPresetMove, createAutoScale } from './render/autoscale.js';
+import { AUTO_FLOOR, autoPresetMove, autoWatch, createAutoScale } from './render/autoscale.js';
 import { createLatencyMeter } from './render/latency.js';
 import { createTimerYield } from './render/timeryield.js';
 import { paceDelay, drawsPerRefresh, createRafPeriod } from './render/timerpace.js';
@@ -984,6 +984,11 @@ export async function boot({ loading, bootStart, mapId }) {
   });
 
   const gpuInfo = readGpuInfo(shell.renderer);
+  /* Whether this device starts on Low by detection, a Steam Deck, a phone or
+   * an iPad, read once from the user agent: Auto's headroom watch under the
+   * timer leaves that Low alone (autoWatch in autoscale.js). */
+  const deviceLowByDefault = detectDefaultGraphics() === 'low';
+  const autoWatchArg = { timer: false, forced: false, pacing: 'auto', graphics: 'low', deviceLow: false };
   /* Whether the browser granted the short path to the glass, for the Low
    * latency view row's note: it is a request, and not every platform can
    * honour it. See buildShell. */
@@ -12110,9 +12115,14 @@ export async function boot({ loading, bootStart, mapId }) {
    * does not exist) and Auto graphics (its evidence is dt against the
    * display's period). Both are gated at their call sites below on the
    * live flag, so they resume the moment the display paces again. On Low
-   * that parks Auto's levers while the timer runs, which is accepted:
-   * there is no preset below Low for it to move to, and the Render scale
-   * slider stays the pilot's. The predicted view keeps the learner's held
+   * that parks Auto's levers while the timer runs, which was accepted on
+   * the reasoning that there is no preset below Low for it to move to, and
+   * the Render scale slider stays the pilot's. There is a preset above it,
+   * though, and a promotion is the only way up: bug-3402c0cd, a machine with
+   * a new GPU left on Auto's Low for good. So one watch stays on under the
+   * timer, for headroom only, where the timer paces because the preset is
+   * Low (autoWatch and observeHeadroom in autoscale.js); it moves no scale
+   * and asks for nothing lower. The predicted view keeps the learner's held
    * period as its horizon, a small over lead under the timer, accepted.
    * And the physics contract holds as it does under rAF: the accumulator
    * takes this loop's capped dt, and no delta reaches the integrator.
@@ -14931,14 +14941,33 @@ export async function boot({ loading, bootStart, mapId }) {
      */
     /* Capture mode measures nothing real: Auto graphics and the latency
      * learner read the GPU's own fence times, which differ from run to run. */
-    if (ui.settings.graphicsAuto && !timerLoop && !capturing && mapReady && !swapInFlight && !replayMode && !film && worldLive
+    /*
+     * Under the timer, the one watch Auto keeps is for headroom, and only
+     * where the timer is pacing because the preset is Low: see autoWatch and
+     * observeHeadroom in autoscale.js (bug-3402c0cd). Until then Auto stood
+     * down for every frame the timer paced, so a machine on Auto's Low was
+     * never measured again and stayed on Low whatever its GPU.
+     */
+    if (ui.settings.graphicsAuto && !capturing && mapReady && !swapInFlight && !replayMode && !film && worldLive
       && ((mode === 'flight' && ui.screen === 'flight') || (mode === 'title' && ui.screen === 'title'))) {
-      autoScale.observe(dt, renderMs, blockMs, gpuGate.state, drawThis, latency.targetMs());
-      if (autoScale.state.dirty) {
-        autoFactor = autoScale.state.want;
-        applyRenderScale(ui.settings);
-        autoScale.applied(autoFactor);
-        ui.setAutoScale(autoFactor);
+      /* One object, written not allocated: the frame loop allocates
+       * nothing (P8). */
+      autoWatchArg.timer = timerLoop;
+      autoWatchArg.forced = loopForce !== null;
+      autoWatchArg.pacing = ui.settings.pacing;
+      autoWatchArg.graphics = normalizeGraphics(ui.settings.graphics);
+      autoWatchArg.deviceLow = deviceLowByDefault;
+      const watch = autoWatch(autoWatchArg);
+      if (watch === 'all') {
+        autoScale.observe(dt, renderMs, blockMs, gpuGate.state, drawThis, latency.targetMs());
+        if (autoScale.state.dirty) {
+          autoFactor = autoScale.state.want;
+          applyRenderScale(ui.settings);
+          autoScale.applied(autoFactor);
+          ui.setAutoScale(autoFactor);
+        }
+      } else if (watch === 'headroom') {
+        autoScale.observeHeadroom(dt, gpuGate.state, latency.targetMs());
       }
     }
     /*

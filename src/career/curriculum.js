@@ -1319,18 +1319,29 @@ export const CHAPTERS = [
         camera: 'fpv',
         world: built(hibariYard()),
         briefing: {
-          goal: 'A Powerloop: fly at something, up and over it backwards in a full loop, and away underneath the way you came in.',
-          why: 'The Powerloop is the trick every freestyle pilot learns first, because it is a flip that goes somewhere. It is judged round an object, so it needs one.',
+          goal: 'A Powerloop: under something, up and over it backwards in a full loop, and out underneath it the way you came in.',
+          why: 'The Powerloop is the trick every freestyle pilot learns first, because it is a flip that goes somewhere. It is judged round an object, so it needs one with air under it.',
+          /*
+           * THE FOOTBRIDGE AND THE BILLBOARD, because a Powerloop is
+           * counted only as a whole lap begun UNDER a bar, and these are
+           * the two in the yard a pilot can fly under low down. This said
+           * "a container stack or the bando wall" until 2026-11-27, which
+           * stand on the ground: nothing to go under, and so no lap, so a
+           * pilot who did as it said never passed (bug-d0d887f6,
+           * bug-39be50e4). scripts/trickspot-check.js flies a Powerloop
+           * round every object a lap trick lesson names, and fails a line
+           * that names anything else.
+           */
           steps: [
-            'Fly towards a container stack or the bando wall, low.',
-            'Pull back hard with throttle up, over the top of it.',
-            'Throttle down over the top, then catch it on the way down the far side.',
+            'Fly at the footbridge on the east lane, or the billboard, low enough to pass under it.',
+            'Under it, pull back hard with throttle up: up the far side and over the top.',
+            'Throttle down over the top, catch it on the way down, and fly out under it again.',
           ],
           sticks: [{ stick: 'pitch', dir: 'back' }, { stick: 'throttle', dir: 'up' }, { stick: 'throttle', dir: 'down' }],
           note: 'Tricks are named by the game as it watches you fly. If it names something else, the coach will say what it saw.',
         },
         objectives: [
-          { kind: 'trick', text: 'Land a Powerloop', need: [{ names: ['Powerloop', 'Inverted 360 Powerloop'] }], hint: 'Pull up and over something solid.' },
+          { kind: 'trick', text: 'Land a Powerloop', need: [{ names: ['Powerloop', 'Inverted 360 Powerloop'] }], hint: 'Under it first, then up and over.' },
         ],
         medals: { gold: 20000, silver: 40000 },
         crashTip: 'Start the loop further away from the object, and pull harder.',
@@ -1345,9 +1356,12 @@ export const CHAPTERS = [
         world: built(hibariYard()),
         briefing: {
           goal: 'A Split-S: over an object, half a roll to upside down, then pull through half a loop and out underneath, going back the way you came.',
-          why: 'The Split-S turns you round and drops you in one move. Over a wall or a roof edge it is a trick; on a race track it is how you take a tight turn downwards.',
+          why: 'The Split-S turns you round and drops you in one move. Over something you can drop back under, it is a trick; on a race track it is how you take a tight turn downwards.',
+          /* Over a bar, like the Powerloop's: a half lap begun OVER it and
+           * ended under it. It said "a roof edge" until 2026-11-27, which has
+           * no under. See 9-2. */
           steps: [
-            'Fly over something, a roof edge or the billboard, with height.',
+            'Fly over the billboard or the footbridge, with height.',
             'Half roll to upside down as you pass over it.',
             'Pull back through half a loop and fly out underneath.',
           ],
@@ -1514,15 +1528,18 @@ export const CHAPTERS = [
         briefing: {
           goal: 'In one run: a Powerloop, a Split-S, and the container tunnel.',
           why: 'Freestyle is tricks and lines in one flight. The container tunnel is the tightest gap in the yard.',
+          /* The objects 9-2 and 9-3 name, for the reason given there. This
+           * said "a Powerloop over anything solid" and "a roof edge" until
+           * 2026-11-27. */
           steps: [
-            'A Powerloop over anything solid.',
-            'A Split-S off a roof edge or the billboard.',
+            'A Powerloop round the footbridge or the billboard: under it, up and over.',
+            'A Split-S over the billboard or the footbridge.',
             'Then line up from far out and fly the container tunnel.',
           ],
           sticks: [{ stick: 'pitch', dir: 'back' }, { stick: 'roll', dir: 'tap' }, { stick: 'throttle', dir: 'hold' }],
         },
         objectives: [
-          { kind: 'trick', text: 'Land a Powerloop', need: [{ names: ['Powerloop', 'Inverted 360 Powerloop'] }], hint: 'Up and over something solid.' },
+          { kind: 'trick', text: 'Land a Powerloop', need: [{ names: ['Powerloop', 'Inverted 360 Powerloop'] }], hint: 'Under it first, then up and over.' },
           { kind: 'trick', text: 'Land a Split-S', need: [{ names: ['Split-S'] }], hint: 'Over it, half roll, pull through.' },
           { kind: 'gap', text: 'The container tunnel', names: ['CONTAINER TUNNEL'], hint: 'Line up from well back.' },
         ],

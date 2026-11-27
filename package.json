@@ -60,6 +60,7 @@
     "check:roomfit": "node scripts/roomfit-check.js",
     "check:bedslot": "node scripts/bedslot-check.js",
     "check:deck": "node scripts/deck-check.js",
+    "check:trickspots": "node scripts/trickspot-check.js",
     "check:cartrap": "node scripts/cartrap-check.js",
     "check:roompick": "node scripts/roompick-check.js",
     "check:tuneplant": "node scripts/tuneplant-check.js",

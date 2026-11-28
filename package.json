@@ -82,6 +82,7 @@
     "check:timerpace": "node scripts/timerpace-check.js",
     "check:autolow": "node scripts/autolow-check.js --shell",
     "check:bounce": "node scripts/bounce-check.js",
+    "check:dirtair": "node scripts/dirt-air-check.js",
     "check:stall": "node scripts/stall-check.js",
     "check:pollclock": "node scripts/pollclock-check.js",
     "check:takeoff": "node scripts/takeoff-check.js",

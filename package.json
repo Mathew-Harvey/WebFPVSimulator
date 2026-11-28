@@ -183,6 +183,7 @@
     "tuneinvite:selftest": "node scripts/tuneinvite-selftest.js",
     "test:edge": "node edge/selftest.js",
     "lint:nouns": "node scripts/noun-lint.js",
+    "lint:i18n": "node scripts/i18n-check.js",
     "lint:devices": "node scripts/device-check.js",
     "lint:arcade": "node scripts/arcade-check.js",
     "lint:propwash": "node scripts/propwash-check.js",

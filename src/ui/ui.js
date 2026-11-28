@@ -43,6 +43,7 @@
  */
 
 import { MAPS } from '../maps/registry.js';
+import { tr, LANGUAGES, SHIPPED, currentLanguage, setLanguage } from '../i18n/i18n.js';
 import {
   CAL_STEPS, KEY_THROTTLE_MODES, normaliseKeyThrottle,
   PAD_DEADZONES, normalisePadDeadzone, PAD_THROTTLES, normalisePadThrottle,
@@ -260,7 +261,7 @@ import {
 import {
   downloadCli, drawAttitude, FcSession, paintPageStrip, paintTabStrip,
 } from './fc.js';
-import { steamLine, wishlistAllowed } from '../steam/edition.js';
+import { STEAM_EDITION, steamLine, wishlistAllowed } from '../steam/edition.js';
 import { fcDumpKeyFor, readFcDump, writeFcDump } from '../fc/dump.js';
 /*
  * The pilot's own tracks live in this browser, and the Track room lists
@@ -3427,7 +3428,7 @@ function el(tag, cls, text) {
     n.className = cls;
   }
   if (text != null) {
-    n.textContent = text;
+    n.textContent = tr(text);
   }
   return n;
 }
@@ -5574,6 +5575,31 @@ function feelItem() {
  * `scaleNow` is Auto's resolution factor, from main.js, so the note can say
  * what it is doing rather than what it might do.
  */
+/* The Steam edition's language row. The names are in their own scripts so a
+ * pilot who cannot read the current language can find theirs. Picking one
+ * saves it and reloads the page, which is the one place the text is rebuilt
+ * from scratch, so no screen has to be repainted in place. */
+function languageItem() {
+  const shipped = LANGUAGES.filter((l) => SHIPPED.includes(l.code));
+  const nameOf = (c) => (shipped.find((l) => l.code === c) || shipped[0]).name;
+  const cur = currentLanguage();
+  const set = (c) => {
+    if (c === cur) {
+      return;
+    }
+    setLanguage(c).then(() => window.location.reload());
+  };
+  return {
+    label: 'Language',
+    note: 'The language of the menus. The game restarts to apply it.',
+    value: nameOf(cur),
+    current: cur,
+    options: shipped.map((l) => ({ value: l.code, label: l.name })),
+    pick: (v) => set(v),
+    adjust: (d) => set(cycle(shipped.map((l) => l.code), cur, d)),
+  };
+}
+
 function graphicsItem(s, scaleNow) {
   const id = normalizeGraphics(s.graphics);
   const pct = Math.round((Number(scaleNow) || 1) * 100);
@@ -11868,6 +11894,7 @@ export class Ui {
           { label: 'Flight feel', section: true },
           tuningItem(s, this.tuneCaps, 'Advanced flight feel tuning'),
         ] : []),
+        ...(STEAM_EDITION ? [languageItem()] : []),
         { label: 'Screen', section: true },
         graphicsItem(s, this.autoScaleNow),
         toggle(
@@ -22590,9 +22617,9 @@ export class Ui {
       from = this.roomFrom;
     }
     if (from && SCREEN_TITLES[from] && from !== 'title') {
-      return [SCREEN_TITLES[from], here];
+      return [tr(SCREEN_TITLES[from]), tr(here)];
     }
-    return CRUMBS[this.screen] || [here];
+    return (CRUMBS[this.screen] || [here]).map(tr);
   }
 
   /* What is loaded, in the top right, so no screen has to be left to find out

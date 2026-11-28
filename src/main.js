@@ -5086,6 +5086,8 @@ export async function boot({ loading, bootStart, mapId }) {
       return input.source === 'the touch sticks' ? 'touch' : 'keys';
     },
     roomInfo: (info) => ui.setRoomInfo(info),
+    /* Leave room: the menu page the room was reached from (ui.roomLeft). */
+    leftRoom: (was) => ui.roomLeft(was),
     /* What a double click on the hosting map page opens ("link only"),
      * for the page's band. */
     hostKind: (kind) => ui.setHostKind(kind),

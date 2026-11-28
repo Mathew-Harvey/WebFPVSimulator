@@ -7,7 +7,7 @@
  * a round ending and the next one starting, leaving, a restart, a quad of
  * another size, and the results table's buttons.
  *
- *   node scripts/minigames-check.js [--only=menu,quadswap,frontdoor,load,yard,touch,herd,driftbots,goats,drift,dogfight,ribbon,scale]
+ *   node scripts/minigames-check.js [--only=menu,afterpause,quadswap,frontdoor,load,yard,touch,herd,driftbots,goats,drift,dogfight,ribbon,scale]
  *
  * Minutes of wall clock on a software rasteriser. Written for the bug hunt
  * of 2026-10-29 ("Across all games before we push to main, please do a bug
@@ -611,6 +611,70 @@ async function sceneMenu() {
 }
 
 /*
+ * A MINI GAME FROM THE MENUS, AFTER A RUN WHOSE PAUSE OPENED A PAGE. The
+ * owner, 2026-11-28: "picked mini games, play with bots and that took me
+ * back to the mini games menu". A page opened from the pause menu
+ * (Settings, Rates, Tune, Change map) marks the menus as inside a paused
+ * run, and nothing took the mark off when the run was quit. The map cards
+ * refuse another aircraft inside a paused run, so with the whoop seated a
+ * five inch game's door closed on the Mini games page with nothing said.
+ * The same mark sent Back from a room opened on a results page to a pause
+ * menu with no run under it.
+ */
+async function sceneAfterPause() {
+  console.log('afterpause: a mini game from the menus, after a run whose pause opened a page');
+  const { page, ev, until } = await flying('city');
+  const onGames = "const u = window.__ui; return u.screen === 'title' && u.onGate() && u.gatePageNow() === 'games';";
+  try {
+    await ev("window.__ui.act('pause'); window.__ui.show('paused'); return 1;");
+    await until("return window.__ui.screen === 'paused'", 5000);
+    /* The whoop, by its picture on the pause's Quad row. */
+    await ev("document.querySelector('.qp-mini-hover .qp-mini[data-craft=\"whoop65\"]').click(); return 1;");
+    check('the pause seats the whoop', await until("return window.__ui.settings.airframe === 'whoop65';", 8000), await ev('return window.__ui.settings.airframe;'));
+    await ev("window.__ui.act('pilot'); return 1;");
+    check('Settings opens from the pause', await until("return window.__ui.screen === 'pilot'", 5000));
+    await sleep(300);
+    await page.tap('Escape');
+    check('and Escape is the pause again', await until("return window.__ui.screen === 'paused'", 5000), await ev('return window.__ui.screen;'));
+    /* The run goes on and ends on a results page: a room opened from
+     * there is one Back from the results, not from a pause menu with no
+     * run under it. */
+    await ev("window.__ui.settings.freestyleScoring = 'scored'; window.__ui.writeSettings(); window.__ui.act('resume'); return 1;");
+    check('resume flies on', await until("return window.__ui.screen === 'flight'", 10000));
+    await ev('window.__scoreFinish(); return 1;');
+    check('the run ends on its results page', await until("return window.__ui.screen === 'results'", 10000));
+    await ev("const it = window.__ui.items().find((i) => i.action === 'freestyle'); window.__ui.act(it.action); return 1;");
+    check('Change map opens the map cards from it', await until("return window.__ui.screen === 'freestyle'", 8000));
+    await sleep(600);
+    await page.tap('Escape');
+    await sleep(600);
+    check('and Escape is the results page again, not a pause menu', await until("return window.__ui.screen === 'results'", 5000), await ev('return window.__ui.screen;'));
+    await ev("const it = window.__ui.items().find((i) => i.action === 'title'); window.__ui.act(it.action); return 1;");
+    check('Back to title is the cover', await until("const u = window.__ui; return u.screen === 'title' && u.onGate() && u.gatePageNow() === 'cover';", 8000));
+    await ev("window.__ui.act('gate-games'); return 1;");
+    check('Mini games turns to its page', await until(onGames, 5000));
+    /* Each game flown on a map of its own, with bots: its page comes up.
+     * On the fault the door shut and the page behind it was all there was. */
+    for (const [card, name] of [['mg-ball', 'Quad Ball'], ['mg-goats', 'goat herding'], ['mg-drift', 'Drift Matsuri']]) {
+      await ev(`const u = window.__ui; u.setCursor(u.items().findIndex((i) => i.card === '${card}')); u.select(); return 1;`);
+      check(`${name} asks how to play`, await until("return Boolean(document.querySelector('.df-door'))", 30000));
+      await sleep(500);
+      await ev("document.querySelector('.df-door .df-doorcard').click(); return 1;");
+      const up = await until("return Boolean(document.querySelector('.df-page') && !document.querySelector('.df-door'))", 30000);
+      check(`and with bots opens its own page, not the Mini games page again`, up,
+        await ev("const u = window.__ui; return JSON.stringify({ screen: u.screen, page: u.onGate() ? u.gatePageNow() : '', air: u.settings.airframe });"));
+      await sleep(500);
+      await page.tap('Escape');
+      check(`Escape from it is the Mini games page`, await until(onGames, 8000));
+    }
+    const errs = pageErrors(page);
+    check('no errors on the page', errs.length === 0, errs.slice(0, 3).join(' | '));
+  } finally {
+    await page.close();
+  }
+}
+
+/*
  * The yard track's HUD (src/ui/yardhud.js), on the maps that have one, up
  * by the spawn once the quad is in the air: "Whoop only: land in the white
  * box" sat over a ribbon round's results on Bardwell's house in the room
@@ -824,6 +888,7 @@ async function sceneDriftBots() {
 
 try {
   if (wanted('menu')) await sceneMenu();
+  if (wanted('afterpause')) await sceneAfterPause();
   if (wanted('quadswap')) await sceneQuadSwap();
   if (wanted('frontdoor')) await sceneFrontDoor();
   if (wanted('load')) await sceneLoadKeys();

@@ -77471,3 +77471,69 @@ None. Every line is a menu page, a results page, a banner or a room's sheet. Not
 ### On main
 
 The owner, 2026-11-28 10:43Z, on the report of draft PR 293 (what changed, what to fly, the latency line, and the question of which check to run, with "fly it" recommended): "push to main". That word covers the whole of this entry and nothing else. Main had not moved since the merge above (29ec1f2), so main is fast forwarded to this branch, no force. No check was run again for the push: no file changed after the merged tree's run of `check:rooms` (146 of 146), `net:selftest` and `lint:preload` but this file. `npm run verify` and `node scripts/shots.js` were not run, and the owner flies it live. After the push the live site is loaded on the new deploy, and a deploy that does not come up clean is undone with a revert commit on main and written up in the next entry.
+
+## 2026-11-28 | rooms | Leave room goes back to the Multiplayer page, and Play with bots no longer drops back to Mini games after a run quit from a pause page
+
+The owner, 2026-11-28 11:17Z, flying the build of the entry above on the live site, with two pictures (Quad Ball's "How do you want to play?" door over the Mini games page, and the Mini games page with no door): "another bug, i hosted a room i left the room but i didn't get taken back to the step before... just a menu in a 'room'? then i return the start menu started another multi playter, picke dminit games - play with bots and that took me back to the mini games mentu".
+
+Two reports, and they are two things. Both were run against the real shell and a local board before anything was changed.
+
+### Play with bots went back to the Mini games page
+
+Not reproduced by any plain room route (host, leave, quit, Mini games, Quad Ball, Play with bots: the match page opened every time). Found by reading `pickerShelfChosen`, shown with the state forced, and then by a route with no room in it at all.
+
+`ui.returnTo` is the pause chain's pointer: 'paused' while a page (Settings, the map cards, the quad picker) is one Back from a paused run. The only thing that ever wrote it again was the next page opened through `act()`. Quit to title, a results page and the air itself all left it standing. The doors that open the map cards without `act()` (a mini game's panel through `playMapGame`, and Host a room) then read a run that had been over for minutes, and `pickerShelfChosen` refuses another aircraft inside a paused run: it writes a note on a picker that is not on screen, and returns. So with the whoop seated, a five inch game's door (Quad Ball, Goat herding, Drift) shut on the Mini games page behind it with nothing said, every time, until the page was reloaded.
+
+The route that shows it, no room needed: fly, pause, pick the whoop from the pause menu's Quad row, open Settings from the pause menu and come back, fly on, quit to the title, Mini games, Quad Ball, Play with bots. The same stale pointer did a second thing: a run that ends on its results page after such a pause, then Change map, then Back, was a pause menu with no run under it.
+
+The fix is the root and one place (`Ui.show` in `src/ui/ui.js`): `returnTo` goes back to 'title' whenever the title, the flight or a results page comes up. None of the three is ever a page of a paused run, and the page opened from the next pause writes 'paused' again as it always did.
+
+This is older than today's room change: the new check fails the same five lines on main db4a625 and on 29ec1f2, the tree before the room flow.
+
+**Not shown: that this was the owner's own route.** It needs a page opened from a pause menu at some point in the visit and another aircraft seated than the game's (the whoop). Both are ordinary in an evening of rooms, and it is the only way found in which that door shuts on that page, but the pictures do not say which presses came before them.
+
+### Leave room left a pause menu over the room's map
+
+Reproduced, and it was doing what it was written to do: Leave room dropped the room and kept the pilot where they were, on the pause menu over the room's map, with a toast that said "Flying solo" and a note on the row that said "Fly on here, solo." The owner read it as a menu in a room that led nowhere, and the way to the menus was a second press (Quit to title) they had to find.
+
+The reading taken of "the step before": the page the room was reached from.
+
+- **Leave room lands on the Multiplayer page** for the room's way (freestyle, whoops, race), with the cursor on Host a room, so another room is one press and Back is the page that asks what to fly (`Ui.roomLeft` in `src/ui/ui.js`, asked for by `leave()` in `src/net/together.js` through the shell's new `leftRoom`). The run ends by the same `act('title')` Quit to title uses, so the shell hears it once and nothing of the room's flight is under the menus.
+- **Out of a mini game's room it is the Mini games page**, on that game's panel, as that room's "Back to Mini games" already was. Its pause and its results page have that one way out now and not two rows that land on the same page.
+- **Every way out says where it lands** (`roomExitRows`, one list for the pause menu and the results page): "Leave room: Back to Multiplayer." and "Quit to title: Leaves the room too." The box that asks first says "You go back to the Multiplayer page." or "You go back to Mini games." in place of "You carry on flying solo where you are."
+- The toast is "You left the room." Nobody is flying when it is said, on either path.
+- A room left from a menu page (no run up) leaves the pilot on that page, as before.
+
+**What this takes away:** flying on alone on the same map after leaving is no longer one press. It is Fly solo and the map again. If the owner wants that kept, it is a third row and not a change to this one.
+
+Latency: none. Menu pages and one assignment in `show()`; nothing in the frame, the input path, the physics or the wire.
+
+### Checks
+
+- `scripts/minigames-check.js` has a new scene, `afterpause`, in `npm run check:minigames`: the route above with no room, then all three five inch games' doors. 19 of 19 with the fix. With main db4a625's `src` under this branch's script, 5 fail: "and Escape is the results page again, not a pause menu" (it is `paused`), Quad Ball's "and with bots opens its own page, not the Mini games page again" (the title's Mini games page, the whoop still seated), and the three that follow from that door having shut. The same five on 29ec1f2's `src`.
+- `scripts/rooms-check.js` (`npm run check:rooms`): the `flow` scene leaves a room and reads the pause rows, the box's words, the page landed on, the way and the cursor, the toast, that no run is under the menus, and Back; the `bots` scene reads a game room's one way out and leaves it by the room page's Leave. Its two helpers that left a room and flew on (`leaveRoom`, then `toFlight`) fly again from the menus now (`soloAgain`). On the final tree: 156 of 156 (250 s; the pair scene's note about the card at takeoff printed, as it does on main). Four lines were added to `flow` after that run, for Leave room from a results page (the same two rows, the box, the Multiplayer page, nothing under it), and `--only=flow` was run with them: 51 of 51.
+- With main db4a625's `src`, `node scripts/rooms-check.js --only=flow,bots`: 46 passed, 11 failed, every one a new line: the three in `bots`, the seven in `flow`, and the wait that follows them.
+- `node scripts/together-shots.js --only=lobby,shelf,teach`, the three scenes that leave a room (its helper waits for the Multiplayer page now, and `lobby` has a line for the landing): all passed, 48 lines. The script is still not an npm script.
+- `node scripts/minigames-check.js --only=menu,afterpause`: all passed, 43 and 19. The whole of `npm run check:minigames` after it, because the line in `show()` is under every page: 190 pass, 2 fail (herd "the round's HUD is up and the map's own steps aside", goats "and steps aside while the fight is on"), and `--only=herd,goats` with main's `src` fails the same two.
+- `npm run check:infected:shell`: all passed, 43 lines.
+- `npm run net:selftest`: all passed. `npm run lint:preload`: 2 of 2.
+- `npm run lint:shell`: 12 problems, and the list is identical with this branch's `src` and with main's (the two outputs diffed): the seven screens' overflow, the stick help fold by 1 px and the four gate lines the entry above records. The baseline was not touched.
+- Not run: `npm run verify` (nothing here is physics, the plant, the ABI or the build), `node scripts/shots.js`. Not flown by a person, and not run against the live board.
+
+### What went wrong
+
+- The first hour went on room routes for the Play with bots report, because the owner's sentence put it after a room. None of them failed. It was the map cards' own refusal, read in the code, that pointed at the stale pointer.
+- The first probe for the Quad Ball door waited for any match page and the door is one, so it reported a pass on the wrong page. And a press inside the door's 300 ms of deafness was a flake of the probe's own.
+- A probe seeded the whoop into storage and the hosting page put the five inch back (the maps shelf seats its own way). The pause menu's Quad row is the natural way to have the whoop under a five inch door.
+- The new line "Back from there is the page that asks what to fly" failed on its first run: the after-flight support panel takes the first Back when it is up. The check presses Back once more when the panel is shown. The panel is right to be there (below).
+- `together.js` first kept "Flying solo" for the path where the shell does not land the pilot. That path is a room left from a menu page, where nobody is flying either, so the words were wrong on both and the toast is one sentence now. It was changed while a full `check:rooms` was running, so that run (156 of 156) is not counted above and the suite was run again on the final tree.
+
+### Found and not touched
+
+- **The after-flight support panel can come up over the right of the Multiplayer page after Leave room**, as it does on any title page after any flight exit, and it takes the first Back. It is not new and not the room's, so it was left; it is the first thing the owner may notice on the new landing.
+- `npm run check:minigames`' two lines and `npm run lint:shell`'s twelve, above, are main's in this container and none of them is this change's.
+- "Flying solo." still ends the two banners for a room that closed under a pilot (`together.js`), where the pilot is in the air and it is true.
+
+### For the Steam repack
+
+`src/ui/ui.js`, `src/net/together.js` and `src/main.js` again, and all of it is wanted there as it is here: take upstream's side on these lines.

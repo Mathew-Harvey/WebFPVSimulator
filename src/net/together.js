@@ -514,6 +514,8 @@ function loadStore() {
  *   pickDone()     a move's map is picked: the picker goes, and the pause
  *                  menu the host came from is back
  *   roomInfo(info) the pause menu's rows: { code, name, n, host } or null
+ *   leftRoom(was)  Leave room was pressed and the room is gone: the menu
+ *                  page before it, for { way, game }
  *   forget(id)     a pilot who left, for the craft's name tags
  *   sound(name)    the menus' own click
  *   mp             keep ?mp=1 on the links this writes
@@ -1534,10 +1536,33 @@ export function createTogether(shell) {
     sheetConnecting({ hosting: entry, step: 0 });
   }
 
+  /*
+   * LEAVE ROOM IS BACK ON THE STEP BEFORE THE ROOM. The owner, 2026-11-28:
+   * "i hosted a room i left the room but i didn't get taken back to the
+   * step before... just a menu". It left the pilot where they were, on a
+   * pause menu over the room's map with a toast that said flying solo,
+   * and the way back to the menus was a second press they had to find.
+   * Now the shell lands them on the Multiplayer page for the room's way,
+   * or on Mini games out of a game's room (ui.js roomLeft). Read before
+   * the room is dropped: the room says which page that is. A room left
+   * from a menu page leaves the pilot on that page. Either way nobody is
+   * flying when this is done, so the toast no longer says they are.
+   */
   function leave() {
+    const r = heldRoom();
+    const was = r ? { way: r.way, game: r.game || '' } : null;
     dropSession();
     closeAll();
-    toast('You left the room. Flying solo.');
+    if (was && shell.leftRoom) {
+      shell.leftRoom(was);
+    }
+    toast('You left the room.');
+  }
+
+  /* Where Leave room lands, for the words that ask first. */
+  function leaveLands() {
+    const r = heldRoom();
+    return r && r.game ? 'You go back to Mini games.' : 'You go back to the Multiplayer page.';
   }
 
   function mute(p, on) {
@@ -4406,7 +4431,7 @@ export function createTogether(shell) {
       ban: [`BAN ${p ? p.handle.toUpperCase() : ''}?`, 'They leave now, and this browser cannot join again until the room closes.', 'Ban', 'danger'],
       makeHost: [`MAKE ${p ? p.handle.toUpperCase() : ''} HOST?`, 'They get the host tools and you become a pilot. They can hand it back.', 'Make host', 'amber'],
       unname: [`GIVE ${p ? p.handle.toUpperCase() : ''} A MADE UP NAME?`, p && !p.via ? 'Their quad shows a made up name instead, for the rest of this room, whatever they type.' : 'Their quad shows the room\'s made up name instead, and that account cannot use its name in this room again.', 'Made up name', 'danger'],
-      leave: ['LEAVE THE ROOM?', 'You carry on flying solo where you are. The room carries on without you.', 'Leave', 'danger'],
+      leave: ['LEAVE THE ROOM?', `${leaveLands()} The room carries on without you.`, 'Leave', 'danger'],
     }[what];
     aboutId = p ? p.id : 0;
     aboutHostTool = what !== 'leave';

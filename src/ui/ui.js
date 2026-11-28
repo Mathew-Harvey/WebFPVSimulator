@@ -5432,6 +5432,27 @@ function miniGameExitLabel(roomsOn) {
   return roomsOn ? 'Back to Mini games' : 'Quit to title';
 }
 
+/*
+ * THE WAYS OUT OF A ROOM, for its pause menu and for a results page in it.
+ * Each row says where the press lands. Leave room is the step before the
+ * room, the Multiplayer page (Ui.roomLeft); Quit to title is the cover and
+ * leaves the room too. A game's room has one way out, because both rows
+ * would land on the Mini games page: Back to Mini games, as the game's
+ * solo pause says it. Leave room used to keep the pilot on the pause menu
+ * over the map, flying solo, which the owner read as a menu that led
+ * nowhere (2026-11-28).
+ */
+function roomExitRows(r) {
+  const game = Boolean(r && (r.ball || r.goats || r.drift || r.dogfight || r.ribbon || r.infected));
+  if (game) {
+    return [{ label: miniGameExitLabel(true), action: 'room-title', note: 'Leaves the room too.' }];
+  }
+  return [
+    { label: 'Leave room', action: 'room-leave', note: 'Back to Multiplayer.' },
+    { label: 'Quit to title', action: 'room-title', note: 'Leaves the room too.' },
+  ];
+}
+
 function miniGamePauseItems(s, game, flightKey, roomsOn, quadRow = null) {
   const g = MINI_GAME_PAUSE[game] || MINI_GAME_PAUSE.dogfight;
   return [
@@ -12366,14 +12387,7 @@ export class Ui {
         },
         { label: 'Elsewhere', section: true },
         { label: 'Settings', action: 'pilot', note: 'Your name, your radio, graphics and sound.' },
-        { label: 'Leave room', action: 'room-leave', note: 'Fly on here, solo.' },
-        /* A game room's way out lands on the Mini games page (room-title in
-         * act), so it says so, as the game's solo pause does. */
-        {
-          label: (r.ball || r.goats || r.drift || r.dogfight || r.ribbon || r.infected) ? miniGameExitLabel(true) : 'Quit to title',
-          action: 'room-title',
-          note: 'Leaves the room too.',
-        },
+        ...roomExitRows(r),
       ];
     }
     if (this.screen === 'paused' && this.dogfight) {
@@ -18122,6 +18136,24 @@ export class Ui {
       /* A flight is under every page from here until the title is. */
       this.runUnder = screen === 'flight';
     }
+    /*
+     * THE PAUSE CHAIN ENDS WITH THE RUN. returnTo is 'paused' while a room
+     * is one Back from a paused run, and the only thing that ever wrote it
+     * again was the next room opened through act(). Quitting to the title,
+     * a results page and the air itself all left it standing, so the doors
+     * that open the map cards without act (a mini game's panel, Host a
+     * room) read a run that had been over for minutes. The owner,
+     * 2026-11-28: "picked mini games, play with bots and that took me back
+     * to the mini games menu". The map cards refuse another aircraft
+     * inside a paused run (pickerShelfChosen), so with the whoop seated a
+     * five inch game's door shut on the page behind it with nothing said,
+     * for the rest of the visit. And a room opened from a results page
+     * after such a run went Back to a pause menu with no run under it.
+     * None of these three screens is ever a room of a paused run.
+     */
+    if (screen === 'title' || screen === 'flight' || screen === 'results') {
+      this.returnTo = 'title';
+    }
     if (this.hostPick && !isCardScreen(screen)) {
       this.endHostPick();
     }
@@ -23322,14 +23354,48 @@ export class Ui {
     if (!r) {
       return [{ label: 'Back to title', action: 'title' }];
     }
-    return [
-      { label: 'Leave room', action: 'room-leave', note: 'Fly on here, solo.' },
-      {
-        label: (r.ball || r.goats || r.drift || r.dogfight || r.ribbon || r.infected) ? miniGameExitLabel(true) : 'Quit to title',
-        action: 'room-title',
-        note: 'Leaves the room too.',
-      },
-    ];
+    return roomExitRows(r);
+  }
+
+  /*
+   * LEAVE ROOM HAS BEEN PRESSED AND THE ROOM IS GONE (together.js leave):
+   * the pilot lands on the step before the room, not on a pause menu over
+   * its map. The owner, 2026-11-28: "i left the room but i didn't get
+   * taken back to the step before... just a menu". Out of a game's room
+   * that is the Mini games page, on the game's panel, as its Back to Mini
+   * games is. Out of any other it is the Multiplayer page for the room's
+   * way, on Host a room: one press from another room, and Back is the
+   * page that asks what to fly. The run ends as Quit to title ends it, by
+   * the same act, so the shell hears it once and nothing of the room's
+   * flight is left under the menus. False when no run is up (the room left
+   * from a menu page), and the pilot stays where they are.
+   */
+  roomLeft(was) {
+    if (!this.roomsOn || !(this.screen === 'paused' || this.screen === 'results' || this.screen === 'flight')) {
+      return false;
+    }
+    const game = was && was.game ? String(was.game) : '';
+    if (game) {
+      this.gameLast = game === 'drift' ? (this.settings.map === 'moto' ? 'mg-moto' : 'mg-drift') : `mg-${game}`;
+      this.quitToGames = true;
+      this.act('title');
+      this.quitToGames = false;
+      return true;
+    }
+    this.act('title');
+    if (this.screen !== 'title' || !this.onGate()) {
+      return true;
+    }
+    const way = was && GATE_MP_WAYS.some((w) => w.way === was.way) ? was.way : 'freestyle';
+    this.roomWay = way;
+    this.gateSide = 'together';
+    this.gatePage = 'together';
+    this.gateTurn = 'back';
+    this.titleCardKey = '';
+    this.cursor = 0;
+    this.renderMenu();
+    this.setCursor(this.titleStop());
+    return true;
   }
 
   /*

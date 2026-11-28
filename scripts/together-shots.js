@@ -869,7 +869,9 @@ async function sceneLobby() {
     await page.evaluate("(() => { window.__ui.act('room-leave'); return 1; })()");
     await sheetIs(page, 'confirm');
     await pressKey(page, 'yes');
-    await page.until(`${T} && !window.__together().inRoom`, 5000);
+    await page.until(`${T} && !window.__together().inRoom && window.__ui.screen === 'title'`, 8000);
+    check('Leave room lands on the Multiplayer page', await page.evaluate("window.__ui.onGate() && window.__ui.gatePageNow() === 'together'"),
+      await page.evaluate('window.__ui.gatePageNow()'));
     await page.evaluate("(() => { window.__ui.onRooms('freestyle'); return 1; })()");
     await sheetIs(page, 'lobby');
     await page.until(`document.querySelector('#tg [data-k="room-${bots[1].s.room.code}"]') !== null`, 10000);
@@ -2647,12 +2649,13 @@ function hoverNear(b) {
   }, 1000 / 30);
 }
 
+/* Leave room lands on the Multiplayer page with no flight under it
+ * (ui.roomLeft), and the next room is joined from there. */
 async function leaveRoom(page) {
   await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); window.__ui.act('room-leave'); return 1; })()");
   await sheetIs(page, 'confirm');
   await pressKey(page, 'yes');
-  await page.until(`${T} && !window.__together().inRoom`, 5000);
-  await page.evaluate("(() => { window.__ui.act('resume'); return 1; })()");
+  await page.until(`${T} && !window.__together().inRoom && window.__ui.screen === 'title'`, 8000);
 }
 
 /* What the shelf says and shows: an empty shelf on each tab, the counts,

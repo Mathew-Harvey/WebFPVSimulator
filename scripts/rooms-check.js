@@ -56,8 +56,10 @@
  *            Open rooms. Another map flown alone keeps the room, and
  *            the way back then flies the room's own map in the same page,
  *            the same seat and still the host. The second room is four
- *            presses, the map the last, opened as the first was; Room
- *            options changes that (the owner's recording of 2026-11-28)
+ *            presses, the map the last, opened as the first was; Leave
+ *            room is the Multiplayer page, on Host a room, and not a
+ *            pause menu over the map; Room options changes what the
+ *            next room opens as (the owner's recording of 2026-11-28)
  *
  * Every scene ends with no console error and no uncaught error on any page.
  * Failed network loads are not counted, because the board going away on
@@ -303,11 +305,29 @@ async function toFlight(page) {
   await page.evaluate("(() => { window.__ui.act('resume'); return 1; })()");
   await flying(page, 10000);
 }
+/* Leave room, from the pause: out of the room and on the menu page before
+ * it (ui.js roomLeft). */
 async function leaveRoom(page) {
   await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); window.__ui.act('room-leave'); return 1; })()");
   await sheetIs(page, 'confirm');
   await pressKey(page, 'yes');
-  await page.until(`${T} && !window.__together().inRoom`, 8000);
+  await page.until(`${T} && !window.__together().inRoom && window.__ui.screen === 'title'`, 8000);
+}
+/* And into the air again alone, as a pilot gets there from the menus: Fly
+ * solo, Freestyle, a double click on the map, the quad as it stands. */
+async function soloAgain(page, name = 'Bardwell') {
+  await page.evaluate("(() => { window.__ui.act('gate-solo'); return 1; })()");
+  await page.until("window.__ui.screen === 'title' && window.__ui.onGate() && window.__ui.gatePageNow() === 'solo'", 8000);
+  await page.evaluate("(() => { window.__ui.act('way-freestyle-5inch'); return 1; })()");
+  await page.until("window.__ui.screen === 'freestyle' && document.querySelector('.wp-card')", 30000);
+  const said = await doubleClickMap(page, name);
+  if (said !== 'ok') throw new Error(said);
+  await page.until("Boolean(document.querySelector('.qp-page')) || (window.__mode === 'flight' && window.__ui.screen === 'flight')", 30000);
+  if (await page.evaluate("Boolean(document.querySelector('.qp-page'))")) {
+    await wait(450);
+    await page.tap('Enter');
+  }
+  await flying(page, 120000);
 }
 
 /* Host a room from the map picker's Fly together, as a pilot does, with
@@ -586,7 +606,7 @@ async function sceneShelf() {
     check('and is shown under a made up name, never the one typed', withSnap && !snapShown.some((n) => /snapchat/i.test(n)), snapShown.join(', '));
     snap.s.leave();
     await leaveRoom(page);
-    await toFlight(page);
+    await soloAgain(page);
 
     await hostFromPicker(page, async () => {
       await pressKey(page, 'sw-schoolSafe');
@@ -702,6 +722,21 @@ async function sceneBots() {
     check('the host\'s start counts the bot into the round, as the room hears it', started,
       JSON.stringify((moss.heard.filter((h) => h.name === 'dogfight').pop() || {}).data));
     check('and the round goes live on the page', await pass(page.until(`${G} && window.__dogfight().state.phase === 'live'`, 20000)));
+    /* A game's room has one way out on its pause, because Leave room and
+     * Back to Mini games would land on the same page. The room's own page
+     * still has Leave room, and it lands there too. */
+    await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); return 1; })()");
+    await page.until("window.__ui.screen === 'paused'", 8000);
+    const outs = await page.evaluate("window.__ui.items().filter((i) => i.action === 'room-leave' || i.action === 'room-title').map((i) => `${i.label}: ${i.note}`)");
+    check('a game room\'s pause has one way out, Back to Mini games', outs.join(' | ') === 'Back to Mini games: Leaves the room too.', outs.join(' | '));
+    await page.evaluate("(() => { window.__ui.act('room-sheet'); return 1; })()");
+    await sheetIs(page, 'room');
+    await pressKey(page, 'leave');
+    check('Leave room on the room\'s page says it goes back to Mini games', await pass(sheetIs(page, 'confirm')) && await pass(page.until(SEES('You go back to Mini games.'), 5000)));
+    await pressKey(page, 'yes');
+    check('and lands on the Mini games page, on Dogfight, out of the room',
+      await pass(page.until(`window.__ui.screen === 'title' && window.__ui.onGate() && window.__ui.gatePageNow() === 'games' && (window.__ui.items()[window.__ui.cursor] || {}).card === 'mg-dogfight' && ${T} && !window.__together().inRoom`, 10000)),
+      await page.evaluate("JSON.stringify([window.__ui.screen, window.__ui.onGate() && window.__ui.gatePageNow(), (window.__ui.items()[window.__ui.cursor] || {}).card])"));
     endChecks(page);
   } catch (e) {
     failures += 1;
@@ -838,8 +873,8 @@ async function sceneDeploy() {
     keeper.s.say('gg');
     check('and the room talks again', await pass(page.until(SEES('GG!', '#tg .talk'), 8000)));
     await leaveRoom(page);
-    await toFlight(page);
     check('the page leaves', !(await state(page)).inRoom);
+    await soloAgain(page);
     await joinByCode(page, room.code);
     check('and joins again by the code', await pass(page.until(`${T} && window.__together().inRoom && window.__together().code === ${JSON.stringify(room.code)}`, 20000)));
     endChecks(page);
@@ -1121,10 +1156,34 @@ async function sceneFlow() {
     const shelf = await (await fetch(`${boardOrigin}/api/rooms?way=freestyle`)).json();
     check('the room is listed, as the first was', JSON.stringify(shelf).includes(second), JSON.stringify(shelf).slice(0, 300));
 
+    /* LEAVE ROOM is the step before the room: the Multiplayer page, on
+     * Host a room. It kept the pilot on a pause menu over the room's map,
+     * flying solo, which the owner read as a menu that led nowhere
+     * (2026-11-28: "i left the room but i didn't get taken back to the
+     * step before... just a menu"). */
+    await tapLoose(page, 'Escape');
+    await page.until("window.__ui.screen === 'paused'", 8000);
+    const exits = await page.evaluate("window.__ui.items().filter((i) => i.action === 'room-leave' || i.action === 'room-title').map((i) => `${i.label}: ${i.note}`)");
+    check('the pause says where each way out of the room lands', exits.join(' | ') === 'Leave room: Back to Multiplayer. | Quit to title: Leaves the room too.', exits.join(' | '));
+    await page.evaluate("(() => { window.__ui.act('room-leave'); return 1; })()");
+    check('Leave room asks first, and says where it goes', await pass(sheetIs(page, 'confirm')) && await pass(page.until(SEES('You go back to the Multiplayer page.'), 5000)));
+    await pressKey(page, 'yes');
+    check('and lands on the Multiplayer page, out of the room', await pass(page.until(`${GATE_PAGE} === 'together' && ${T} && !window.__together().inRoom`, 10000)),
+      JSON.stringify([await page.evaluate("window.__ui.screen"), await page.evaluate(GATE_PAGE), (await state(page)).inRoom]));
+    check('for the room\'s way, with the cursor on Host a room', await page.evaluate("window.__ui.roomWay === 'freestyle' && (window.__ui.items()[window.__ui.cursor] || {}).card === 'mp-host'"),
+      await page.evaluate("JSON.stringify([window.__ui.roomWay, (window.__ui.items()[window.__ui.cursor] || {}).card])"));
+    check('and says so, without saying anybody is flying', await pass(page.until(SEES('You left the room.'), 5000)) && !(await page.evaluate(SEES('Flying solo'))));
+    check('with no run left under the menus', await page.evaluate("window.__mode === 'title' && window.__ui.runUnder === false"), await page.evaluate("JSON.stringify([window.__mode, window.__ui.runUnder])"));
+    /* The after-flight panel, on an exit that got one, is what the first
+     * Back closes (ui.js back). */
+    if (await page.evaluate('Boolean(window.__supportPrompt && window.__supportPrompt().shown)')) {
+      await page.evaluate("(() => { window.__ui.back(); return 1; })()");
+      await wait(300);
+    }
+    await page.evaluate("(() => { window.__ui.back(); return 1; })()");
+    check('Back from there is the page that asks what to fly', await pass(page.until(`${GATE_PAGE} === 'mpway'`, 5000)), await page.evaluate(GATE_PAGE));
+
     /* ROOM OPTIONS changes what the next one opens as. */
-    await endRun(page);
-    await page.evaluate("(() => { window.__ui.act('room-title'); return 1; })()");
-    await page.until(`${GATE_PAGE} === 'cover' && ${T} && !window.__together().inRoom`, 10000);
     await toHostPage(page);
     await page.evaluate("(() => { document.querySelector('.host-band-options').click(); return 1; })()");
     check('Room options opens the options with nothing to open', await pass(sheetIs(page, 'host'))
@@ -1135,6 +1194,22 @@ async function sceneFlow() {
     check('Save keeps the change', Boolean(changed) && changed.listed === false, JSON.stringify(changed));
     check('and the map page says link only', await pass(page.until("(() => { const b = document.querySelector('.host-band'); return Boolean(b) && !b.hidden && /link only, as last time/.test(b.textContent); })()", 5000)), await band());
     check('with no room opened by it', !(await state(page)).inRoom && (await state(page)).sheet === '', JSON.stringify(await state(page)));
+
+    /* LEAVE ROOM FROM A RESULTS PAGE is the same step back: a run that
+     * ended in the room is over too, and nothing of it stays under the
+     * menus. */
+    check('a double click opens the link only room and flies it', (await doubleClickMap(page, 'Bardwell')) === 'ok'
+      && await pass(page.until(`${T} && window.__together().inRoom && window.__together().sheet === '' && window.__mode === 'flight' && window.__ui.screen === 'flight'`, 30000)),
+    JSON.stringify(await state(page)));
+    await endRun(page);
+    const outs = await page.evaluate("window.__ui.items().filter((i) => i.action === 'room-leave' || i.action === 'room-title').map((i) => `${i.label}: ${i.note}`)");
+    check('its results page has the pause\'s two ways out, in the same words', outs.join(' | ') === 'Leave room: Back to Multiplayer. | Quit to title: Leaves the room too.', outs.join(' | '));
+    await page.evaluate("(() => { window.__ui.act('room-leave'); return 1; })()");
+    check('Leave room asks there too', await pass(sheetIs(page, 'confirm')));
+    await pressKey(page, 'yes');
+    check('and lands on the Multiplayer page, out of the room, nothing under it',
+      await pass(page.until(`${GATE_PAGE} === 'together' && ${T} && !window.__together().inRoom && window.__mode === 'title' && window.__ui.runUnder === false`, 10000)),
+      await page.evaluate("JSON.stringify([window.__ui.screen, window.__mode, window.__ui.runUnder])"));
     endChecks(page);
   } catch (e) {
     failures += 1;

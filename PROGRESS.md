@@ -77337,3 +77337,9 @@ None. Everything here is a menu page, a results page or a string. Nothing runs i
 ### For the Steam repack
 
 `src/ui/ui.js`, `src/net/together.js` and `src/career/screens.js` are files the repack edits, so the next subtree pull may conflict on these lines. Every line added here answers nothing in the Steam edition (`wishlistAllowed()` is false there), so taking upstream's side is right.
+
+### To main, on the owner's word
+
+- The owner, 2026-11-28 05:58Z, on the report of the three draft PRs: "push to main". Asked which check they wanted first, they went straight to main, so nothing more was run than is listed above and it has not been flown by a person.
+- Order: the board first (its main 7c096f1 to 1d5bb4a at 05:59Z, a fast forward; by 06:00Z https://webfpv.org/board/ served the Steam chips, `/api/stats` answered with `steamClicks`, and a made up place was refused with 400), then this repository, then the landing page.
+- `npm run check:steam`, `node scripts/support-selftest.js` and `npm run lint:preload` were run again on the tree pushed; the results are in the commit's report to the owner.

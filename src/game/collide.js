@@ -3291,12 +3291,65 @@ export function dirtClearance() {
   return CRAFT_WORLD_R * DIRT_SPAN;
 }
 
-export function upsetOnDirt(upz, clearance, inContact) {
-  /* The plant hit flag is still not read: a bounce can drop it for a
-   * frame, so a craft that is plainly on the floor reads as airborne on
-   * exactly the frame it touches. Clearance is the honest contact test
-   * and it is all this uses. */
-  void inContact;
+/*
+ * HOW LONG THE PLANT MUST HAVE BEEN OFF THE GROUND before a hard tilted craft
+ * low in a gate is a craft flying low and not a craft lying on the deck, ms.
+ *
+ * A pilot, 2026-11-28, on WA State Champs 2026 (the owner's recording): "i
+ * can fly under these gates". The gates stand on the grass. What the clip
+ * shows is a dive at gate 8 from 4 m, nose down about 70 degrees (a 45
+ * degree camera looking some 25 degrees below the horizon), through the
+ * bottom of the opening at 0.2 to 0.3 m and 65 km/h, and the gate not
+ * counted. 0.2 m is inside the five inch's 0.22 m band and 70 degrees is past
+ * DIRT_UPZ, so the band called a clean low dive a craft on its side on the
+ * dirt and threw the pass away, silently, and from the seat a gate that does
+ * not count when the green is above you reads as a gate you went under. At
+ * that attitude the hull's lowest point is 3.5 cm off the grass, the OSD had
+ * the craft at 4.0 m a second before the gate, and the bounce counter did not
+ * move until the craft touched the grass some 0.2 s after it.
+ *
+ * The band could not tell the two apart because it was a height and nothing
+ * else, and the comment it replaced said why the plant's hit flag was not
+ * read: a bounce can drop it for a frame. So the evidence is taken over time
+ * rather than off one frame. The shell counts the milliseconds since any step
+ * of the plant last reported a ground contact (every step of a frame, not the
+ * last one), and a craft that has been off the ground this long, whose tilt
+ * aware hull (craftVerticalHalf) is clear of the surface, and whose props are
+ * on the upper side, is in the air, which is the rule this file already had
+ * above the band.
+ *
+ * WHY THE PROPS MUST BE ON THE UPPER SIDE. Measured on the plant, 2026-11-28:
+ * a five inch that settles on its back on the grass comes to rest about 14
+ * degrees off flat, body up -0.97, with its centre 0.058 m up, and from then
+ * on the plant reports NO ground contact at all, for as long as it lies
+ * there. So for a craft upside down the count says nothing, and the hull test
+ * alone keeps it out by 1.1 cm. Upside down in the bottom of a gate stays
+ * refused whatever the count says, which is the old answer, and the pass a
+ * pilot actually flies there, a dive or a hard banked turn, is props up.
+ * Nothing settles on its side: the same rest test, from 60 to 180 degrees,
+ * rolls every one either upright or onto its back.
+ *
+ * WHY THREE QUARTERS OF A SECOND. Measured on the plant the same day, one
+ * step a frame (the most a frame can count, see src/main.js msSinceGround),
+ * judged and dull bounced as the shell does: the eight crash-pacing
+ * scenarios and 300 crashes into the grass (runs at 5 to 20 m/s from 0.5 to
+ * 3 m, an acro stick of roll and pitch held into the ground at throttle 0, 0.3
+ * and 0.7). At every step after the first contact where this would decide
+ * (in the band, past DIRT_UPZ, props up, hull clear), the longest the craft
+ * had been off the grass was 0.40 s at throttle 0 and 0.56 s at 0.3. At 0.7
+ * it was 1.9 s, which is a pilot holding a flip at seven tenths throttle, and
+ * that is flying: the same flip a metre higher scores already. The reported
+ * dive had been off the ground for more than a second. scripts/dirt-air-check.js
+ * holds the crashes under this and the dive over it.
+ */
+export const DIRT_AIR_MS = 750;
+
+/*
+ * `airMs` is how long the plant has been off the ground, in ms of sim time,
+ * or 0 when that is unknown, which is the old rule exactly: a caller that does
+ * not know is judged on the band and the tilt alone, the conservative answer.
+ */
+export function upsetOnDirt(upz, clearance, airMs = 0) {
   if (clearance >= dirtClearance()) {
     /* Off the deck. Whatever the attitude, this is flight, which is why
      * an inverted punch through a gate still scores. */
@@ -3304,9 +3357,25 @@ export function upsetOnDirt(upz, clearance, inContact) {
   }
   /* On the deck. Props up is a bounce and it flies; on its side or
    * upside down is the accident this whole predicate exists for. */
-  return upz < DIRT_UPZ;
+  if (!(upz < DIRT_UPZ)) {
+    return false;
+  }
+  /* Unless it is not on the deck at all: props up, off the ground long
+   * enough, its hull clear of it at the attitude it is flying. See
+   * DIRT_AIR_MS. */
+  if (upz >= 0 && airMs >= DIRT_AIR_MS) {
+    if (clearance > craftVerticalHalf(Math.sqrt(1 - upz * upz))) {
+      return false;
+    }
+  }
+  return true;
 }
 
+/*
+ * `opts.airMs` is the plant's time off the ground (see DIRT_AIR_MS). A hit on
+ * this frame, `opts.hits`, says the craft is on the ground now whatever the
+ * count says, so it wins.
+ */
 export function shouldScorePass(prev, curr, opts) {
   const heightAt = opts.heightAt;
   let minClear = opts.clearance;
@@ -3327,7 +3396,7 @@ export function shouldScorePass(prev, curr, opts) {
       }
     }
   }
-  if (upsetOnDirt(opts.upz, minClear, opts.hits > 0)) {
+  if (upsetOnDirt(opts.upz, minClear, opts.hits > 0 ? 0 : (opts.airMs ?? 0))) {
     return false;
   }
   return true;

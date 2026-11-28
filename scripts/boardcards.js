@@ -68,6 +68,8 @@ function usage() {
   console.log('  --board <origin>   the board, default http://127.0.0.1:3100');
   console.log('  --only <trk-id>    just this track or map, even if it already has a card');
   console.log('  --all              redraw every card, including ones already there');
+  console.log('  --tracks           tracks only, no maps: for a change to the race kit, which');
+  console.log('                     only a track wears (the white gates of 2026-11-28)');
   console.log('  --out <dir>        also write each card here, to look at');
   console.log('  --dry              draw and report, upload nothing');
   console.log('  --worlds           draw the thumbnails of the worlds the simulator ships');
@@ -102,7 +104,7 @@ function isAllowedBoard(urlStr) {
 function parseArgs(argv) {
   const opts = {
     board: process.env.BOARD_ORIGIN || 'http://127.0.0.1:3100',
-    only: '', all: false, out: '', dry: false, worlds: false,
+    only: '', all: false, out: '', dry: false, worlds: false, tracksOnly: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
@@ -111,6 +113,7 @@ function parseArgs(argv) {
     if (a === '--only') { opts.only = argv[i + 1]; i += 1; continue; }
     if (a === '--out') { opts.out = argv[i + 1]; i += 1; continue; }
     if (a === '--all') { opts.all = true; continue; }
+    if (a === '--tracks') { opts.tracksOnly = true; continue; }
     if (a === '--dry') { opts.dry = true; continue; }
     if (a === '--worlds') { opts.worlds = true; continue; }
     throw new Error(`unknown option ${a}`);
@@ -212,6 +215,7 @@ async function main() {
     })),
   ];
   const wanted = everything
+    .filter((x) => !opts.tracksOnly || x.kind === 'track')
     .filter((x) => (opts.only ? x.id === opts.only : opts.all || !x.hasCard || !x.hasThumb));
   console.log(`  ${tracks.length} tracks and ${maps.length} maps, ${wanted.length} to draw`);
   if (!wanted.length) {

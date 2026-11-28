@@ -1072,9 +1072,9 @@ function dressKit(THREE, doc, logos, keep) {
   /* The reverse of a gate carries no mark, only the racing dress, one set for every gate. Nothing extra is
    * made for a course with no logo: its back is its front. */
   const back = list.length ? {
-    header: paint(-1, BANNER_SIZE.header, paintGateHeader, {}),
-    sleeve: paint(-1, BANNER_SIZE.sleeve, paintGateSleeve, {}),
-    sleeveFlipped: paint(-1, BANNER_SIZE.sleeve, paintGateSleeve, { flip: true }),
+    header: paint(-1, BANNER_SIZE.header, paintGateHeader, { markless: true }),
+    sleeve: paint(-1, BANNER_SIZE.sleeve, paintGateSleeve, { markless: true }),
+    sleeveFlipped: paint(-1, BANNER_SIZE.sleeve, paintGateSleeve, { flip: true, markless: true }),
   } : null;
   const dress = [];
   for (let i = 0; i < n; i += 1) {

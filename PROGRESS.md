@@ -77390,3 +77390,9 @@ None measurable. Per frame: one add or one store for the count, and one more pro
 - The first design (250 ms, any attitude) was written on an argument from `DULL_OUT_MAX` and a guess at crash air. It was measured before it was committed and both halves were wrong (above). The comment that went with it claimed "two to three times the air a crash bounce gets" without a measurement; it is replaced by the measured numbers.
 - `window.__race()` returns a summary without apertures, so the gate probe needed a temporary hook in `src/main.js`; it was reverted before the branch.
 - Booting through the menus timed out at the Realistic physics explainer; the probe boots with `?fly=1` and presses Enter until the screen is flight.
+
+### To main, on the owner's word
+
+- The owner, 2026-11-28 09:23Z, on the draft PR (291) and the question of which check to run: "Push to main on both web and steam". They went straight to main, so nothing more was run than is listed above and it has not been flown by a person.
+- Web: main fast forwarded from 3eecc13 to this branch. `npm run check:clip` and `npm run check:dirtair` were run again on the exact tree pushed (results in the report to the owner), and the live site was loaded on the new deploy.
+- Steam: handed to the thread that keeps the Steam game up to date, which pulls the web game into the repack (the Steam game's `game/` subtree), with the owner's message attached.

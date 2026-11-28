@@ -92,6 +92,7 @@ import { uploadWorld, setWorldFrame, setMover, setBoxHeight, kindOf, setVehicleC
 import { Chase, CHASE_EVERY, pays } from './game/chase.js';
 import { sincos } from './props/trig.js';
 import { setCraftAirframe, CRAFT_R, CRAFT_WORLD_R, CRAFT_V_UP, CRAFT_V_DOWN, craftVerticalHalf, craftVerticalOffset, canPerch, heldStill, stuckClockStep, STUCK_SPEED, STUCK_RATE, shouldScorePass, shouldEnterTurtle, uprightPlantQuat, turtleFlipEase, turtleFlipLift, turtleSlerpQuat, TURTLE_STICK_MIN, TURTLE_SPEED, TURTLE_RATE, TURTLE_FLIP_MS, TURTLE_INVERT_UPZ, TURTLE_EXIT_UPZ, turtleClearance, findRestSpot, PROP_PLANE_MAX_UP_DOT, GRAZE_SPEED_MAX, BOUNCE_SPEED_MAX, BOUNCE_COOLDOWN_MS, LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG, LAND_TIP_SPEED_MAX, GROUND_MU, GROUND_E, CLIP_SPAWN_GRACE_MS, CrashJudge, putDullBounce, DULL_OUT_MAX, STUCK_LEAN_UPZ, emptyWorldReport, foldWorldReport } from './game/collide.js';
+import { initLanguage } from './i18n/i18n.js';
 import { Ui, formatTime, WEIGHT_STOCK, clampWeight, gravityScaleFor, loadSettings, pacingTimerOn, realPhysicsFor, realPhysicsDefault, setRealPhysics, physicsForced } from './ui/ui.js';
 import { TAKEOFF, guideKind, stepOf, textOf } from './ui/firstflight.js';
 import {
@@ -851,6 +852,9 @@ export async function boot({ loading, bootStart, mapId }) {
     uiRoot.style.display = 'none';
     canvas.style.cursor = 'none';
   }
+  /* The Steam edition's language, before the first screen is built. The
+   * browser edition returns at once and requests nothing. */
+  await initLanguage();
   const ui = new Ui(uiRoot);
   /* For the dogfight's Arm up page, which listens for a button or switch. */
   ui.input = input;

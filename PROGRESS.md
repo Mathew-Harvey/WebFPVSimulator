@@ -77343,3 +77343,15 @@ None. Everything here is a menu page, a results page or a string. Nothing runs i
 - The owner, 2026-11-28 05:58Z, on the report of the three draft PRs: "push to main". Asked which check they wanted first, they went straight to main, so nothing more was run than is listed above and it has not been flown by a person.
 - Order: the board first (its main 7c096f1 to 1d5bb4a at 05:59Z, a fast forward; by 06:00Z https://webfpv.org/board/ served the Steam chips, `/api/stats` answered with `steamClicks`, and a made up place was refused with 400), then this repository, then the landing page.
 - `npm run check:steam`, `node scripts/support-selftest.js` and `npm run lint:preload` were run again on the tree pushed; the results are in the commit's report to the owner.
+
+## 2026-11-28: Steam languages, the foundation (draft, not on main)
+
+The owner, 2026-11-28, on which surfaces get languages: "what ever just steam, we can advertise that steam has regional dilect as a calling card to get people over to steam". So the browser edition, board and landing page stay English and the languages are a Steam selling point. The plan the owner saw: Simplified Chinese, Japanese, Korean, Hindi, Spanish, Brazilian Portuguese, German, French, Russian; Hindi only for "Indian"; no Traditional Chinese yet.
+
+What changed: `src/i18n/i18n.js` (one Map lookup, `tr()`, identity in the browser edition and in English), `src/i18n/lang/ja.js` and `zh-Hans.js` (first pass, 22 strings: screen titles, crumbs, Settings), `el()` in `ui.js` and the crumb trail route text through `tr()`, a Language row in Settings in the Steam edition only (saves, then reloads), `initLanguage()` awaited in `main.js` before the first screen. New check: `npm run lint:i18n`.
+
+Latency: `tr()` is called when a menu or page builds its text, never in the flight loop, the input path or the HUD's per frame text. The browser edition requests only the small `i18n.js` module and no catalogue (checked: web with a saved ja loads `i18n.js` alone; Steam loads one catalogue). No font is downloaded; each script uses a system stack set as `--ui-font`.
+
+Checked this turn: `npm run lint:i18n` passes, `node --check` on ui.js and main.js, `lint:boot` 10 of 10, and a headless load of web and Steam editions (no page error, right files requested). `lint:nouns` fails on `scripts/menu-map.js:50`, which also fails on the base, so it is not from this change. Not run: `npm run verify` (no physics, ABI or build change), `shots.js`.
+
+What is not done: most of the game's text is still inline English and untranslated strings show in English. Next: convert the title, solo and multiplayer pages, then HUDs, lessons and the rest, and the other seven languages. Machine drafts need a native reader before they are called done.

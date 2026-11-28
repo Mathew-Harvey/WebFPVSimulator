@@ -31,6 +31,7 @@
 import { Loading, planStages } from './ui/loading.js';
 import { MAP_BUILD_MS } from './maps/build-cost.js';
 import { SIM_WINDOW, claimWindowName } from './share/windows.js';
+import { initLanguage, watchPage } from './i18n/i18n.js';
 
 /* Capture mode (src/capture.js, README "Capture mode") installs its virtual
  * clock before any game module runs. Fetched only for ?capture=1, so a normal
@@ -68,6 +69,12 @@ function threeVersion() {
 }
 
 async function start() {
+  /* The Steam edition's language, before any module that builds text is
+   * loaded, so a word made as a module is read is already in the pilot's
+   * language. The browser edition returns at once and requests nothing
+   * (src/i18n/i18n.js). */
+  await initLanguage();
+  watchPage(document.body);
   /* The initial map is a setting, so its build cost has to be known before
    * the stage weights are computed. Reading it here rather than in main.js
    * keeps the whole plan in one place; ui.js owns the schema and the default,

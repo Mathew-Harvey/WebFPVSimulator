@@ -50,6 +50,7 @@
  */
 
 import { formatScore } from '../game/score.js';
+import { fontFor, tr } from '../i18n/i18n.js';
 import { PATTERNS } from '../game/trickdetect.js';
 import { drawFilm, drawQuad, filmFor } from './trickfilm.js';
 import {
@@ -57,7 +58,9 @@ import {
 } from './lettering.js';
 
 const TURN = Math.PI * 2;
-const FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+/* The shell's faces, then the pilot's script's (src/i18n/i18n.js): the page
+ * is drawn on a canvas, where the document's language picks no font. */
+const FONT = fontFor('system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif');
 
 /* The town's palette, as the films have it, and the road's. */
 const SKY_HIGH = '#8fb6d8';
@@ -660,7 +663,7 @@ function drawPanel(ctx, q, p, border, stf) {
    * captions, in the top left corner in from the edge's lean. */
   let fs = Math.max(9, Math.min(18, u * 0.085));
   ctx.font = `800 ${fs}px ${FONT}`;
-  const label = p.label.toUpperCase();
+  const label = tr(p.label).toUpperCase();
   let lw = ctx.measureText(label).width + fs * 1.1;
   const lx = Math.max(q[0], q[6]) + fs * 0.5;
   const ly = Math.max(q[1], q[3]) + fs * 0.5;
@@ -687,7 +690,7 @@ function drawPanel(ctx, q, p, border, stf) {
   if (p.kind !== 'stf') {
     const inX = Math.max(q[0], q[6]) + u * 0.06;
     const room = Math.min(q[2], q[4]) - inX - u * 0.06;
-    const word = p.name.toUpperCase();
+    const word = tr(p.name).toUpperCase();
     let px = Math.max(10, Math.min(b.h * 0.15, 56));
     const fit = (s) => wordWidth(ctx, word, s) + wordWidth(ctx, p.value, s * 0.62) + s * 0.2;
     if (fit(px) > room) {
@@ -777,12 +780,12 @@ export function drawRunCard(canvas, w, h, run, wordmark) {
   ctx.textAlign = 'left';
   ctx.font = `700 22px ${FONT}`;
   ctx.fillStyle = '#d8d2c0';
-  ctx.fillText(String(run.mapName || 'Freestyle').toUpperCase(), left, 206);
+  ctx.fillText(tr(String(run.mapName || 'Freestyle')).toUpperCase(), left, 206);
   ctx.fillStyle = SAKURA;
   ctx.fillRect(left, 220, 40, 3);
   ctx.font = `700 16px ${FONT}`;
   ctx.fillStyle = INKS.slate;
-  ctx.fillText('SCORE', left, 282);
+  ctx.fillText(tr('SCORE'), left, 282);
   const total = formatScore(s.counter != null ? s.counter : (s.total || 0));
   const room = pageX - left - 40;
   let px = 96;
@@ -793,17 +796,17 @@ export function drawRunCard(canvas, w, h, run, wordmark) {
   drawWord(ctx, total, left, scoreBase, px, INKS.cream);
   const bits = [];
   if (s.tricks > 0) {
-    bits.push(`${s.tricks} trick${s.tricks === 1 ? '' : 's'}`);
+    bits.push(tr(`${s.tricks} trick${s.tricks === 1 ? '' : 's'}`));
   }
   if (s.gaps > 0) {
-    bits.push(`${s.gaps} gap${s.gaps === 1 ? '' : 's'}`);
+    bits.push(tr(`${s.gaps} gap${s.gaps === 1 ? '' : 's'}`));
   }
   const calls = closeCallCount(s.closeCalls);
   if (calls > 0) {
-    bits.push(`${calls} close call${calls === 1 ? '' : 's'}`);
+    bits.push(tr(`${calls} close call${calls === 1 ? '' : 's'}`));
   }
   if (s.crashes === 0) {
-    bits.push('no crashes');
+    bits.push(tr('no crashes'));
   }
   /* One line of what made it, wrapped rather than run under the page. */
   ctx.font = `600 20px ${FONT}`;

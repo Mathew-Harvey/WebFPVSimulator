@@ -37,6 +37,7 @@ import { fisheyeNdc } from '../render/fisheye.js';
 import {
   ME, MISSILE, GUN, BOT_NAMES, LOCK_COS,
 } from '../game/dogfight.js';
+import { tr } from '../i18n/i18n.js';
 
 const INK = '#0b1116';
 const CREAM = '#f3ead4';
@@ -432,7 +433,7 @@ export class DogfightHud {
       this.slip(e.by, e.to, e.weapon);
       if (e.to === ME) {
         const who = e.by >= 0 && e.by !== ME ? nameOf(e.by, this.g) : 'Somebody';
-        this.popSay.textContent = `${who} got you with ${e.weapon === 'missile' ? 'a missile' : 'the gun'}!`;
+        this.popSay.textContent = tr(`${who} got you with ${e.weapon === 'missile' ? 'a missile' : 'the gun'}!`);
         return 'crash';
       }
       return e.by === ME ? 'gate' : null;
@@ -651,16 +652,16 @@ export class DogfightHud {
     const clock = left >= 0 ? clockText(left) : (g.popsToWin ? `FIRST TO ${g.popsToWin}` : 'FREE');
     if (L.meScore !== meScore) {
       L.meScore = meScore;
-      this.scoreMe.textContent = `YOU ${meScore}`;
+      this.scoreMe.textContent = tr(`YOU ${meScore}`);
     }
     if (L.clock !== clock) {
       L.clock = clock;
-      this.scoreClock.textContent = clock;
+      this.scoreClock.textContent = tr(clock);
     }
     const best = bestBot >= 0 ? `${nameOf(bestBot, this.g)} ${g.pops[bestBot]}` : '';
     if (L.best !== best) {
       L.best = best;
-      this.scoreBest.textContent = best;
+      this.scoreBest.textContent = tr(best);
       this.scoreBest.classList.toggle('is-off', !best);
     }
 
@@ -681,7 +682,7 @@ export class DogfightHud {
     const hot = g.hot[ME] ? 'HOT' : '';
     if (L.hot !== hot) {
       L.hot = hot;
-      this.hotText.textContent = hot;
+      this.hotText.textContent = tr(hot);
       this.heatFill.style.background = hot ? BAIL : AMBER;
     }
     const next = g.rack[ME] < MISSILE.rack && g.reloadAt[ME] > 0
@@ -696,7 +697,7 @@ export class DogfightHud {
       if (next) {
         html += `<span>NEXT ${next} s</span>`;
       }
-      this.rack.innerHTML = html;
+      this.rack.innerHTML = tr(html);
     }
 
     /* Popped, waiting to come back, and the words before a round. Only a
@@ -709,7 +710,7 @@ export class DogfightHud {
       L.out = out;
       L.back = back;
       this.pop.classList.toggle('is-off', !out);
-      this.popBack.innerHTML = out ? `BACK IN <b>${back}</b>` : '';
+      this.popBack.innerHTML = tr(out ? `BACK IN <b>${back}</b>` : '');
     }
     let banner = '';
     if (g.room && !g.inFight[ME]) {
@@ -727,7 +728,7 @@ export class DogfightHud {
     }
     if (L.banner !== banner) {
       L.banner = banner;
-      this.banner.textContent = banner;
+      this.banner.textContent = tr(banner);
       this.banner.classList.toggle('is-off', !banner);
     }
 
@@ -745,9 +746,9 @@ export class DogfightHud {
     const nextRound = showing ? Math.max(1, Math.ceil((extra.nextMs || 0) / 1000)) : 0;
     if (showing && this.resultKeys && L.nextRound !== nextRound) {
       L.nextRound = nextRound;
-      this.resultKeys.textContent = g.room
+      this.resultKeys.textContent = tr(g.room
         ? (g.host ? 'Press G for another round' : 'The host starts the next round')
-        : `Next round in ${nextRound} s`;
+        : `Next round in ${nextRound} s`);
     }
   }
 

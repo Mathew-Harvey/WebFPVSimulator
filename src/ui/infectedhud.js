@@ -38,6 +38,7 @@ import { DogfightHud, nameOf } from './dogfighthud.js';
 import {
   ME, LEGS, SNIFF_MS, POINTS,
 } from '../game/infected.js';
+import { tr } from '../i18n/i18n.js';
 
 const INK = '#0b1116';
 const CREAM = '#f3ead4';
@@ -214,7 +215,7 @@ export class InfectedHud extends DogfightHud {
   line(html, nowMs, ms, kind = '') {
     if (this.sayHtml !== html) {
       this.sayHtml = html;
-      this.say.innerHTML = html;
+      this.say.innerHTML = tr(html);
     }
     this.say.className = `if-say${kind ? ` is-${kind}` : ''}`;
     this.sayUntil = nowMs + ms;
@@ -485,7 +486,7 @@ export class InfectedHud extends DogfightHud {
     const meScore = `${sideWord} · ${g.pts[ME]}`;
     if (L.meScore !== meScore) {
       L.meScore = meScore;
-      this.scoreMe.textContent = meScore;
+      this.scoreMe.textContent = tr(meScore);
     }
     if (L.side !== side) {
       L.side = side;
@@ -494,18 +495,18 @@ export class InfectedHud extends DogfightHud {
     const clock = phase === 'wait' ? clockText(g.roundMs) : (phase === 'head' ? `0:${String(Math.ceil(g.headLeftMs() / 1000)).padStart(2, '0')}` : clockText(g.leftMs()));
     if (L.clock !== clock) {
       L.clock = clock;
-      this.scoreClock.textContent = clock;
+      this.scoreClock.textContent = tr(clock);
     }
     const c = g.counts(g.tally);
     const cc = `${c.clean} CLEAN`;
     const ci = `${c.infected} INFECTED`;
     if (L.cc !== cc) {
       L.cc = cc;
-      this.countClean.textContent = cc;
+      this.countClean.textContent = tr(cc);
     }
     if (L.ci !== ci) {
       L.ci = ci;
-      this.countInf.textContent = ci;
+      this.countInf.textContent = tr(ci);
     }
     const pts = String(g.pts[ME]);
     if (L.pts !== pts) {
@@ -524,7 +525,7 @@ export class InfectedHud extends DogfightHud {
     }
     if (chainOn && L.chainText !== chainText) {
       L.chainText = chainText;
-      this.chainSay.textContent = chainText;
+      this.chainSay.textContent = tr(chainText);
       this.chainRing.textContent = `x${g.chain[ME]}`;
     }
 
@@ -552,7 +553,7 @@ export class InfectedHud extends DogfightHud {
     }
     if (L.banner !== banner) {
       L.banner = banner;
-      this.banner.textContent = banner;
+      this.banner.textContent = tr(banner);
       this.banner.classList.toggle('is-off', !banner);
     }
 
@@ -571,9 +572,9 @@ export class InfectedHud extends DogfightHud {
       const what = g.matchOver ? 'A new match' : `Round ${g.leg + 2}`;
       /* A room's rounds follow each other by themselves, as a solo
        * match's do; a new match is the host's. */
-      this.resultKeys.textContent = g.room && g.matchOver
+      this.resultKeys.textContent = tr(g.room && g.matchOver
         ? (g.host ? 'Press G for a new match' : 'The host starts the next match')
-        : `${what} in ${nextRound} s`;
+        : `${what} in ${nextRound} s`);
     }
   }
 

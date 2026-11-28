@@ -29,6 +29,7 @@
  * You should have received a copy of the GNU General Public License
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
+import { tr } from '../i18n/i18n.js';
 
 function el(tag, cls, text) {
   const n = document.createElement(tag);
@@ -132,7 +133,7 @@ export class YardHud {
     const set = (key, node, text) => {
       if (L[key] !== text) {
         L[key] = text;
-        node.textContent = text;
+        node.textContent = tr(text);
       }
     };
     this.box.classList.toggle('is-off', !s.near);

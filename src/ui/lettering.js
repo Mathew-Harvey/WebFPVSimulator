@@ -86,6 +86,50 @@ export const INKS = {
 
 const FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
 
+/*
+ * ANOTHER LANGUAGE (the Steam edition, src/i18n/i18n.js). This file knows
+ * nothing about which: it is handed two things by whoever does, once, before
+ * anything is lettered, and with neither it is exactly what it always was.
+ *
+ *   font   system faces for a script the stack above does not draw, tried
+ *          AFTER it, so a Latin capital keeps its skeleton and only the
+ *          script's own glyphs fall through
+ *   say    the word in the pilot's language, or the word itself
+ *
+ * A callout's word, line and tag and a title's runs go through `say` where
+ * they are painted, which is on the event that shows them and never per
+ * frame.
+ */
+let SCRIPT_FONT = '';
+let SAY = null;
+export function setLettering({ font, say } = {}) {
+  SCRIPT_FONT = font || '';
+  SAY = typeof say === 'function' ? say : null;
+  WIDTHS.clear();
+}
+function fontNow() {
+  return SCRIPT_FONT ? `${FONT}, ${SCRIPT_FONT}` : FONT;
+}
+function said(s) {
+  return SAY && s ? SAY(String(s)) : s;
+}
+
+/*
+ * What is set one at a time. A Latin, Cyrillic, Han, kana or Hangul glyph
+ * stands alone and takes its own turn and lift. Devanagari does not: its
+ * letters join along the headline and a vowel sign belongs to the consonant
+ * before it, so a glyph cut from its word is a different glyph. There the
+ * unit is the whole word, turned and lifted as one.
+ */
+const JOINED = /[\u0900-\u097f]/;
+function unitsOf(text) {
+  const t = String(text);
+  if (JOINED.test(t)) {
+    return t.match(/ |[^ ]+/g) || [];
+  }
+  return Array.from(t);
+}
+
 /* The hand. SLANT is the shear, x per unit of height (about 13 degrees);
  * INK_W the outline as a fraction of the size, thick enough to read over a
  * lit roof; DROP the hard ink shadow, down and right, as fractions. */
@@ -205,7 +249,7 @@ function refWidth(ctx, s) {
   let w = WIDTHS.get(s);
   if (w === undefined) {
     const font = ctx.font;
-    ctx.font = `900 ${REF}px ${FONT}`;
+    ctx.font = `900 ${REF}px ${fontNow()}`;
     w = ctx.measureText(s).width;
     ctx.font = font;
     if (WIDTHS.size > 4096) {
@@ -217,12 +261,14 @@ function refWidth(ctx, s) {
 }
 
 function layout(ctx, text, px, ink = INK_W) {
-  ctx.font = `900 ${px}px ${FONT}`;
+  ctx.font = `900 ${px}px ${fontNow()}`;
   if ('fontKerning' in ctx) {
     ctx.fontKerning = 'normal';
   }
   const k = px / REF;
-  const chars = Array.from(text);
+  /* A string, or the units already cut (drawRuns cuts each run on its
+   * own, so a unit never straddles two colours). */
+  const chars = Array.isArray(text) ? text : unitsOf(text);
   const adv = new Array(chars.length);
   const mid = new Array(chars.length);
   let w = 0;
@@ -277,13 +323,15 @@ export function drawWord(ctx, text, x, y, px, fill, opts = {}) {
  */
 export function drawRuns(ctx, runs, x, y, px, opts = {}) {
   const text = runs.map((r) => r.text).join('');
-  const { chars, adv, mid, w } = layout(ctx, text, px, opts.inkW > 0 ? opts.inkW : INK_W);
+  const units = [];
   const runOf = [];
   runs.forEach((r, k) => {
-    for (let n = Array.from(r.text).length; n > 0; n -= 1) {
+    for (const u of unitsOf(r.text)) {
+      units.push(u);
       runOf.push(k);
     }
   });
+  const { chars, adv, mid, w } = layout(ctx, units, px, opts.inkW > 0 ? opts.inkW : INK_W);
   const x0 = x;
   const ink = px * (opts.inkW > 0 ? opts.inkW : INK_W);
   const seed = opts.seed || text;
@@ -620,7 +668,10 @@ export function drawBurst(ctx, cx, cy, rx, ry, seed, px, maxReach = BURST_REACH)
  */
 export function paintCall(canvas, spec) {
   const ctx = canvas.getContext('2d');
-  const word = String(spec.word || '').toUpperCase();
+  const word = String(said(spec.word) || '').toUpperCase();
+  if (SAY) {
+    spec = { ...spec, line: said(spec.line), tag: said(spec.tag) };
+  }
   const reach = spec.reach > 0 ? spec.reach : BURST_REACH;
   const measure = (px) => {
     const pp = px * 0.62;
@@ -739,7 +790,7 @@ export function paintSfx(canvas, text, px, fill) {
  */
 export function paintTitle(canvas, runs, px, opts = {}) {
   const ctx = canvas.getContext('2d');
-  const up = runs.map((r) => ({ text: String(r.text).toUpperCase(), fill: hexOf(r.fill) }));
+  const up = runs.map((r) => ({ text: String(said(r.text)).toUpperCase(), fill: hexOf(r.fill) }));
   const text = up.map((r) => r.text).join('');
   const inkW = opts.inkW > 0 ? opts.inkW : INK_W;
   const measure = (s) => {

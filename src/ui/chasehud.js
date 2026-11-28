@@ -53,6 +53,7 @@ import { TAIL_DRIFT_WEIGHT } from '../game/chase.js';
 import {
   INKS, SFX, callSize, letterCanvas, paintCall, paintSfx, sideRoom,
 } from './lettering.js';
+import { tr } from '../i18n/i18n.js';
 
 /* Local, as scorehud.js keeps its own. */
 function el(tag, cls, text) {
@@ -227,7 +228,7 @@ export class ChaseHud {
     }
     if (v.slot !== this.shownSlot) {
       this.shownSlot = v.slot;
-      this.car.textContent = v.label || 'Car';
+      this.car.textContent = tr(v.label || 'Car');
       this.drift.hidden = !v.drift;
     }
     const tenths = Math.floor(v.heldMs / 100);

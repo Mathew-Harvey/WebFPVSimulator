@@ -40,6 +40,7 @@ import { TAKE_MS } from '../game/film.js';
 import {
   INKS, callSize, letterCanvas, paintCall, paintTitle, sideRoom,
 } from './lettering.js';
+import { tr } from '../i18n/i18n.js';
 
 function el(tag, cls, text) {
   const n = document.createElement(tag);
@@ -181,7 +182,7 @@ export class FilmHud {
 
   setBest(score) {
     this.bestScore = score || 0;
-    this.best.textContent = this.bestScore > 0 ? `Best take ${this.bestScore}` : '';
+    this.best.textContent = tr(this.bestScore > 0 ? `Best take ${this.bestScore}` : '');
   }
 
   /* v: film.view(). Once a frame. */
@@ -193,7 +194,7 @@ export class FilmHud {
     const state = v.done ? 'done' : (v.running ? 'rec' : 'stby');
     if (state !== L.state) {
       L.state = state;
-      this.recWord.textContent = state === 'rec' ? 'REC' : (state === 'done' ? 'CUT' : 'STBY');
+      this.recWord.textContent = tr(state === 'rec' ? 'REC' : (state === 'done' ? 'CUT' : 'STBY'));
       this.rec.classList.toggle('is-rec', state === 'rec');
     }
     const frames = Math.floor(v.timeMs / (1000 / 30));
@@ -210,7 +211,7 @@ export class FilmHud {
     const subject = v.subject ? `${v.tandem >= 2 ? `${v.subject} in frame` : v.subject}` : (v.running ? 'No shot' : 'Take off to roll');
     if (subject !== L.subject) {
       L.subject = subject;
-      this.subject.textContent = subject;
+      this.subject.textContent = tr(subject);
       this.subject.classList.toggle('is-none', !v.subject);
     }
     const vals = [v.frame, v.close, v.smooth];
@@ -226,13 +227,13 @@ export class FilmHud {
     const tandem = v.tandem >= 3 ? 'Train x1.8' : (v.tandem === 2 ? 'Tandem x1.5' : '');
     if (tandem !== L.tandem) {
       L.tandem = tandem;
-      this.tandem.textContent = tandem;
+      this.tandem.textContent = tr(tandem);
       this.tandem.hidden = !tandem;
     }
     const zone = v.zone ? `${v.zone} x1.5` : '';
     if (zone !== L.zone) {
       L.zone = zone;
-      this.zone.textContent = zone;
+      this.zone.textContent = tr(zone);
       this.zone.hidden = !zone;
     }
     /* The focus box on the subject, by a transform: sx and sy are -1 to 1
@@ -266,7 +267,7 @@ export class FilmHud {
     for (const e of list) {
       if (e.type === 'action') {
         this.takeNo += 1;
-        this.take.textContent = `Take ${this.takeNo}`;
+        this.take.textContent = tr(`Take ${this.takeNo}`);
         this.card.classList.add('is-off');
       }
       this.call(e);

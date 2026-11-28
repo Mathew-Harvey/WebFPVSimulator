@@ -32,6 +32,7 @@ import { DogfightHud, nameOf } from './dogfighthud.js';
 import { MAX_PILOTS, ME } from '../game/dogfight.js';
 import { TEAM_NAMES } from '../maps/ball/arena.js';
 import { BALL } from '../game/quadball.js';
+import { tr } from '../i18n/i18n.js';
 
 const BALL_G = BALL.gravity;
 
@@ -291,31 +292,31 @@ export class BallHud extends DogfightHud {
     const word = cd > 0 ? String(cd) : '';
     if (L.count !== word) {
       L.count = word;
-      this.count.textContent = word;
+      this.count.textContent = tr(word);
       this.count.classList.toggle('is-off', !word);
     }
 
     const score = `${TEAM_NAMES[0]} ${g.teamScore[0]}  -  ${g.teamScore[1]} ${TEAM_NAMES[1]}`;
     if (L.meScore !== score) {
       L.meScore = score;
-      this.scoreMe.textContent = score;
+      this.scoreMe.textContent = tr(score);
     }
     const ms = g.roundMs ? g.leftMs() : -1;
     const clock = g.overtime ? 'OVERTIME' : (ms >= 0 ? clockText(ms) : (g.ballRules.practice ? 'PRACTICE' : `FIRST TO ${g.goalsToWin}`));
     if (L.clock !== clock) {
       L.clock = clock;
-      this.scoreClock.textContent = clock;
+      this.scoreClock.textContent = tr(clock);
     }
     const side = `YOU ARE ${TEAM_NAMES[mine]}`;
     if (L.best !== side) {
       L.best = side;
-      this.scoreBest.textContent = side;
+      this.scoreBest.textContent = tr(side);
       this.scoreBest.style.color = TEAM_COL[mine];
     }
     const goals = String(g.pops[ME]);
     if (L.mine !== goals) {
       L.mine = goals;
-      this.goalText.textContent = goals;
+      this.goalText.textContent = tr(goals);
     }
 
     let banner = '';
@@ -333,7 +334,7 @@ export class BallHud extends DogfightHud {
     }
     if (L.banner !== banner) {
       L.banner = banner;
-      this.banner.textContent = banner;
+      this.banner.textContent = tr(banner);
       this.banner.classList.toggle('is-off', !banner);
     }
 
@@ -349,11 +350,11 @@ export class BallHud extends DogfightHud {
     const keys = !showing ? '' : g.room ? againWords(extra.again, g.host) : `Next match in ${nextRound} s`;
     if (showing && this.resultKeys && L.keys !== keys) {
       L.keys = keys;
-      this.resultKeys.textContent = keys;
+      this.resultKeys.textContent = tr(keys);
       const a = extra.again;
       if (this.againBtn) {
         this.againBtn.disabled = Boolean(a && a.mine);
-        this.againBtn.textContent = a && a.mine ? 'Rematch asked' : a && a.here <= 1 ? 'Rematch vs a bot' : 'Rematch';
+        this.againBtn.textContent = tr(a && a.mine ? 'Rematch asked' : a && a.here <= 1 ? 'Rematch vs a bot' : 'Rematch');
       }
     }
   }
@@ -417,7 +418,7 @@ export class BallHud extends DogfightHud {
     if (g.room) {
       /* Everybody gets Rematch, a vote (src/net/together.js ballAgain),
        * Fly on to wait in the stadium, and Leave for the Mini games page. */
-      again.textContent = 'Rematch';
+      again.textContent = tr('Rematch');
       this.againBtn = again;
       const fly = el('button', 'df-btn', 'Fly on');
       fly.type = 'button';

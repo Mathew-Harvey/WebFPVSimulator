@@ -43,7 +43,7 @@
  */
 
 import { MAPS } from '../maps/registry.js';
-import { tr, LANGUAGES, SHIPPED, currentLanguage, setLanguage } from '../i18n/i18n.js';
+import { tr, LANGUAGES, SHIPPED, currentLanguage, setLanguage, flightText, scriptFont, translating } from '../i18n/i18n.js';
 import {
   CAL_STEPS, KEY_THROTTLE_MODES, normaliseKeyThrottle,
   PAD_DEADZONES, normalisePadDeadzone, PAD_THROTTLES, normalisePadThrottle,
@@ -240,7 +240,7 @@ import { YardHud } from './yardhud.js';
 import {
   closeCallCount, drawMangaPage, drawRunCard, mangaPanels, pageSentence,
 } from './mangapage.js';
-import { paintTitle } from './lettering.js';
+import { paintTitle, setLettering } from './lettering.js';
 import {
   GATE_GAMES, GATE_HEADS, GATE_MINI, GATE_MP_WAYS, GATE_ROOMS, GATE_SIDES, SOLO_PANELS, paintGatePilot, quadBadgeSvg, sceneFor,
 } from './gatepages.js';
@@ -402,6 +402,14 @@ const FIT_SCREENS = new Set(['pilot', 'advanced', 'quad', 'rates', 'pids', 'laun
  * out to the people behind this is About. The ids stay as they were, because
  * checks, CSS and saved cursors name rooms by id and a pilot never sees one.
  */
+/* The lettering is told the pilot's language once, here, because this
+ * module is read after boot.js has loaded it and before anything is
+ * lettered. In English and in the browser edition it is told nothing and
+ * letters as it always has (src/ui/lettering.js). */
+if (translating()) {
+  setLettering({ font: scriptFont(), say: tr });
+}
+
 const SCREEN_TITLES = {
   title: 'WebFPV',
   courses: 'Tracks',
@@ -18267,6 +18275,9 @@ export class Ui {
      * starting into the same frame that is still painting the room. */
     this.noteInteraction();
     this.screen = screen;
+    /* The page's translator is off in the air (src/i18n/i18n.js). A no-op in
+     * English and in the browser edition. */
+    flightText(screen === 'flight');
     if (screen === 'courses' && this.reopenCard) {
       this.cardSubject = this.reopenCard;
       this.lastCardKey = this.reopenCard;

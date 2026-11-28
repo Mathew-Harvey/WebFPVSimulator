@@ -30,6 +30,7 @@
  */
 
 import { stickSideOf } from '../input/stickmode.js';
+import { tr } from '../i18n/i18n.js';
 
 function cap(s) {
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -54,20 +55,24 @@ export function sticksIn(text, mode = 2, { keys = false } = {}) {
   if (!text) {
     return text;
   }
+  /* Another language (the Steam edition, src/i18n/i18n.js): the sentence is
+   * translated first, with its {tokens} still in it, and each token is then
+   * filled with the translated name of the stick. In English tr() is the
+   * identity and this is exactly what it was. */
   const tiltSide = stickSideOf(mode, 'pitch') === stickSideOf(mode, 'roll') ? stickSideOf(mode, 'pitch') : null;
   const tilt = tiltSide
-    ? `the ${tiltSide} stick${keys ? ` (${tiltSide === 'left' ? 'W S A D' : 'the arrows'})` : ''}`
-    : 'pitch and roll';
-  return String(text).replace(/\{(throttle|yaw|pitch|roll|tilt|Throttle|Yaw|Pitch|Roll|Tilt)\}/g, (_, ch) => {
+    ? `${tr(`the ${tiltSide} stick`)}${keys ? ` (${tr(tiltSide === 'left' ? 'W S A D' : 'the arrows')})` : ''}`
+    : tr('pitch and roll');
+  return tr(String(text)).replace(/\{(throttle|yaw|pitch|roll|tilt|Throttle|Yaw|Pitch|Roll|Tilt)\}/g, (_, ch) => {
     const lower = ch.toLowerCase();
     let words;
     if (lower === 'tilt') {
       words = tilt;
     } else {
       const side = stickSideOf(mode, lower);
-      words = `the ${side} stick`;
+      words = tr(`the ${side} stick`);
       if (keys) {
-        words += ` (${keysFor(side, lower === 'throttle' || lower === 'pitch')})`;
+        words += ` (${tr(keysFor(side, lower === 'throttle' || lower === 'pitch'))})`;
       }
     }
     return ch === lower ? words : cap(words);

@@ -29,6 +29,7 @@
 import { paintCall, INKS } from './lettering.js';
 import { DogfightHud, nameOf } from './dogfighthud.js';
 import { MAX_PILOTS, ME } from '../game/dogfight.js';
+import { tr } from '../i18n/i18n.js';
 
 const INK = '#0b1116';
 const CREAM = '#f3ead4';
@@ -242,18 +243,18 @@ export class RibbonHud extends DogfightHud {
     }
     if (L.meScore !== score) {
       L.meScore = score;
-      this.scoreMe.textContent = score;
+      this.scoreMe.textContent = tr(score);
     }
     const ms = g.roundMs ? g.leftMs() : -1;
     const clock = ms >= 0 ? clockText(ms) : 'NO CLOCK';
     if (L.clock !== clock) {
       L.clock = clock;
-      this.scoreClock.textContent = clock;
+      this.scoreClock.textContent = tr(clock);
     }
     const best = `CUTS ${cuts}`;
     if (L.best !== best) {
       L.best = best;
-      this.scoreBest.textContent = best;
+      this.scoreBest.textContent = tr(best);
       this.scoreBest.classList.remove('is-off');
     }
 
@@ -261,7 +262,7 @@ export class RibbonHud extends DogfightHud {
     const share = Math.round(g.share(ME) * 100);
     if (L.share !== share) {
       L.share = share;
-      this.ribbonText.textContent = share ? `${share}%` : 'GONE';
+      this.ribbonText.textContent = tr(share ? `${share}%` : 'GONE');
       const f = share / 100;
       this.ribbonFill.style.transform = `scaleX(${f})`;
       this.ribbonFill.style.background = f > 0.6 ? MINT : (f > 0.3 ? AMBER : BAIL);
@@ -280,7 +281,7 @@ export class RibbonHud extends DogfightHud {
     }
     if (L.banner !== banner) {
       L.banner = banner;
-      this.banner.textContent = banner;
+      this.banner.textContent = tr(banner);
       this.banner.classList.toggle('is-off', !banner);
     }
 
@@ -294,9 +295,9 @@ export class RibbonHud extends DogfightHud {
     const nextRound = g.over ? Math.max(1, Math.ceil((extra.nextMs || 0) / 1000)) : 0;
     if (g.over && this.resultKeys && L.nextRound !== nextRound) {
       L.nextRound = nextRound;
-      this.resultKeys.textContent = g.room
+      this.resultKeys.textContent = tr(g.room
         ? (g.host ? 'Press G for another round' : 'The host starts the next round')
-        : `Next round in ${nextRound} s`;
+        : `Next round in ${nextRound} s`);
     }
   }
 

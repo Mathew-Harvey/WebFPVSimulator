@@ -90,6 +90,7 @@ import { formatScore } from '../game/score.js';
 import {
   INK, INKS, SFX, callSize, letterCanvas, paintCall, paintKana, paintSfx, sideRoom,
 } from './lettering.js';
+import { tr } from '../i18n/i18n.js';
 
 /* Local, because ui.js keeps its own copy private and this file is meant to
  * be readable without it. */
@@ -631,7 +632,7 @@ export class ScoreHud {
         this.comboBox.className = step ? `score-combo tier-${step}` : 'score-combo';
         if (t) {
           this.tier.hidden = false;
-          this.tierEn.textContent = t.en;
+          this.tierEn.textContent = tr(t.en);
           this.tierJp.replaceChildren(tierKana(t.jp), el('span', 'sr-only', t.jp));
           /* Restart the badge's landing animation on each new tier. */
           this.tier.style.animation = 'none';
@@ -828,7 +829,7 @@ export class ScoreHud {
         word: v.word, pts: v.pts, fill: v.fill, ptsFill: v.fill, size, balloon: v.big, reach: short ? 0.6 : 0,
       });
     } else {
-      this.verdict.textContent = v.pts ? `${v.word}  ${v.pts}` : v.word;
+      this.verdict.textContent = tr(v.pts ? `${v.word}  ${v.pts}` : v.word);
       fitPlain(this.verdict);
     }
     /* Restart the animation on a node that may already be running one. */

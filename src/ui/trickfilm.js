@@ -49,6 +49,7 @@
  * You should have received a copy of the GNU General Public License
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
+import { tr, trf } from '../i18n/i18n.js';
 
 const TURN = Math.PI * 2;
 
@@ -107,12 +108,12 @@ export function viewFor(steps) {
 /* Turns as the workbook says them: a count, not an angle. */
 function turnWords(n) {
   const t = Math.abs(n);
-  if (t === 0.25) { return 'a quarter turn'; }
-  if (t === 0.5) { return 'a half turn'; }
-  if (t === 0.75) { return 'three quarters of a turn'; }
-  if (t === 1) { return 'a whole turn'; }
-  if (t === 2) { return 'two whole turns'; }
-  return `${t} turns`;
+  if (t === 0.25) { return tr('a quarter turn'); }
+  if (t === 0.5) { return tr('a half turn'); }
+  if (t === 0.75) { return tr('three quarters of a turn'); }
+  if (t === 1) { return tr('a whole turn'); }
+  if (t === 2) { return tr('two whole turns'); }
+  return trf('{0} turns', t);
 }
 
 const AXIS_WORD = { roll: 'roll', pitch: 'flip', yaw: 'yaw spin' };
@@ -121,48 +122,57 @@ const AXIS_WORD = { roll: 'roll', pitch: 'flip', yaw: 'yaw spin' };
  * WHAT TO DO, in a sentence, and built from the same steps the film is. A
  * pilot reading this and a pilot watching the film are being told the same
  * thing by the same data, which is the only way they cannot disagree.
+ *
+ * Built with trf (src/i18n/i18n.js), a template and its parts, so another
+ * language can put the parts in its own order: "a half turn of flip" is not
+ * "a half turn" then "of" then "flip" everywhere. In English every template
+ * is filled as written and the sentence is the one this always made.
  */
 export function describeSteps(steps) {
   const parts = [];
   for (const s of steps) {
     if (s.path !== undefined) {
-      const thing = s.path === 'pole' ? 'a post' : 'a rail';
+      const thing = tr(s.path === 'pole' ? 'a post' : 'a rail');
       let lap;
       if (s.turnsAtLeast !== undefined) {
-        lap = `${turnWords(s.turnsAtLeast)} or more around ${thing}`;
+        lap = trf('{0} or more around {1}', turnWords(s.turnsAtLeast), thing);
       } else if (s.turns === 0.5) {
-        lap = `half a lap around ${thing}`;
+        lap = trf('half a lap around {0}', thing);
       } else if (s.turns === 1) {
-        lap = `a whole lap around ${thing}`;
+        lap = trf('a whole lap around {0}', thing);
       } else {
-        lap = `${turnWords(s.turns)} around ${thing}`;
+        lap = trf('{0} around {1}', turnWords(s.turns), thing);
       }
-      if (s.from === 'under') { lap += ', entered from underneath'; }
-      if (s.from === 'over') { lap += ', entered from over the top'; }
-      if (s.inverted === true) { lap += ', flown belly up'; }
-      if (s.track === true) { lap += ', with the post held on the screen'; }
-      const rot = [];
+      if (s.from === 'under') { lap = trf('{0}, entered from underneath', lap); }
+      if (s.from === 'over') { lap = trf('{0}, entered from over the top', lap); }
+      if (s.inverted === true) { lap = trf('{0}, flown belly up', lap); }
+      if (s.track === true) { lap = trf('{0}, with the post held on the screen', lap); }
+      let rot = '';
       if (s.rot) {
         for (const key of Object.keys(s.rot)) {
           if (s.rot[key] === 0) { continue; }
-          rot.push(`${turnWords(s.rot[key])} of ${AXIS_WORD[key]}`);
+          const one = trf('{0} of {1}', turnWords(s.rot[key]), tr(AXIS_WORD[key]));
+          rot = rot ? trf('{0} and {1}', rot, one) : one;
         }
       }
-      if (rot.length) { lap += `, carrying ${rot.join(' and ')}`; }
+      if (rot) { lap = trf('{0}, carrying {1}', lap, rot); }
       parts.push(lap);
       continue;
     }
-    let r = `${turnWords(s.turns)} of ${AXIS_WORD[s.axis] || s.axis || 'rotation'}`;
-    if (s.oppTo !== undefined) { r += ' back the other way'; }
-    if (s.sameAs !== undefined) { r += ' the same way again'; }
-    if (s.stallMs) { r += ', after a pause'; }
-    if (s.tap) { r += ', touching the object as you go'; }
-    if (s.inverted === true) { r += ', upside down'; }
+    let r = trf('{0} of {1}', turnWords(s.turns), tr(AXIS_WORD[s.axis] || s.axis || 'rotation'));
+    if (s.oppTo !== undefined) { r = trf('{0} back the other way', r); }
+    if (s.sameAs !== undefined) { r = trf('{0} the same way again', r); }
+    if (s.stallMs) { r = trf('{0}, after a pause', r); }
+    if (s.tap) { r = trf('{0}, touching the object as you go', r); }
+    if (s.inverted === true) { r = trf('{0}, upside down', r); }
     parts.push(r);
   }
   if (!parts.length) { return ''; }
-  const line = parts.join(', then ');
-  return `${line.charAt(0).toUpperCase()}${line.slice(1)}.`;
+  let line = parts[0];
+  for (let i = 1; i < parts.length; i += 1) {
+    line = trf('{0}, then {1}', line, parts[i]);
+  }
+  return trf('{0}.', `${line.charAt(0).toUpperCase()}${line.slice(1)}`);
 }
 
 /*

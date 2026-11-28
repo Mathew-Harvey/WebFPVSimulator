@@ -24,6 +24,7 @@
  * You should have received a copy of the GNU General Public License
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
+import { tr } from '../i18n/i18n.js';
 
 function el(tag, cls, text) {
   const n = document.createElement(tag);
@@ -95,11 +96,11 @@ export class BalloonHud {
     }
     if (s.best !== L.best) {
       L.best = s.best;
-      this.best.textContent = s.best > 0 ? `Best ${s.best}` : '';
+      this.best.textContent = tr(s.best > 0 ? `Best ${s.best}` : '');
     }
     if (s.streak !== L.streak) {
       L.streak = s.streak;
-      this.streak.textContent = s.streak >= 2 ? `Streak x${s.streak}` : '';
+      this.streak.textContent = tr(s.streak >= 2 ? `Streak x${s.streak}` : '');
     }
     const next = s.over ? Math.ceil(s.nextMs / 1000) : -1;
     if (s.over !== L.over || next !== L.next) {

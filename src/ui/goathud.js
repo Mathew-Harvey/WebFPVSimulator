@@ -25,6 +25,7 @@
  * You should have received a copy of the GNU General Public License
  * along with WebFPVSimulator. If not, see <https://www.gnu.org/licenses/>.
  */
+import { tr } from '../i18n/i18n.js';
 
 function el(tag, cls, text) {
   const n = document.createElement(tag);
@@ -116,7 +117,7 @@ export class GoatHud {
     if (m !== L.m || allHome !== L.shown) {
       L.m = m;
       L.shown = allHome;
-      this.aimDist.textContent = allHome ? 'All of them are home' : `${m} m away`;
+      this.aimDist.textContent = tr(allHome ? 'All of them are home' : `${m} m away`);
     }
   }
 
@@ -130,7 +131,7 @@ export class GoatHud {
       L.home = s.home;
       L.total = s.total;
       this.count.textContent = String(s.home);
-      this.of.textContent = `of ${s.total}`;
+      this.of.textContent = tr(`of ${s.total}`);
       this.box.classList.toggle('is-all', s.home >= s.total && s.total > 0);
     }
     const sec = s.started ? Math.floor(s.clockS) : -1;
@@ -146,11 +147,11 @@ export class GoatHud {
       L.all = all;
       if (all) {
         /* The finish: how to play it again (goatItems in ./ui.js). */
-        this.run.textContent = 'Pause to let them out again';
+        this.run.textContent = tr('Pause to let them out again');
       } else if (herding) {
-        this.run.textContent = `On the run: ${herding}`;
+        this.run.textContent = tr(`On the run: ${herding}`);
       } else {
-        this.run.textContent = s.started ? '' : 'Fly low to move a goat';
+        this.run.textContent = tr(s.started ? '' : 'Fly low to move a goat');
       }
     }
   }

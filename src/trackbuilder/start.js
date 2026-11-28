@@ -28,6 +28,7 @@ import { docFromHash } from './sharelink.js';
 import { duplicateTrack } from './model.js';
 import { pingVisit } from '../share/stats.js';
 import { boardOrigin } from '../share/board.js';
+import { initLanguage, watchPage } from '../i18n/i18n.js';
 
 /*
  * FIRST, BEFORE ANYTHING READS THE QUERY. It takes a sponsor's
@@ -39,6 +40,12 @@ import { boardOrigin } from '../share/board.js';
  * sends Global Privacy Control. Nothing waits for it.
  */
 pingVisit('builder');
+
+/* The Steam edition's language (src/i18n/i18n.js): the page is read into it
+ * and watched, before the builder draws its first panel. Nothing happens in
+ * the browser edition or in English. */
+await initLanguage();
+watchPage(document.body);
 
 /*
  * A COMMUNITYGOW ROUND, taken before anything else reads the address. The

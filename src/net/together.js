@@ -129,6 +129,14 @@ const VOTE_ENDS = {
 /* How long after a room's picture falls due before it is drawn: the sheet
  * that has just opened draws first. See oweCard. */
 const CARD_WAIT_MS = 800;
+/* A host who opens a room and flies it at once waits this long at most for
+ * the room's picture to be sent first. It is drawn while the board opens
+ * the room (cardEarly), so on most machines there is nothing to wait for;
+ * this is the slow machine's bound. See flyHosted. */
+const CARD_CAP_MS = 2000;
+/* The banner a host takes off under, which carries the room's code and its
+ * link: long enough to read a code off and press a button. */
+const OPEN_BANNER_MS = 12000;
 const QBAR_MS = 5000;
 /* The pad's repeat, as the career's (src/career/controller.js). */
 const PAD_REPEAT_FIRST_MS = 380;
@@ -415,6 +423,45 @@ function withTitle(avatar) {
   return { ...cleanAvatar(avatar), title: savedTitleNumber() };
 }
 
+/*
+ * HOW THIS PILOT OPENED THEIR LAST ROOM, kept so the next one opens the
+ * same way with no page to answer (openHost). Who can find it, school
+ * safe, typed chat, hidden addresses, how many pilots, its tags and a
+ * name the pilot typed. Never a password: one typed for a room is that
+ * room's. Read back field by field, so a value this page did not write is
+ * never sent to the board.
+ */
+function cleanHostChoice(raw) {
+  if (!raw || typeof raw !== 'object') {
+    return null;
+  }
+  const max = Number(raw.max);
+  const listed = raw.listed === true;
+  return {
+    name: typeof raw.name === 'string' ? raw.name.trim().slice(0, 32) : '',
+    listed,
+    streamer: !listed && raw.streamer === true,
+    schoolSafe: raw.schoolSafe === true,
+    typedChat: raw.typedChat === true,
+    hide: raw.hide === true,
+    max: Number.isInteger(max) && max >= 2 && max <= STREAM_MAX ? max : 0,
+    tags: Array.isArray(raw.tags) ? raw.tags.filter((t) => TAGS.some((x) => x.id === t)).slice(0, 3) : [],
+    /* The tags are a race room's or a freestyle room's, and are kept for
+     * that kind only. */
+    race: raw.race === true,
+  };
+}
+
+/* The choice in a few words, for the map page that opens a room on a
+ * double click: "link only", "listed under Rooms, school safe". */
+function hostKindLine(choice) {
+  if (!choice) {
+    return '';
+  }
+  const who = choice.streamer ? 'a streamer room' : choice.listed ? 'listed under Rooms' : 'link only';
+  return `${who}${choice.schoolSafe ? ', school safe' : ''}`;
+}
+
 function loadStore() {
   try {
     const raw = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
@@ -432,6 +479,7 @@ function loadStore() {
         /* Shown the overview, and told it exists while following: once. */
         overviewTaught: raw.overviewTaught === true,
         overviewOffered: raw.overviewOffered === true,
+        host: cleanHostChoice(raw.host),
       };
     }
   } catch (e) {
@@ -439,7 +487,7 @@ function loadStore() {
   }
   return {
     avatar: null, pick: null, met: false, consent: false, taught: false, watchTaught: false, watchRode: false,
-    overviewTaught: false, overviewOffered: false,
+    overviewTaught: false, overviewOffered: false, host: null,
   };
 }
 
@@ -558,6 +606,10 @@ export function createTogether(shell) {
   let cardOwed = '';
   let cardAt = 0;
   let cardBusy = false;
+  /* The room's picture, made while the board was opening the room:
+   * { map, mapName, look, made: a promise of the card, or of '' }. See
+   * cardEarly. */
+  let cardMade = null;
   /* The map the last one owed was of, so a 'room' that says there is no
    * picture asks for one only when the board took it off for a new map. */
   let cardMap = '';
@@ -1028,6 +1080,7 @@ export function createTogether(shell) {
     welcomedOnce = false;
     cardOwed = '';
     cardMap = '';
+    cardMade = null;
     claimNow = null;
     voteKey = '';
     lastVote = null;
@@ -1134,7 +1187,8 @@ export function createTogether(shell) {
       return;
     }
     shell.roomInfo({
-      code: r.code, name: r.name, n: session.link.pilots.size, host: isHost(), race: RoomRace.racing(r.way), freestyle: r.way === 'freestyle',
+      /* map: the map's name, for the menus' way back to the room. */
+      code: r.code, name: r.name, map: r.mapName, n: session.link.pilots.size, host: isHost(), race: RoomRace.racing(r.way), freestyle: r.way === 'freestyle',
       vote: voteForShell(),
       ribbon: r.game === 'ribbon' ? {
         phase: ribbonNow ? ribbonNow.state.phase : 'pit',
@@ -1281,14 +1335,14 @@ export function createTogether(shell) {
    * a number (flowSeq), so one the pilot cancelled, or left for another,
    * is not finished for them when the board's answer lands.
    */
-  async function joinFlow(code, invite = '', { pressed = false } = {}) {
+  async function joinFlow(code, invite = '', { pressed = false, own = null } = {}) {
     const c = normaliseCode(code);
     if (!c) {
       sheetCant('notFound', { code });
       return;
     }
     if (!online) {
-      gate(() => joinFlow(c, invite, { pressed }));
+      gate(() => joinFlow(c, invite, { pressed, own }));
       return;
     }
     sheetConnecting({ code: c, step: 0 });
@@ -1300,6 +1354,15 @@ export function createTogether(shell) {
       return;
     }
     if (!got.ok) {
+      /* The pilot's own room, by the menus' door from another world
+       * (backToRoom). Alone in it, their going left it empty, and the
+       * board calls an empty room no room to a link while keeping it a
+       * minute for exactly this. The join itself is still let in, so it
+       * is tried, and a room that has closed says so then. */
+      if (got.status === 404 && own) {
+        connect({ ...own, code: c }, { invite });
+        return;
+      }
       sheetCant(got.status === 404 ? 'notFound' : (got.body && got.body.why) || 'offline', { code: c });
       return;
     }
@@ -1327,8 +1390,10 @@ export function createTogether(shell) {
   function joinNow(r, invite) {
     const here = heldRoom();
     if (here && here.code === r.code) {
-      closeAll();
-      toast('You are in this room already.');
+      /* Their own room, pressed in Open rooms or reached by its link. It
+       * said "You are in this room already" and closed, which left a pilot
+       * on the menus where they were: now it is the way back in. */
+      backToRoom();
       return;
     }
     leaveFirst(`Joining ${r.name} takes you out of this room. The others carry on without you.`, () => gate(() => {
@@ -1342,6 +1407,56 @@ export function createTogether(shell) {
       }
       connect(r, { invite });
     }));
+  }
+
+  /*
+   * THE WAY BACK TO THE ROOM FROM A MENU. The owner, 2026-11-28, with a
+   * recording of it: "I hosted a room but unsure how to fly. If I try to
+   * back out to fly it asks if I want to leave the room. If I select a map
+   * it asks if I want to leave the current room". A pilot can be on the
+   * menus with the room still held (Esc on the results page, a map flown
+   * alone meanwhile), and nothing there said so or led back: the room
+   * card is the flight's, their own room in Open rooms said they were in
+   * it already and closed, and Host a room asked them to leave it. Every
+   * menu page has this door now (src/ui/ui.js roomDoorUp: the bar's
+   * button, and the room's panel on the cover and the Multiplayer page),
+   * and Open rooms comes here too.
+   *
+   * The room's world on screen is flown as a joiner's is, on the room's
+   * quad. With another world loaded, one the sim ships is seated and flown
+   * in this page (shell.flyWorld), as a double click on its card is, so
+   * the room is never left. A map or a track from the board is reached by
+   * the room's own link, as a join from another map is (travel): the
+   * socket is left to drop rather than closed, so a host is back inside
+   * the fifteen seconds the board keeps the room theirs, and the press
+   * says whose room it is (`own`), because a pilot alone in a room has
+   * left it empty by going, and an empty room is no room to a link.
+   */
+  function backToRoom() {
+    const r = heldRoom();
+    if (!r) {
+      return;
+    }
+    closeAll();
+    if (shell.flying()) {
+      return;
+    }
+    if (sameWorld(r)) {
+      quadHeard(r, true);
+    }
+    if (!sameWorld(r) || !sameCraft(r)) {
+      if (r.way === 'freestyle' && shell.flyWorld && shell.flyWorld(r.map, craftForRoom(r))) {
+        toast(`Back to ${r.name}.`);
+        return;
+      }
+      travel(r, session.invite || '', true);
+      return;
+    }
+    const fromMenu = !shell.paused();
+    shell.fly();
+    if (fromMenu) {
+      toast(`Back in ${r.name}.`);
+    }
   }
 
   /* A pilot in a room who asks for another room is asked first, because
@@ -1364,10 +1479,10 @@ export function createTogether(shell) {
 
   /* Into the room's world: the page reloads on its address, carrying the
    * press for a minute so the card does not ask again. */
-  function travel(r, invite) {
+  function travel(r, invite, own = false) {
     sheetConnecting({ code: r.code, room: r, step: 2 });
     try {
-      writeJoinToken(window.sessionStorage, { code: r.code, invite }, Date.now());
+      writeJoinToken(window.sessionStorage, { code: r.code, invite, own: own ? r : null }, Date.now());
     } catch (e) {
       /* No session storage: the card asks once more after the reload. */
     }
@@ -1404,6 +1519,7 @@ export function createTogether(shell) {
     }
     makeSession();
     pending = { kind: 'host', entry, settings };
+    cardEarly(entry);
     session.host({
       ...settings,
       way: entry.way,
@@ -1464,24 +1580,99 @@ export function createTogether(shell) {
     cardAt = performance.now() + CARD_WAIT_MS;
   }
 
+  /*
+   * THE PICTURE, BEGUN WHILE THE BOARD OPENS THE ROOM. Everything it is
+   * drawn from is known the moment a host asks for a room (the map, the
+   * pilot's look), and only sending it needs the room's code. So the
+   * drawing and the encoding, which are the work, happen under the page
+   * that says the room is opening, and a host who is flown straight into
+   * the room (flyHosted) has only the sending left, which is a request
+   * and nothing else. payCard takes it if it is still the room's. Never
+   * drawn in the air: a machine too slow to have begun by takeoff puts it
+   * off (makeRoomCard's hold), and it is made at the first pause instead.
+   */
+  function cardEarly(entry) {
+    cardMade = null;
+    if (STEAM_EDITION || !entry || !entry.map) {
+      return;
+    }
+    const board = boardOrigin();
+    const world = { map: entry.map, way: entry.way };
+    const mapName = String(entry.name || 'A map').slice(0, 48);
+    const avatar = cleanAvatar(store.avatar);
+    cardMade = {
+      map: entry.map,
+      mapName,
+      look: JSON.stringify(avatar),
+      made: Promise.all([import('./roomcard.js'), isBuiltInWorld(world.map) ? [thumbOf(world)] : boardPictures(world, board)])
+        .then(([{ makeRoomCard }, pictures]) => makeRoomCard({
+          avatar, mapName, pictures, hold: () => shell.flying() || Boolean(watching),
+        }))
+        .catch(() => ''),
+    };
+  }
+
   function payCard() {
     const r = room();
     const code = cardOwed;
     cardOwed = '';
     if (!r || r.code !== code || !isHost()) {
-      return;
+      return Promise.resolve();
     }
     const board = boardOrigin();
     const key = session.link.key;
+    const avatar = cleanAvatar(store.avatar);
+    /* The one made while the room was opening, if it is this room's as it
+     * stands: the same map under the same name, the same look. Used once. */
+    const early = cardMade && cardMade.map === r.map && cardMade.mapName === r.mapName && cardMade.look === JSON.stringify(avatar) ? cardMade.made : null;
+    cardMade = null;
     cardBusy = true;
-    Promise.all([import('./roomcard.js'), isBuiltInWorld(r.map) ? [thumbOf(r)] : boardPictures(r, board)])
-      .then(([{ sendRoomCard }, pictures]) => sendRoomCard({
-        board, code, key, avatar: cleanAvatar(store.avatar), mapName: r.mapName, pictures,
+    let held = false;
+    return Promise.all([import('./roomcard.js'), early])
+      .then(async ([{ sendRoomCard }, made]) => sendRoomCard({
+        board,
+        code,
+        key,
+        avatar,
+        mapName: r.mapName,
+        made: made || '',
+        pictures: made ? [] : await (isBuiltInWorld(r.map) ? [thumbOf(r)] : boardPictures(r, board)),
+        /* When it has to be made here: asked before anything is drawn, so
+         * a host who took off meanwhile (flyHosted's wait ran out) is not
+         * charged the drawing in the air. It is owed again, and frame()
+         * pays it at the next pause or menu. */
+        hold: () => {
+          held = shell.flying() || Boolean(watching);
+          return held;
+        },
       }))
       .catch(() => {})
       .finally(() => {
         cardBusy = false;
+        const now = room();
+        if (held && now && now.code === code && isHost()) {
+          cardOwed = code;
+          cardAt = performance.now() + CARD_WAIT_MS;
+        }
       });
+  }
+
+  /*
+   * A HOST WHO OPENS A ROOM AND FLIES IT AT ONCE, with the room's world
+   * already on screen, would be in the air before frame() ever paid the
+   * picture, and a link sent in the first minute would show the map's own.
+   * So it is paid here, under the page that says the room is opening, and
+   * the flight waits for it, CARD_CAP_MS at most. It was begun when the
+   * room was asked for (cardEarly), so the wait is mostly the board's
+   * answer. A card that is made after the wait ran out is still sent when
+   * it is ready, which costs a flight nothing. Nothing owed (the Steam
+   * edition, a room that has its picture) waits for nothing.
+   */
+  function cardBeforeFlight() {
+    if (!cardOwed || cardBusy) {
+      return Promise.resolve();
+    }
+    return Promise.race([payCard(), new Promise((done) => { setTimeout(done, CARD_CAP_MS); })]);
   }
 
   /*
@@ -2449,6 +2640,11 @@ export function createTogether(shell) {
      * in the air yet, so it is said with the welcome rather than splashed. */
     const swapped = quadHeard(r, true);
     if (was && was.kind === 'host') {
+      /* The next room opens the way this one did (openHost). Not a quick
+       * match, whose settings are the match's and not the pilot's. */
+      if (!(was.entry && was.entry.quick)) {
+        rememberHost(was.settings, was.entry);
+      }
       if (was.entry && was.entry.rules) {
         seatRoomRules(was.entry.rules);
       }
@@ -2468,7 +2664,13 @@ export function createTogether(shell) {
         });
         return;
       }
-      sheetShare({ first: true, entry: was.entry });
+      /* A streamer room's invite page holds a step nothing else does, its
+       * stream's link, so that host still reads it before flying. */
+      if (r.streamer) {
+        sheetShare({ first: true, entry: was.entry });
+        return;
+      }
+      flyHosted(was.entry, r);
       return;
     }
     closeAll();
@@ -3423,35 +3625,185 @@ export function createTogether(shell) {
     gate(() => joinFlow(code, '', { pressed: true }));
   }
 
+  /*
+   * HOSTING IN FOUR PRESSES. The owner, 2026-11-28: "can we make the flow
+   * more intuitive, simpler? less steps? just double click on rooms rather
+   * than room then fly now". It was six: Multiplayer, what to fly, Host a
+   * room, the map, Open room, Start flying, with two pages between the map
+   * and the air. Now the map is the last press: the room opens the way
+   * this pilot opened their last one (store.host) and they are flying it,
+   * the code and the link on a banner over the takeoff (flyHosted).
+   *
+   * The page of options is still asked the FIRST time, because who can
+   * find a room is a safety choice (the youngest pilots are eight) and a
+   * streamer room is one only from the moment it opens: nobody is given a
+   * kind of room they never chose. After that it is the map page's Room
+   * options button (sheetHost with `only`), and everything but Streamer
+   * can also be changed in the room. A password is never kept.
+   *
+   * `direct` is the shell saying the pilot already asked to host (Host a
+   * room's map page, a mini game set up with friends). A map card's own
+   * Fly together button, on a page that is not hosting, still shows the
+   * options first, filled in as last time: one stray press there must not
+   * open a listed room.
+   */
   function openHost(entry) {
     if (entry && entry.move) {
       proposeMove(entry);
       return;
     }
-    leaveFirst('Opening a room of your own takes you out of this one. The others carry on without you.', () => gate(() => sheetHost(entry, null)));
+    leaveFirst('Opening a room of your own takes you out of this one. The others carry on without you.', () => gate(() => {
+      if (entry.direct && store.host) {
+        const f = hostForm(entry, null);
+        if (f.schoolSafe && f.name === suggestedRoomName()) {
+          f.name = '';
+        }
+        host(entry, hostSettings(f));
+        return;
+      }
+      sheetHost(entry, null);
+    }));
   }
 
-  function sheetHost(entry, was, opts = {}) {
+  function suggestedRoomName() {
     const handle = readPilotName();
-    const suggested = handle ? `${handle}'s room`.slice(0, 32) : '';
-    const f = {
-      name: suggested,
-      listed: false,
+    return handle ? `${handle}'s room`.slice(0, 32) : '';
+  }
+
+  /* The options a room opens with: the defaults, then how this pilot
+   * opened their last one, then `was` (a form sent back by the board). */
+  function hostForm(entry, was) {
+    const kept = store.host;
+    const race = entry.way !== 'freestyle';
+    /* A Quad Ball match is as many seats as it has a side, so the board
+     * hands a friend who joins a bot's seat (and its side) rather than
+     * an extra one on top of a full match. */
+    const ballSeats = entry.game === 'ball' && entry.rules && Number(entry.rules.size) > 0 ? Math.min(ROOM_MAX, Number(entry.rules.size) * 2) : 0;
+    const streamer = Boolean(kept && kept.streamer);
+    return {
+      name: (kept && kept.name) || suggestedRoomName(),
+      listed: Boolean(kept && kept.listed),
       password: '',
-      /* A Quad Ball match is as many seats as it has a side, so the board
-       * hands a friend who joins a bot's seat (and its side) rather than
-       * an extra one on top of a full match. */
-      max: entry && entry.game === 'ball' && entry.rules && Number(entry.rules.size) > 0 ? Math.min(ROOM_MAX, Number(entry.rules.size) * 2) : Math.min(16, gameMost(entry && entry.game, false)),
+      max: ballSeats || Math.max(2, Math.min(gameMost(entry.game, streamer), (kept && kept.max) || 16)),
       /* Off until the host turns it on, the owner's pick of 2026-10-26:
        * a host opening a room for friends has not yet thought about who
        * may type, and the switch is one press away for one who has. */
-      typedChat: false,
-      schoolSafe: false,
-      streamer: false,
-      hide: false,
-      tags: entry.way === 'freestyle' ? [] : ['racing'],
+      typedChat: Boolean(kept && kept.typedChat),
+      schoolSafe: Boolean(kept && kept.schoolSafe),
+      streamer,
+      hide: Boolean(kept && kept.hide),
+      tags: kept && kept.race === race ? [...kept.tags] : (race ? ['racing'] : []),
       ...(was || {}),
     };
+  }
+
+  /* What the board is sent for a form: a listed, school safe or streamer
+   * room always has preset lines and hidden addresses. */
+  function hostSettings(f) {
+    const strict = f.listed || f.schoolSafe || f.streamer;
+    return {
+      name: f.name.trim(),
+      listed: f.listed,
+      schoolSafe: f.schoolSafe,
+      streamer: f.streamer,
+      typedChat: !strict && f.typedChat,
+      hide: strict || f.hide,
+      password: f.password || undefined,
+      max: f.max,
+      tags: f.tags,
+    };
+  }
+
+  /* Kept when the board has opened the room, so a name it refused is never
+   * what the next room is opened with. A name left as the one suggested
+   * from the pilot's own is kept as empty, and is suggested afresh. */
+  function rememberHost(settings, entry) {
+    if (!settings) {
+      return;
+    }
+    const name = String(settings.name || '');
+    store.host = cleanHostChoice({
+      ...settings,
+      name: name === suggestedRoomName() ? '' : name,
+      race: Boolean(entry) && entry.way !== 'freestyle',
+    });
+    save();
+    tellHostKind();
+  }
+
+  /* The map page's hosting band says what a double click opens. */
+  function tellHostKind() {
+    if (shell.hostKind) {
+      shell.hostKind(hostKindLine(store.host));
+    }
+  }
+
+  /* The map page's Room options button: the same page, with no map on it
+   * and nothing opened, kept for the next room. `pick` is what the page is
+   * hosting, { way, game }. */
+  function hostOptions(pick) {
+    gate(() => sheetHost({ way: (pick && pick.way) || lobbyWay, game: (pick && pick.game) || '', name: '' }, null, { only: true }));
+  }
+
+  /*
+   * Into the air in a room just opened, with no page between. The room's
+   * world on screen: its picture is made first, under the page that says
+   * the room is opening (cardBeforeFlight), and then Fly. Another world:
+   * the entry's own fly loads it, and frame() pays the picture during the
+   * load, which is not a flight. Cancel on that page closes the room.
+   */
+  function flyHosted(entry, r) {
+    const seq = flowSeq;
+    const go = () => {
+      const now = room();
+      if (seq !== flowSeq || !now || now.code !== r.code) {
+        return;
+      }
+      closeAll();
+      taughtFirst(now, () => {
+        if (entry && entry.fly && !sameWorld(now)) {
+          entry.fly();
+        } else if (!shell.flying()) {
+          shell.fly();
+        }
+        startOwedRound();
+        /* Said when the flight is on screen (frame), not over the map
+         * still loading. */
+        openOwed = now.code;
+      });
+    };
+    if (!sameWorld(r) || !cardOwed) {
+      go();
+      return;
+    }
+    sheetConnecting({ hosting: entry || { name: r.mapName }, step: 2 });
+    cardBeforeFlight().then(go);
+  }
+
+  /* The host's first moment in their room says it is open and how the
+   * others get in: nothing else on screen would. The link is one press
+   * from here, and the rest is the room's page. */
+  function openBanner(r) {
+    const by = hands();
+    const invite = r.lock && session.invite ? roomUrl(window.location.href, r, { invite: session.invite, mp: shell.mp }) : '';
+    const link = invite || roomUrl(window.location.href, r, { mp: shell.mp });
+    const more = by === 'touch' ? 'Tap the room card to invite pilots or change the room.' : 'Pause, then Room, to invite pilots or change the room.';
+    banner(me().avatar, 'hello', `${r.name} is open`, `Room code ${r.code}. ${more}`, 'mint', {
+      ms: OPEN_BANNER_MS,
+      inAir: true,
+      extra: by === 'pad' ? null : btn('Copy link', 'small', () => copyText(link, null, {
+        done: invite ? 'Invite link copied' : 'Link copied',
+        fail: 'That did not copy. Pause, then Room, then Invite pilots has the link.',
+      }), { 'data-k': 'open-copy' }),
+    });
+  }
+
+  /* `only`: the options with no map and nothing opened, kept for the next
+   * room (hostOptions). */
+  function sheetHost(entry, was, opts = {}) {
+    const only = Boolean(opts.only);
+    const suggested = suggestedRoomName();
+    const f = hostForm(entry, was);
     const bad = (was && was.bad) || new Set();
     open('host', () => {
       const strict = f.listed || f.schoolSafe || f.streamer;
@@ -3484,29 +3836,34 @@ export function createTogether(shell) {
         if (name && (name.length < 2 || name.length > 32)) problems.add('name');
         if (f.password && (f.password.length < 4 || f.password.length > 64)) problems.add('password');
         if (problems.size) {
-          sheetHost(entry, { ...f, bad: problems }, { replace: true });
+          sheetHost(entry, { ...f, bad: problems }, { replace: true, only });
           return;
         }
-        host(entry, {
-          name,
-          listed: f.listed,
-          schoolSafe: f.schoolSafe,
-          streamer: f.streamer,
-          typedChat: !strict && f.typedChat,
-          hide: strict || f.hide,
-          password: f.password || undefined,
-          max: f.max,
-          tags: f.tags,
-        });
+        if (only) {
+          rememberHost(hostSettings(f), entry);
+          pop();
+          toast(`Saved. Your next room opens ${hostKindLine(store.host)}.`);
+          return;
+        }
+        host(entry, hostSettings(f));
       };
+      let kicker = `Host a room on ${entry.name}`;
+      if (only) kicker = 'Room options';
+      else if (entry.game === 'ribbon') kicker = `Host ribbon cutting on ${entry.name}`;
+      else if (entry.game === 'dogfight') kicker = `Host a dogfight on ${entry.name}`;
+      let after = `Nobody can come in until you send the link${f.listed ? ' or they find it under Rooms' : ''}.`;
+      if (f.streamer) after = 'Nobody can come in until you show the code on your stream or send the link.';
+      /* The first room says what the page is for from now on. */
+      const next = store.host ? '' : ' Your next room opens like this one, with no page to answer.';
       return scrimmed(h('div.page.fit.sheet.halftone', null,
-        h('div.page-head', null, h('div.grow', null, h('span.kicker', { text: entry.game === 'ribbon' ? `Host ribbon cutting on ${entry.name}` : (entry.game === 'dogfight' ? `Host a dogfight on ${entry.name}` : `Host a room on ${entry.name}`) }), lettered('OPEN YOUR ROOM', [INKS.cream, INKS.sakura], 50, 620)),
+        h('div.page-head', null, h('div.grow', null, h('span.kicker', { text: kicker }), lettered(only ? 'YOUR NEXT ROOM' : 'OPEN YOUR ROOM', [INKS.cream, INKS.sakura], 50, 620)),
           btn(entry.fromGames ? 'Back' : 'Back to the maps', 'small ghost', () => back(), { 'data-k': 'cancel' })),
         h('div.rule'),
         h('div.page-body', null, h('div.tg-cols', null,
           h('div.stack', null,
-            h('div.mapcard', null, h('div.pic', { style: { backgroundImage: entry.thumb ? `url("${entry.thumb}")` : '' } }),
-              h('div', { style: { flex: '1' } }, h('small', { text: 'Map' }), h('b', { text: entry.name }), h('small', { text: WAY_NAMES[entry.way] || '' }))),
+            only ? h('p.help', { style: { color: 'var(--ink)', fontWeight: '700', margin: '0' }, text: 'How your rooms open. Pick a map after this and you are flying in one.' })
+              : h('div.mapcard', null, h('div.pic', { style: { backgroundImage: entry.thumb ? `url("${entry.thumb}")` : '' } }),
+                h('div', { style: { flex: '1' } }, h('small', { text: 'Map' }), h('b', { text: entry.name }), h('small', { text: WAY_NAMES[entry.way] || '' }))),
             h('div.field', null, h('label', { for: 'tg-rname', text: 'Room name' }), nameIn,
               bad.has('name') ? h('span.help.bad', { text: SETTINGS_FIELDS.name }) : h('span.help.spare', { text: madeUpRoom ? 'Leave it empty and the room takes your made up name.' : 'Leave it empty and the room is named after you.' })),
             /* Who can find it decides the size too: a streamer room is for a
@@ -3523,8 +3880,11 @@ export function createTogether(shell) {
               h('button.radio', {
                 type: 'button', role: 'radio', 'aria-checked': String(f.streamer), 'data-k': 'streamer', on: { click: () => { f.listed = false; f.streamer = true; f.max = gameMost(entry.game, true); again(); } },
               }, h('b', { text: 'Streamer room' }), h('small', { text: `Up to ${gameMost(entry.game, true)} viewers, by the code on your stream.` })))),
-            h('div.field', null, h('label', { for: 'tg-pw' }, 'Password ', h('span', { style: { fontWeight: '600', textTransform: 'none', letterSpacing: '0' }, text: '(optional)' })), pwIn,
-              h(`span.help${bad.has('password') ? '.bad' : ''}`, { text: bad.has('password') ? SETTINGS_FIELDS.password : 'Your invite link skips it, so you never have to say it out loud.' }))),
+            /* A password is one room's and is never kept, so the options
+             * for the next room have no box for one. */
+            only ? h('p.help', { text: 'A password is set in the room itself: pause, then Room, then Room settings.' })
+              : h('div.field', null, h('label', { for: 'tg-pw' }, 'Password ', h('span', { style: { fontWeight: '600', textTransform: 'none', letterSpacing: '0' }, text: '(optional)' })), pwIn,
+                h(`span.help${bad.has('password') ? '.bad' : ''}`, { text: bad.has('password') ? SETTINGS_FIELDS.password : 'Your invite link skips it, so you never have to say it out loud.' }))),
           h('div.stack', null,
             h('div.field', null, h('span.lab', { text: 'Pilots' }), h('div.stepper', null,
               h('button', { type: 'button', 'aria-label': 'Fewer', 'data-k': 'fewer', on: { click: () => { f.max = Math.max(2, f.max - 1); again(); } } }, '−'),
@@ -3539,9 +3899,10 @@ export function createTogether(shell) {
               { locked: strict, why: strict ? 'Always on in listed, school safe and streamer rooms.' : '' }),
             /* Tags are read on the Rooms shelf and nowhere else. */
             f.listed && !f.streamer ? tagPicker(f, again) : null))),
-        h('div.footer-row', null, btn('Open room', '', openRoom, { 'data-k': 'open', 'data-autofocus': true }),
-          h('span.note', { text: f.streamer ? 'Nobody can come in until you show the code on your stream or send the link.'
-            : `Nobody can come in until you send the link${f.listed ? ' or they find it under Rooms' : ''}.` }))));
+        /* A streamer's next page is the invite, for the stream's link;
+         * everybody else is in the air from this button. */
+        h('div.footer-row', null, btn(only ? 'Save' : (f.streamer ? 'Open room' : 'Open room and fly'), '', openRoom, { 'data-k': only ? 'save' : 'open', 'data-autofocus': true }),
+          h('span.note', { text: only ? 'Kept on this computer for the rooms you open from now on.' : `${after}${next}` }))));
     }, {
       replace: opts.replace,
       /* A mini game's room, chosen on the Mini games page: the map cards
@@ -3808,7 +4169,9 @@ export function createTogether(shell) {
     const steps = hosting
       ? ['Opening a room on the board', `Choosing ${hosting.name}`, 'Writing your invite']
       : ['Finding the room', 'Checking the way in', `Loading ${r ? r.mapName : 'the map'}`, 'Meeting the pilots'];
-    const at = hosting ? 1 : step;
+    /* A host is on the second line until the board answers, and on the
+     * third while the room's picture is made (flyHosted). */
+    const at = hosting ? Math.max(1, step) : step;
     const render = () => scrimmed(h('div.card-mid.sheet.halftone', null,
       h('span.kicker', { text: hosting ? 'Fly together' : (r ? r.name : `Room ${code}`) }),
       lettered('HERE WE GO', [INKS.cream, INKS.sky], 44, 600),
@@ -4814,6 +5177,10 @@ export function createTogether(shell) {
   let rosterOn = false;
   let qbarTimer = null;
   let bannerTimer = null;
+  /* Whether the banner up is the flight's own (banner, inAir), and the
+   * room whose host is owed the one they take off under (flyHosted). */
+  let bannerInAir = false;
+  let openOwed = '';
   let toastTimer = null;
   let dropToastUp = false;
 
@@ -4843,12 +5210,17 @@ export function createTogether(shell) {
   }
 
   /* extra: buttons after the words, for a banner that offers something;
-   * ms: how long it stays. */
-  function banner(avatar, expr, head, small, tone = '', { extra = null, ms = BANNER_MS } = {}) {
+   * ms: how long it stays; inAir: one that is the flight's own and goes
+   * when a menu comes up (frame), as a long one otherwise sat over it. */
+  function banner(avatar, expr, head, small, tone = '', { extra = null, ms = BANNER_MS, inAir = false } = {}) {
     clearTimeout(bannerTimer);
+    bannerInAir = inAir;
     bannerBox.replaceChildren(h(`div.tg-banner${tone ? `.${tone}` : ''}${extra ? '.offers' : ''}`, null, avatar ? face(avatar, expr || 'calm', 56) : null,
       h('div', null, h('b', { text: head }), small ? h('small', { text: small }) : null), extra));
-    bannerTimer = setTimeout(() => bannerBox.replaceChildren(), ms);
+    bannerTimer = setTimeout(() => {
+      bannerBox.replaceChildren();
+      bannerInAir = false;
+    }, ms);
     measureLine();
     placeBanner();
   }
@@ -6212,11 +6584,24 @@ export function createTogether(shell) {
         qbar.hidden = true;
         roster.hidden = true;
         talk.hidden = true;
+        if (bannerInAir) {
+          clearTimeout(bannerTimer);
+          bannerBox.replaceChildren();
+          bannerInAir = false;
+        }
       } else if (rosterOn) {
         paintRoster();
       }
       if (r && race) {
         raceChanged();
+      }
+    }
+    if (openOwed && screen === 'flight') {
+      const owed = openOwed;
+      openOwed = '';
+      const mine = room();
+      if (mine && mine.code === owed && isHost()) {
+        openBanner(mine);
       }
     }
     if (screen === 'flight' && !store.watchTaught && session.inRoom) {
@@ -6581,7 +6966,7 @@ export function createTogether(shell) {
     } catch (e) {
       token = null;
     }
-    joinFlow(a.code, a.invite || (token ? token.invite : ''), { pressed: Boolean(token) });
+    joinFlow(a.code, a.invite || (token ? token.invite : ''), { pressed: Boolean(token), own: token ? token.own : null });
   }
 
   /* ---------------------------------------------------------------- */
@@ -6593,6 +6978,9 @@ export function createTogether(shell) {
      * the room's own pages say they wait for the board (roomToOpen). */
     if (action === 'room-sheet') {
       sheetRoom();
+    } else if (action === 'room-back') {
+      /* The menus' door back into the room (src/ui/ui.js roomDoorUp). */
+      backToRoom();
     } else if (action === 'room-invite') {
       sheetShare();
     } else if (action === 'room-leave') {
@@ -6648,6 +7036,9 @@ export function createTogether(shell) {
     }
   }
 
+  /* What a double click on the hosting map page opens, for its band. */
+  tellHostKind();
+
   return {
     /* For the frame loop: the session while in a room or getting back
      * into one, never one still knocking, which has no room to draw. */
@@ -6659,6 +7050,7 @@ export function createTogether(shell) {
     },
     openLobby,
     openHost,
+    hostOptions,
     quickBall,
     joinCode,
     fromGate,

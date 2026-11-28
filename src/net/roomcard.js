@@ -303,22 +303,52 @@ async function firstPicture(srcs) {
 }
 
 /*
- * Draw the card and give it to the board, which keeps it only for the
- * host. Answers the board's { cardUtc } or throws with its sentence.
- * key: the browser's key the room knows the host by (src/share/rating.js).
+ * The card, drawn, encoded and turned to the text the board takes: all of
+ * sendRoomCard that is work on the page, so a host's page can do it while
+ * the board is still opening the room and have only the sending left
+ * (together.js cardEarly).
  * pictures: the map's picture's addresses, best first.
+ * hold: asked before the pilot is painted, again once the pictures are in
+ * and before the card is drawn, and again before the encoded card is
+ * turned to text. True puts the card off (it throws): each of those is a
+ * beat of work, and the caller knows whether this is a moment for one.
  */
-export async function sendRoomCard({
-  board, code, key, avatar, mapName, pictures = [], fetchImpl = fetch,
+export async function makeRoomCard({
+  avatar, mapName, pictures = [], hold = null,
 }) {
+  if (hold && hold()) {
+    throw new Error('The card was put off.');
+  }
   const [picture, pilot] = await Promise.all([firstPicture(pictures.filter(Boolean)), pilotOf(avatar)]);
+  if (hold && hold()) {
+    throw new Error('The card was put off.');
+  }
   const bytes = await encodeCard(drawRoomCard({
     picture, pilot, avatar, mapName,
   }));
+  if (hold && hold()) {
+    throw new Error('The card was put off.');
+  }
+  return base64Of(bytes);
+}
+
+/*
+ * Give the board the room's card, which it keeps only for the host.
+ * Answers the board's { cardUtc } or throws with its sentence.
+ * key: the browser's key the room knows the host by (src/share/rating.js).
+ * made: a card made already (makeRoomCard), sent as it is, which is no
+ * work at all. Without one it is made here, from the same arguments.
+ */
+export async function sendRoomCard({
+  board, code, key, avatar, mapName, pictures = [], fetchImpl = fetch, hold = null, made = '',
+}) {
+  const card = made || await makeRoomCard({
+    avatar, mapName, pictures, hold,
+  });
   const res = await fetchImpl(`${board}/api/rooms/${encodeURIComponent(code)}/card`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ key, card: base64Of(bytes) }),
+    body: JSON.stringify({ key, card }),
   });
   let body = null;
   try {

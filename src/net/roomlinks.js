@@ -192,10 +192,33 @@ export function addressOutOfRoom(href) {
   return url.href === href ? '' : url.href;
 }
 
-/* A pilot's press, carried across the reload it causes. */
-export function writeJoinToken(storage, { code, invite = '' }, now) {
+/*
+ * What a join token keeps of the pilot's own room, for the way back into
+ * it from another world (backToRoom in together.js): what the connecting
+ * page and the world it is on are read from, field by field, and nothing
+ * else of the room's. null when it is not a room.
+ */
+function ownRoomOf(raw) {
+  if (!raw || typeof raw !== 'object' || typeof raw.map !== 'string' || !raw.map || raw.map.length > 64) {
+    return null;
+  }
+  const way = ['freestyle', '5inch', 'whoop'].includes(raw.way) ? raw.way : 'freestyle';
+  return {
+    name: String(raw.name || '').slice(0, 32),
+    map: raw.map,
+    mapName: String(raw.mapName || '').slice(0, 48),
+    way,
+    scale: raw.scale >= 100 ? 100 : 50,
+  };
+}
+
+/* A pilot's press, carried across the reload it causes. `own`: the room
+ * when it is the one the pilot is in already, and going back to. */
+export function writeJoinToken(storage, { code, invite = '', own = null }, now) {
   try {
-    storage.setItem(JOIN_TOKEN_KEY, JSON.stringify({ code, invite, at: now }));
+    storage.setItem(JOIN_TOKEN_KEY, JSON.stringify({
+      code, invite, at: now, ...(ownRoomOf(own) ? { own: ownRoomOf(own) } : {}),
+    }));
     return true;
   } catch (e) {
     return false;
@@ -219,5 +242,5 @@ export function takeJoinToken(storage, code, now) {
   if (age < 0 || age > JOIN_TOKEN_MS) {
     return null;
   }
-  return { code, invite: INVITE_RE.test(t.invite || '') ? t.invite : '' };
+  return { code, invite: INVITE_RE.test(t.invite || '') ? t.invite : '', own: ownRoomOf(t.own) };
 }

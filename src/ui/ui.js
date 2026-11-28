@@ -6504,6 +6504,14 @@ export class Ui {
      * host a room"). { way } while it lasts, null otherwise.
      */
     this.hostPick = null;
+    /* What a double click on the hosting map page opens, in a few words
+     * ("link only"), from src/net/together.js; empty before a pilot has
+     * opened a first room, when the page of options is asked instead. */
+    this.hostKind = '';
+    /* Whether a flight is under the page on screen: true from the moment
+     * one starts, through its pause, its results and their pages, and
+     * false again on the title (show). See roomDoorUp. */
+    this.runUnder = false;
     /*
      * DOGFIGHT (src/game/dogfight.js), the owner's ask of 2026-10-29: guns,
      * missiles and bots on any map. fightPick is the picker opened from the
@@ -7035,7 +7043,21 @@ export class Ui {
         this.act(it.action);
       }
     });
-    this.frameBot.append(this.frameLegend, el('div', 'frame-gap'), this.framePrimary);
+    /* The way back to the room, on every menu page while the pilot is in
+     * one: see roomDoorUp. */
+    this.frameRoom = document.createElement('button');
+    this.frameRoom.type = 'button';
+    this.frameRoom.className = 'frame-room';
+    this.frameRoom.hidden = true;
+    this.frameRoomName = el('span', 'frame-room-name', '');
+    this.frameRoom.append(el('span', 'frame-room-go', 'Back to your room'), this.frameRoomName);
+    this.frameRoom.addEventListener('click', () => {
+      if (this.onUiSound) {
+        this.onUiSound('select');
+      }
+      this.act('room-back');
+    });
+    this.frameBot.append(this.frameLegend, el('div', 'frame-gap'), this.frameRoom, this.framePrimary);
     r.append(this.frameTop, this.frameBot);
     /* A scroll anywhere in the shell can bring the primary row into sight or
      * take it out of it: see syncPrimaryButton. Captured, because a scroll
@@ -10671,8 +10693,21 @@ export class Ui {
             freestyle: 'Freestyle rooms other pilots have opened to anyone.',
             games: 'Freestyle and mini game rooms other pilots have opened to anyone.',
           }[way];
+          /* In a room, Multiplayer on the cover and Host a room on its
+           * page are the room's own panel, the way back into it: see
+           * roomDoorUp. Hosting another room is out of this one first. */
+          const door = this.roomDoorUp() ? this.roomInfo : null;
+          const doorCard = page === 'cover' ? 'together' : 'mp-host';
           return [
-            ...(page === 'cover' ? GATE_SIDES : GATE_ROOMS).map((c) => ({
+            ...(page === 'cover' ? GATE_SIDES : GATE_ROOMS).map((c) => (door && c.id === doorCard ? {
+              label: 'Back to your room',
+              card: c.id,
+              art: c.art,
+              burst: c.burst,
+              kicker: 'You are in a room',
+              caption: `${door.name}${door.map ? ` on ${door.map}` : ''} is still open. Code ${door.code}.`,
+              action: 'room-back',
+            } : {
               label: c.label,
               card: c.id,
               art: c.art,
@@ -12616,7 +12651,7 @@ export class Ui {
           },
           ...this.tuneShareRows(),
           feelItem(),
-          { label: 'Back to title', action: 'title' },
+          ...this.resultsExitRows(),
         ];
       }
       if (!listing) {
@@ -12625,7 +12660,7 @@ export class Ui {
           ...(this.changeMapItem() ? [this.changeMapItem()] : []),
           ...this.tuneShareRows(),
           feelItem(),
-          { label: 'Back to title', action: 'title' },
+          ...this.resultsExitRows(),
         ];
       }
       /*
@@ -12669,7 +12704,7 @@ export class Ui {
         }] : []),
         ...this.tuneShareRows(),
         feelItem(),
-        { label: 'Back to title', action: 'title' },
+        ...this.resultsExitRows(),
       ];
     }
     if (this.screen === 'rates') {
@@ -16543,7 +16578,11 @@ export class Ui {
           this.ballDoor(id, entry, ev, Boolean(hp), 1, hp ? 'make' : '');
           return;
         }
-        this.onFlyTogether(hp && hp.move ? { ...world, move: true } : hp && hp.game ? { ...world, game: hp.game } : world);
+        /* `direct`: this page is hosting, so the pilot has already asked
+         * for a room and the map is the last press (together.js openHost).
+         * A card's own Fly together, on a page that is not hosting, still
+         * shows the room's options first. */
+        this.onFlyTogether(hp && hp.move ? { ...world, move: true } : hp && hp.game ? { ...world, game: hp.game, direct: true } : { ...world, direct: Boolean(hp) });
       }
       return;
     }
@@ -16882,7 +16921,7 @@ export class Ui {
       }
       if (how.how === 'make') {
         this.onFlyTogether({
-          ...world, game: 'ball', rules: got.rules, fromGames: this.mapGamePick,
+          ...world, game: 'ball', rules: got.rules, fromGames: this.mapGamePick, direct: true,
         });
       } else if (how.how === 'quick') {
         this.onQuickBall({ ...world, game: 'ball', rules: got.rules });
@@ -16934,7 +16973,7 @@ export class Ui {
         }
       }
       this.onFlyTogether({
-        ...world, game, rules: got.rules, fromGames: this.mapGamePick,
+        ...world, game, rules: got.rules, fromGames: this.mapGamePick, direct: true,
       });
     } catch (e) {
       console.warn('dogfight: the pages did not load', e);
@@ -16993,6 +17032,9 @@ export class Ui {
     if (isCardScreen(this.screen) && this.pickerShelf() === shelf) {
       this.hostPick = pick;
       this.paintHostPick();
+      if (this.onHostPick) {
+        this.onHostPick();
+      }
       return;
     }
     /* From the gate this answers it as the shelf's own way does, so what
@@ -17018,6 +17060,18 @@ export class Ui {
       this.picker.refresh();
     }
     this.paintHostPick();
+    if (this.onHostPick) {
+      this.onHostPick();
+    }
+  }
+
+  /* What a double click on the hosting page opens, from the rooms
+   * (src/net/together.js tellHostKind): the band says so. */
+  setHostKind(kind) {
+    this.hostKind = kind || '';
+    if (this.hostPick) {
+      this.paintHostPick();
+    }
   }
 
   /*
@@ -17033,7 +17087,19 @@ export class Ui {
       words.append(el('span', 'host-band-kick', ''), el('div', 'host-band-title', ''), el('span', 'host-band-line', ''));
       const cancel = btn('host-band-cancel', 'Cancel');
       cancel.addEventListener('click', () => this.back());
-      this.hostBand.append(words, cancel);
+      /* What a double click opens, changed: who can find the room, school
+       * safe, how many pilots. Shown once there is a kind to change
+       * (hostKind), which is after a pilot's first room. */
+      this.hostOptions = btn('host-band-cancel host-band-options', 'Room options');
+      this.hostOptions.addEventListener('click', () => {
+        if (this.onUiSound) {
+          this.onUiSound('select');
+        }
+        if (this.onRoomOptions && this.hostPick) {
+          this.onRoomOptions({ way: this.hostPick.way, game: this.hostPick.game });
+        }
+      });
+      this.hostBand.append(words, this.hostOptions, cancel);
       /* The band scrolls away with the page once a map low down is
        * chosen, so the chosen map's own panel, which never does, wears a
        * tab saying the same thing beside its one button. */
@@ -17067,6 +17133,11 @@ export class Ui {
         : this.hostPick.game === 'ribbon' ? ['Ribbon cutting room', 'Pick the map for your room', 'Any map works. Double click a map, or choose it and press Host a room here.', 'Hosting ribbon cutting']
         : this.hostPick.game === 'dogfight' ? ['Dogfight room', 'Pick the arena for your room', 'Any map works. Double click a map, or choose it and press Host a room here.', 'Hosting a dogfight']
         : ['Host a room', 'Pick the map for your room', 'Double click a map, or choose it and press Host a room here.', 'Hosting a room'];
+      /* A pilot who has opened a room before is flying from this page: the
+       * map is the last press, and the band says what kind of room it
+       * opens (together.js openHost). Not a move, which is a vote. */
+      const kind = this.hostPick && !move ? this.hostKind : '';
+      this.hostOptions.hidden = !kind;
       const titleEl = this.hostBand.querySelector('.host-band-title');
       if (titleEl.dataset.words !== title) {
         titleEl.dataset.words = title;
@@ -17077,9 +17148,19 @@ export class Ui {
        * the same): tap the map, then the band's button. */
       const touch = this.lastInput === 'none'
         && typeof navigator !== 'undefined' && (navigator.maxTouchPoints || 0) > 0;
-      this.hostBand.querySelector('.host-band-line').textContent = touch
+      const lineEl = this.hostBand.querySelector('.host-band-line');
+      lineEl.textContent = touch
         ? line.replace('Double click a map, or choose it and press', 'Tap a map, then press')
         : line;
+      if (kind) {
+        /* In full where there is room for it, and in a few words on a
+         * phone on its side, where the band is half the width (index.html,
+         * .host-band-opens). */
+        lineEl.append(
+          el('span', 'host-band-opens', ` Your room opens ${kind}, as last time, and you are flying.`),
+          el('span', 'host-band-opens-short', ` Opens ${kind}.`),
+        );
+      }
       this.hostTab.textContent = tab;
     }
     if (on && head) {
@@ -18038,6 +18119,8 @@ export class Ui {
      * title is where the panels show them: read again on the next draw. */
     if (screen === 'flight' || screen === 'title') {
       this.gameBests = null;
+      /* A flight is under every page from here until the title is. */
+      this.runUnder = screen === 'flight';
     }
     if (this.hostPick && !isCardScreen(screen)) {
       this.endHostPick();
@@ -19012,7 +19095,10 @@ export class Ui {
      * time; the multiplayer page on Host a room, its first door. */
     if (this.onGate() && this.gatePageNow() !== 'solo') {
       const page = this.gatePageNow();
-      const want = page === 'cover' ? (this.gateSide || 'solo') : page === 'games' ? (this.gameLast || 'mg-dogfight')
+      /* In a room the cover lands on the room's own panel, so Enter from
+       * the front page is back in it (roomDoorUp). */
+      const coverWant = this.roomDoorUp() ? 'together' : (this.gateSide || 'solo');
+      const want = page === 'cover' ? coverWant : page === 'games' ? (this.gameLast || 'mg-dogfight')
         : page === 'mpway' ? `mw-${this.roomWay || '5inch'}` : 'mp-host';
       const at = items.findIndex((it) => it.card === want);
       return at >= 0 ? at : this.firstStop(items);
@@ -22442,6 +22528,15 @@ export class Ui {
       this.frameLegend.append(i);
     }
 
+    /* The way back to the room: see roomDoorUp. */
+    const door = this.roomDoorUp();
+    if (this.frameRoom.hidden === door) {
+      this.frameRoom.hidden = !door;
+    }
+    if (door && this.frameRoomName.textContent !== this.roomInfo.name) {
+      this.frameRoomName.textContent = this.roomInfo.name;
+    }
+
     this.syncPrimaryButton();
     /* Rows are drawn after the bars on a change of screen, so look again
      * once they are. */
@@ -23186,6 +23281,58 @@ export class Ui {
   }
 
   /*
+   * THE ROOM'S DOOR ON THE MENUS. The owner, 2026-11-28, with a recording:
+   * "I hosted a room but unsure how to fly. If I try to back out to fly it
+   * asks if I want to leave the room. If I select a map it asks if I want
+   * to leave the current room". He was on the menus with his room still
+   * open, which Esc on the results page does, and nothing on any menu said
+   * so or led back: the room card is drawn over the flight only, and Host
+   * a room, where he looked, asks a pilot to leave the room they are in.
+   *
+   * So while a pilot is in a room and on the title's side of the shell,
+   * every page has the way back: a button on the bar that never scrolls
+   * (syncFrame), and the room's own panel in place of Multiplayer on the
+   * cover and of Host a room on its page, under the cursor (items,
+   * titleStop). All three are room-back, which src/net/together.js flies
+   * (backToRoom).
+   *
+   * Not on a page of a paused flight (Settings, Rates, the host's Change
+   * map): those are one Back from the pause menu, which is the room's own.
+   * runUnder says which side this is (show): returnTo is the pause chain's
+   * pointer and is not cleared by every way onto the title.
+   */
+  roomDoorUp() {
+    if (!this.roomInfo || this.runUnder || this.screen === 'flight' || this.screen === 'paused' || this.screen === 'results') {
+      return false;
+    }
+    return !(this.hostPick && this.hostPick.move);
+  }
+
+  /*
+   * THE WAY OUT OF A RESULTS PAGE. Alone it is Back to title. In a room
+   * that row was the trap the door above is for: it went to the title and
+   * kept the room, where the pause menu's own Quit to title leaves it. So
+   * in a room the results page has the pause menu's two rows, which say
+   * what each does to the room. Esc still goes to the menus with the room
+   * kept, because leaving a room is never one stray press, and the menus
+   * have the door now.
+   */
+  resultsExitRows() {
+    const r = this.roomInfo;
+    if (!r) {
+      return [{ label: 'Back to title', action: 'title' }];
+    }
+    return [
+      { label: 'Leave room', action: 'room-leave', note: 'Fly on here, solo.' },
+      {
+        label: (r.ball || r.goats || r.drift || r.dogfight || r.ribbon || r.infected) ? miniGameExitLabel(true) : 'Quit to title',
+        action: 'room-title',
+        note: 'Leaves the room too.',
+      },
+    ];
+  }
+
+  /*
    * CHANGE MAP, FROM THE PAUSE AND FROM RESULTS. A pilot on the Discord
    * (2026-11-13) paused and found no way to fly somewhere else without
    * quitting to the title and answering everything again. The row opens the
@@ -23364,6 +23511,41 @@ export class Ui {
   }
 
   /*
+   * THE ROOM'S OWN WORLD, SEATED AND FLOWN FROM WHEREVER THE MENUS ARE: the
+   * door back into a room (roomDoorUp) for a pilot who flew somewhere else
+   * with the room held, so another world is the one loaded. It is what a
+   * double click on that world's card does in a room (pickerAction): seat
+   * it on the room's quad, then fly it once it is built (onFlySeated), in
+   * this page, so the room is never left.
+   *
+   * Only a world the sim ships. A map or a track from the board is opened
+   * by its own page's list, which may not be up, and a world that has
+   * already failed to load here needs a reload (seatWorld): both go by the
+   * room's link instead (together.js backToRoom). False when it did not.
+   */
+  flyRoomWorld(id, craft) {
+    const world = id !== 'built' && id !== 'custom' ? MAPS.find((x) => x.id === id && x.mode === 'freestyle') : null;
+    if (!world || !this.onFlySeated || (this.loadFailure && this.loadFailure.map === id)) {
+      return false;
+    }
+    /* A solo game's pick or fight is not the room's. */
+    this.endFightPick();
+    this.dogfight = null;
+    if (craft && craft !== this.settings.airframe && freestyleOffered(craft, id)) {
+      seatAirframe(this.settings, craft);
+      this.settings.airframeAsked = true;
+    }
+    /* The gate is answered: flyIfLinked (main.js) flies off the title and
+     * never off the gate. */
+    this.mode = 'freestyle';
+    this.craftGate = false;
+    this.useSharedMap(null);
+    this.seatMap(id);
+    this.onFlySeated();
+    return true;
+  }
+
+  /*
    * Seat a map: the one place a chosen world or track becomes the thing the
    * next flight is in.
    *
@@ -23438,8 +23620,20 @@ export class Ui {
     if (info && (!this.roomInfo || this.roomInfo.code !== info.code)) {
       this.endHostPick();
     }
+    const was = this.roomInfo;
     this.roomInfo = info || null;
-    if (this.screen === 'paused') {
+    /* The results page's way out is the room's while there is one
+     * (resultsExitRows). */
+    if (this.screen === 'paused' || this.screen === 'results') {
+      this.renderMenu();
+      return;
+    }
+    /* The menus' door comes and goes with the room, and says its name
+     * (roomDoorUp). Drawn again only when one of those changed: a pilot
+     * arriving in the room is not a reason to rebuild a menu. */
+    const now = this.roomInfo;
+    const same = Boolean(was) === Boolean(now) && (!now || (was.code === now.code && was.name === now.name && was.map === now.map));
+    if (!same && this.screen !== 'flight') {
       this.renderMenu();
     }
   }
@@ -23817,6 +24011,24 @@ export class Ui {
     /* A room's pause rows belong to the room (src/net/together.js). Quit to
      * title from a room leaves the room and then quits as Quit does. */
     if (typeof action === 'string' && action.startsWith('room-')) {
+      if (action === 'room-back') {
+        /* The menus' door back into the room (roomDoorUp). Picking a map
+         * to host another room ends, and Fly's own check of the seat
+         * against the mode asked on the title is answered for it: the room
+         * says what is flown, and a mode that no longer matches the seat
+         * (the Maps room opened and nothing picked, in a race room) would
+         * send Fly to seat another world. */
+        if (this.hostPick && !this.hostPick.move) {
+          this.endHostPick();
+        }
+        if (!this.seatMatchesMode()) {
+          this.mode = seatIsRace(this.settings) ? 'race' : 'freestyle';
+        }
+        if (this.onRoom) {
+          this.onRoom(action);
+        }
+        return;
+      }
       if (action === 'room-title') {
         /* A game room's Quit to title is back on the Mini games page, as
          * the game's solo Quit is: read before the room is left. */
@@ -24903,6 +25115,9 @@ export class Ui {
   supportPromptBlocked(up = false) {
     return Boolean(
       (!up && this.tuneAskTimer)
+      /* In a room and on the menus, the page's job is the way back to
+       * the room (roomDoorUp), and the prompt sat on that panel. */
+      || this.roomInfo
       || this.bugFiling
       || (this.nameDialog && !this.nameDialog.hidden)
       || (this.invite && this.invite.up),

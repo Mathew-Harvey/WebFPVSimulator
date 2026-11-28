@@ -5086,6 +5086,12 @@ export async function boot({ loading, bootStart, mapId }) {
       return input.source === 'the touch sticks' ? 'touch' : 'keys';
     },
     roomInfo: (info) => ui.setRoomInfo(info),
+    /* What a double click on the hosting map page opens ("link only"),
+     * for the page's band. */
+    hostKind: (kind) => ui.setHostKind(kind),
+    /* The room's own world, seated and flown in this page when another
+     * is loaded: true when the shell could (ui.flyRoomWorld). */
+    flyWorld: (map, craft) => ui.flyRoomWorld(map, craft),
     pickWorld: (way, opts) => ui.pickRoomWorld(way, opts),
     pickDone: () => ui.endMovePick(),
     gameBack: () => ui.leaveMapGamePick(),
@@ -5183,6 +5189,15 @@ export async function boot({ loading, bootStart, mapId }) {
         together.act(action);
       }
     };
+    /* A map page that is hosting: the rooms are loaded, and say what a
+     * double click on it opens (togetherShell.hostKind). */
+    ui.onHostPick = () => {
+      loadTogether();
+    };
+    /* That page's Room options button, { way, game }. */
+    ui.onRoomOptions = (pick) => {
+      loadTogether().then((t) => t && t.hostOptions(pick));
+    };
     /* A room's address: the room is asked about once the world is up. */
     if (new URLSearchParams(window.location.search).get('room')) {
       loadTogether().then((t) => t && t.startFromAddress());
@@ -5255,11 +5270,16 @@ export async function boot({ loading, bootStart, mapId }) {
     }
     const world = mpWorldNow();
     const same = Boolean(world && world.map === room.map);
-    if (world && !same && mpWorldWarned !== world.map) {
+    const inAir = mode === 'flight' && ui.screen === 'flight';
+    /* Said in the air on another world, where it is true. A room opened
+     * from a map page (together.js flyHosted) holds this pilot's old
+     * world for the moment its own loads, and said then the line was
+     * still up on takeoff, over the room's own map. */
+    if (world && !same && inAir && mpWorldWarned !== world.map) {
       mpWorldWarned = world.map;
       mpSay(`Your room flies ${room.mapName}.\nThe others show only there.`, 6000);
     }
-    const flying = same && mode === 'flight' && ui.screen === 'flight';
+    const flying = same && inAir;
     if (session.inRoom && !flying !== mpAway) {
       /* Said once a change, and not said at all for a pilot who arrives
        * flying, which is what the board assumes. */

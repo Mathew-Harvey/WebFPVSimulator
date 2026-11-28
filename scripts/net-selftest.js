@@ -448,7 +448,7 @@ console.log('room links');
   };
   const store = memory();
   writeJoinToken(store, { code: 'K7QX2M', invite }, 1000);
-  check('a press carries across the reload it causes', same(takeJoinToken(store, 'K7QX2M', 1500), { code: 'K7QX2M', invite }));
+  check('a press carries across the reload it causes', same(takeJoinToken(store, 'K7QX2M', 1500), { code: 'K7QX2M', invite, own: null }));
   check('once', takeJoinToken(store, 'K7QX2M', 1600) === null);
   writeJoinToken(store, { code: 'K7QX2M', invite }, 1000);
   check('and only for its own room', takeJoinToken(store, 'AAAAAA', 1500) === null && takeJoinToken(store, 'K7QX2M', 1500) === null);
@@ -457,7 +457,18 @@ console.log('room links');
   writeJoinToken(store, { code: 'K7QX2M', invite }, 5000);
   check('and never from the future', takeJoinToken(store, 'K7QX2M', 4000) === null);
   writeJoinToken(store, { code: 'K7QX2M', invite: '<script>' }, 1000);
-  check('a stored invite that is not one is dropped', same(takeJoinToken(store, 'K7QX2M', 1200), { code: 'K7QX2M', invite: '' }));
+  check('a stored invite that is not one is dropped', same(takeJoinToken(store, 'K7QX2M', 1200), { code: 'K7QX2M', invite: '', own: null }));
+  /* The way back into the pilot's own room from another world (backToRoom
+   * in together.js): the press says whose room it is, with what the
+   * connecting page reads and nothing else of the room's. */
+  writeJoinToken(store, {
+    code: 'K7QX2M', invite, own: { name: 'Thursday whoops', map: 'trk-5eed2001', mapName: 'Shots yard', way: 'freestyle', scale: 100, pw: 'x', pilots: [1, 2] },
+  }, 1000);
+  check('a press back into the pilot\'s own room carries the room, field by field', same(takeJoinToken(store, 'K7QX2M', 1500), {
+    code: 'K7QX2M', invite, own: { name: 'Thursday whoops', map: 'trk-5eed2001', mapName: 'Shots yard', way: 'freestyle', scale: 100 },
+  }));
+  writeJoinToken(store, { code: 'K7QX2M', invite, own: { name: 'No map' } }, 1000);
+  check('and a room with no map is not one', same(takeJoinToken(store, 'K7QX2M', 1500), { code: 'K7QX2M', invite, own: null }));
   const broken = { getItem: () => { throw new Error('no'); }, setItem: () => { throw new Error('no'); }, removeItem: () => {} };
   check('storage that throws is no press, not a crash', writeJoinToken(broken, { code: 'K7QX2M' }, 1) === false && takeJoinToken(broken, 'K7QX2M', 1) === null);
 }

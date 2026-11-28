@@ -45,13 +45,26 @@
  *            every socket closed with 1012) and started again with the
  *            same secret: the page is back in its room from the sealed
  *            ticket, then leaves and joins again by the code
+ *   flow     hosting from the front page, as a pilot presses it. The first
+ *            room asks its options once and Open room and fly is in the
+ *            air with no invite page between, the code and Copy link on
+ *            a banner. A run that ends in the room has Leave room and Quit
+ *            to title, not Back to title; Esc from it keeps the room, and
+ *            the menus then have the way back: the bar's button, the
+ *            room's panel on the cover under the cursor (Enter flies it)
+ *            and on the Multiplayer page, and the pilot's own room in
+ *            Open rooms. Another map flown alone keeps the room, and
+ *            the way back then flies the room's own map in the same page,
+ *            the same seat and still the host. The second room is four
+ *            presses, the map the last, opened as the first was; Room
+ *            options changes that (the owner's recording of 2026-11-28)
  *
  * Every scene ends with no console error and no uncaught error on any page.
  * Failed network loads are not counted, because the board going away on
  * purpose is a failed load. Nothing here times anything: other browser
  * checks share the machine, so every wait polls for its outcome.
  *
- * Usage: node scripts/rooms-check.js [--only=pair,shelf,bots,dfpop,votepad,deploy]
+ * Usage: node scripts/rooms-check.js [--only=pair,shelf,bots,dfpop,votepad,deploy,flow]
  *
  * This file is part of WebFPVSimulator.
  *
@@ -205,9 +218,9 @@ function seedFor({ name, met = true }) {
 }
 
 const pages = [];
-async function open(name, met = true) {
+async function open(name, met = true, world = '&map=bardwell&craft=5inch') {
   const page = await openPage({
-    root, width: 1280, height: 720, url: `/index.html?mp=1&board=${encodeURIComponent(boardOrigin)}&map=bardwell&craft=5inch`, seed: [seedFor({ name, met })],
+    root, width: 1280, height: 720, url: `/index.html?mp=1&board=${encodeURIComponent(boardOrigin)}${world}`, seed: [seedFor({ name, met })],
   });
   page.name = name;
   pages.push(page);
@@ -385,26 +398,39 @@ async function scenePair() {
     const chat = await a.evaluate('document.querySelector(\'#tg [data-k="sw-typedChat"]\').getAttribute(\'aria-checked\')');
     check('a private room starts with typed chat off', chat === 'false', chat);
     await pressKey(a, 'open');
-    check('Open room makes the room and shows the invite', await pass(sheetIs(a, 'share')));
+    check('Open room and fly makes the room', await pass(a.until(`${T} && window.__together().inRoom`, 20000)));
     const st = await state(a);
     check('the host is in a room with a code', st.inRoom && /^[A-Z2-9]{6}$/.test(st.code), JSON.stringify(st));
     const code = st.code;
-    /* The room card: drawn by the host's page while the invite is up and
-     * kept by the board for the link's picture (src/net/roomcard.js). */
+    /* The room card: drawn by the host's page while the board opens the
+     * room and sent before it takes off, and kept by the board for the
+     * link's picture (src/net/roomcard.js, together.js cardEarly and
+     * flyHosted). A machine too slow to have it ready inside the wait is
+     * flown anyway, and the card goes at the host's first pause, never in
+     * the air: this machine's software renderer is sometimes that machine,
+     * so the check takes either and says which. */
     let listing = null;
-    const carded = await until(async () => {
+    const hasCard = async () => {
       listing = await (await fetch(`${boardOrigin}/api/rooms/${code}`)).json();
       return listing.hasCard;
-    }, 30000, 250);
-    check('the room card reaches the board while the invite is up', carded, JSON.stringify(listing));
+    };
+    let carded = await until(hasCard, 8000, 250);
+    if (!carded) {
+      console.log('  note  the card was not ready before takeoff here: pausing, where it is owed');
+      await flying(a);
+      await a.tap('Escape');
+      await a.until("window.__ui.screen === 'paused'", 10000);
+      carded = await until(hasCard, 20000, 250);
+      await a.evaluate("(() => { window.__ui.act('resume'); return 1; })()");
+    }
+    check('the room card reaches the board', carded, JSON.stringify(listing));
     if (carded) {
       const res = await fetch(`${boardOrigin}/api/rooms/${code}/card?v=${encodeURIComponent(listing.cardUtc)}`);
       const bytes = Buffer.from(await res.arrayBuffer());
       check('and it is a JPEG the board serves', res.ok && res.headers.get('content-type') === 'image/jpeg' && bytes[0] === 0xff && bytes[1] === 0xd8,
         `${res.status} ${res.headers.get('content-type')} ${bytes.length}`);
     }
-    await pressKey(a, 'fly');
-    await flying(a);
+    check('and the host is flying, with no invite page between', await pass(flying(a)) && (await state(a)).sheet === '', JSON.stringify(await state(a)));
 
     await joinByCode(b, code);
     check('the second browser joins by the code', await pass(b.until(`${T} && window.__together().inRoom && window.__together().code === ${JSON.stringify(code)}`, 20000)));
@@ -572,9 +598,8 @@ async function sceneShelf() {
     }))()`);
     check('School safe on locks typed chat off', form.safe === 'true' && form.chat === 'false' && form.chatLocked === 'true', JSON.stringify(form));
     await pressKey(page, 'open');
-    await sheetIs(page, 'share');
+    await page.until(`${T} && window.__together().inRoom`, 20000);
     const code = (await state(page)).code;
-    await pressKey(page, 'fly');
     await flying(page);
     pupil.s.join(code, {});
     check('a pilot joins the school safe room', await until(() => pupil.s.inRoom, 8000));
@@ -940,6 +965,185 @@ async function sceneVotePad() {
   }
 }
 
+/* ------------------------------------------------------------------ */
+
+/* The front page's panels and the map page, pressed as a pilot presses
+ * them: Multiplayer, Freestyle, Host a room, and a double click on a map. */
+const GATE_PAGE = "window.__ui.screen === 'title' && window.__ui.onGate() && window.__ui.gatePageNow()";
+const CARD_NAMES = "[...document.querySelectorAll('.screen-title .gate-card')].filter((c) => c.offsetParent !== null).map((c) => c.querySelector('.gate-card-name').textContent)";
+const ROWS = "window.__ui.items().filter((i) => !i.section).map((i) => `${i.label}<${i.action || ''}>`)";
+const DOOR = "(() => { const b = document.querySelector('.frame-room'); return Boolean(b) && !b.hidden && b.offsetParent !== null && /Back to your room/i.test(b.textContent); })()";
+async function toHostPage(page) {
+  await page.evaluate("(() => { window.__ui.act('gate-together'); return 1; })()");
+  await page.until(`${GATE_PAGE} === 'mpway'`, 8000);
+  await page.evaluate("(() => { window.__ui.act('mpway:freestyle'); return 1; })()");
+  await page.until(`${GATE_PAGE} === 'together'`, 8000);
+  await page.evaluate("(() => { window.__ui.act('mp-host'); return 1; })()");
+  await page.until("window.__ui.screen === 'freestyle' && document.querySelector('.room-picker.is-hosting') && document.querySelector('.wp-card')", 30000);
+}
+async function doubleClickMap(page, name) {
+  return page.evaluate(`(() => {
+    const c = [...document.querySelectorAll('.wp-card')].find((b) => (b.getAttribute('aria-label') || '').includes(${JSON.stringify(name)}));
+    if (!c) return 'no card for ' + ${JSON.stringify(name)};
+    c.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+    c.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    return 'ok';
+  })()`);
+}
+/* The two minute horn, staged, which is how a run ends in a freestyle
+ * room (main.js __scoreFinish). */
+async function endRun(page) {
+  await page.evaluate('(() => { window.__scoreFinish(); return 1; })()');
+  await page.until("window.__ui.screen === 'results'", 10000);
+}
+
+async function sceneFlow() {
+  console.log('\nflow: host in four presses, and the way back to the room from the menus');
+  const page = await open('Flow Pilot', true, '');
+  const band = () => page.evaluate("(() => { const b = document.querySelector('.host-band'); return b && !b.hidden ? b.textContent : ''; })()");
+  const optionsUp = () => page.evaluate("(() => { const b = document.querySelector('.host-band-options'); return Boolean(b) && !b.hidden && b.offsetParent !== null; })()");
+  const kept = () => page.evaluate("(() => { try { return JSON.parse(localStorage.getItem('webfpv.together.v1')).host || null; } catch (e) { return null; } })()");
+  try {
+    await page.until(`${GATE_PAGE} === 'cover'`, 30000);
+    /* A scored run is what ends on a results page: Scoring, in the Maps
+     * room. */
+    await page.evaluate("(() => { window.__ui.settings.freestyleScoring = 'scored'; window.__ui.writeSettings(); return 1; })()");
+
+    /* THE FIRST ROOM: the options are asked, once. */
+    await toHostPage(page);
+    check('the first time, the map page says nothing of a kind of room and has no Room options', !/as last time/.test(await band()) && !(await optionsUp()), await band());
+    check('a double click on a map', (await doubleClickMap(page, 'Bardwell')) === 'ok');
+    check('asks the first room\'s options', await pass(sheetIs(page, 'host')));
+    const openWord = await page.evaluate("document.querySelector('#tg [data-k=\"open\"]').textContent");
+    check('whose button says Open room and fly', openWord === 'Open room and fly', openWord);
+    await pressKey(page, 'listed');
+    await pressKey(page, 'open');
+    check('and the room opens', await pass(page.until(`${T} && window.__together().inRoom`, 20000)), JSON.stringify(await state(page)));
+    const code = (await state(page)).code;
+    check('into the air, with no invite page between', await pass(flying(page)) && (await state(page)).sheet === '', JSON.stringify(await state(page)));
+    check('under a banner with the room\'s code', await pass(page.until(SEES(`Room code ${code}`, '#tg .tg-banner'), 8000)));
+    check('and a Copy link button', await page.evaluate("(() => { const b = document.querySelector('#tg .tg-banner [data-k=\"open-copy\"]'); return Boolean(b) && b.offsetParent !== null; })()"));
+    const first = await kept();
+    check('how the room was opened is kept, and never a password', Boolean(first) && first.listed === true && !('password' in first), JSON.stringify(first));
+
+    /* A RUN ENDS IN THE ROOM. Its page used to have Back to title, which
+     * kept the room and left the pilot on menus with no way back to it. */
+    await endRun(page);
+    const rows = await page.evaluate(ROWS);
+    check('a run that ends in the room has Leave room and Quit to title', rows.includes('Leave room<room-leave>') && rows.includes('Quit to title<room-title>'), rows.join(', '));
+    check('and no Back to title', !rows.some((r) => /title<title>/.test(r)), rows.join(', '));
+    await page.tap('Escape');
+    check('Esc from it is the front page, the room kept', await pass(page.until(`${GATE_PAGE} === 'cover'`, 10000)) && (await state(page)).inRoom, JSON.stringify(await state(page)));
+
+    /* THE WAY BACK, on the menus. */
+    check('the bar has Back to your room', await pass(page.until(DOOR, 5000)));
+    const cover = await page.evaluate(CARD_NAMES);
+    check('the cover has the room\'s panel where Multiplayer was', cover.some((n) => /back to your room/i.test(n)) && !cover.some((n) => /multiplayer/i.test(n)), cover.join(', '));
+    check('with the cursor on it', await page.evaluate("(window.__ui.items()[window.__ui.cursor] || {}).action === 'room-back'"));
+    await tapLoose(page, 'Enter');
+    check('Enter from the front page is back in the air', await pass(flying(page, 20000)), JSON.stringify(await state(page)));
+    check('in the same room', (await state(page)).inRoom && (await state(page)).code === code, JSON.stringify(await state(page)));
+
+    /* The Multiplayer page, reached as Back from a map page reaches it. */
+    await endRun(page);
+    await page.tap('Escape');
+    await page.until(`${GATE_PAGE} === 'cover'`, 10000);
+    await page.evaluate("(() => { window.__ui.turnGate('together'); return 1; })()");
+    await page.until(`${GATE_PAGE} === 'together'`, 8000);
+    const mp = await page.evaluate(CARD_NAMES);
+    check('the Multiplayer page has the room\'s panel where Host a room was', mp.some((n) => /back to your room/i.test(n)) && !mp.some((n) => /host a room/i.test(n)), mp.join(', '));
+    /* Their own room in Open rooms said "You are in this room already"
+     * and closed. */
+    await page.evaluate("(() => { window.__ui.act('mp-find'); return 1; })()");
+    await sheetIs(page, 'lobby');
+    check('the pilot\'s own room is in Open rooms', await pass(page.until(`Boolean(document.querySelector('#tg [data-k="room-${code}"]'))`, 15000)));
+    await pressKey(page, `room-${code}`);
+    check('and pressing it flies it', await pass(flying(page, 20000)) && (await state(page)).inRoom && (await state(page)).code === code, JSON.stringify(await state(page)));
+
+    /* The bar's button, from a map page. */
+    await endRun(page);
+    await page.tap('Escape');
+    await page.until(`${GATE_PAGE} === 'cover'`, 10000);
+    await page.evaluate("(() => { window.__ui.show('freestyle'); return 1; })()");
+    await page.until("window.__ui.screen === 'freestyle' && document.querySelector('.wp-card')", 30000);
+    check('a map page has Back to your room on its bar', await pass(page.until(DOOR, 5000)));
+    await page.evaluate("(() => { document.querySelector('.frame-room').click(); return 1; })()");
+    check('which flies the room', await pass(flying(page, 20000)) && (await state(page)).inRoom && (await state(page)).code === code, JSON.stringify(await state(page)));
+
+    /* ANOTHER MAP FLOWN ALONE, the room held. The way back seats the
+     * room's own world and flies it in this page, so the room is never
+     * left: by the room's link the pilot's going emptied the room, and
+     * the board's answer to a link for an empty room is No such room. */
+    await endRun(page);
+    await page.tap('Escape');
+    await page.until(`${GATE_PAGE} === 'cover'`, 10000);
+    await page.evaluate("(() => { window.__ui.act('gate-solo'); return 1; })()");
+    await page.until(`${GATE_PAGE} === 'solo'`, 8000);
+    await page.evaluate("(() => { window.__ui.act('way-freestyle-5inch'); return 1; })()");
+    await page.until("window.__ui.screen === 'freestyle' && document.querySelector('.wp-card')", 30000);
+    check('another map, flown alone from the Fly solo page', (await doubleClickMap(page, 'Hoshino')) === 'ok'
+      && await pass(page.until("window.__mode === 'flight' && window.__ui.screen === 'flight' && window.__ui.settings.map === 'office'", 120000)), await page.evaluate('window.__ui.settings.map'));
+    const seat = await state(page);
+    check('keeps the room', seat.inRoom && seat.code === code, JSON.stringify(seat));
+    await endRun(page);
+    await page.tap('Escape');
+    await page.until(`${GATE_PAGE} === 'cover'`, 10000);
+    check('the front page still has the way back, under the cursor', await pass(page.until(DOOR, 5000))
+      && await page.evaluate("(window.__ui.items()[window.__ui.cursor] || {}).action === 'room-back'"));
+    await page.evaluate('(() => { window.__samePage = true; return 1; })()');
+    await tapLoose(page, 'Enter');
+    check('and Enter flies the room\'s own map again', await pass(page.until("window.__samePage === true && window.__mode === 'flight' && window.__ui.screen === 'flight' && window.__ui.settings.map === 'bardwell'", 120000)),
+      await page.evaluate("JSON.stringify([window.__samePage === true, window.__mode, window.__ui.screen, window.__ui.settings.map])").catch((e) => e.message));
+    const landed = await state(page);
+    check('in this page, the room never left: the same seat, still the host', Boolean(landed) && landed.inRoom && landed.code === code && landed.you === seat.you && landed.host === landed.you, JSON.stringify(landed));
+
+    /* QUIT TO TITLE on the results page leaves the room, as it says. */
+    await endRun(page);
+    await page.evaluate("(() => { window.__ui.act('room-title'); return 1; })()");
+    check('Quit to title from the results leaves the room', await pass(page.until(`${GATE_PAGE} === 'cover' && ${T} && !window.__together().inRoom`, 10000)), JSON.stringify(await state(page)));
+    const after = await page.evaluate(CARD_NAMES);
+    check('and the cover has Multiplayer again, the bar\'s button gone', after.some((n) => /multiplayer/i.test(n)) && !(await page.evaluate(DOOR)), after.join(', '));
+
+    /* THE SECOND ROOM: four presses, the map the last. */
+    await toHostPage(page);
+    check('the map page says what a double click opens', /listed under Rooms, as last time/.test(await band()), await band());
+    check('and has Room options', await optionsUp());
+    check('a double click on a map', (await doubleClickMap(page, 'Bardwell')) === 'ok');
+    let asked = false;
+    const up = await until(async () => {
+      const st = await state(page);
+      asked = asked || st.sheet === 'host' || st.sheet === 'share';
+      return st.inRoom && st.sheet === '' && await page.evaluate("window.__mode === 'flight' && window.__ui.screen === 'flight'");
+    }, 30000, 40);
+    check('opens the room and flies it', up, JSON.stringify(await state(page)));
+    check('with no options page and no invite page on the way', !asked);
+    const second = (await state(page)).code;
+    const shelf = await (await fetch(`${boardOrigin}/api/rooms?way=freestyle`)).json();
+    check('the room is listed, as the first was', JSON.stringify(shelf).includes(second), JSON.stringify(shelf).slice(0, 300));
+
+    /* ROOM OPTIONS changes what the next one opens as. */
+    await endRun(page);
+    await page.evaluate("(() => { window.__ui.act('room-title'); return 1; })()");
+    await page.until(`${GATE_PAGE} === 'cover' && ${T} && !window.__together().inRoom`, 10000);
+    await toHostPage(page);
+    await page.evaluate("(() => { document.querySelector('.host-band-options').click(); return 1; })()");
+    check('Room options opens the options with nothing to open', await pass(sheetIs(page, 'host'))
+      && await page.evaluate("Boolean(document.querySelector('#tg [data-k=\"save\"]')) && !document.querySelector('#tg [data-k=\"open\"]') && !document.querySelector('#tg-pw')"));
+    await pressKey(page, 'private');
+    await pressKey(page, 'save');
+    const changed = await kept();
+    check('Save keeps the change', Boolean(changed) && changed.listed === false, JSON.stringify(changed));
+    check('and the map page says link only', await pass(page.until("(() => { const b = document.querySelector('.host-band'); return Boolean(b) && !b.hidden && /link only, as last time/.test(b.textContent); })()", 5000)), await band());
+    check('with no room opened by it', !(await state(page)).inRoom && (await state(page)).sheet === '', JSON.stringify(await state(page)));
+    endChecks(page);
+  } catch (e) {
+    failures += 1;
+    console.log(`  FAIL  ${e.stack || e.message}`);
+  } finally {
+    await close(page);
+  }
+}
+
 try {
   if (wanted('pair')) { await freshBoard(); await scenePair(); }
   if (wanted('shelf')) { await freshBoard(); await sceneShelf(); }
@@ -947,6 +1151,7 @@ try {
   if (wanted('dfpop')) { await freshBoard(); await sceneDfPop(); }
   if (wanted('votepad')) { await freshBoard(); await sceneVotePad(); }
   if (wanted('deploy')) { await freshBoard(); await sceneDeploy(); }
+  if (wanted('flow')) { await freshBoard(); await sceneFlow(); }
 } catch (e) {
   failures += 1;
   console.log(`  FAIL  ${e.stack || e.message}`);

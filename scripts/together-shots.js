@@ -489,6 +489,18 @@ function shooter(page, scene) {
 }
 
 const T = 'window.__together && window.__together()';
+/* A room opened from the host sheet is flown at once, with no invite page
+ * between (together.js flyHosted): in the room, in the air, no sheet up. */
+async function openedAndFlying(page, ms = 30000) {
+  await page.until(`${T} && window.__together().inRoom`, ms);
+  await page.until("window.__mode === 'flight' && window.__ui.screen === 'flight'", ms);
+  await page.until(`${T} && window.__together().sheet === ''`, 10000);
+}
+/* The invite page, where it lives now: the pause menu's Room rows. */
+async function invitePage(page) {
+  await page.evaluate("(() => { window.__ui.act('pause'); window.__ui.show('paused'); window.__ui.act('room-invite'); return 1; })()");
+  await page.until(`${T} && window.__together().sheet === 'share'`, 10000);
+}
 
 /*
  * An expression, for evaluate or until, that is true when a pilot can see
@@ -618,22 +630,30 @@ async function sceneHost() {
     await pressKey(page, 'sw-typedChat');
     check('and one press turns it on', (await page.evaluate(`document.querySelector('#tg [data-k="sw-typedChat"]').getAttribute('aria-checked')`)) === 'true');
     await pressKey(page, 'open');
-    check('Open room makes the room and shows the invite', await sheetIs(page, 'share').then(() => true, () => false));
+    check('Open room and fly makes the room and flies it, with no invite page between', await openedAndFlying(page).then(() => true, () => false));
     const st = await state(page);
     check('the page is in a room with a code', st && st.inRoom && /^[A-Z2-9]{6}$/.test(st.code), JSON.stringify(st));
+    check('under a banner with the room\'s code and a Copy link button', await page.until(SEES(`Room code ${st.code}`, '#tg .tg-banner'), 8000).then(() => true, () => false)
+      && await page.evaluate("Boolean(document.querySelector('#tg .tg-banner [data-k=\"open-copy\"]'))"));
+    await wait(300);
+    await shot('open-banner');
+    await invitePage(page);
     await wait(300);
     await shot('invite');
-    /* The picture a posted room link shows: drawn by the page while the
-     * invite is up, the host's pilot over the map, and kept by the board. */
-    const card = await roomCardOf(st.code, 'host-room-card.jpg');
-    check('while the invite is up, the host\'s page gives the room its link picture', card && card.type === 'image/jpeg' && card.size === '1200x630'
+    /* The picture a posted room link shows: the host's pilot over the map,
+     * drawn by the page while the room opens and sent before it takes
+     * off, or at the first pause on a machine too slow for that (never in
+     * the air), and kept by the board. The pause above is that pause. */
+    const card = await roomCardOf(st.code, 'host-room-card.jpg', 20000);
+    check('the host\'s page gives the room its link picture', card && card.type === 'image/jpeg' && card.size === '1200x630'
       && card.bytes > 20000 && card.bytes <= 300000, JSON.stringify(card && { ...card, listing: undefined }));
     const link = await page.evaluate("document.querySelector('#tg input[aria-label=\"Room link\"]').value");
     check('the room link names the world, the room and nothing secret', /map=bardwell/.test(link) && link.includes(`room=${st.code}`) && !link.includes('#i='), link);
     check(opts.launched ? 'and no ?mp=1, now rooms are on for everybody' : 'and ?mp=1, until rooms launch', /[?&]mp=1/.test(link) === !opts.launched, link);
-    await pressKey(page, 'fly');
-    await page.until("window.__mode === 'flight'", 30000);
+    await page.tap('Escape');
     await page.until(`${T} && window.__together().sheet === ''`, 10000);
+    await page.evaluate("(() => { window.__ui.act('resume'); return 1; })()");
+    await page.until("window.__mode === 'flight'", 30000);
     const addr = await page.evaluate('location.href');
     check('flying, with the room in the address bar', addr.includes(`room=${st.code}`) && !addr.includes('i='), addr);
     await wait(500);
@@ -1321,13 +1341,11 @@ async function sceneDoor() {
     await shot('board-down');
     await freshBoard();
     await pressKey(page, 'retry');
-    const opened = await sheetIs(page, 'share', 15000).then(() => true, () => false);
+    const opened = await openedAndFlying(page).then(() => true, () => false);
     check('Try again opens the room once the board is back', opened && (await state(page)).inRoom, JSON.stringify(await state(page)));
     /* In a room of its own, the page asks before another room takes it
      * out of this one. */
     const own = (await state(page)).code;
-    await pressKey(page, 'fly');
-    await page.until(`${T} && window.__together().sheet === ''`, 10000);
     await until(() => keeper.s.inRoom, 10000);
     await page.evaluate("(() => { window.__ui.onRooms('freestyle'); return 1; })()");
     await sheetIs(page, 'lobby');
@@ -2454,7 +2472,8 @@ async function sceneKeys() {
     await page.evaluate("(() => { [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Fly together').click(); return 1; })()");
     await sheetIs(page, 'host');
     await pressKey(page, 'open');
-    await sheetIs(page, 'share');
+    await openedAndFlying(page);
+    await invitePage(page);
     await page.evaluate("(() => { Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: (t) => { window.__copied = t; return Promise.resolve(); } } }); return 1; })()");
     await pressKey(page, 'copy');
     await wait(200);
@@ -2475,8 +2494,7 @@ async function sceneKeys() {
     await pressKey(page, 'copy');
     await wait(200);
     check('and a clipboard that throws is the same, not a crash', (await focusOf(page)).tag === 'INPUT');
-    await pressKey(page, 'fly');
-    await page.until("window.__mode === 'flight'", 30000);
+    await page.tap('Escape');
     await page.until(`${T} && window.__together().sheet === ''`, 10000);
 
     /* The pause menu's room rows the other scenes do not press. */
@@ -4549,8 +4567,7 @@ async function sceneGameHost(game) {
     }
     check('then the room\'s own sheet', await sheetIs(page, 'host').then(() => true, () => false));
     await pressKey(page, 'open');
-    check('the room opens', await sheetIs(page, 'share').then(() => true, () => false));
-    await pressKey(page, 'fly');
+    check('the room opens, and is flown with no invite page between', await page.until(`${T} && window.__together().inRoom`, 20000).then(() => true, () => false));
     const seated = await page.until(`${G} && (() => { const g = window.__dogfight(); let k = 0; for (let i = 1; i < g.cap; i += 1) if (g.isBot[i] && !(g.puppet && g.puppet[i])) k += 1; return k >= 1; })()`, 15000).then(() => true, () => false);
     check('the bots picked on the page are seated, flown by the host', seated);
     const phase = game === 'ribbon' ? `${G} && window.__dogfight().state && ['count', 'live'].includes(window.__dogfight().state.phase)` : `${G} && ['count', 'live'].includes(window.__dogfight().state.phase)`;
@@ -4591,8 +4608,7 @@ async function sceneMapGameHost(game) {
     }
     check('then the room\'s own sheet', await sheetIs(page, 'host').then(() => true, () => false));
     await pressKey(page, 'open');
-    check('the room opens', await sheetIs(page, 'share').then(() => true, () => false));
-    await pressKey(page, 'fly');
+    check('the room opens, and is flown with no invite page between', await page.until(`${T} && window.__together().inRoom`, 20000).then(() => true, () => false));
     check('as the game\'s room, on its map', await page.until(`${G} && window.__dogfight().room === true && (${game === 'goats' ? '!!window.__dogfight().herd' : game === 'ball' ? '!!window.__dogfight().ball' : game === 'infected' ? '!!window.__dogfight().infRules' : '!!window.__dogfight().film'})`, 120000).then(() => true, () => false));
     if (game === 'infected') {
       /* Midori Gakuen is whoops only (2026-11-08); the owner, 2026-11-11,

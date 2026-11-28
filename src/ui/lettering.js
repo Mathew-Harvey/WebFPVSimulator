@@ -788,9 +788,35 @@ export function paintSfx(canvas, text, px, fill) {
  * canvas's left edge the lettering's own left edge is, so the caller can
  * lay it on the heading's baseline and left edge.
  */
+/*
+ * A title's runs in the pilot's language. One run is said as it is. A
+ * title of several runs is a phrase cut into words for their colours
+ * ("THIS IS" in cream, "YOU" in mint), and a word on its own is not what
+ * the catalogue holds, so the phrase is said whole and its words take the
+ * colours in turn again. A script that sets a phrase without spaces is cut
+ * once, in the middle, so a two colour title is still two colours.
+ */
+function toldRuns(runs) {
+  if (!SAY || runs.length < 2) {
+    return runs.map((r) => ({ text: said(r.text), fill: r.fill }));
+  }
+  const whole = runs.map((r) => r.text).join('');
+  const told = String(SAY(whole));
+  if (told === whole) {
+    return runs.map((r) => ({ text: said(r.text), fill: r.fill }));
+  }
+  let words = told.trim().split(' ').filter(Boolean);
+  if (words.length < 2) {
+    const u = Array.from(told.trim());
+    words = u.length > 3 ? [u.slice(0, Math.ceil(u.length / 2)).join(''), u.slice(Math.ceil(u.length / 2)).join('')] : [told.trim()];
+    return words.map((w, i) => ({ text: w, fill: runs[Math.min(i, runs.length - 1)].fill }));
+  }
+  return words.map((w, i) => ({ text: i < words.length - 1 ? `${w} ` : w, fill: runs[i % runs.length].fill }));
+}
+
 export function paintTitle(canvas, runs, px, opts = {}) {
   const ctx = canvas.getContext('2d');
-  const up = runs.map((r) => ({ text: String(said(r.text)).toUpperCase(), fill: hexOf(r.fill) }));
+  const up = toldRuns(runs).map((r) => ({ text: String(r.text).toUpperCase(), fill: hexOf(r.fill) }));
   const text = up.map((r) => r.text).join('');
   const inkW = opts.inkW > 0 ? opts.inkW : INK_W;
   const measure = (s) => {

@@ -136,6 +136,37 @@ const CAREER_PROGRESS_KEY = 'webfpv.career.v2';
 const CAREER_PROGRESS_KEY_V1 = 'webfpv.career.v1';
 /* tests/career-words.test.js holds this to the curriculum's own count. */
 const CAREER_LESSONS = 73;
+/*
+ * THE OSD'S WORDS IN THE PILOT'S LANGUAGE, or null in English.
+ *
+ * setOsd runs on every flight frame and writes a number into a text node
+ * that is already there, which the page's watcher is not told about in the
+ * air (flightText in src/i18n/i18n.js). So the OSD's own few words are
+ * translated once, here, as this file is read (the language is set before
+ * it is: src/boot.js), and the frame loop puts its number into the
+ * translated template. In English this is null and every writer below
+ * takes the branch it always took, with the string it always built.
+ */
+const OSD_WORDS = translating() ? {
+  air: tr('Air'),
+  run: tr('Run'),
+  lap: tr('Lap'),
+  free: tr('Free'),
+  gate: tr('Gate {0} of {1}'),
+  volts: tr('{0} volts'),
+  lastLap: tr('Last lap {0}'),
+  ghost: tr('Ghost'),
+  ghostLap: tr('Ghost lap'),
+  kph: tr('{0} km/h'),
+  metres: tr('{0} m'),
+  go: tr('GO'),
+  launch: tr('LAUNCH'),
+  bounce: tr('{0} bounce'),
+  bounces: tr('{0} bounces'),
+  modes: {
+    Turtle: tr('Turtle'), Launch: tr('Launch'), Angle: tr('Angle'), Acro: tr('Acro'),
+  },
+} : null;
 /* The three tune and rating dialogs are fetched when a pilot opens one, not at
  * boot: they are menu only, and a page that never shares a tune should not
  * pay for the code that does. */
@@ -408,6 +439,11 @@ const FIT_SCREENS = new Set(['pilot', 'advanced', 'quad', 'rates', 'pids', 'laun
  * letters as it always has (src/ui/lettering.js). */
 if (translating()) {
   setLettering({ font: scriptFont(), say: tr });
+  /* The one caption the page prints from its stylesheet (the results
+   * plan's "The track", index.html): a watcher reads nodes, not CSS. */
+  if (typeof document !== 'undefined') {
+    document.documentElement.style.setProperty('--say-the-track', JSON.stringify(tr('The track')));
+  }
 }
 
 const SCREEN_TITLES = {
@@ -19619,7 +19655,20 @@ export class Ui {
     /* Called from the frame loop as well as from events, so it is guarded
      * like the OSD. */
     const want = text || '';
-    Ui.text(this.banner, want);
+    /* In another language the banner is translated HERE, when its words
+     * change, and not by the page's watcher: in the air the watcher is not
+     * told about text rewritten in place (flightText in src/i18n/i18n.js),
+     * which is what one banner giving way to the next is. One comparison a
+     * frame, and in English not that. */
+    let shown = want;
+    if (OSD_WORDS) {
+      if (this.bannerSrc !== want) {
+        this.bannerSrc = want;
+        this.bannerSaid = tr(want);
+      }
+      shown = this.bannerSaid;
+    }
+    Ui.text(this.banner, shown);
     const opacity = want ? '1' : '0';
     if (this.banner.__wfOpacity !== opacity) {
       this.banner.__wfOpacity = opacity;
@@ -19779,7 +19828,8 @@ export class Ui {
       return;
     }
     this.announcer.__wfSaid = want;
-    this.announcer.textContent = want;
+    /* Past the guard, so this is once per change of words. */
+    this.announcer.textContent = tr(want);
   }
 
   /*
@@ -19853,6 +19903,7 @@ export class Ui {
 
   setOsd({ mode, lapMs, lastLapMs, gate, gateCount, gateCue, volts, packFrac, altitude, speedKph, throttle, flightMode, bounces, launchState, launchPitch, ghostGapMs, ghostFinal, runState, runRemainMs, runTimed, runScored }) {
     const freestyle = mode === 'freestyle';
+    const W = OSD_WORDS;
     /* Whether the continuous readouts are due this frame: see
      * OSD_NUMBERS_MS. A running clock waits for its tick; a clock that has
      * just stopped, started or changed what it counts is written at once,
@@ -19901,7 +19952,7 @@ export class Ui {
          * the quad sits landed, so the pads read a dimmed 0.00 and not the
          * seconds spent reading the banner. See airtimeMs there.
          */
-        Ui.text(this.osdClockLabel, 'Air');
+        Ui.text(this.osdClockLabel, W ? W.air : 'Air');
         this.osdClock(running ? formatTime(lapMs) : '0.00', running);
         Ui.klass(this.osdTimer, running ? 'osd-timer' : 'osd-timer waiting');
       } else if (runTimed === false) {
@@ -19909,25 +19960,35 @@ export class Ui {
          * FREE FLIGHT HAS NO CLOCK, and the slot is not left empty: a blank
          * where a number belongs reads as a fault. It says what it is.
          */
-        Ui.text(this.osdClockLabel, 'Run');
-        this.osdClock('Free', false);
+        Ui.text(this.osdClockLabel, W ? W.run : 'Run');
+        this.osdClock(W ? W.free : 'Free', false);
         Ui.klass(this.osdTimer, 'osd-timer waiting');
       } else {
         const ready = runState !== 'flying' && runState !== 'over';
         const left = Number.isFinite(runRemainMs) ? runRemainMs : 0;
-        Ui.text(this.osdClockLabel, 'Run');
+        Ui.text(this.osdClockLabel, W ? W.run : 'Run');
         this.osdClock(ready ? '2:00' : formatRunClock(left), !ready);
         Ui.klass(this.osdTimer, ready
           ? 'osd-timer waiting'
           : (left <= 10_000 ? 'osd-timer is-late' : 'osd-timer'));
       }
     } else {
-      Ui.text(this.osdClockLabel, 'Lap');
+      Ui.text(this.osdClockLabel, W ? W.lap : 'Lap');
       this.osdClock(running ? formatTime(lapMs) : '0.00', running);
       Ui.klass(this.osdTimer, running ? 'osd-timer' : 'osd-timer waiting');
     }
     if (freestyle) {
       Ui.text(this.osdGate, '');
+    } else if (W) {
+      /* Only when the gate or its cue moved: a gate is an event. */
+      if (this.osdGateN !== gate || this.osdGateOf !== gateCount || this.osdGateCue !== gateCue) {
+        this.osdGateN = gate;
+        this.osdGateOf = gateCount;
+        this.osdGateCue = gateCue;
+        const said = W.gate.replace('{0}', gate).replace('{1}', gateCount);
+        this.osdGateSaid = gateCue ? `${said}, ${tr(gateCue)}` : said;
+      }
+      Ui.text(this.osdGate, this.osdGateSaid);
     } else if (gateCue) {
       Ui.text(this.osdGate, `Gate ${gate} of ${gateCount}, ${gateCue}`);
     } else {
@@ -19936,10 +19997,22 @@ export class Ui {
     if (numbersDue) {
       /* A single cell reads to the hundredth, as a whoop's OSD does: a
        * tenth of a volt is a quarter of a 1S pack's whole range. */
-      Ui.text(this.osdPack, `${volts.toFixed(volts < 10 ? 2 : 1)} volts`);
+      const v = volts.toFixed(volts < 10 ? 2 : 1);
+      Ui.text(this.osdPack, W ? W.volts.replace('{0}', v) : `${v} volts`);
       Ui.bar(this.osdPackBar, packFrac);
     }
-    Ui.text(this.osdLast, !freestyle && lastLapMs != null ? `Last lap ${formatTime(lastLapMs)}` : '');
+    if (freestyle || lastLapMs == null) {
+      Ui.text(this.osdLast, '');
+    } else if (W) {
+      /* A lap ends on an event, so the line is made when the time moves. */
+      if (this.osdLastMs !== lastLapMs) {
+        this.osdLastMs = lastLapMs;
+        this.osdLastSaid = W.lastLap.replace('{0}', formatTime(lastLapMs));
+      }
+      Ui.text(this.osdLast, this.osdLastSaid);
+    } else {
+      Ui.text(this.osdLast, `Last lap ${formatTime(lastLapMs)}`);
+    }
     if (this.osdGhost) {
       if (ghostGapMs == null || freestyle) {
         Ui.klass(this.osdGhost, 'osd-ghost is-off');
@@ -19949,7 +20022,9 @@ export class Ui {
          * the readout cannot be mistaken for a lap time. */
         const ahead = ghostGapMs <= 0;
         const gap = `${ahead ? '-' : '+'}${(Math.abs(ghostGapMs) / 1000).toFixed(2)}`;
-        Ui.text(this.osdGhost, `${ghostFinal ? 'Ghost lap' : 'Ghost'} ${gap}`);
+        Ui.text(this.osdGhost, W
+          ? `${ghostFinal ? W.ghostLap : W.ghost} ${gap}`
+          : `${ghostFinal ? 'Ghost lap' : 'Ghost'} ${gap}`);
         Ui.klass(this.osdGhost, `osd-ghost ${ahead ? 'ahead' : 'behind'}`);
       }
     }
@@ -19960,7 +20035,7 @@ export class Ui {
     if (speedKph == null) {
       Ui.text(this.osdSpeed, '');
     } else if (numbersDue || this.osdSpeed.__wfText === '') {
-      Ui.text(this.osdSpeed, `${speedKph.toFixed(0)} km/h`);
+      Ui.text(this.osdSpeed, W ? W.kph.replace('{0}', speedKph.toFixed(0)) : `${speedKph.toFixed(0)} km/h`);
     }
     if (this.osdFlight) {
       const modeText = flightMode === 'turtle'
@@ -19968,8 +20043,9 @@ export class Ui {
         : (launchState === 1 || launchState === 2
           ? 'Launch'
           : (flightMode === 'angle' ? 'Angle' : 'Acro'));
-      Ui.text(this.osdFlight, modeText);
-      Ui.text(this.osdFlightTouch, modeText);
+      const modeSaid = W ? W.modes[modeText] : modeText;
+      Ui.text(this.osdFlight, modeSaid);
+      Ui.text(this.osdFlightTouch, modeSaid);
     }
     if (this.osdLaunch) {
       const on = launchState > 0;
@@ -19980,14 +20056,15 @@ export class Ui {
       if (!on) {
         Ui.text(this.osdLaunch, '');
       } else if (launchState === 3) {
-        Ui.text(this.osdLaunch, 'GO');
+        Ui.text(this.osdLaunch, W ? W.go : 'GO');
       } else {
         const deg = Math.round(launchPitch || 0);
-        Ui.text(this.osdLaunch, deg > 2 ? `LAUNCH ${deg}` : 'LAUNCH');
+        const word = W ? W.launch : 'LAUNCH';
+        Ui.text(this.osdLaunch, deg > 2 ? `${word} ${deg}` : word);
       }
     }
     if (numbersDue) {
-      Ui.text(this.osdAltNum, `${altitude.toFixed(1)} m`);
+      Ui.text(this.osdAltNum, W ? W.metres.replace('{0}', altitude.toFixed(1)) : `${altitude.toFixed(1)} m`);
     }
     /* The throttle bar every frame: it is an instrument the thumb is reading,
      * and since it moves by transform it costs no layout. See Ui.bar. */
@@ -20007,7 +20084,10 @@ export class Ui {
       /* Through the guards like every other readout. It wrote textContent
        * and className raw, every frame, which replaced the text node and
        * dirtied the layout even when the count had not moved. */
-      const hits = !bounces ? '' : (bounces === 1 ? '1 bounce' : `${bounces} bounces`);
+      let hits = !bounces ? '' : (bounces === 1 ? '1 bounce' : `${bounces} bounces`);
+      if (W && bounces) {
+        hits = (bounces === 1 ? W.bounce : W.bounces).replace('{0}', bounces);
+      }
       Ui.text(this.osdHits, hits);
       if (bounces) {
         Ui.klass(this.osdHits, 'osd-sub osd-hits');

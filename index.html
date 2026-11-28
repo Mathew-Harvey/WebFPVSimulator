@@ -6885,7 +6885,9 @@
         background: #f7f0dc;
       }
       .screen-results .results-plan::before {
-        content: "The track"; position: absolute; left: -4px; top: -26px;
+        /* The words come from a property in another language: src/ui/ui.js
+         * sets --say-the-track, because a page watcher cannot read CSS. */
+        content: var(--say-the-track, "The track"); position: absolute; left: -4px; top: -26px;
         padding: 4px 10px; background: var(--ink-line); color: var(--cream);
         font: 800 11px/1.2 var(--ui-font); letter-spacing: 0.16em; text-transform: uppercase;
       }

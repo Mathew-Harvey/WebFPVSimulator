@@ -140,13 +140,14 @@ export function fold(s) {
 
 /* A number as the game writes one: 12, 1.5, 0:42.317, 1,024, and a sign. */
 const NUM = /\d+(?:[.,:]\d+)*/g;
-const SEPS = [' · ', ' | ', ' / ', ' • ', '\n'];
+const SEPS = [' · ', ' | ', ' / ', ' • '];
 const HOLE = /\{(\d+)\}/g;
 const SENTENCE = /(?<=[.!?])\s+(?=[A-Z0-9"\u201c(])/;
 /* What joins two sentences: nothing where the full stop is its own width. */
 let joiner = ' ';
 /* The full stop a label gets when it is read out as a sentence. */
 let stop = '.';
+let colon = ':';
 
 function fill(tpl, parts) {
   return tpl.replace(HOLE, (m, i) => (parts[i] === undefined ? m : parts[i]));
@@ -173,7 +174,7 @@ export function compilePattern(src) {
   }
   const re = new RegExp(`^${lits.map(esc).join('([\\s\\S]*?)')}$`);
   return {
-    key: keyOf(src), re, anchor, order, size: lits.join('').length,
+    key: keyOf(src), re, anchor, order, size: lits.join('').length, open: /\}$/.test(src),
   };
 }
 
@@ -214,13 +215,30 @@ function direct(core, depth) {
   if (depth > 3) {
     return null;
   }
+  /* A pattern that ends in a hole does not take a sentence's own full stop
+   * into it ("Change the track." would hand "track." to the hole, and a
+   * language that puts the hole first would print the stop mid sentence).
+   * The stop comes off below and the pattern meets the line without it. */
+  const stopped = core.endsWith('.') && !core.endsWith('..');
   for (let i = 0; i < patterns.length; i += 1) {
     const p = patterns[i];
-    if (!core.includes(p.anchor)) {
+    if (!core.includes(p.anchor) || (stopped && p.open)) {
       continue;
     }
     const m = p.re.exec(core);
     if (!m) {
+      continue;
+    }
+    /* A hole holds a word, a name or a clause, never the end of one
+     * sentence and the start of the next: "{0} is a different size from
+     * {1}." must not take the sentence that follows it into {1}. A line
+     * of several sentences is taken apart by lookup, and each comes back
+     * here on its own. */
+    let spans = false;
+    for (let k = 1; k < m.length && !spans; k += 1) {
+      spans = SENTENCE.test(m[k]);
+    }
+    if (spans) {
       continue;
     }
     const parts = [];
@@ -237,6 +255,14 @@ function direct(core, depth) {
     t = direct(core.slice(0, -1), depth + 1);
     if (t !== null) {
       return /[.。।!?]$/.test(t) ? t : t + stop;
+    }
+  }
+  /* A label with the colon of the value that follows it ("Your whoop
+   * tune:" from the row "Your whoop tune"). */
+  if (core.length > 2 && core.endsWith(':')) {
+    t = direct(core.slice(0, -1), depth + 1);
+    if (t !== null) {
+      return /[:：]$/.test(t) ? t : t + colon;
     }
   }
   return null;
@@ -340,6 +366,21 @@ export function tr(s) {
     if (said !== null) {
       out = m[1] + said + m[3];
       outs.add(out);
+    } else if (m[2].includes('\n')) {
+      /* A banner of two or three lines, each a sentence of its own with
+       * no full stop to part them: line by line, and the lines kept. The
+       * whole is tried first, because a paragraph a maker wrapped in the
+       * source is one string. */
+      let any = false;
+      const lines = m[2].split('\n').map((line) => {
+        const o = tr(line);
+        any = any || o !== line;
+        return o;
+      });
+      if (any) {
+        out = m[1] + lines.join('\n') + m[3];
+        outs.add(out);
+      }
     } else if (misses && core.length > 1) {
       misses.add(core);
     }
@@ -624,6 +665,7 @@ export function useCatalogue(catalogue, patternSources = [], code = 'en') {
     current = 'en';
     joiner = ' ';
     stop = '.';
+    colon = ':';
     return;
   }
   table = new Map(Object.entries(catalogue));
@@ -636,6 +678,7 @@ export function useCatalogue(catalogue, patternSources = [], code = 'en') {
   current = code;
   joiner = current === 'ja' || current === 'zh-Hans' ? '' : ' ';
   stop = current === 'ja' || current === 'zh-Hans' ? '\u3002' : current === 'hi' ? '\u0964' : '.';
+  colon = current === 'ja' || current === 'zh-Hans' ? '\uff1a' : ':';
 }
 
 export async function setLanguage(code, remember = true) {

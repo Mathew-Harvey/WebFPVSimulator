@@ -64,6 +64,7 @@ import { sticksIn } from './words.js';
 import { SMALL_WINDOW, injectCareerStyle } from './style.js';
 import { achievementSvg } from '../steam/achievementart.js';
 import { steamLine } from '../steam/edition.js';
+import { tr, trf } from '../i18n/i18n.js';
 import { wishlistAnchor } from '../share/patreon.js';
 import { LIVERIES, cssOf, liveryById } from '../render/livery.js';
 
@@ -162,15 +163,17 @@ function speedLesson(lesson) {
 /* "Learn to fly, 3.4": the part a lesson is in and where in it. */
 function lessonPlace(lesson) {
   const part = partOf(lesson.id);
+  /* Whole templates with the names put in, already in the pilot's language
+   * (trf in src/i18n/i18n.js). In English these are the lines they were. */
   if (!part) {
-    return `Lesson ${lesson.id.replace('-', '.')}`;
+    return trf('Lesson {0}', lesson.id.replace('-', '.'));
   }
   const i = part.lessons.indexOf(lesson.id);
   const branch = BRANCHES[part.branch];
   if (part.licence) {
-    return part.title === lesson.title ? `${branch.title}, the checkride` : part.title;
+    return part.title === lesson.title ? trf('{0}, the checkride', tr(branch.title)) : tr(part.title);
   }
-  return `${branch.title}, ${part.title} ${i + 1} of ${part.lessons.length}`;
+  return trf('{0}, {1} {2} of {3}', tr(branch.title), tr(part.title), i + 1, part.lessons.length);
 }
 
 /* Three stars, as many lit as the medal is worth. */
@@ -932,13 +935,19 @@ export class CareerScreens {
     if (part.after === 'branch') {
       return `Opens when every part of ${BRANCHES[part.branch].title} is finished.`;
     }
-    const names = part.after.map((id) => partById(id)).filter(Boolean).map((x) => x.title);
+    /* Whole sentences, and the names put into them already in the pilot's
+     * language: a sentence glued from "Finish" and a list cannot be said in
+     * a language that puts its verb last. In English this is the line it
+     * always was. */
+    const names = part.after.map((id) => partById(id)).filter(Boolean).map((x) => tr(x.title));
     const trunk = part.branch === 'trunk' || part.branch === 'crown';
-    const how = trunk ? 'Finish' : 'Fly three lessons of';
     if (part.id === 'pro') {
       return 'Opens when you hold both licences, race and freestyle.';
     }
-    return `${how} ${names.join(' and ')} to open it, or mark what you can already fly in Set my level.`;
+    const list = names.length ? names.reduce((a, b) => trf('{0} and {1}', a, b)) : '';
+    return trf(trunk
+      ? 'Finish {0} to open it, or mark what you can already fly in Set my level.'
+      : 'Fly three lessons of {0} to open it, or mark what you can already fly in Set my level.', list);
   }
 
   paintZone() {
@@ -1492,6 +1501,7 @@ export class CareerScreens {
     this.objBox = el('div', 'cr-obj');
     this.objKicker = el('div', 'cr-obj-kicker');
     this.objText = el('div', 'cr-obj-text');
+    this.objSaid = null;
     const bar = el('div', 'cr-bar');
     this.objBar = el('i');
     bar.append(this.objBar);
@@ -1519,8 +1529,9 @@ export class CareerScreens {
     /* The counter's total and combo are shown for a lesson that is scored
      * by them: a score run, a combo, or close calls. */
     document.body.classList.toggle('career-score', lesson.objectives.some((o) => o.kind === 'score' || o.kind === 'combo' || o.kind === 'close'));
-    this.objKicker.textContent = `${lessonPlace(lesson)}  ${lesson.title}`;
+    this.objKicker.textContent = `${lessonPlace(lesson)}  ${tr(lesson.title)}`;
     this.listKey = '';
+    this.objSaid = null;
     this.coach(null);
     this.altEl.classList.remove('show');
     this.marker.classList.remove('show');
@@ -1531,7 +1542,12 @@ export class CareerScreens {
 
   paintStatus(status, stickMode = 2, keys = false) {
     const cur = status.current;
-    this.objText.textContent = cur ? sticksIn(cur.text, stickMode, { keys }) : 'Done';
+    /* Written when the words change, not every frame: see the clock below. */
+    const obj = cur ? sticksIn(cur.text, stickMode, { keys }) : tr('Done');
+    if (obj !== this.objSaid) {
+      this.objSaid = obj;
+      this.objText.textContent = obj;
+    }
     this.objBar.style.width = `${Math.round(100 * (cur ? cur.progress : 1))}%`;
     const key = status.list.map((x) => `${x.done ? 1 : 0}${x.active ? 1 : 0}`).join('');
     if (key !== this.listKey) {
@@ -1542,10 +1558,34 @@ export class CareerScreens {
         this.objList.append(li);
       }
     }
+    /*
+     * The clock's two nodes are made once and written when they change.
+     * This ran every frame and emptied and rebuilt the timer each time,
+     * which is two nodes made and two thrown away sixty times a second,
+     * and, in the Steam edition's other languages, a page watcher woken
+     * every frame to read a new element (src/i18n/i18n.js watches what is
+     * added in the air). The word under the clock is put into the pilot's
+     * language here, when it changes, which is twice a lesson.
+     */
     const started = status.phase !== 'ready';
-    this.timerEl.innerHTML = '';
-    this.timerEl.append(document.createTextNode(clock(status.elapsedMs)));
-    this.timerEl.append(el('small', null, started ? 'TIME' : 'TAKE OFF TO START'));
+    if (!this.timerNum || this.timerNum.parentNode !== this.timerEl) {
+      this.timerNum = document.createTextNode('');
+      this.timerSub = el('small', null, '');
+      this.timerEl.textContent = '';
+      this.timerEl.append(this.timerNum, this.timerSub);
+      this.timerSaid = '';
+      this.timerWord = '';
+    }
+    const now = clock(status.elapsedMs);
+    if (now !== this.timerSaid) {
+      this.timerSaid = now;
+      this.timerNum.data = now;
+    }
+    const word = started ? 'TIME' : 'TAKE OFF TO START';
+    if (word !== this.timerWord) {
+      this.timerWord = word;
+      this.timerSub.textContent = tr(word);
+    }
   }
 
   coach(text, tone = 'info') {
@@ -1553,7 +1593,7 @@ export class CareerScreens {
       this.coachEl.classList.remove('show');
       return;
     }
-    this.coachEl.textContent = text;
+    this.coachEl.textContent = tr(text);
     this.coachEl.classList.toggle('warn', tone === 'warn');
     this.coachEl.classList.add('show');
   }
@@ -1602,7 +1642,7 @@ export class CareerScreens {
   }
 
   flash(text, ms = 1300) {
-    this.flashEl.textContent = text;
+    this.flashEl.textContent = tr(text);
     this.flashEl.classList.add('show');
     clearTimeout(this.flashTimer);
     this.flashTimer = setTimeout(() => this.flashEl.classList.remove('show'), ms);
@@ -1648,7 +1688,7 @@ export class CareerScreens {
     r.classList.toggle('is-gold', !failed && status.medal === 'gold');
     const page = el('div', 'cr-res-page');
     const main = el('div', 'cr-res-main');
-    main.append(el('span', 'cr-kick', `${lessonPlace(lesson)}: ${lesson.title}`));
+    main.append(el('span', 'cr-kick', `${lessonPlace(lesson)}: ${tr(lesson.title)}`));
     const extra = [];
     let paintBtn = null;
     if (failed) {

@@ -77537,3 +77537,9 @@ Latency: none. Menu pages and one assignment in `show()`; nothing in the frame, 
 ### For the Steam repack
 
 `src/ui/ui.js`, `src/net/together.js` and `src/main.js` again, and all of it is wanted there as it is here: take upstream's side on these lines.
+
+### On main
+
+The owner, 2026-11-28 12:27Z, on the report of draft PR 294 (what changed, the reading taken of "the step before" and what it takes away, what to fly, the latency line, and the question of which check to run, with "fly it" recommended): "push to main and steam main". The first half covers the whole of this entry and nothing else. Main had not moved (db4a625, fetched), so main is fast forwarded to this branch, no force. No check was run again for the push: no file changed after the runs listed above but this one. `npm run verify` and `node scripts/shots.js` were not run, and the owner flies it live. After the push the live site is loaded on the new deploy, and a deploy that does not come up clean is undone with a revert commit on main and written up in the next entry.
+
+The second half, "steam main", is the Steam repack's main, which is another repository and takes this by a subtree pull of the sim's main. It is passed, with the owner's own message, to the thread that keeps the Steam game up to date. Nothing in this repository changes for it.

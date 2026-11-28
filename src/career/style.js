@@ -590,6 +590,7 @@ body.career-flight:not(.career-score) #ui .score-combo { visibility: hidden; }
 #career .cr-res-side { display: flex; flex-direction: column; gap: 18px; min-width: 0; padding-top: clamp(0px, 4vh, 60px); }
 #career .cr-res-side.is-full { gap: 14px; padding-top: 0; }
 #career .cr-res-licence { flex-direction: row; align-items: center; gap: 16px; background: #ffe9a8; transform: rotate(1deg); }
+#career .cr-res-steam { align-items: flex-start; gap: 10px; }
 #career .cr-res-opened { transform: rotate(-1deg); }
 #career .cr-res-opened-list { display: flex; flex-wrap: wrap; gap: 2px 16px; }
 #career .cr-res-opened-name { font-size: clamp(18px, 1.6vw, 26px); font-weight: 900; font-style: italic; text-transform: uppercase; line-height: 1.05; }

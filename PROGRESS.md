@@ -77298,3 +77298,42 @@ The owner, flying the Steam build, 2026-11-24 10:15Z: "after running a battery f
 
 - Read again before closing (00:33:32Z): 33 open, the 33 above, none filed since the triage began; 0 in progress. Closed with the run's token through `POST /board/api/bugs/:id`, status and resolution: 33 updates, 33 answered 200. bug-d0d887f6 and bug-39be50e4 `fixed`, naming main's c2bc011b: the lesson sent them to things a Powerloop cannot be flown round, and now sends them under the footbridge or the billboard; bug-39be50e4 also says the picture of each trick is a feature request. The other 31 `wontfix`: bug-4f1f1f12 says the page reads what Firefox gave it, which was 0 on those axes, and to try Chrome or Edge and file again from there if it persists; bug-28a8a409 says the reported lines are presets in a preset chat room; bug-d66d74a0 says it was flown in 3D and where to turn it off; the other feel notes and tune reports say no code defect, tune numbers kept in the Tunes panel. Afterwards (00:33:54Z) the board lists 0 open and 0 in progress.
 - The owner, 2026-11-27, on the run's report: "If it's on main , I'll fly it". Checked before this line: c2bc011b is on main (main at fe5e1b9b after the run's own record), and https://webfpv.org/sim/ serves its src/career/curriculum.js byte for byte (451701e142606068), with 9-2's new first step in it. Nothing more was pushed but this line. The verification scale picked is fly it: career lesson 9-2, a loop flown under the footbridge or the billboard should be named a Powerloop and tick the objective; a loop flown over a container stack still will not, by design.
+
+## 2026-11-28 | steam | The browser game sells the Steam edition: Get it on Steam, a Browser or Steam page, Steam leads the after-flight panel, and one line where a pilot is asking
+
+The owner, 2026-11-28 02:08Z: "the game is for sale, we need to update the web game and the landing page and the tracks board to advertise and drive sales. listing out the differences in webfpv steam game might be a good idea". The plan went to them first; they picked "The whole list" on its card at 02:20Z, and at 02:23Z answered its questions: "no achievemetns yet, thats coming in a later patch, go with recommendations , yes after flight prompts, keep lower latency, the radio input plus the users browser not having other stuff going, will deliver. licence -yes". Branch `claude/project-thread-4gwigo`, a draft PR, waiting for their word before main. The board's half is board PR 88 and deploys first: until it does, the board answers the new click beacon with a 400 and nothing else changes.
+
+### What changed
+
+- `src/share/patreon.js`: the stickers say "Get it on Steam" (`STEAM_LABEL`), the hover says it is out and what it adds. `recordSteamClick(placement)` sends the board `{"v":1,"kind":"steam_click","place":"sim-<placement>"}` through the same sendBeacon the tip prompt uses, only where `counting()` is true. `wishlistAnchor` takes an `onPress`, for a sticker that opens a page in the game in place of the store.
+- `src/share/steampage.js` (new) and its styles in `index.html`: "Browser or Steam?", six ink panels and two pictures (`assets/steam/race.jpg`, `flip.jpg`, 49 KB together, from the Steam store's own screenshots), the store's button at the foot, "Keep flying free" beside it. Opened from the title's sticker and from About. Imported on the press; the pictures are asked for when the page is built. `scripts/steam-check.js` (`npm run check:steam`) holds that nothing of it is fetched before the press, that the store button carries the place that opened it, that Escape and the keyboard behave, and that the Steam edition has no sticker and no page.
+- `src/share/supportprompt.js`: where the Steam sticker may show, the after-flight panel leads with it ("Like flying it? Own it.") and the coffee and Patreon buttons follow under "Or help keep the browser game free:". Same cadence, same cooldown, same one panel: nothing shows more often than it did.
+- `src/steam/edition.js`: `steamLine(words)`, empty in the Steam edition. One sentence on the end of four notes that already stand where a pilot is asking: the builder's keep note (Steam Cloud), the frame queue row when the browser did not grant it (vsync off), the rooms card when the board cannot be reached (LAN race nights), and the career's save card (the code carries a career across).
+- `src/career/screens.js`, `src/career/style.js`: on the results page of the run that earns a licence, one panel under the stamp: "A licence lives in this browser. On Steam it is saved to Steam Cloud and follows your account." and the sticker (place `licence`). `progress.js` reports `outcome.licence` only on that run, so it is once per licence with nothing new stored.
+- `scripts/menu-map.js`, `scripts/support-selftest.js`, `scripts/longflight-check.js`, `package.json`, `src/fresh.js` (regenerated).
+
+What it may say is held to what the Steam build does today: offline, Steam Cloud, the PC to itself and vsync off, LAN race nights, the Ultra preset, the music player, the same rooms. Achievements, the Steam times tables and the Workshop are not named anywhere, by the owner's answer. "Lower latency" stays, by the owner's answer, with their reason.
+
+### Latency
+
+None. Everything here is a menu page, a results page or a string. Nothing runs in a frame, nothing is added to boot (the new module and both pictures load on the press; the beacon is sent on a click), and the Steam edition gets none of it. Checked by `check:steam`'s fetch count before the press (0), not by a frame time measure, because no frame's work changed.
+
+### Checks this turn
+
+- `npm run check:steam`: all pass. `node scripts/support-selftest.js`: 42 of 42. `npm run check:career`: 183 of 183. `npm run lint:preload`: 2 of 2. `npm run lint:shell`: pass. `npm run lint:boot`: 10 of 10. `npm run lint:responsive`: pass.
+- `npm run check:careerui`: first run 207 passed and 1 failed, and the failing line was not captured; the second run, same tree, 208 of 208. Reported as it happened: one unexplained miss in two runs.
+- `node scripts/longflight-check.js`: every line about the panel passes. Its line "the shell kept drawing frames" wants more than 30 frames and this container's software renderer draws 26 to 33 in the window: it failed on this tree (26, 29, 30, 29, 28, 30, 29) and passed on the commit before these edits and on main a29d7c4 (31, 31, 31, 33), then on back to back runs both trees landed either side of the line. Nothing in the diff runs in a frame, so this reads as the machine, but it is not shown, and the threshold was not touched.
+- `npm run lint:nouns`: fails one line, `scripts/menu-map.js:50` ("course"), the same line it fails on main (see 2026-11-27).
+- The licence panel was looked at in headless Chromium at 1280 by 720 by building the results page with a made up outcome (a scratch script, not kept): the panel sits under the stamp and the sticker's link is the store with `utm_campaign=licence`. It was not reached by flying a licence.
+- Not run: `npm run verify` (nothing here is physics, the plant, the ABI or the build), `node scripts/shots.js`. Not flown by a person.
+
+### What went wrong
+
+- The new module failed `lint:preload` until it was added to git and `src/fresh.js` regenerated: the list is built from tracked files.
+- The taller after-flight panel pushed its buttons past a 400 by 260 window, which `longflight-check` caught. The panel's short window rules were tightened and the check now presses the Steam sticker and scrolls to the coffee button.
+- The first `check:steam` counted two beacons: its own Enter key pressed the focused store link. The check walks with the arrow keys now.
+- A fifth note was planned for "the board cannot be reached" in the course picker and dropped: the board being down does not mean the pilot is offline, so the line would not have been true. The rooms card covers the pilot who is.
+
+### For the Steam repack
+
+`src/ui/ui.js`, `src/net/together.js` and `src/career/screens.js` are files the repack edits, so the next subtree pull may conflict on these lines. Every line added here answers nothing in the Steam edition (`wishlistAllowed()` is false there), so taking upstream's side is right.

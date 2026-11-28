@@ -120,6 +120,16 @@ export function wishlistAllowed() {
   return !STEAM_EDITION;
 }
 
+/* One line about the Steam edition, for the end of a note that already
+ * stands where a pilot is asking the question it answers (will I lose this
+ * track, why can I not reach a room, can this go lower). The owner's plan of
+ * 2026-11-28. Words only, with a leading space so a note can end in it, and
+ * empty in the Steam edition, where it would be an advert for what the
+ * player owns. */
+export function steamLine(words) {
+  return wishlistAllowed() ? ` ${words}` : '';
+}
+
 /* Is the public board part of this game? The Steam edition keeps it off. */
 export function boardEnabled() {
   return !STEAM_EDITION;

@@ -80,7 +80,7 @@ import { raterKey } from '../share/rating.js';
 import {
   PICK_A, PICK_B, cleanPick, hashPick, pickWords,
 } from './picks.js';
-import { DESKTOP, STEAM_EDITION, allowReach } from '../steam/edition.js';
+import { DESKTOP, STEAM_EDITION, allowReach, steamLine } from '../steam/edition.js';
 
 const STORE_KEY = 'webfpv.together.v1';
 /* The board's close code for a pilot whose browser joined the same room
@@ -3851,7 +3851,7 @@ export function createTogether(shell) {
     version: ['UPDATE FIRST', 'fierce', () => 'This room runs a newer WebFPV. Reload to update. Your settings and avatar stay.', 'reload'],
     tooMany: ['TAKE A BREAK', 'smug', () => 'Too many tries from here. Wait ten minutes, or ask the host for an invite link, which skips the password.', 'lobby'],
     busy: ['ROOMS ARE FULL', 'wow', () => 'Every room the board can hold is open right now. Try again soon.', 'solo'],
-    offline: ["CAN'T REACH THE BOARD", 'oops', () => 'Rooms need the internet. Your flight is fine: fly solo, and try again when you are back online.', 'retry'],
+    offline: ["CAN'T REACH THE BOARD", 'oops', () => `Rooms need the internet. Your flight is fine: fly solo, and try again when you are back online.${steamLine('No internet at the field? The Steam edition runs race nights on a LAN.')}`, 'retry'],
     noWorld: ['NOT IN YOUR GAME', 'wow', (c) => `${c.room ? c.room.name : 'That room'} flies ${c.room && c.room.mapName ? c.room.mapName : 'a map'} that this copy of WebFPV does not have. Rooms on the maps and tracks in your game will work.`, 'lobby'],
     noOnline: ['ROOMS ARE OFF', 'calm', () => 'This copy of WebFPV cannot go online, so rooms are off. Everything else works as it did.', 'solo'],
   };

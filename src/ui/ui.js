@@ -260,7 +260,7 @@ import {
 import {
   downloadCli, drawAttitude, FcSession, paintPageStrip, paintTabStrip,
 } from './fc.js';
-import { wishlistAllowed } from '../steam/edition.js';
+import { steamLine, wishlistAllowed } from '../steam/edition.js';
 import { fcDumpKeyFor, readFcDump, writeFcDump } from '../fc/dump.js';
 /*
  * The pilot's own tracks live in this browser, and the Track room lists
@@ -1280,7 +1280,7 @@ const MAP_ORDERS = [['newest', 'Newest'], ['rated', 'Top rated']];
 const MAP_ORDER_IDS = MAP_ORDERS.map(([id]) => id);
 const COURSE_ORDER_IDS = COURSE_ORDERS.map(([id]) => id);
 
-const KEEP_NOTE = 'Tracks you build stay in this browser. Clearing it, or another device, starts you from nothing. Publish a track to put it on the public board.';
+const KEEP_NOTE = `Tracks you build stay in this browser. Clearing it, or another device, starts you from nothing. Publish a track to put it on the public board.${steamLine('On Steam, your builds save to Steam Cloud.')}`;
 
 /* Build a track, as a row under the map picker, where it was a card at the
  * end of the pilot's own half of the strip the picker replaced. */
@@ -5629,7 +5629,7 @@ function lowLatencyNote(on, info) {
   }
   return granted
     ? `On, and this browser is using it. ${what}`
-    : `On, but this browser did not grant it, so frames still queue behind the page. ${what} Not every browser can; if you just switched it on, reload.`;
+    : `On, but this browser did not grant it, so frames still queue behind the page. ${what} Not every browser can; if you just switched it on, reload.${steamLine('The Steam edition can run with vsync off.')}`;
 }
 
 /*

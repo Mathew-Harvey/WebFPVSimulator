@@ -63,6 +63,8 @@ import { sticksHtml } from './sticks.js';
 import { sticksIn } from './words.js';
 import { SMALL_WINDOW, injectCareerStyle } from './style.js';
 import { achievementSvg } from '../steam/achievementart.js';
+import { steamLine } from '../steam/edition.js';
+import { wishlistAnchor } from '../share/patreon.js';
 import { LIVERIES, cssOf, liveryById } from '../render/livery.js';
 
 function el(tag, cls, text) {
@@ -1239,7 +1241,7 @@ export class CareerScreens {
     save.append(el('span', 'cr-kick', 'Keep your career'));
     save.append(el('p', 'cr-panel-line', steam
       ? 'Steam Cloud keeps your career with your account. A save code still takes it to the browser game and back.'
-      : 'Your career lives in this browser. A save code takes it to another computer or browser: copy it here, paste it there.'));
+      : `Your career lives in this browser. A save code takes it to another computer or browser: copy it here, paste it there.${steamLine('On Steam your career follows your account, and this code carries it across.')}`));
     const copy = button('Copy save code', null);
     const paste = button('Load a code', null);
     const field = el('textarea', 'cr-code');
@@ -1736,6 +1738,19 @@ export class CareerScreens {
         stamp.append(el('span', null, 'Licensed'), el('b', null, TITLES[titleOf(progress)] || 'Pilot'));
         lic.append(stamp, el('p', 'cr-panel-line', `${partById(outcome.licence).title}: yours. It is on your licence card from now on.`));
         extra.push(lic);
+        /* One line the day a licence is earned, and no other day: progress.js
+         * reports outcome.licence only on the run that earned it. It is the
+         * moment a pilot has most to lose with a cleared browser, so it is
+         * where the Steam edition's Cloud save is worth a sentence. The
+         * browser game only (wishlistAnchor answers null in the Steam
+         * edition), on a results page, never in a flight. The owner,
+         * 2026-11-28: "licence -yes". */
+        const steam = wishlistAnchor('licence');
+        if (steam) {
+          const keep = el('div', 'cr-panel cr-res-steam');
+          keep.append(el('p', 'cr-panel-line', 'A licence lives in this browser. On Steam it is saved to Steam Cloud and follows your account.'), steam);
+          extra.push(keep);
+        }
       }
       if (outcome && outcome.opened && outcome.opened.length) {
         const op = el('div', 'cr-panel cr-res-opened');

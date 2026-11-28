@@ -63,6 +63,13 @@ function tagged(base, params) {
 export const TIP_URL = 'https://donate.stripe.com/6oU6oHcIKdj85iW0FC8so0s';
 
 
+/* The panel's words. The first is the owner's own, of 2026-10-30, and is
+ * what the panel says wherever the Steam sticker may not show. */
+export const SUPPORT_WORDS = 'I build WebFPV in my spare time. If you\'re enjoying it, buy me a $1 coffee on Patreon or a one-off battery to help keep it free.';
+export const STEAM_PROMPT_HEAD = 'Like flying it? Own it.';
+export const STEAM_PROMPT_WORDS = 'WebFPV is out on Steam. It flies offline, keeps your career in Steam Cloud and runs race nights on a LAN. One payment, and it backs the sim.';
+export const SUPPORT_SECOND_WORDS = 'Or help keep the browser game free:';
+
 /* The last time the prompt was shown. A record only: nothing gates on it. */
 function writePromptState(lastShownMs) {
   try {
@@ -148,7 +155,16 @@ function recordPromptClick(trigger, target) {
  * draws them, so it is the same hand), the message in a narration box
  * hung over the panel's edge, and buttons cut like the gate's Back button,
  * each in its own colour: Patreon's coral, the battery's amber, Steam's
- * navy. The words are the owner's, unchanged.
+ * navy.
+ *
+ * STEAM LEADS since 2026-11-28. The Steam edition went on sale on the
+ * 27th, and the owner's plan of the 28th ("ensure we drive sales", then
+ * "yes after flight prompts") turns the panel round: in the browser
+ * edition the narration box sells the Steam edition and its sticker is the
+ * first button, and the three that pay for the free game sit under it,
+ * smaller, with a line of their own. Same panel, same off switch, shown no
+ * more often than before. Where the sticker may not show (wishlistAllowed)
+ * the panel is the old one, with the owner's first words unchanged.
  */
 export function showSupportPrompt(trigger, { onSettings = null } = {}) {
   if (!canShowPrompt() || !document.body) {
@@ -179,9 +195,23 @@ export function showSupportPrompt(trigger, { onSettings = null } = {}) {
   shout.textContent = 'Keep it flying!';
   art.append(shout);
 
+  /* The sticker first: whether it exists decides which panel this is. */
+  const wishBtn = wishlistAnchor('prompt', 'support-prompt-steam');
+
   const message = document.createElement('p');
   message.className = 'support-prompt-message';
-  message.textContent = 'I build WebFPV in my spare time. If you\'re enjoying it, buy me a $1 coffee on Patreon or a one-off battery to help keep it free.';
+  let second = null;
+  if (wishBtn) {
+    const head = document.createElement('strong');
+    head.className = 'support-prompt-head';
+    head.textContent = STEAM_PROMPT_HEAD;
+    message.append(head, document.createTextNode(` ${STEAM_PROMPT_WORDS}`));
+    second = document.createElement('p');
+    second.className = 'support-prompt-second';
+    second.textContent = SUPPORT_SECOND_WORDS;
+  } else {
+    message.textContent = SUPPORT_WORDS;
+  }
 
   const actions = document.createElement('div');
   actions.className = 'support-prompt-actions';
@@ -227,10 +257,6 @@ export function showSupportPrompt(trigger, { onSettings = null } = {}) {
     recordPromptClick(trigger, 'paypal');
   });
 
-  /* Wishlist on Steam, the sticker the title wears, on its own line under
-   * the two that pay for the sim. Null in the Steam edition. */
-  const wishBtn = wishlistAnchor('prompt', 'support-prompt-steam');
-
   let settingsBtn = null;
   if (typeof onSettings === 'function') {
     settingsBtn = document.createElement('button');
@@ -255,13 +281,20 @@ export function showSupportPrompt(trigger, { onSettings = null } = {}) {
   actions.append(patreonBtn, tipBtn, paypalBtn);
   const foot = document.createElement('div');
   foot.className = 'support-prompt-foot';
-  if (wishBtn) {
-    foot.append(wishBtn);
-  }
   if (settingsBtn) {
     foot.append(settingsBtn);
   }
-  inner.append(art, message, actions, foot);
+  if (wishBtn) {
+    /* Steam's sticker on a line of its own under the narration box, then
+     * the smaller line and the three smaller buttons. */
+    const lead = document.createElement('div');
+    lead.className = 'support-prompt-lead';
+    lead.append(wishBtn);
+    actions.classList.add('is-second');
+    inner.append(art, message, lead, second, actions, foot);
+  } else {
+    inner.append(art, message, actions, foot);
+  }
   prompt.append(inner, closeBtn);
   document.body.append(prompt);
 

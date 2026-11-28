@@ -96,7 +96,19 @@ const PROMPT = `
   return {
     screen: window.__ui.screen, count: all.length, held: window.__supportPrompt().screen,
     onBody: Boolean(p) && p.parentNode === document.body,
-    closeHits: hits(p && p.querySelector('.support-prompt-close')), linkHits: hits(link),
+    closeHits: hits(p && p.querySelector('.support-prompt-close')),
+    /* Steam's sticker leads the panel since 2026-11-28, so it is the link
+     * that must be under a click as the panel lands. The coffee button is
+     * one of three under it now, and in a window this short it is reached
+     * by the panel's own scroll: brought into view, it must take the click. */
+    linkHits: hits(p && p.querySelector('.support-prompt-steam')),
+    coffeeHits: (() => {
+      if (!link) { return false; }
+      link.scrollIntoView({ block: 'nearest' });
+      const ok = hits(link);
+      p.scrollTop = 0;
+      return ok;
+    })(),
     href, marks: (href.match(/[?]/g) || []).length, rid: href ? new URL(href).searchParams.get('rid') : null,
     settings: Boolean(p) && [...p.querySelectorAll('button')].some((b) => b.textContent === 'Settings'),
   };`;
@@ -176,8 +188,9 @@ async function main() {
     check(p.screen === 'title' && p.count === 1 && p.held === 'title', 'Pause, Quit to title: the prompt is up on the title, once',
       `${p.screen}, ${p.count} up, held on ${p.held}`);
     check(p.onBody, 'on the body, not inside a screen', '');
-    check(p.closeHits && p.linkHits, 'its close button and its link are what a click lands on',
+    check(p.closeHits && p.linkHits, 'its close button and its Steam link are what a click lands on',
       `close ${p.closeHits}, link ${p.linkHits}`);
+    check(p.coffeeHits, 'and the coffee button under it takes a click once it is in view', `${p.coffeeHits}`);
     check(p.marks === 1 && p.rid === '29846312', 'its coffee tier link has one question mark and the tier id whole', p.href);
     check(p.settings, 'it has a Settings button', '');
 

@@ -247,7 +247,7 @@ import { formatScore } from '../game/score.js';
 import { PRACTICE_LAPS } from '../game/race.js';
 import { JOKE_MS, quotedJoke } from './loading.js';
 import { fillCredits } from './credits.js';
-import { INSTAGRAM_NOTE, PATREON_NOTE, PAYPAL_NOTE, TIP_NOTE, STEAM_NOTE, openInstagram, openPaypal, openSupport, openTip, openWishlist, patreonAnchor, wishlistAnchor } from '../share/patreon.js';
+import { INSTAGRAM_NOTE, PATREON_NOTE, PAYPAL_NOTE, TIP_NOTE, STEAM_LABEL, STEAM_PAGE_NOTE, openInstagram, openPaypal, openSupport, openTip, openWishlist, patreonAnchor, wishlistAnchor } from '../share/patreon.js';
 import { mountRatesPanel } from './ratespanel.js';
 import { mountPidsPanel } from './pidspanel.js';
 import { touchWanted, TOUCH_SIZES, normaliseTouchSize } from '../input/touchsticks.js';
@@ -284,7 +284,7 @@ import {
  */
 /* card-board opens the board's page for one track in the board's tab, so it
  * wears the link arrow the leaderboard row wears (MENUS-PLAN.md 1.38). */
-const LINK_ACTIONS = new Set(['leaderboard', 'seat-board', 'wiki', 'support', 'wishlist', 'partners', 'card-board']);
+const LINK_ACTIONS = new Set(['leaderboard', 'seat-board', 'wiki', 'support', 'partners', 'card-board']);
 /* mapbuilder is the builder's freestyle door, and it opens the same page
  * trackbuilder does, so it wears the same chevron: the pause menu's Back to
  * the track builder is one or the other depending on what is being flown,
@@ -7094,8 +7094,9 @@ export class Ui {
     this.patreonLink = patreonAnchor();
     this.patreonSlot.append(this.patreonLink);
     chips.append(this.patreonSlot);
-    /* Wishlist on Steam, beside it. Null in the Steam edition. */
-    const wishlist = wishlistAnchor();
+    /* Get it on Steam, beside it. Null in the Steam edition. A press opens
+     * the Browser or Steam page, which says why before it says where. */
+    const wishlist = wishlistAnchor('title', '', () => this.openSteamPage('title'));
     if (wishlist) {
       chips.append(wishlist);
     }
@@ -11072,7 +11073,7 @@ export class Ui {
         { label: 'Support', action: 'support', note: PATREON_NOTE },
         { label: 'Buy Mat a battery ($5)', action: 'tip', note: TIP_NOTE },
         { label: 'Donate with PayPal', action: 'paypal', note: PAYPAL_NOTE },
-        ...(wishlistAllowed() ? [{ label: 'Wishlist on Steam', action: 'wishlist', note: STEAM_NOTE, rowClass: 'row-steam' }] : []),
+        ...(wishlistAllowed() ? [{ label: STEAM_LABEL, action: 'steampage', note: STEAM_PAGE_NOTE, rowClass: 'row-steam' }] : []),
         { label: 'Instagram', action: 'instagram', note: INSTAGRAM_NOTE },
         {
           label: 'FPV wiki',
@@ -23524,6 +23525,10 @@ export class Ui {
     if (this.screen === 'title' && this.closeSupportPrompt && this.closeSupportPrompt()) {
       return;
     }
+    /* And so is the Browser or Steam page, on whichever screen opened it. */
+    if (this.steamPage && this.steamPage.closeSteamPage()) {
+      return;
+    }
     if (this.dropEl) {
       this.closeDrop();
       if (this.onUiSound) {
@@ -23763,7 +23768,32 @@ export class Ui {
     });
   }
 
+  /*
+   * BROWSER OR STEAM?, the page every Steam button in the menus opens
+   * (src/share/steampage.js). Asked for on the press and not before, so it
+   * costs a pilot who never presses it nothing. `from` is the button, which
+   * the store's button on the page carries to the board's count. If the
+   * module cannot be had (a deploy mid visit), the press goes to the store
+   * as it always did.
+   */
+  openSteamPage(from) {
+    if (!wishlistAllowed()) {
+      return;
+    }
+    import('../share/steampage.js').then((m) => {
+      this.steamPage = m;
+      m.openSteamPage(from);
+    }).catch(() => {
+      openWishlist(from);
+    });
+  }
+
   act(action) {
+    /* While the Browser or Steam page is up, a pad's press belongs to it
+     * and not to the row behind it. */
+    if (this.steamPage && this.steamPage.steamPageOpen()) {
+      return;
+    }
     /* A dogfight's pause rows. */
     if (typeof action === 'string' && action.startsWith('fight-')) {
       this.fightAction(action);
@@ -24239,8 +24269,8 @@ export class Ui {
       openPaypal('menu');
       return;
     }
-    if (action === 'wishlist') {
-      openWishlist('about');
+    if (action === 'steampage') {
+      this.openSteamPage('about');
       return;
     }
     if (action === 'instagram') {

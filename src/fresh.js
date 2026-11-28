@@ -669,6 +669,7 @@
     'src/share/session.js',
     'src/share/stamps.js',
     'src/share/stats.js',
+    'src/share/steampage.js',
     'src/share/summary.js',
     'src/share/supportprompt.js',
     'src/share/tinylaps.js',

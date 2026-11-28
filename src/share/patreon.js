@@ -50,11 +50,26 @@ export const INSTAGRAM_URL = 'https://www.instagram.com/webfpv_org/';
 
 export const INSTAGRAM_NOTE = 'WebFPV on Instagram: clips, maps and updates. Opens in a new tab.';
 
-/* The Steam store page, for the Wishlist buttons. Gated by
- * wishlistAllowed(), so the Steam edition never shows one. */
+/* The Steam store page, for the Get it on Steam buttons. Gated by
+ * wishlistAllowed(), so the Steam edition never shows one. They read
+ * "Wishlist on Steam" until the game went on sale on 2026-11-27; the
+ * function names keep the old word so the callers did not all move. */
 export const STEAM_URL = 'https://store.steampowered.com/app/4944190/webFPV/';
 
-export const STEAM_NOTE = 'WebFPV is coming to Steam. Wishlist it to hear when it launches. Opens the store page in a new tab.';
+export const STEAM_NOTE = 'WebFPV is out on Steam. Fly offline, keep your career in Steam Cloud, race on a LAN. Opens the store page in a new tab.';
+
+/* The About row's note: the row opens the Browser or Steam page in the
+ * menus (src/share/steampage.js), not a tab. */
+export const STEAM_PAGE_NOTE = 'WebFPV is out on Steam. See what the Steam edition adds to the game you are flying.';
+
+/* The button's words, one place for all of them. No price: a sale or a
+ * regional price must never make a button wrong. */
+export const STEAM_LABEL = 'Get it on Steam';
+
+/* Where a Steam link stands, as the board counts it: STEAM_PLACES in its
+ * src/validate.js is a closed list and a word not on it is refused, so a
+ * new place is added there first. */
+export const STEAM_PLACES = ['title', 'about', 'prompt', 'page', 'note', 'licence'];
 
 /*
  * PayPal donations, any amount. PayPal's own no-script donate address takes
@@ -208,44 +223,76 @@ export function openTip() {
 }
 
 /*
- * The Wishlist on Steam buttons. Same shape as the tip: opened from script,
- * no opener, a utm tag saying which button, no beacon (the board's events
- * endpoint has no target to carry it). Never called from the flight loop.
+ * The Get it on Steam buttons. Same shape as the tip: opened from script,
+ * no opener, a utm tag saying which button, and one beacon a press that
+ * says where the button stood (the board's steam_click, a total per day per
+ * place and nothing about the pilot). Never called from the flight loop.
  */
 export function steamUrl(placement) {
   return `${STEAM_URL}?utm_source=sim&utm_campaign=${placement}`;
 }
 
-export function openWishlist(placement = 'menu') {
+/* Count one press. Not sendEvent, for the reason openSupport gives.
+ * Nothing is sent under Global Privacy Control or with counting off, and a
+ * beacon that throws never stops the link. */
+export function recordSteamClick(placement) {
+  if (!STEAM_PLACES.includes(placement)) {
+    return;
+  }
+  try {
+    if (counting()) {
+      const body = JSON.stringify({ v: 1, kind: 'steam_click', place: `sim-${placement}` });
+      navigator.sendBeacon(eventsUrl(), new Blob([body], { type: 'text/plain;charset=UTF-8' }));
+    }
+  } catch (e) {
+    /* No beacon in this browser, or it refused. The page is already open. */
+  }
+}
+
+export function openWishlist(placement = 'about') {
   const tab = window.open(steamUrl(placement), '_blank', 'noopener,noreferrer');
   if (tab) {
     tab.opener = null;
   }
+  recordSteamClick(placement);
 }
 
 /*
- * One Wishlist on Steam button, or null where it may not show. The same
+ * One Get it on Steam button, or null where it may not show. The same
  * sticker everywhere it goes: Steam's navy plate, their mark in white, the
  * words in the shell's heavy italic capitals, an ink rule and a hard ink
  * shadow, leaning like the gate's buttons (index.html, .steam-wishlist).
  * `placement` tags the link, so Steam's traffic report says which one a
- * visitor came from; `extra` is a class for where it sits.
+ * visitor came from; `extra` is a class for where it sits. `onPress`,
+ * when given, is what a plain press does instead of leaving for the store
+ * (the title's sticker opens the Browser or Steam page): the address stays
+ * on the link, so a middle click or "open in new tab" still reaches the
+ * store, and that press is not counted, because nobody has left yet.
  */
-export function wishlistAnchor(placement = 'title', extra = '') {
+export function wishlistAnchor(placement = 'title', extra = '', onPress = null) {
   if (!wishlistAllowed()) {
     return null;
   }
   const a = document.createElement('a');
   a.className = extra ? `steam-wishlist ${extra}` : 'steam-wishlist';
-  a.title = STEAM_NOTE;
-  a.setAttribute('aria-label', STEAM_NOTE);
+  const note = typeof onPress === 'function' ? STEAM_PAGE_NOTE : STEAM_NOTE;
+  a.title = note;
+  a.setAttribute('aria-label', note);
   a.href = steamUrl(placement);
   a.target = '_blank';
   a.rel = 'noopener noreferrer';
   const word = document.createElement('span');
   word.className = 'steam-wishlist-word';
-  word.textContent = 'Wishlist on Steam';
+  word.textContent = STEAM_LABEL;
   a.append(markSvg(STEAM_MARK, '#ffffff'), word);
+  a.addEventListener('click', (event) => {
+    if (typeof onPress === 'function') {
+      event.preventDefault();
+      onPress();
+      return;
+    }
+    recordSteamClick(placement);
+  });
   return a;
 }
 

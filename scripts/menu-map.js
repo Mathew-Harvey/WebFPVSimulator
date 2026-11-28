@@ -44,7 +44,7 @@ const only = new Set((argv.only || '').split(',').filter(Boolean));
 const OUT = argv.out || '';
 
 /* Rows that leave the page or reach the network: recorded, never pressed. */
-const AWAY = /^(trackbuilder|trackbuilder-new|mapbuilder|builder|remix|editown|leaderboard|seat-board|wiki|support|wishlist|partners|card-board|patreon|steam|discord|board-.*|share.*|copy.*|export.*|import.*|reset.*|delete.*|forget.*|clear.*|signout|logout)$/;
+const AWAY = /^(trackbuilder|trackbuilder-new|mapbuilder|builder|remix|editown|leaderboard|seat-board|wiki|support|wishlist|steampage|partners|card-board|patreon|steam|discord|board-.*|share.*|copy.*|export.*|import.*|reset.*|delete.*|forget.*|clear.*|signout|logout)$/;
 
 /* Where the page is, as a pilot would say it. */
 const SIG = `(() => {

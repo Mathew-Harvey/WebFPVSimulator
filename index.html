@@ -3793,6 +3793,103 @@
         box-shadow: 0 0 0 2px #66c0f4, 5px 5px 0 2px var(--ink-line);
       }
       a.steam-wishlist:focus-visible { outline: none; }
+      /*
+       * BROWSER OR STEAM?, the page a Steam button in the menus opens
+       * (src/share/steampage.js). One magazine page laid over the menu: a
+       * paper sheet with an ink rule and a hard shadow, the title in the
+       * shell's heavy italic capitals, two pictures cut as panels, six ink
+       * panels numbered like a contents page, and Steam's sticker at the
+       * foot. Nothing here is loaded or laid out until the page is opened.
+       */
+      .steam-page {
+        position: fixed; inset: 0; z-index: 1100; pointer-events: auto;
+        display: flex; align-items: flex-start; justify-content: center;
+        padding: 24px 16px; box-sizing: border-box; overflow-y: auto;
+        background: rgba(11, 17, 22, 0.78);
+      }
+      .steam-page-sheet {
+        position: relative; box-sizing: border-box;
+        width: 100%; max-width: 860px; margin: auto 0;
+        padding: 22px 26px 22px;
+        background:
+          radial-gradient(circle, rgba(11, 17, 22, 0.07) 0 1px, transparent 1.5px) 0 0 / 4px 4px,
+          #f7f0dc;
+        border: 4px solid var(--ink-line);
+        box-shadow: 10px 10px 0 var(--ink-line);
+        color: var(--ink-line);
+        animation: steam-page-in 0.18s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+      }
+      @keyframes steam-page-in { from { opacity: 0; transform: scale(0.96) rotate(-0.6deg); } }
+      @media (prefers-reduced-motion: reduce) { .steam-page-sheet { animation: none; } }
+      .steam-page-close {
+        position: absolute; top: 10px; right: 10px;
+        width: 34px; height: 34px; padding: 0;
+        display: flex; align-items: center; justify-content: center;
+        background: var(--ink-line); color: #f7f0dc;
+        border: 0; border-radius: 50%;
+        font: 900 20px/1 var(--ui-font); cursor: pointer;
+      }
+      .steam-page-close:hover { background: #2a475e; }
+      .steam-page-close:focus-visible, .steam-page-stay:focus-visible { outline: 3px solid #66c0f4; outline-offset: 3px; }
+      .steam-page-kicker {
+        display: inline-block; padding: 4px 9px;
+        background: #1b2838; color: #fff;
+        font: 800 10.5px/1 var(--ui-font); letter-spacing: 0.16em; text-transform: uppercase;
+      }
+      .steam-page-title {
+        margin: 10px 40px 0 0;
+        font: italic 900 clamp(28px, 5.4vw, 46px)/0.98 var(--ui-font);
+        letter-spacing: 0.01em; text-transform: uppercase;
+      }
+      .steam-page-deck { margin: 10px 0 0; max-width: 56ch; font: 600 14.5px/1.45 var(--ui-font); text-wrap: pretty; }
+      .steam-page-shots { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 16px; }
+      .steam-page-shot {
+        display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover;
+        background: #1b2838;
+        border: 3px solid var(--ink-line); box-shadow: 4px 4px 0 var(--ink-line); box-sizing: border-box;
+      }
+      .steam-page-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px 14px; margin-top: 18px; }
+      .steam-page-panel {
+        position: relative; padding: 10px 12px 11px;
+        background: #fffaf0;
+        border: 2.5px solid var(--ink-line); box-shadow: 3px 3px 0 var(--ink-line);
+      }
+      .steam-page-no { font: 800 10px/1 var(--mono-font, monospace); letter-spacing: 0.12em; color: rgba(11, 17, 22, 0.5); }
+      .steam-page-name { margin: 5px 0 0; font: italic 900 15px/1.1 var(--ui-font); letter-spacing: 0.02em; text-transform: uppercase; }
+      .steam-page-words { margin: 5px 0 0; font: 600 12.5px/1.4 var(--ui-font); text-wrap: pretty; }
+      .steam-page-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 18px; margin-top: 20px; }
+      .steam-page-note { flex: 1 1 240px; margin: 0; font: 700 13px/1.4 var(--ui-font); }
+      a.steam-wishlist.steam-page-buy {
+        height: 46px; padding: 0 18px 0 13px; gap: 10px;
+        border-width: 3px; box-shadow: 5px 5px 0 var(--ink-line);
+        font-size: 15px;
+      }
+      a.steam-wishlist.steam-page-buy svg { width: 24px; height: 24px; }
+      a.steam-wishlist.steam-page-buy:hover, a.steam-wishlist.steam-page-buy:focus-visible {
+        box-shadow: 0 0 0 2px #66c0f4, 7px 7px 0 2px var(--ink-line);
+      }
+      .steam-page-stay {
+        height: 34px; padding: 0 2px; background: none; border: 0;
+        font: 800 11.5px/1 var(--ui-font); letter-spacing: 0.1em; text-transform: uppercase;
+        color: rgba(11, 17, 22, 0.62);
+        text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px;
+        cursor: pointer; white-space: nowrap;
+      }
+      .steam-page-stay:hover { color: var(--ink-line); }
+      @media (max-width: 720px) {
+        .steam-page { padding: 10px 8px; }
+        .steam-page-sheet { padding: 16px 14px 16px; box-shadow: 6px 6px 0 var(--ink-line); }
+        .steam-page-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+        .steam-page-shots { gap: 10px; }
+      }
+      @media (max-width: 420px) {
+        .steam-page-grid { grid-template-columns: 1fr; }
+      }
+      /* A short window: the pictures come out so the panels and the button
+         stay on screen, the rule the support prompt follows. */
+      @media (max-height: 560px) {
+        .steam-page-shots { display: none; }
+      }
       /* The About room's row: Steam's mark before the words, white, and the
          cursor's bar in Steam's light blue when it is on this row. */
       .row-steam .row-label { display: inline-flex; align-items: center; gap: 0.5em; }
@@ -3860,6 +3957,8 @@
         .support-prompt-art { aspect-ratio: auto; height: 46px; }
         .support-prompt-art .gp-svg { display: none; }
         .support-prompt-message { margin-top: -8px; }
+        .support-prompt-lead { padding-top: 12px; }
+        .support-prompt-second { margin-top: 10px; }
         .support-prompt-actions { padding-top: 12px; }
         .support-prompt-foot { padding-top: 12px; padding-bottom: 12px; }
       }
@@ -3925,8 +4024,25 @@
       .support-prompt-btn-tip { background: var(--amber); }
       /* PayPal's own button gold, their monogram in blue. */
       .support-prompt-btn-paypal { background: #FFC439; cursor: pointer; }
-      /* Steam on its own line under the two that pay for the sim, and the
-         way to Settings small at the far end of it. */
+      /* STEAM LEADS (2026-11-28, src/share/supportprompt.js): the heading in
+         the narration box, Steam's sticker on a line of its own under it,
+         then a small line and the three that pay for the free game, cut
+         smaller so the eye lands on the one above. */
+      .support-prompt-head { display: block; font: italic 900 16px/1.2 var(--ui-font); letter-spacing: 0.02em; text-transform: uppercase; margin-bottom: 3px; }
+      .support-prompt-lead { padding: 16px 18px 0 16px; }
+      .support-prompt-second {
+        margin: 14px 18px 0 16px;
+        font: 800 11.5px/1.3 var(--ui-font); letter-spacing: 0.08em; text-transform: uppercase;
+        color: rgba(11, 17, 22, 0.62);
+      }
+      .support-prompt-actions.is-second { padding-top: 9px; gap: 10px 11px; }
+      .support-prompt-actions.is-second .support-prompt-btn {
+        height: 30px; padding: 0 10px 0 8px; gap: 6px;
+        border-width: 2.5px; box-shadow: 3px 3px 0 var(--ink-line);
+        font-size: 10.5px;
+      }
+      .support-prompt-actions.is-second .support-prompt-btn svg { width: 14px; height: 14px; }
+      /* The way to Settings, small at the far end of the last line. */
       .support-prompt-foot {
         display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
         gap: 10px 14px;

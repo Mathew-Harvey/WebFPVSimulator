@@ -87,6 +87,7 @@
     "check:takeoff": "node scripts/takeoff-check.js",
     "check:standpitch": "node scripts/standpitch-check.js",
     "check:longflight": "node scripts/longflight-check.js",
+    "check:steam": "node scripts/steam-check.js",
     "check:tune": "node scripts/tune-check.js",
     "check:world": "node scripts/world-check.js",
     "check:world-golden": "node scripts/world-golden.js",

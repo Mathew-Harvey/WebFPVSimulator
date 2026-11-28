@@ -120,10 +120,11 @@ const node = (tag) => {
   n.setAttribute = (k, v) => { n.attrs[k] = v; };
   n.addEventListener = (k, f) => { n.listeners[k] = f; };
   n.remove = () => { n.removed = true; };
+  n.classList = { add: (c) => { n.className = `${n.className || ''} ${c}`.trim(); } };
   return n;
 };
 const docBody = node('body');
-globalThis.document = { body: docBody, createElement: node, createElementNS: (ns, tag) => node(tag) };
+globalThis.document = { body: docBody, createElement: node, createElementNS: (ns, tag) => node(tag), createTextNode: (t) => ({ tag: '#text', textContent: t, children: [] }) };
 const textOf = (n) => [n.textContent || '', ...n.children.map(textOf)].join(' ');
 /* A button's words are in a span beside its mark, so read them as a browser's
  * textContent would: the node's own text and every child's, run together. */
@@ -140,16 +141,32 @@ check('prompt: two exits in a row show twice', Boolean(first) && Boolean(second)
 const pBeacons = await Promise.all(beacons.map((b) => b.blob.text()));
 check('prompt: one beacon a show, source sim-exit',
   pBeacons.length === 2 && pBeacons.every((t) => /"kind":"support_prompt_shown","source":"sim-exit"/.test(t)), pBeacons[0]);
-check('prompt: the message is the agreed words',
-  textOf(first).includes('I build WebFPV in my spare time. If you\'re enjoying it, buy me a $1 coffee on Patreon or a one-off battery to help keep it free.'), '');
+/* Steam leads since 2026-11-28, the day after the Steam edition went on
+ * sale: its words in the narration box and its sticker first, then the
+ * line and the three that pay for the free game. */
+check('prompt: the message is the Steam words',
+  textOf(first).includes('Like flying it? Own it.')
+  && textOf(first).includes('WebFPV is out on Steam. It flies offline, keeps your career in Steam Cloud and runs race nights on a LAN. One payment, and it backs the sim.')
+  && textOf(first).includes('Or help keep the browser game free:'), textOf(first));
+check('prompt: nothing still says wishlist or coming', !/wishlist|coming to steam/i.test(textOf(first)), '');
 const ls = links(first);
-/* The third is Wishlist on Steam, added to the prompt on 2026-10-30
- * (1b5d08f9); the selftest kept asking for two until 2026-11-01. */
-check('prompt: the three buttons', ls.map(wordsOf).join('|') === 'Buy Mat a coffee $1/mo|One-off $5|Wishlist on Steam', ls.map(wordsOf).join('|'));
+check('prompt: the three links, Steam first', ls.map(wordsOf).join('|') === 'Get it on Steam|Buy Mat a coffee $1/mo|One-off $5', ls.map(wordsOf).join('|'));
+check('prompt: the Steam link is the store page, tagged prompt',
+  ls[0].href === 'https://store.steampowered.com/app/4944190/webFPV/?utm_source=sim&utm_campaign=prompt', ls[0].href);
+beacons.length = 0;
+ls[0].listeners.click();
+const steamBeacons = await Promise.all(beacons.map((b) => b.blob.text()));
+check('prompt: a press on it is counted once, as sim-prompt',
+  steamBeacons.length === 1 && steamBeacons[0] === '{"v":1,"kind":"steam_click","place":"sim-prompt"}', steamBeacons.join(' '));
+nav.globalPrivacyControl = true;
+beacons.length = 0;
+ls[0].listeners.click();
+check('prompt: and not at all under Global Privacy Control', beacons.length === 0, `${beacons.length} sent`);
+delete nav.globalPrivacyControl;
 check('prompt: the coffee button is the coffee tier, tagged',
-  ls[0].href === 'https://www.patreon.com/checkout/webfpv?rid=29846312&utm_source=sim-prompt&ref=sim-prompt', ls[0].href);
+  ls[1].href === 'https://www.patreon.com/checkout/webfpv?rid=29846312&utm_source=sim-prompt&ref=sim-prompt', ls[1].href);
 check('prompt: the tip link is the tip URL, tagged exit',
-  ls[1].href.startsWith(TIP_URL) && /client_reference_id=prompt-exit/.test(ls[1].href), ls[1].href);
+  ls[2].href.startsWith(TIP_URL) && /client_reference_id=prompt-exit/.test(ls[2].href), ls[2].href);
 check('prompt: new tab, no opener', ls.every((l) => l.target === '_blank' && l.rel === 'noopener noreferrer'), '');
 check('prompt: no early-access, perks or unlock wording', !/early.access|perk|unlock/i.test(textOf(first)), '');
 beacons.length = 0;

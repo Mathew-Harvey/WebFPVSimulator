@@ -83,9 +83,14 @@ export const BANNER = {
    * printed board may never out value the horizon band (0xf2e3cb). The
    * yellow is the lighter of the two and is still a clear step below it.
    *
-   * The pale vinyl stays on the course as the panel a sponsor's mark sits on,
-   * so a mark designed for white still reads, and the town's props keep the
-   * navy and red: this is the race's own kit and nothing else's.
+   * The town's props keep the navy and red: this is the race's own kit and
+   * nothing else's.
+   *
+   * THE GATES ARE NOT IN IT ANY MORE. On 2026-11-28 the owner asked for
+   * "white gates with logos on them as appropriate but on one side, the side
+   * of entry", so the header and sleeves are the vinyl again and only the
+   * feather flags wear these two. The reverse of a branded gate is painted
+   * `markless`: the white and the chequer, no mark.
    */
   race: '#ff7414',
   raceShade: '#d4560a',
@@ -197,14 +202,16 @@ export const HEADER_NUMBER_ZONE = 0.22;
 export function paintGateHeader(ctx, w, h, opts = {}) {
   const numberZone = opts.numberZone ?? HEADER_NUMBER_ZONE;
   ctx.clearRect(0, 0, w, h);
-  /* The board is the race orange (see BANNER.race); the mark gets a pale
-   * vinyl panel of its own between the two number zones, below. */
-  ctx.fillStyle = BANNER.race;
+  /* White vinyl, the owner's pick of 2026-11-28 ("white gates with logos
+   * on them as appropriate but on one side, the side of entry"). The race
+   * orange of 2026-11-03 stays on the course's flags (BANNER.race); the
+   * gates went back to the pale board a mark is drawn for. */
+  ctx.fillStyle = BANNER.vinyl;
   ctx.fillRect(0, 0, w, h);
 
   /* The hems: a shade darker bound edge top and bottom, which is the
    * printed board's own border and its edge against the sky. */
-  ctx.fillStyle = BANNER.raceShade;
+  ctx.fillStyle = BANNER.vinylShade;
   ctx.fillRect(0, 0, w, h * 0.045);
   ctx.fillRect(0, h * 0.955, w, h * 0.045);
 
@@ -223,15 +230,10 @@ export function paintGateHeader(ctx, w, h, opts = {}) {
    * small logo. */
   const boxY = h * 0.07;
   const boxH = h * 0.79;
-  /* A sponsor's mark gets its own pale panel, inset so the orange frames it,
-   * because a mark is drawn for a white page and this is that page. An
-   * unbranded board has no panel: the chequered flag sits on the orange, and
-   * the whole board is the colour a pilot finds from across the field. The
-   * roundels at both ends stay on the orange, where a pale disc reads best. */
-  if (opts.logo) {
-    const inset = h * 0.02;
-    ctx.fillStyle = BANNER.vinyl;
-    ctx.fillRect(left + inset, boxY, right - left - inset * 2, boxH);
+  /* The mark sits straight on the white. With no mark (opts.markless) the
+   * board is left plain: the reverse of a branded gate (see BANNER.race). */
+  if (opts.markless) {
+    return;
   }
   if (opts.logo) {
     fit(ctx, opts.logo, left, boxY, right - left, boxH);
@@ -272,20 +274,18 @@ export function paintGateSleeve(ctx, w, h, opts = {}) {
     ctx.translate(w, 0);
     ctx.scale(-1, 1);
   }
-  /* Race orange, like the header, with a pale panel for the mark. */
-  ctx.fillStyle = BANNER.race;
+  /* White vinyl, like the header (the owner, 2026-11-28). */
+  ctx.fillStyle = BANNER.vinyl;
   ctx.fillRect(0, 0, w, h);
 
   /* The chequer column, down one edge: the race's border. */
   const colW = w * 0.18;
   chequerColumn(ctx, 0, 0, colW, h, Math.round(h / (colW * 0.5)));
 
-  /* A sponsor's mark gets a pale panel in the middle of the sleeve, clear of
-   * the column, with orange above and below it so the leg still reads orange
-   * end to end. Unbranded, the device sits straight on the orange. */
-  if (opts.logo) {
-    ctx.fillStyle = BANNER.vinyl;
-    ctx.fillRect(colW + (w - colW) * 0.1, h * 0.12, (w - colW) * 0.8, h * 0.72);
+  /* The reverse of a branded gate carries no mark at all (see BANNER.race). */
+  if (opts.markless) {
+    ctx.restore();
+    return;
   }
 
   ctx.save();

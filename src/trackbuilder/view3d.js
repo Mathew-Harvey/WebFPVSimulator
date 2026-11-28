@@ -819,9 +819,9 @@ export class View3D {
     /* The reverse of a gate carries no mark, only the racing dress. One set for every gate, painted once
      * (slot -1 matches no job); a course with no logo has nothing to leave off, so its back is its front. */
     const back = logos.length ? {
-      header: paint(-1, BANNER_SIZE.header, paintGateHeader, {}),
-      sleeve: paint(-1, BANNER_SIZE.sleeve, paintGateSleeve, {}),
-      sleeveFlipped: paint(-1, BANNER_SIZE.sleeve, paintGateSleeve, { flip: true }),
+      header: paint(-1, BANNER_SIZE.header, paintGateHeader, { markless: true }),
+      sleeve: paint(-1, BANNER_SIZE.sleeve, paintGateSleeve, { markless: true }),
+      sleeveFlipped: paint(-1, BANNER_SIZE.sleeve, paintGateSleeve, { flip: true, markless: true }),
     } : null;
     const dress = [];
     for (let i = 0; i < n; i += 1) {

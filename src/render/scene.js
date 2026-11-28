@@ -1889,9 +1889,9 @@ function bannerKit(logoUrls, key, sponsorMarks) {
    */
   const marked = urls.some(Boolean);
   const back = marked ? {
-    header: printed(paint(-1, BANNER_SIZE.header, paintGateHeader, {}), 'hdrb'),
-    sleeve: printed(paint(-1, BANNER_SIZE.sleeve, paintGateSleeve, {}), 'slvb'),
-    sleeveFlipped: printed(paint(-1, BANNER_SIZE.sleeve, paintGateSleeve, { flip: true }), 'slvfb'),
+    header: printed(paint(-1, BANNER_SIZE.header, paintGateHeader, { markless: true }), 'hdrb'),
+    sleeve: printed(paint(-1, BANNER_SIZE.sleeve, paintGateSleeve, { markless: true }), 'slvb'),
+    sleeveFlipped: printed(paint(-1, BANNER_SIZE.sleeve, paintGateSleeve, { flip: true, markless: true }), 'slvfb'),
   } : null;
 
   const dress = [];

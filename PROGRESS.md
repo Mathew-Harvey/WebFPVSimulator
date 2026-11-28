@@ -77467,3 +77467,7 @@ None. Every line is a menu page, a results page, a banner or a room's sheet. Not
 ### For the Steam repack
 
 `src/ui/ui.js`, `src/net/together.js` and `src/main.js` are files the repack edits. Everything here is the rooms' flow and is wanted there as it is here: take upstream's side on these lines. The kept choice lives in `webfpv.together.v1` beside the avatar. `cardEarly` does nothing in the Steam edition, as `oweCard` does nothing there.
+
+### On main
+
+The owner, 2026-11-28 10:43Z, on the report of draft PR 293 (what changed, what to fly, the latency line, and the question of which check to run, with "fly it" recommended): "push to main". That word covers the whole of this entry and nothing else. Main had not moved since the merge above (29ec1f2), so main is fast forwarded to this branch, no force. No check was run again for the push: no file changed after the merged tree's run of `check:rooms` (146 of 146), `net:selftest` and `lint:preload` but this file. `npm run verify` and `node scripts/shots.js` were not run, and the owner flies it live. After the push the live site is loaded on the new deploy, and a deploy that does not come up clean is undone with a revert commit on main and written up in the next entry.

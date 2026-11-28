@@ -5522,6 +5522,17 @@ export async function boot({ loading, bootStart, mapId }) {
   }
 
   /*
+   * HOW LONG THE PLANT HAS BEEN OFF THE GROUND, ms of sim time, for the
+   * dirt rule's evidence (see DIRT_AIR_MS in src/game/collide.js). Zeroed by
+   * any ground contact the frame's steps saw, while the craft is on the
+   * launch stand, and whenever the stream restarts (adoptSimClock), which is
+   * every reset and teleport, so a craft that has just been put somewhere is
+   * never believed to have been flying. Declared before adoptSimClock, which
+   * writes it, and before anything in boot runs that.
+   */
+  let msSinceGround = 0;
+
+  /*
    * JS RC time follows the module, never the other way around. sim_init and
    * sim_reset restart the input stream at t = 0. Stamping sim.input from a
    * leftover lastTs puts every sample in the queue's future: sim_step only
@@ -5533,6 +5544,7 @@ export async function boot({ loading, bootStart, mapId }) {
     const st = readState();
     simStepIdx = Math.round(st[0] * SIM_HZ);
     pinRcGrid();
+    msSinceGround = 0;
   }
 
   /*
@@ -12916,6 +12928,8 @@ export async function boot({ loading, bootStart, mapId }) {
       lastDescent = -stateCurr[6];
       lastTiltDeg = tiltDeg;
       lastGroundHits = hits;
+      /* One add or one store a frame: see msSinceGround. */
+      msSinceGround = (hits > 0 || sawGroundHit || launchStaging) ? 0 : msSinceGround + steps * MS_PER_STEP;
       lastClearance = clearance;
       lastUpz = upz;
       speedNow = speed;
@@ -13333,6 +13347,7 @@ export async function boot({ loading, bootStart, mapId }) {
           upz: lastUpz,
           clearance: lastClearance,
           hits: lastGroundHits,
+          airMs: msSinceGround,
           heightAt: (x, z, y) => view.height(x, z, y - SURFACE_BIAS, y),
         });
         if (!replayMode) {

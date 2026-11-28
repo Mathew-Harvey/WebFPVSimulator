@@ -77344,6 +77344,59 @@ None. Everything here is a menu page, a results page or a string. Nothing runs i
 - Order: the board first (its main 7c096f1 to 1d5bb4a at 05:59Z, a fast forward; by 06:00Z https://webfpv.org/board/ served the Steam chips, `/api/stats` answered with `steamClicks`, and a made up place was refused with 400), then this repository, then the landing page.
 - `npm run check:steam`, `node scripts/support-selftest.js` and `npm run lint:preload` were run again on the tree pushed; the results are in the commit's report to the owner.
 
+## 2026-11-28 | race | A steep low dive through a ground gate was thrown away as a crash on the dirt (draft PR, for the owner)
+
+The owner, in the project thread, with a recording of WA State Champs 2026: "not sure if this is just the fault of whoever built the track but i can fly under these gates".
+
+### The cause
+
+Not the track. Its gates stand on the grass (z 0, sill 0 in the board's document), the race field builds them from the ground, and gate 8's scoring box runs from the grass to 2.103 m: rendered from a low camera there is no gap under the bar, and a level travel through the opening is credited at every height from 0.03 m up.
+
+The race refused the pass. The clip is a dive from 4.0 m (the OSD, one second before the gate) through the bottom of gate 8 at 0.2 to 0.3 m and 65 km/h, nose down about 70 degrees (a 45 degree camera looking some 25 degrees below the horizon). That puts the centre inside the five inch's 0.22 m dirt band and the body up axis at 0.34, past `DIRT_UPZ` (0.50), so `upsetOnDirt` called it a craft on its side on the dirt and `shouldScorePass` dropped it, silently. At that attitude the hull's lowest point is 3.5 cm off the grass, and the bounce counter on the OSD did not move until the craft touched the grass some 0.2 s after the gate. From the seat, a gate that does not count while the bar is above you reads as a gate you went under.
+
+### The fix
+
+The band was a height and nothing else; the note above `upsetOnDirt` said the plant's hit flag was not read because a bounce can drop it for a frame. So the evidence is taken over time:
+
+- `src/main.js` `msSinceGround`: ms of sim time since any step of a frame saw a ground contact (`hits` or `sawGroundHit`), zeroed on the launch stand and in `adoptSimClock`, which every reset and teleport runs. One add or one store a frame. Passed to `shouldScorePass` as `opts.airMs`.
+- `src/game/collide.js` `upsetOnDirt(upz, clearance, airMs = 0)`: in the band and past `DIRT_UPZ`, a craft with its props on the upper side (`upz >= 0`) that has been off the ground for `DIRT_AIR_MS` (750) and whose tilt aware hull (`craftVerticalHalf`) is clear of the surface is in the air, and its pass counts. A hit on the frame wins over the count. A caller with no count gets the old rule exactly. Nothing else in the rule moved: the band, `DIRT_UPZ`, `BURIED_MARGIN`, the owner's ruling of Round 45 ("its ok to bounce of the floor through a gate"), and upside down in the band is refused as before.
+
+This is a change to a rule the owner ruled on, so it is on a draft PR for the owner's word, not on main. It is not a plant, ABI or build change.
+
+### How the numbers were measured (and the first design was wrong)
+
+The first version used 250 ms and no props up condition, on the reasoning that a dull bounce leaves at 1.2 m/s at most (`DULL_OUT_MAX`, about 245 ms of air). Measured on the plant before committing, it was wrong twice:
+
+1. A five inch let down onto its back settles at body up -0.97, centre 0.058 m up, and the plant then reports NO ground contact for as long as it lies there (3 s measured, at 150 degrees; at 90 to 120 degrees contacts stop after 0.26 to 0.37 s). So for a craft upside down the count runs and says nothing. Only the hull test kept it out, by 1.1 cm. Hence props up: upside down in the band stays refused whatever the count. The same rest test from 60 to 180 degrees never left a craft on its side: every one rolled upright or onto its back.
+2. Crashes stay off the grass far longer than one dull bounce. 308 crash flights (crash-pacing's 8 scenarios and 300 runs into the grass at 5 to 20 m/s from 0.5 to 3 m with an acro stick held at throttle 0, 0.3 and 0.7), one step a frame, judged and dull bounced as the shell does: at a step after the first contact where the new rule would decide (band, past `DIRT_UPZ`, props up, hull clear), the longest off the ground was 0.40 s at throttle 0 and 0.56 s at 0.3. At 0.7 it was 1.9 s, which is a pilot holding a flip at seven tenths throttle a few centimetres up, and that is flight: the same flip above the band scores already. 250 ms would have let low power cartwheels count. 750 ms sits over 0.56 and under the reported dive's more than a second.
+
+`scripts/dirt-air-check.js` (`npm run check:dirtair`, 8 s) holds both sides on the plant: a dive from 4 m, nose down 70 degrees at 0.3 throttle (58 km/h at the band), scores at every pre touch step the old rule refused (8 of 8) and is judged as before from the touch on; 82 crash flights (the 8 scenarios, 72 of the sweep at throttle 0 and 0.3, and the two longest found) have no verdict changed by the count after their first contact, longest 556 ms against 750; and a craft on its back is refused at every step while the count runs to 3000 ms.
+
+### Checks this turn
+
+- `npm run check:clip`: 2701 passed, 0 failed (the base was 2694; seven new lines: the dive scores at 2000 ms, is refused with no count, at 100 ms, and with a hit on the frame; one ms short of `DIRT_AIR_MS` refused and `DIRT_AIR_MS` scores; hull in the grass refused at 5000 ms; upside down refused at 5000 ms).
+- `npm run check:dirtair`: all passed.
+- Both fail on the old rule: with the exemption switched off in the working tree, `check:clip` 2699 passed and 2 failed (the dive line and the pinned count line) and `check:dirtair` 1 failed (0 of 8 scored); the tree was put back and both run green again.
+- `npm run lint:frame`: 34 of 34.
+- The real shell booted on WA State Champs 2026 in headless Chromium (`?map=custom&craft=5inch&fly=1`), reached flight and flew 4 s with no page error but the local board's stats endpoint being absent. That says nothing about a pass: the hooks that place a craft teleport it, which zeroes the count, so no pass was flown in the shell.
+- Not run: `npm run verify` (no plant, ABI or build change), `node scripts/shots.js` (nothing on screen changed). Not flown by a person.
+
+### Latency
+
+None measurable. Per frame: one add or one store for the count, and one more property in an options object the pass gate already builds. The gate itself adds one compare, and a square root and a call only on a frame that is in the band, tilted past 60 degrees, props up and past 750 ms off the ground. Checked by reading the diff, not by a frame time measure.
+
+### What went wrong
+
+- The first design (250 ms, any attitude) was written on an argument from `DULL_OUT_MAX` and a guess at crash air. It was measured before it was committed and both halves were wrong (above). The comment that went with it claimed "two to three times the air a crash bounce gets" without a measurement; it is replaced by the measured numbers.
+- `window.__race()` returns a summary without apertures, so the gate probe needed a temporary hook in `src/main.js`; it was reverted before the branch.
+- Booting through the menus timed out at the Realistic physics explainer; the probe boots with `?fly=1` and presses Enter until the screen is flight.
+
+### To main, on the owner's word
+
+- The owner, 2026-11-28 09:23Z, on the draft PR (291) and the question of which check to run: "Push to main on both web and steam". They went straight to main, so nothing more was run than is listed above and it has not been flown by a person.
+- Web: main fast forwarded from 3eecc13 to this branch. `npm run check:clip` and `npm run check:dirtair` were run again on the exact tree pushed (results in the report to the owner), and the live site was loaded on the new deploy.
+- Steam: handed to the thread that keeps the Steam game up to date, which pulls the web game into the repack (the Steam game's `game/` subtree), with the owner's message attached.
+
 ## 2026-11-28: Steam languages, the foundation (draft, not on main)
 
 The owner, 2026-11-28, on which surfaces get languages: "what ever just steam, we can advertise that steam has regional dilect as a calling card to get people over to steam". So the browser edition, board and landing page stay English and the languages are a Steam selling point. The plan the owner saw: Simplified Chinese, Japanese, Korean, Hindi, Spanish, Brazilian Portuguese, German, French, Russian; Hindi only for "Indian"; no Traditional Chinese yet.

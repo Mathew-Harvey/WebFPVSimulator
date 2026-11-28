@@ -151,7 +151,7 @@ import { PRACTICE_LAPS, Race, alsoOpenings, fmt, gateAcross, gateUp, runComplete
 import { LapVoice, lapCall, pickVoice } from '../render/voice.js';
 import {
   Colliders, hitOutcome, groundOutcome, GROUND_LAND, GROUND_BOUNCE, GROUND_CRASH,
-  GROUND_TUMBLE, GROUND_SLIDE, canPerch, shouldScorePass, shouldEnterTurtle,
+  GROUND_TUMBLE, GROUND_SLIDE, canPerch, shouldScorePass, DIRT_AIR_MS, shouldEnterTurtle,
   shouldExitTurtle, shouldParkTurtle, uprightPlantQuat, contactMaterial,
   PROP_PLANE_MAX_UP_DOT, BOUNCE_SPEED_MAX, GRAZE_SPEED_MAX,
   LAND_DESCENT_MAX, LAND_HORIZONTAL_MAX, LAND_TILT_MAX_DEG, LAND_TILT_HARD_DEG,
@@ -2189,6 +2189,36 @@ function suiteCrashRule() {
     shouldScorePass({ x: 0, y: 1.0, z: 1.2 }, { x: 0, y: 1.0, z: -1.2 }, {
       upz: 1, clearance: 1.0, hits: 0, heightAt: () => 0,
     }) === true);
+
+  /*
+   * A STEEP LOW DIVE THROUGH A GROUND GATE, the report of 2026-11-28 on WA
+   * State Champs 2026: "i can fly under these gates". From 4 m, nose down
+   * about 70 degrees (body up 0.34), through the bottom of the opening at
+   * 0.2 m. The band and the tilt alone called it a craft on its side on the
+   * dirt. The plant had not touched the ground for over a second, and that is
+   * what the counter (DIRT_AIR_MS, src/main.js msSinceGround) now says. The
+   * crashes on the other side of the number are scripts/dirt-air-check.js.
+   */
+  const dive = { prev: { x: 0, y: 0.26, z: 0.6 }, curr: { x: 0, y: 0.20, z: -0.6 } };
+  const diveAt = (o) => shouldScorePass(dive.prev, dive.curr, {
+    upz: 0.34, clearance: 0.2, hits: 0, heightAt: flat, ...o,
+  });
+  check('a steep low dive through a ground gate, two seconds off the grass, scores', diveAt({ airMs: 2000 }) === true);
+  check('the same dive with no count of the air is judged as it always was, and refused', diveAt({}) === false);
+  check('the same dive a tenth of a second after a touch of the grass is refused', diveAt({ airMs: 100 }) === false);
+  check('the same dive on a frame that touched the grass is refused, whatever the count', diveAt({ airMs: 2000, hits: 1 }) === false);
+  check('the count is pinned: one ms short of DIRT_AIR_MS is refused and DIRT_AIR_MS scores',
+    diveAt({ airMs: DIRT_AIR_MS - 1 }) === false && diveAt({ airMs: DIRT_AIR_MS }) === true);
+  check('on its side with the hull in the grass is refused however long the count',
+    shouldScorePass({ x: 0, y: 0.15, z: 0.6 }, { x: 0, y: 0.15, z: -0.6 }, {
+      upz: 0.2, clearance: 0.15, hits: 0, airMs: 5000, heightAt: flat,
+    }) === false);
+  /* On its back on the grass the plant reports no contact at all, so the
+   * count runs while it lies there: see DIRT_AIR_MS. */
+  check('upside down in the band is refused however long the count',
+    shouldScorePass(dive.prev, dive.curr, {
+      upz: -0.3, clearance: 0.2, hits: 0, airMs: 5000, heightAt: flat,
+    }) === false);
 
   /*
    * THE DIRT BAND ON A WHOOP, which is the aircraft the band was never

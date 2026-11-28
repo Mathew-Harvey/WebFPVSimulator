@@ -77438,6 +77438,7 @@ None. Every line is a menu page, a results page, a banner or a room's sheet. Not
 - The `flow` scene in a window of 844 by 390 (a scratch copy with the window changed, not kept): 40 of 40, and its pictures were looked at: the bar's button, the cover, the hosting band.
 - Pictures of each new page at 1280 by 720 were looked at. Four are in the project's files, none in the repository.
 - `npm run lint:shell` and `npm run check:minigames` fail, as listed under "Found and not touched", the same on main.
+- Main moved while this was being checked (3eecc13 to 29ec1f2: the low dive gate fix and the white gates, neither in a room file but for 15 lines of `src/main.js` about time off the ground). Merged into the branch, PROGRESS.md the one conflict, both sides kept whole. On the merged tree: `npm run check:rooms` 146 of 146 again (227 s, the card note printed again), `npm run net:selftest` all passed, `npm run lint:preload` 2 of 2. The other checks above were not run again after the merge: nothing they read changed in it.
 - Not run: `npm run verify` (nothing here is physics, the plant, the ABI or the build), `node scripts/shots.js`, `check:longflight`. Not flown by a person, and not run against the live board.
 
 ### What went wrong
